@@ -16,6 +16,7 @@ interface User {
   last_name: string
   full_name: string
   role: string
+  phone?: string
   avatar?: string
   is_demo_user?: boolean
   account_status?: string

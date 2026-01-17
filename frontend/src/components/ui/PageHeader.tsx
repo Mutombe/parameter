@@ -7,6 +7,7 @@ import { cn } from '../../lib/utils'
 interface PageHeaderProps {
   title: string
   description?: string
+  subtitle?: string  // Alias for description
   icon?: LucideIcon
   backLink?: string
   actions?: ReactNode
@@ -17,12 +18,14 @@ interface PageHeaderProps {
 export function PageHeader({
   title,
   description,
+  subtitle,
   icon: Icon,
   backLink,
   actions,
   breadcrumbs,
   className,
 }: PageHeaderProps) {
+  const displayDescription = description || subtitle
   const navigate = useNavigate()
 
   return (
@@ -71,8 +74,8 @@ export function PageHeader({
 
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
-            {description && (
-              <p className="text-gray-500 mt-1">{description}</p>
+            {displayDescription && (
+              <p className="text-gray-500 mt-1">{displayDescription}</p>
             )}
           </div>
         </div>

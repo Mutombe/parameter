@@ -5,15 +5,19 @@ import { ReactNode } from 'react'
 type DialogType = 'danger' | 'warning' | 'success' | 'info'
 
 interface ConfirmDialogProps {
-  isOpen: boolean
+  isOpen?: boolean
+  open?: boolean  // Alias for isOpen
   onClose: () => void
   onConfirm: () => void
   title: string
-  message: string | ReactNode
+  message?: string | ReactNode
+  description?: string  // Alias for message
   confirmText?: string
   cancelText?: string
   type?: DialogType
+  variant?: string  // Alias for type
   isLoading?: boolean
+  loading?: boolean  // Alias for isLoading
 }
 
 const typeConfig: Record<DialogType, { icon: typeof AlertTriangle; color: string; bgColor: string; buttonClass: string }> = {
@@ -45,21 +49,29 @@ const typeConfig: Record<DialogType, { icon: typeof AlertTriangle; color: string
 
 export function ConfirmDialog({
   isOpen,
+  open,
   onClose,
   onConfirm,
   title,
   message,
+  description,
   confirmText = 'Confirm',
   cancelText = 'Cancel',
-  type = 'danger',
-  isLoading = false,
+  type,
+  variant,
+  isLoading,
+  loading,
 }: ConfirmDialogProps) {
-  const config = typeConfig[type]
+  const showDialog = isOpen ?? open ?? false
+  const displayMessage = message || description
+  const dialogType: DialogType = (type || variant as DialogType) || 'danger'
+  const showLoading = isLoading ?? loading ?? false
+  const config = typeConfig[dialogType]
   const Icon = config.icon
 
   return (
     <AnimatePresence>
-      {isOpen && (
+      {showDialog && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex min-h-full items-center justify-center p-4">
             <motion.div
@@ -90,24 +102,24 @@ export function ConfirmDialog({
                 </div>
                 <div className="flex-1 pt-1">
                   <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-                  <div className="mt-2 text-gray-600">{message}</div>
+                  <div className="mt-2 text-gray-600">{displayMessage}</div>
                 </div>
               </div>
 
               <div className="mt-6 flex gap-3 justify-end">
                 <button
                   onClick={onClose}
-                  disabled={isLoading}
+                  disabled={showLoading}
                   className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors disabled:opacity-50"
                 >
                   {cancelText}
                 </button>
                 <button
                   onClick={onConfirm}
-                  disabled={isLoading}
+                  disabled={showLoading}
                   className={`px-4 py-2.5 text-sm font-medium text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors disabled:opacity-50 flex items-center gap-2 ${config.buttonClass}`}
                 >
-                  {isLoading && (
+                  {showLoading && (
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   )}
                   {confirmText}

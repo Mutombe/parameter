@@ -1,18 +1,20 @@
 import { cn } from '../../lib/utils'
 
-type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'purple' | 'outline'
+export type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'purple' | 'outline' | 'secondary'
 type BadgeSize = 'sm' | 'md' | 'lg'
 
-interface BadgeProps {
+export interface BadgeProps {
   children: React.ReactNode
   variant?: BadgeVariant
   size?: BadgeSize
   className?: string
   dot?: boolean
+  onClick?: () => void
 }
 
 const variantClasses: Record<BadgeVariant, string> = {
   default: 'bg-gray-100 text-gray-700',
+  secondary: 'bg-gray-200 text-gray-800',
   success: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
   warning: 'bg-amber-50 text-amber-700 border border-amber-200',
   danger: 'bg-red-50 text-red-700 border border-red-200',
@@ -29,6 +31,7 @@ const sizeClasses: Record<BadgeSize, string> = {
 
 const dotColors: Record<BadgeVariant, string> = {
   default: 'bg-gray-500',
+  secondary: 'bg-gray-600',
   success: 'bg-emerald-500',
   warning: 'bg-amber-500',
   danger: 'bg-red-500',
@@ -43,13 +46,17 @@ export function Badge({
   size = 'md',
   className,
   dot = false,
+  onClick,
 }: BadgeProps) {
+  const Component = onClick ? 'button' : 'span'
   return (
-    <span
+    <Component
+      onClick={onClick}
       className={cn(
         'inline-flex items-center gap-1.5 font-medium rounded-full',
         variantClasses[variant],
         sizeClasses[size],
+        onClick && 'cursor-pointer hover:opacity-80 transition-opacity',
         className
       )}
     >
@@ -57,7 +64,7 @@ export function Badge({
         <span className={cn('w-1.5 h-1.5 rounded-full', dotColors[variant])} />
       )}
       {children}
-    </span>
+    </Component>
   )
 }
 
