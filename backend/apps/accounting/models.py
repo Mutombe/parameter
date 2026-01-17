@@ -1,0 +1,453 @@
+"""
+Double-Entry Accounting Engine Models.
+Implements T-Account Architecture for Real Estate Accounting.
+
+Activities:
+1. Debt Recognition - Invoice creation (Dr: Accounts Receivable, Cr: Revenue)
+2. Payment Receipt - Cash received (Dr: Cash/Bank, Cr: Accounts Receivable)
+3. Revenue Recognition - Commission earned (Dr: Accounts Receivable, Cr: Commission Income)
+4. Commission/VAT - Tax handling
+5. Expense Payouts - Landlord payments (Dr: Accounts Payable, Cr: Cash)
+"""
+from decimal import Decimal
+from django.db import models, transaction
+from django.core.exceptions import ValidationError
+from django.conf import settings
+from middleware.tenant_middleware import get_current_user
+
+
+class ChartOfAccount(models.Model):
+    """Chart of Accounts - defines all account types in the system."""
+
+    class AccountType(models.TextChoices):
+        ASSET = 'asset', 'Asset'
+        LIABILITY = 'liability', 'Liability'
+        EQUITY = 'equity', 'Equity'
+        REVENUE = 'revenue', 'Revenue'
+        EXPENSE = 'expense', 'Expense'
+
+    class AccountSubType(models.TextChoices):
+        # Assets
+        CASH = 'cash', 'Cash & Bank'
+        ACCOUNTS_RECEIVABLE = 'accounts_receivable', 'Accounts Receivable'
+        PREPAID = 'prepaid', 'Prepaid Expenses'
+        FIXED_ASSET = 'fixed_asset', 'Fixed Assets'
+        # Liabilities
+        ACCOUNTS_PAYABLE = 'accounts_payable', 'Accounts Payable'
+        VAT_PAYABLE = 'vat_payable', 'VAT Payable'
+        TENANT_DEPOSITS = 'tenant_deposits', 'Tenant Deposits'
+        # Equity
+        RETAINED_EARNINGS = 'retained_earnings', 'Retained Earnings'
+        CAPITAL = 'capital', 'Capital'
+        # Revenue
+        RENTAL_INCOME = 'rental_income', 'Rental Income'
+        COMMISSION_INCOME = 'commission_income', 'Commission Income'
+        OTHER_INCOME = 'other_income', 'Other Income'
+        # Expenses
+        OPERATING_EXPENSE = 'operating_expense', 'Operating Expenses'
+        MAINTENANCE = 'maintenance', 'Maintenance & Repairs'
+        UTILITIES = 'utilities', 'Utilities'
+
+    code = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=255)
+    account_type = models.CharField(max_length=20, choices=AccountType.choices)
+    account_subtype = models.CharField(max_length=30, choices=AccountSubType.choices)
+    description = models.TextField(blank=True)
+    parent = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='children'
+    )
+    is_active = models.BooleanField(default=True)
+    is_system = models.BooleanField(default=False)  # System accounts can't be deleted
+    currency = models.CharField(max_length=3, default='USD')
+
+    # Running balance
+    current_balance = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('0.00'))
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Account'
+        verbose_name_plural = 'Chart of Accounts'
+        ordering = ['code']
+
+    def __str__(self):
+        return f'{self.code} - {self.name}'
+
+    @property
+    def normal_balance(self):
+        """Return the normal balance side (debit or credit) for this account type."""
+        if self.account_type in ['asset', 'expense']:
+            return 'debit'
+        return 'credit'
+
+
+class ExchangeRate(models.Model):
+    """Exchange rate history for multi-currency support."""
+    from_currency = models.CharField(max_length=3, default='USD')
+    to_currency = models.CharField(max_length=3, default='ZiG')
+    rate = models.DecimalField(max_digits=18, decimal_places=6)
+    effective_date = models.DateField()
+    source = models.CharField(max_length=100, blank=True)  # e.g., "RBZ Official"
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Exchange Rate'
+        verbose_name_plural = 'Exchange Rates'
+        ordering = ['-effective_date']
+        unique_together = ['from_currency', 'to_currency', 'effective_date']
+
+    def __str__(self):
+        return f'{self.from_currency}/{self.to_currency}: {self.rate} ({self.effective_date})'
+
+    @classmethod
+    def get_rate(cls, from_currency, to_currency, date=None):
+        """Get the exchange rate for a given date (or latest if no date)."""
+        from django.utils import timezone
+        date = date or timezone.now().date()
+
+        rate = cls.objects.filter(
+            from_currency=from_currency,
+            to_currency=to_currency,
+            effective_date__lte=date
+        ).order_by('-effective_date').first()
+
+        if rate:
+            return rate.rate
+        return Decimal('1.0')  # Default to 1:1 if no rate found
+
+
+class Journal(models.Model):
+    """
+    Journal - Transaction header for grouping related entries.
+    Each journal represents a complete financial transaction.
+    """
+
+    class JournalType(models.TextChoices):
+        GENERAL = 'general', 'General Journal'
+        SALES = 'sales', 'Sales Journal'
+        RECEIPTS = 'receipts', 'Cash Receipts'
+        PAYMENTS = 'payments', 'Cash Payments'
+        ADJUSTMENT = 'adjustment', 'Adjusting Entry'
+        REVERSAL = 'reversal', 'Reversal Entry'
+
+    class Status(models.TextChoices):
+        DRAFT = 'draft', 'Draft'
+        POSTED = 'posted', 'Posted'
+        REVERSED = 'reversed', 'Reversed'
+
+    journal_number = models.CharField(max_length=50, unique=True)
+    journal_type = models.CharField(max_length=20, choices=JournalType.choices, default=JournalType.GENERAL)
+    date = models.DateField()
+    description = models.TextField()
+    reference = models.CharField(max_length=100, blank=True)  # External reference
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+
+    # For reversals
+    reversed_by = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='reversal_of'
+    )
+    reversal_reason = models.TextField(blank=True)
+
+    # Multi-currency
+    currency = models.CharField(max_length=3, default='USD')
+    exchange_rate = models.DecimalField(max_digits=18, decimal_places=6, default=Decimal('1.0'))
+
+    # Audit
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='created_journals'
+    )
+    posted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='posted_journals'
+    )
+    posted_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Journal'
+        verbose_name_plural = 'Journals'
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        return f'{self.journal_number} - {self.description[:50]}'
+
+    def save(self, *args, **kwargs):
+        if not self.journal_number:
+            self.journal_number = self.generate_journal_number()
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def generate_journal_number(cls):
+        from django.utils import timezone
+        prefix = timezone.now().strftime('JRN%Y%m')
+        last = cls.objects.filter(journal_number__startswith=prefix).order_by('-journal_number').first()
+        if last:
+            num = int(last.journal_number[-4:]) + 1
+        else:
+            num = 1
+        return f'{prefix}{num:04d}'
+
+    def validate_balance(self):
+        """Validate that debits equal credits."""
+        entries = self.entries.all()
+        total_debit = sum(e.debit_amount for e in entries)
+        total_credit = sum(e.credit_amount for e in entries)
+
+        if total_debit != total_credit:
+            raise ValidationError(
+                f'Journal is unbalanced. Debits: {total_debit}, Credits: {total_credit}'
+            )
+        return True
+
+    @transaction.atomic
+    def post(self, user=None):
+        """Post the journal and update account balances."""
+        from django.utils import timezone
+
+        if self.status != self.Status.DRAFT:
+            raise ValidationError('Only draft journals can be posted')
+
+        self.validate_balance()
+
+        # Update account balances
+        for entry in self.entries.all():
+            account = entry.account
+            if entry.debit_amount:
+                if account.normal_balance == 'debit':
+                    account.current_balance += entry.debit_amount
+                else:
+                    account.current_balance -= entry.debit_amount
+            if entry.credit_amount:
+                if account.normal_balance == 'credit':
+                    account.current_balance += entry.credit_amount
+                else:
+                    account.current_balance -= entry.credit_amount
+            account.save()
+
+            # Create General Ledger entry
+            GeneralLedger.objects.create(
+                journal_entry=entry,
+                account=entry.account,
+                date=self.date,
+                description=entry.description or self.description,
+                debit_amount=entry.debit_amount,
+                credit_amount=entry.credit_amount,
+                balance=account.current_balance,
+                currency=self.currency,
+                exchange_rate=self.exchange_rate
+            )
+
+        self.status = self.Status.POSTED
+        self.posted_by = user or get_current_user()
+        self.posted_at = timezone.now()
+        self.save()
+
+        # Create audit trail
+        AuditTrail.objects.create(
+            action='journal_posted',
+            model_name='Journal',
+            record_id=self.id,
+            changes={'journal_number': self.journal_number, 'status': 'posted'},
+            user=self.posted_by
+        )
+
+        return True
+
+    @transaction.atomic
+    def reverse(self, reason, user=None):
+        """Create a reversal journal entry."""
+        from django.utils import timezone
+
+        if self.status != self.Status.POSTED:
+            raise ValidationError('Only posted journals can be reversed')
+
+        if not reason:
+            raise ValidationError('Reversal reason is required')
+
+        # Create reversal journal
+        reversal = Journal.objects.create(
+            journal_type=self.JournalType.REVERSAL,
+            date=timezone.now().date(),
+            description=f'Reversal of {self.journal_number}: {reason}',
+            reference=self.journal_number,
+            currency=self.currency,
+            exchange_rate=self.exchange_rate,
+            created_by=user or get_current_user()
+        )
+
+        # Create reversed entries (swap debits and credits)
+        for entry in self.entries.all():
+            JournalEntry.objects.create(
+                journal=reversal,
+                account=entry.account,
+                description=f'Reversal: {entry.description}',
+                debit_amount=entry.credit_amount,
+                credit_amount=entry.debit_amount
+            )
+
+        # Post the reversal
+        reversal.post(user)
+
+        # Mark original as reversed
+        self.status = self.Status.REVERSED
+        self.reversed_by = reversal
+        self.reversal_reason = reason
+        self.save()
+
+        AuditTrail.objects.create(
+            action='journal_reversed',
+            model_name='Journal',
+            record_id=self.id,
+            changes={
+                'journal_number': self.journal_number,
+                'reversed_by': reversal.journal_number,
+                'reason': reason
+            },
+            user=user or get_current_user()
+        )
+
+        return reversal
+
+
+class JournalEntry(models.Model):
+    """
+    Journal Entry - Individual debit/credit line in a journal.
+    Implements strict double-entry: each entry must have either debit OR credit.
+    """
+    journal = models.ForeignKey(Journal, on_delete=models.CASCADE, related_name='entries')
+    account = models.ForeignKey(ChartOfAccount, on_delete=models.PROTECT, related_name='entries')
+    description = models.CharField(max_length=500, blank=True)
+
+    debit_amount = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('0.00'))
+    credit_amount = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('0.00'))
+
+    # Optional reference to source document
+    source_type = models.CharField(max_length=50, blank=True)  # e.g., 'invoice', 'receipt'
+    source_id = models.PositiveIntegerField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Journal Entry'
+        verbose_name_plural = 'Journal Entries'
+        ordering = ['id']
+
+    def __str__(self):
+        if self.debit_amount:
+            return f'Dr: {self.account.code} - {self.debit_amount}'
+        return f'Cr: {self.account.code} - {self.credit_amount}'
+
+    def clean(self):
+        """Validate entry has either debit or credit, not both."""
+        if self.debit_amount and self.credit_amount:
+            raise ValidationError('Entry cannot have both debit and credit amounts')
+        if not self.debit_amount and not self.credit_amount:
+            raise ValidationError('Entry must have either debit or credit amount')
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
+class GeneralLedger(models.Model):
+    """
+    General Ledger - Posted transactions with running balances.
+    This is the book of record for all financial transactions.
+    """
+    journal_entry = models.OneToOneField(
+        JournalEntry, on_delete=models.PROTECT, related_name='gl_entry'
+    )
+    account = models.ForeignKey(ChartOfAccount, on_delete=models.PROTECT, related_name='gl_entries')
+    date = models.DateField(db_index=True)
+    description = models.CharField(max_length=500)
+
+    debit_amount = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('0.00'))
+    credit_amount = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('0.00'))
+    balance = models.DecimalField(max_digits=18, decimal_places=2)  # Running balance
+
+    currency = models.CharField(max_length=3, default='USD')
+    exchange_rate = models.DecimalField(max_digits=18, decimal_places=6, default=Decimal('1.0'))
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'General Ledger Entry'
+        verbose_name_plural = 'General Ledger'
+        ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(fields=['account', 'date']),
+            models.Index(fields=['date']),
+        ]
+
+    def __str__(self):
+        return f'{self.date} - {self.account.code}: Dr {self.debit_amount} / Cr {self.credit_amount}'
+
+
+class AuditTrail(models.Model):
+    """
+    Immutable Audit Trail - Records all sensitive financial actions.
+    This table should NEVER be modified or deleted.
+    """
+    action = models.CharField(max_length=100)
+    model_name = models.CharField(max_length=100)
+    record_id = models.PositiveIntegerField()
+    changes = models.JSONField(default=dict)
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='audit_actions'
+    )
+    user_email = models.EmailField(blank=True)  # Preserved even if user deleted
+
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = 'Audit Trail Entry'
+        verbose_name_plural = 'Audit Trail'
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f'{self.timestamp} - {self.action} on {self.model_name}#{self.record_id}'
+
+    def save(self, *args, **kwargs):
+        # Preserve user email
+        if self.user and not self.user_email:
+            self.user_email = self.user.email
+        # Prevent updates to existing records
+        if self.pk:
+            raise ValidationError('Audit trail entries cannot be modified')
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError('Audit trail entries cannot be deleted')
+
+
+class FiscalPeriod(models.Model):
+    """Fiscal periods for financial reporting."""
+    name = models.CharField(max_length=100)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    is_closed = models.BooleanField(default=False)
+    closed_at = models.DateTimeField(null=True, blank=True)
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='closed_periods'
+    )
+
+    class Meta:
+        verbose_name = 'Fiscal Period'
+        verbose_name_plural = 'Fiscal Periods'
+        ordering = ['-start_date']
+
+    def __str__(self):
+        return f'{self.name} ({self.start_date} - {self.end_date})'

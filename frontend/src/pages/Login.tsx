@@ -1,0 +1,276 @@
+import { useState } from 'react'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { Eye, EyeOff, Loader2, Building2, Shield, BarChart3, AlertTriangle } from 'lucide-react'
+import { useAuthStore } from '../stores/authStore'
+import { authApi } from '../services/api'
+import toast from 'react-hot-toast'
+
+const features = [
+  { icon: Building2, label: 'Property Management' },
+  { icon: Shield, label: 'Multi-tenant Security' },
+  { icon: BarChart3, label: 'Financial Reports' },
+]
+
+export default function Login() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { setUser } = useAuthStore()
+  const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [form, setForm] = useState({
+    email: '',
+    password: '',
+  })
+
+  // Check if redirected from demo expiry
+  const demoExpired = location.state?.demoExpired
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+
+    try {
+      const response = await authApi.login(form)
+      setUser(response.data.user)
+
+      // Show demo warning if applicable
+      if (response.data.demo_warning) {
+        toast.success('Welcome! Your demo session is active.', { duration: 5000 })
+      } else {
+        toast.success('Welcome back!')
+      }
+
+      navigate('/dashboard')
+    } catch (error: any) {
+      // Handle different error cases with user-friendly messages
+      const errorData = error.response?.data
+      let errorMessage = 'Login failed. Please try again.'
+
+      if (error.response?.status === 400) {
+        // Validation errors
+        errorMessage = errorData?.error || 'Invalid email or password'
+      } else if (error.response?.status === 403) {
+        // Check for demo expiry
+        if (errorData?.demo_expired) {
+          errorMessage = 'Your demo has expired. Please contact our sales team to activate your account.'
+        } else {
+          errorMessage = errorData?.error || 'Access denied. Please check your credentials.'
+        }
+      } else if (error.response?.status === 404) {
+        errorMessage = 'Service unavailable. Please try again later.'
+      } else if (error.response?.status >= 500) {
+        errorMessage = 'Server error. Please try again later.'
+      } else if (!error.response) {
+        errorMessage = 'Network error. Please check your connection.'
+      }
+
+      toast.error(errorMessage)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen flex">
+      {/* Left Panel - Branding */}
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary-600 via-primary-700 to-primary-900 p-12 flex-col justify-between relative overflow-hidden">
+        {/* Background Pattern */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-20 left-20 w-72 h-72 bg-white rounded-full blur-3xl" />
+          <div className="absolute bottom-20 right-20 w-96 h-96 bg-white rounded-full blur-3xl" />
+        </div>
+
+        {/* Content */}
+        <div className="relative z-10">
+          <div className="flex items-center gap-3">
+            <img
+              src="/logo.png"
+              alt="Parameter"
+              className="w-12 h-12 rounded-xl object-contain bg-white/10 backdrop-blur p-1"
+            />
+            <div>
+              <h1 className="text-2xl font-bold text-white">Parameter</h1>
+              <p className="text-primary-200 text-sm">Real Estate Accounting</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="relative z-10">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <h2 className="text-4xl font-bold text-white leading-tight">
+              Powerful accounting<br />
+              for property managers
+            </h2>
+            <p className="text-primary-200 mt-4 text-lg max-w-md">
+              Double-entry bookkeeping, multi-tenant isolation, and AI-powered insights for modern real estate businesses.
+            </p>
+          </motion.div>
+
+          <div className="flex gap-6 mt-12">
+            {features.map((feature, index) => (
+              <motion.div
+                key={feature.label}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 + index * 0.1 }}
+                className="flex items-center gap-3"
+              >
+                <div className="w-10 h-10 rounded-lg bg-white/10 backdrop-blur flex items-center justify-center">
+                  <feature.icon className="w-5 h-5 text-white" />
+                </div>
+                <span className="text-white/80 text-sm font-medium">{feature.label}</span>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+
+        <div className="relative z-10 text-primary-300 text-sm">
+          © {new Date().getFullYear()} Parameter.co.zw. All rights reserved.
+        </div>
+      </div>
+
+      {/* Right Panel - Login Form */}
+      <div className="flex-1 flex items-center justify-center p-8 bg-gray-50">
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="w-full max-w-md"
+        >
+          {/* Mobile Logo */}
+          <div className="lg:hidden text-center mb-8">
+            <img
+              src="/logo.png"
+              alt="Parameter"
+              className="w-14 h-14 rounded-xl mx-auto mb-3 object-contain"
+            />
+            <h1 className="text-xl font-bold text-gray-900">Parameter</h1>
+            <p className="text-gray-500 text-sm">Real Estate Accounting</p>
+          </div>
+
+          {/* Demo Expired Notice */}
+          {demoExpired && (
+            <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium text-amber-800">Demo Session Expired</p>
+                <p className="text-sm text-amber-700">
+                  Your demo session has ended. Contact our sales team to activate your account.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Login Card */}
+          <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/50 p-8 border border-gray-100">
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold text-gray-900">Welcome back</h2>
+              <p className="text-gray-500 mt-1">Enter your credentials to access your account</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Email address
+                </label>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                  placeholder="you@company.com"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all pr-12"
+                    placeholder="••••••••"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <span className="text-sm text-gray-600">Remember me</span>
+                </label>
+                <button type="button" className="text-sm text-primary-600 hover:text-primary-700 font-medium">
+                  Forgot password?
+                </button>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 px-4 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-lg shadow-primary-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  'Sign in'
+                )}
+              </button>
+            </form>
+
+            {/* Try Demo CTA */}
+            <div className="mt-6 p-4 bg-gradient-to-r from-primary-50 to-blue-50 rounded-xl border border-primary-100">
+              <p className="text-sm font-medium text-primary-800 mb-2">New to Parameter?</p>
+              <p className="text-xs text-primary-600 mb-3">
+                Try our platform free with sample data. No credit card required.
+              </p>
+              <Link
+                to="/signup"
+                className="inline-flex items-center justify-center w-full py-2 px-4 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
+              >
+                Start Free Demo
+              </Link>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="text-center mt-8 space-y-2">
+            <p className="text-gray-400 text-sm">
+              Secured by enterprise-grade encryption
+            </p>
+            <div className="flex items-center justify-center gap-4 text-sm">
+              <Link to="/" className="text-primary-600 hover:text-primary-700 font-medium">
+                About Us
+              </Link>
+              <span className="text-gray-300">|</span>
+              <Link to="/learn" className="text-primary-600 hover:text-primary-700 font-medium">
+                Documentation
+              </Link>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    </div>
+  )
+}
