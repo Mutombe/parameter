@@ -10,7 +10,7 @@ drf-spectacular==0.29.0
 psycopg2-binary==2.9.11
 
 # Task Queue (database-based, no Redis needed)
-django-q2==1.7.5
+django-q2==1.9.0
 
 # AI
 anthropic==0.76.0
