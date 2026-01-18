@@ -4,6 +4,7 @@ import { Search, CreditCard, Plus, Send, Loader2 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { receiptApi, tenantApi, invoiceApi } from '../../services/api'
 import { formatCurrency, formatDate, useDebounce } from '../../lib/utils'
+import { EmptyTableState } from '../../components/ui'
 import toast from 'react-hot-toast'
 
 export default function Receipts() {
@@ -194,6 +195,15 @@ export default function Receipts() {
                   </td>
                 </tr>
               ))
+            ) : !receipts?.length ? (
+              <EmptyTableState
+                title="No receipts yet"
+                description="Record your first payment receipt to track tenant payments."
+                action={{
+                  label: 'Record Receipt',
+                  onClick: () => setShowForm(true)
+                }}
+              />
             ) : receipts?.map((receipt: any) => (
                 <tr key={receipt.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">

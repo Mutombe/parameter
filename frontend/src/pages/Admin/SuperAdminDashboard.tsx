@@ -30,15 +30,21 @@ import { PiBuildingApartmentLight } from "react-icons/pi";
 
 interface TenantSummary {
   id: number
-  company_name: string
-  subdomain: string
-  plan: string
-  status: 'active' | 'trial' | 'suspended' | 'cancelled'
-  users_count: number
-  properties_count: number
-  mrr: number
-  created_at: string
-  last_activity: string
+  company_name?: string
+  name?: string  // Alternative field name from API
+  subdomain?: string
+  schema_name?: string  // Alternative field name from API
+  plan?: string
+  subscription_plan?: string  // Alternative field name from API
+  status?: 'active' | 'trial' | 'suspended' | 'cancelled'
+  account_status?: string  // Alternative field name from API
+  users_count?: number
+  users?: number
+  properties_count?: number
+  properties?: number
+  mrr?: number
+  created_at?: string
+  last_activity?: string
 }
 
 interface DashboardStats {
@@ -113,8 +119,10 @@ export default function SuperAdminDashboard() {
   const tenants: TenantSummary[] = tenantsData || []
 
   const filteredTenants = tenants.filter(tenant => {
-    const matchesSearch = tenant.company_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tenant.subdomain.toLowerCase().includes(searchQuery.toLowerCase())
+    const companyName = tenant.company_name || tenant.name || ''
+    const subdomain = tenant.subdomain || tenant.schema_name || ''
+    const matchesSearch = companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      subdomain.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesStatus = statusFilter === 'all' || tenant.status === statusFilter
     return matchesSearch && matchesStatus
   })

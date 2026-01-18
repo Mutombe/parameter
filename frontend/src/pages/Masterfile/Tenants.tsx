@@ -4,7 +4,7 @@ import { Plus, Search, Users, Phone, Mail, Trash2, Loader2 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { tenantApi } from '../../services/api'
 import { useDebounce } from '../../lib/utils'
-import { Pagination } from '../../components/ui'
+import { Pagination, EmptyState } from '../../components/ui'
 import toast from 'react-hot-toast'
 import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
@@ -195,6 +195,18 @@ export default function Tenants() {
               </div>
             </div>
           ))
+        ) : !tenants?.length ? (
+          <div className="col-span-full">
+            <EmptyState
+              icon={TbUserSquareRounded}
+              title="No tenants yet"
+              description="Add your first tenant to start managing lease agreements and billing."
+              action={{
+                label: 'Add Tenant',
+                onClick: () => setShowForm(true)
+              }}
+            />
+          </div>
         ) : tenants?.map((tenant: any) => (
             <div key={tenant.id} className="card p-5 hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between">
