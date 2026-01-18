@@ -499,7 +499,7 @@ export default function SuperAdminDashboard() {
                         </td>
                         <td className="py-4 px-6 text-sm text-gray-900">{tenant.users || tenant.users_count || 0}</td>
                         <td className="py-4 px-6 text-sm text-gray-900">{tenant.properties || tenant.properties_count || 0}</td>
-                        <td className="py-4 px-6 text-sm text-gray-500">{formatDate(tenant.created_at)}</td>
+                        <td className="py-4 px-6 text-sm text-gray-500">{tenant.created_at ? formatDate(tenant.created_at) : '-'}</td>
                         <td className="py-4 px-6 text-right">
                           <div className="flex items-center justify-end gap-2">
                             <button className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors" title="View details">
@@ -610,8 +610,8 @@ export default function SuperAdminDashboard() {
                             {invitation.status}
                           </span>
                         </td>
-                        <td className="py-4 px-6 text-sm text-gray-500">{formatDate(invitation.created_at)}</td>
-                        <td className="py-4 px-6 text-sm text-gray-500">{formatDate(invitation.expires_at)}</td>
+                        <td className="py-4 px-6 text-sm text-gray-500">{invitation.created_at ? formatDate(invitation.created_at) : '-'}</td>
+                        <td className="py-4 px-6 text-sm text-gray-500">{invitation.expires_at ? formatDate(invitation.expires_at) : '-'}</td>
                         <td className="py-4 px-6 text-right">
                           {invitation.status === 'pending' && (
                             <div className="flex items-center justify-end gap-2">

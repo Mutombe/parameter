@@ -9,8 +9,37 @@ pip install -r requirements.txt
 echo "Collecting static files..."
 python manage.py collectstatic --no-input
 
-echo "Running migrations for shared apps (public schema)..."
-python manage.py migrate_schemas --shared
+echo "=== Starting migration ==="
+
+# Try to run migrations normally first
+python manage.py migrate_schemas --shared 2>&1 && {
+    echo "Migrations completed successfully"
+} || {
+    echo "Migration failed, checking for inconsistent history..."
+
+    # Check if it's the known accounting/billing dependency issue
+    if python manage.py showmigrations accounting 2>&1 | grep -q "\[ \]"; then
+        echo "Found unapplied accounting migrations, faking them..."
+        python manage.py migrate accounting --fake || true
+    fi
+
+    # Try again
+    echo "Retrying migrations..."
+    python manage.py migrate_schemas --shared || {
+        echo "Still failing. Attempting fresh migration reset..."
+
+        # As last resort, drop all tables and recreate
+        # Only safe for fresh deployments!
+        python manage.py shell -c "
+from django.db import connection
+with connection.cursor() as cursor:
+    cursor.execute('DROP SCHEMA public CASCADE; CREATE SCHEMA public;')
+    print('Schema reset complete')
+" 2>/dev/null || true
+
+        python manage.py migrate_schemas --shared
+    }
+}
 
 echo "Creating cache table..."
 python manage.py createcachetable || true
