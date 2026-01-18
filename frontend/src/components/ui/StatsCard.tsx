@@ -1,12 +1,15 @@
+import { ComponentType } from 'react'
 import { motion } from 'framer-motion'
-import { LucideIcon, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { cn } from '../../lib/utils'
+
+type IconComponent = ComponentType<{ className?: string }>
 
 interface StatsCardProps {
   title: string
   value: string | number
   subtitle?: string
-  icon: LucideIcon
+  icon: IconComponent
   trend?: {
     value: number
     label: string

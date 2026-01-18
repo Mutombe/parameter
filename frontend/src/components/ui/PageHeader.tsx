@@ -1,6 +1,6 @@
-import { ReactNode } from 'react'
+import { ReactNode, ComponentType } from 'react'
 import { motion } from 'framer-motion'
-import { LucideIcon, ArrowLeft } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '../../lib/utils'
 
@@ -8,7 +8,7 @@ interface PageHeaderProps {
   title: string
   description?: string
   subtitle?: string  // Alias for description
-  icon?: LucideIcon
+  icon?: ComponentType<{ className?: string }>
   backLink?: string
   actions?: ReactNode
   breadcrumbs?: { label: string; href?: string }[]

@@ -1,6 +1,8 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, LucideIcon } from 'lucide-react'
-import { ReactNode } from 'react'
+import { X } from 'lucide-react'
+import { ReactNode, ComponentType } from 'react'
+
+type IconComponent = ComponentType<{ className?: string }>
 
 interface ModalProps {
   isOpen?: boolean
@@ -11,7 +13,7 @@ interface ModalProps {
   children: ReactNode
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full'
   showClose?: boolean
-  icon?: LucideIcon
+  icon?: IconComponent
 }
 
 const sizeClasses = {

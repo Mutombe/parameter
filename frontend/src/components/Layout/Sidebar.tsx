@@ -34,7 +34,7 @@ import { MdOutlineAdminPanelSettings } from "react-icons/md";
 interface NavItem {
   name: string
   href: string
-  icon: typeof LayoutDashboard
+  icon: React.ComponentType<{ className?: string }>
 }
 
 interface NavSection {

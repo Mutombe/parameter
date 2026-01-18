@@ -1,7 +1,8 @@
-import { useState, ReactNode, createContext, useContext } from 'react'
+import { useState, ReactNode, createContext, useContext, ComponentType } from 'react'
 import { motion } from 'framer-motion'
 import { cn } from '../../lib/utils'
-import { LucideIcon } from 'lucide-react'
+
+type IconComponent = ComponentType<{ className?: string }>
 
 interface TabsContextValue {
   activeTab: string
@@ -53,7 +54,7 @@ export function TabsList({ children, className }: TabsListProps) {
 interface TabsTriggerProps {
   value: string
   children: ReactNode
-  icon?: LucideIcon
+  icon?: IconComponent
   className?: string
 }
 
@@ -117,7 +118,7 @@ export function TabsContent({ value, children, className }: TabsContentProps) {
 // Card-style tabs for report selection
 interface TabCardProps {
   value: string
-  icon: LucideIcon
+  icon: IconComponent
   title: string
   description: string
   className?: string

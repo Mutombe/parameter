@@ -1,12 +1,13 @@
-import { forwardRef, InputHTMLAttributes, TextareaHTMLAttributes, SelectHTMLAttributes } from 'react'
-import { LucideIcon } from 'lucide-react'
+import { forwardRef, InputHTMLAttributes, TextareaHTMLAttributes, SelectHTMLAttributes, ComponentType } from 'react'
 import { cn } from '../../lib/utils'
+
+type IconComponent = ComponentType<{ className?: string }>
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string
   error?: string
   hint?: string
-  icon?: LucideIcon
+  icon?: IconComponent
   iconPosition?: 'left' | 'right'
 }
 

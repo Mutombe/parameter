@@ -1,8 +1,9 @@
 import { motion } from 'framer-motion'
-import { LucideIcon, FileX, Users, Building2, Receipt, BookOpen, TrendingUp, Plus } from 'lucide-react'
-import { ReactNode } from 'react'
-import { PiUsersFour } from "react-icons/pi";
+import { FileX, Users, Receipt, BookOpen, TrendingUp, Plus } from 'lucide-react'
+import { ReactNode, ComponentType } from 'react'
 import { PiBuildingApartmentLight } from "react-icons/pi";
+
+type IconComponent = ComponentType<{ className?: string }>
 
 interface EmptyStateAction {
   label: string
@@ -10,13 +11,13 @@ interface EmptyStateAction {
 }
 
 interface EmptyStateProps {
-  icon?: LucideIcon
+  icon?: IconComponent
   title: string
   description: string
   action?: EmptyStateAction | ReactNode
 }
 
-const iconMap: Record<string, LucideIcon> = {
+const iconMap: Record<string, IconComponent> = {
   default: FileX,
   users: Users,
   properties: PiBuildingApartmentLight,

@@ -1,7 +1,8 @@
-import { forwardRef, ButtonHTMLAttributes } from 'react'
-import { LucideIcon, Loader2 } from 'lucide-react'
+import { forwardRef, ButtonHTMLAttributes, ComponentType } from 'react'
+import { Loader2 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
+type IconComponent = ComponentType<{ className?: string }>
 type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline' | 'success'
 type ButtonSize = 'sm' | 'md' | 'lg' | 'icon'
 
@@ -9,7 +10,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
   size?: ButtonSize
   loading?: boolean
-  icon?: LucideIcon
+  icon?: IconComponent
   iconPosition?: 'left' | 'right'
 }
 
@@ -78,7 +79,7 @@ export function IconButton({
   size = 'icon',
   className,
   ...props
-}: Omit<ButtonProps, 'children'> & { icon: LucideIcon }) {
+}: Omit<ButtonProps, 'children'> & { icon: IconComponent }) {
   return (
     <Button
       variant={variant}
