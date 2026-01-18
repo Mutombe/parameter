@@ -47,6 +47,18 @@ const typeConfig: Record<DialogType, { icon: typeof AlertTriangle; color: string
   },
 }
 
+// Map common variant names to our dialog types
+const variantMap: Record<string, DialogType> = {
+  danger: 'danger',
+  destructive: 'danger',
+  error: 'danger',
+  warning: 'warning',
+  warn: 'warning',
+  success: 'success',
+  info: 'info',
+  default: 'info',
+}
+
 export function ConfirmDialog({
   isOpen,
   open,
@@ -64,9 +76,12 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const showDialog = isOpen ?? open ?? false
   const displayMessage = message || description
-  const dialogType: DialogType = (type || variant as DialogType) || 'danger'
   const showLoading = isLoading ?? loading ?? false
-  const config = typeConfig[dialogType]
+
+  // Resolve the dialog type with fallback
+  const rawType = type || variant || 'danger'
+  const dialogType: DialogType = variantMap[rawType] || 'danger'
+  const config = typeConfig[dialogType] || typeConfig.danger
   const Icon = config.icon
 
   return (

@@ -1,8 +1,8 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, ReactNode } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
 import Layout from './components/Layout/Layout'
-import { Loader2 } from 'lucide-react'
+import { PageSkeleton, ProfileSkeleton, SettingsSkeleton, SkeletonDashboard } from './components/ui'
 
 // Lazy load pages for better performance
 const Landing = lazy(() => import('./pages/Landing'))
@@ -30,11 +30,23 @@ const Profile = lazy(() => import('./pages/Profile'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Search = lazy(() => import('./pages/Search'))
 
-// Loading fallback component
-function PageLoader() {
+// Wrapper component for lazy loaded pages with skeleton fallback
+function LazyPage({ children, fallback }: { children: ReactNode; fallback?: ReactNode }) {
   return (
-    <div className="flex items-center justify-center min-h-[400px]">
-      <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
+    <Suspense fallback={fallback || <PageSkeleton />}>
+      {children}
+    </Suspense>
+  )
+}
+
+// Minimal loader for public pages (login, register, etc.)
+function PublicPageLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="animate-pulse space-y-4 w-full max-w-md px-4">
+        <div className="h-8 w-32 bg-gray-200 rounded mx-auto" />
+        <div className="h-64 bg-gray-100 rounded-xl" />
+      </div>
     </div>
   )
 }
@@ -51,45 +63,43 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <Suspense fallback={<PageLoader />}>
-      <Routes>
-        {/* Public Routes */}
-        <Route path="/" element={<Landing />} />
-        <Route path="/learn" element={<Learn />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/accept-invite" element={<AcceptInvite />} />
+    <Routes>
+      {/* Public Routes */}
+      <Route path="/" element={<Suspense fallback={<PublicPageLoader />}><Landing /></Suspense>} />
+      <Route path="/learn" element={<Suspense fallback={<PublicPageLoader />}><Learn /></Suspense>} />
+      <Route path="/login" element={<Suspense fallback={<PublicPageLoader />}><Login /></Suspense>} />
+      <Route path="/register" element={<Suspense fallback={<PublicPageLoader />}><Register /></Suspense>} />
+      <Route path="/signup" element={<Suspense fallback={<PublicPageLoader />}><Signup /></Suspense>} />
+      <Route path="/accept-invite" element={<Suspense fallback={<PublicPageLoader />}><AcceptInvite /></Suspense>} />
 
-        {/* Protected Routes */}
-        <Route
-          path="/dashboard"
-          element={
-            <PrivateRoute>
-              <Layout />
-            </PrivateRoute>
-          }
-        >
-          <Route index element={<Dashboard />} />
-          <Route path="landlords" element={<Landlords />} />
-          <Route path="properties" element={<Properties />} />
-          <Route path="units" element={<Units />} />
-          <Route path="tenants" element={<Tenants />} />
-          <Route path="leases" element={<Leases />} />
-          <Route path="invoices" element={<Invoices />} />
-          <Route path="receipts" element={<Receipts />} />
-          <Route path="chart-of-accounts" element={<ChartOfAccounts />} />
-          <Route path="journals" element={<Journals />} />
-          <Route path="reports" element={<Reports />} />
-          <Route path="audit-trail" element={<AuditTrail />} />
-          <Route path="team" element={<TeamManagement />} />
-          <Route path="super-admin" element={<SuperAdminDashboard />} />
-          <Route path="document-scanner" element={<DocumentScanner />} />
-          <Route path="profile" element={<Profile />} />
-          <Route path="settings" element={<Settings />} />
-          <Route path="search" element={<Search />} />
-        </Route>
-      </Routes>
-    </Suspense>
+      {/* Protected Routes */}
+      <Route
+        path="/dashboard"
+        element={
+          <PrivateRoute>
+            <Layout />
+          </PrivateRoute>
+        }
+      >
+        <Route index element={<LazyPage fallback={<SkeletonDashboard />}><Dashboard /></LazyPage>} />
+        <Route path="landlords" element={<LazyPage><Landlords /></LazyPage>} />
+        <Route path="properties" element={<LazyPage><Properties /></LazyPage>} />
+        <Route path="units" element={<LazyPage><Units /></LazyPage>} />
+        <Route path="tenants" element={<LazyPage><Tenants /></LazyPage>} />
+        <Route path="leases" element={<LazyPage><Leases /></LazyPage>} />
+        <Route path="invoices" element={<LazyPage><Invoices /></LazyPage>} />
+        <Route path="receipts" element={<LazyPage><Receipts /></LazyPage>} />
+        <Route path="chart-of-accounts" element={<LazyPage><ChartOfAccounts /></LazyPage>} />
+        <Route path="journals" element={<LazyPage><Journals /></LazyPage>} />
+        <Route path="reports" element={<LazyPage><Reports /></LazyPage>} />
+        <Route path="audit-trail" element={<LazyPage><AuditTrail /></LazyPage>} />
+        <Route path="team" element={<LazyPage><TeamManagement /></LazyPage>} />
+        <Route path="super-admin" element={<LazyPage fallback={<SkeletonDashboard />}><SuperAdminDashboard /></LazyPage>} />
+        <Route path="document-scanner" element={<LazyPage><DocumentScanner /></LazyPage>} />
+        <Route path="profile" element={<LazyPage fallback={<ProfileSkeleton />}><Profile /></LazyPage>} />
+        <Route path="settings" element={<LazyPage fallback={<SettingsSkeleton />}><Settings /></LazyPage>} />
+        <Route path="search" element={<LazyPage><Search /></LazyPage>} />
+      </Route>
+    </Routes>
   )
 }
