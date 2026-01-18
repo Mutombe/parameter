@@ -15,4 +15,7 @@ python manage.py migrate_schemas --shared
 echo "Creating cache table..."
 python manage.py createcachetable || true
 
+echo "Setting up public tenant and domains..."
+python manage.py setup_public_tenant --domain parameter-backend.onrender.com || true
+
 echo "Build completed successfully!"
