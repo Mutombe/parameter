@@ -4,6 +4,7 @@ Management command to set up the public tenant and domain for production.
 from django.core.management.base import BaseCommand
 from django.conf import settings
 from apps.tenants.models import Client, Domain
+from apps.accounts.models import User
 
 
 class Command(BaseCommand):
@@ -15,9 +16,16 @@ class Command(BaseCommand):
             type=str,
             help='Domain for the public tenant (e.g., parameter-backend.onrender.com)',
         )
+        parser.add_argument(
+            '--admin-password',
+            type=str,
+            default='Parameter2024!',
+            help='Password for the admin user',
+        )
 
     def handle(self, *args, **options):
         domain = options.get('domain')
+        admin_password = options.get('admin_password', 'Parameter2024!')
 
         # Get domain from environment or argument
         if not domain:
@@ -48,6 +56,29 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(f'Created public tenant: {public_tenant.name}'))
         else:
             self.stdout.write(f'Public tenant already exists: {public_tenant.name}')
+
+        # Create superuser for admin access
+        admin_user, user_created = User.objects.get_or_create(
+            email='admin@parameter.co.zw',
+            defaults={
+                'first_name': 'Admin',
+                'last_name': 'User',
+                'role': 'admin',
+                'is_staff': True,
+                'is_superuser': True,
+            }
+        )
+        admin_user.set_password(admin_password)
+        admin_user.is_staff = True
+        admin_user.is_superuser = True
+        admin_user.save()
+
+        if user_created:
+            self.stdout.write(self.style.SUCCESS(f'Created admin user: admin@parameter.co.zw'))
+        else:
+            self.stdout.write(f'Updated admin user password: admin@parameter.co.zw')
+
+        self.stdout.write(self.style.WARNING(f'Admin credentials: admin@parameter.co.zw / {admin_password}'))
 
         # Create domain for backend
         domain_obj, domain_created = Domain.objects.get_or_create(
