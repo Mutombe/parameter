@@ -24,8 +24,8 @@ export default function Header() {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
         // Only navigate if not already on search page
-        if (location.pathname !== '/search') {
-          navigate('/search')
+        if (location.pathname !== '/dashboard/search') {
+          navigate('/dashboard/search')
         }
       }
     }
@@ -52,7 +52,7 @@ export default function Header() {
       {/* Search - navigates to dedicated search page */}
       <div className="flex-1 max-w-xl">
         <button
-          onClick={() => navigate('/search')}
+          onClick={() => navigate('/dashboard/search')}
           className="w-full flex items-center gap-3 px-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl hover:bg-white hover:border-gray-300 transition-all text-left group"
         >
           <Search className="w-4 h-4 text-gray-400 group-hover:text-primary-500 transition-colors" />
@@ -117,7 +117,7 @@ export default function Header() {
                       </div>
                     </button>
                     <button
-                      onClick={() => { navigate('/reports'); setHelpOpen(false); }}
+                      onClick={() => { navigate('/dashboard/reports'); setHelpOpen(false); }}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                     >
                       <div className="p-1.5 bg-blue-100 rounded-lg">
@@ -238,14 +238,14 @@ export default function Header() {
 
                   <div className="py-2">
                     <button
-                      onClick={() => { navigate('/profile'); setDropdownOpen(false); }}
+                      onClick={() => { navigate('/dashboard/profile'); setDropdownOpen(false); }}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                     >
                       <User className="w-4 h-4 text-gray-400" />
                       My Profile
                     </button>
                     <button
-                      onClick={() => { navigate('/settings'); setDropdownOpen(false); }}
+                      onClick={() => { navigate('/dashboard/settings'); setDropdownOpen(false); }}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                     >
                       <Settings className="w-4 h-4 text-gray-400" />

@@ -31,6 +31,33 @@ def notifications_list(request):
     return Response({'results': [], 'count': 0})
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def reports_dashboard(request):
+    """Return empty dashboard data for public schema."""
+    return Response({
+        'overview': {
+            'total_properties': 0,
+            'total_units': 0,
+            'occupied_units': 0,
+            'vacancy_rate': 0,
+            'total_tenants': 0,
+            'active_leases': 0,
+            'expiring_soon': 0,
+        },
+        'financial': {
+            'total_rent_expected': 0,
+            'total_collected': 0,
+            'outstanding': 0,
+            'collection_rate': 0,
+        },
+        'recent_invoices': [],
+        'recent_receipts': [],
+        'rent_trend': [],
+        'occupancy_by_property': [],
+    })
+
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/tenants/', include('apps.tenants.urls')),
@@ -39,6 +66,8 @@ urlpatterns = [
     path('api/notifications/notifications/unread_count/', notifications_unread_count, name='notifications-unread-count'),
     path('api/notifications/notifications/recent/', notifications_recent, name='notifications-recent'),
     path('api/notifications/notifications/', notifications_list, name='notifications-list'),
+    # Stub reports endpoint for public schema
+    path('api/reports/dashboard/', reports_dashboard, name='reports-dashboard'),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 ]
