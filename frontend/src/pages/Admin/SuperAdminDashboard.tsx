@@ -18,9 +18,12 @@ import {
   Database,
   Server,
   Clock,
+  ShieldAlert,
 } from 'lucide-react'
 import { tenantsApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
+import { useAuthStore } from '../../stores/authStore'
+import { Navigate } from 'react-router-dom'
 
 interface TenantSummary {
   id: number
@@ -47,21 +50,62 @@ interface DashboardStats {
 }
 
 export default function SuperAdminDashboard() {
+  const { user } = useAuthStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [, setSelectedTenant] = useState<number | null>(null)
 
-  // Fetch dashboard stats
-  const { data: stats } = useQuery<DashboardStats>({
+  // Check if user has super_admin role
+  const isSuperAdmin = user?.role === 'super_admin' || user?.is_superuser
+
+  // Fetch dashboard stats - only if user is super admin
+  const { data: stats, error: statsError } = useQuery<DashboardStats>({
     queryKey: ['super-admin-stats'],
-    queryFn: () => tenantsApi.dashboard().then(r => r.data.stats),
+    queryFn: () => tenantsApi.dashboard().then(r => r.data.overview),
+    enabled: isSuperAdmin,
+    retry: false,
   })
 
-  // Fetch tenants list
-  const { data: tenantsData, isLoading: tenantsLoading, refetch } = useQuery({
+  // Fetch tenants list - only if user is super admin
+  const { data: tenantsData, isLoading: tenantsLoading, refetch, error: tenantsError } = useQuery({
     queryKey: ['super-admin-tenants', statusFilter],
-    queryFn: () => tenantsApi.dashboard().then(r => r.data.tenants),
+    queryFn: () => tenantsApi.dashboard().then(r => r.data.recent_tenants),
+    enabled: isSuperAdmin,
+    retry: false,
   })
+
+  // If not authorized, show access denied
+  if (!isSuperAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
+        <div className="p-4 bg-red-50 rounded-full mb-4">
+          <ShieldAlert className="w-12 h-12 text-red-500" />
+        </div>
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">Access Denied</h2>
+        <p className="text-gray-600 mb-4">You don't have permission to access this page.</p>
+        <p className="text-sm text-gray-500">This page is only accessible to super administrators.</p>
+      </div>
+    )
+  }
+
+  // Handle API errors
+  if (statsError || tenantsError) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
+        <div className="p-4 bg-yellow-50 rounded-full mb-4">
+          <AlertTriangle className="w-12 h-12 text-yellow-500" />
+        </div>
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">Unable to Load Dashboard</h2>
+        <p className="text-gray-600 mb-4">There was an error loading the admin dashboard.</p>
+        <button
+          onClick={() => refetch()}
+          className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+        >
+          Try Again
+        </button>
+      </div>
+    )
+  }
 
   const tenants: TenantSummary[] = tenantsData || []
 

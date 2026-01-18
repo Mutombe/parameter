@@ -18,6 +18,8 @@ interface User {
   role: string
   phone?: string
   avatar?: string
+  is_staff?: boolean
+  is_superuser?: boolean
   is_demo_user?: boolean
   account_status?: string
   tenant_info?: TenantInfo

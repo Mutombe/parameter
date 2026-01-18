@@ -63,7 +63,7 @@ class Command(BaseCommand):
             defaults={
                 'first_name': 'Admin',
                 'last_name': 'User',
-                'role': 'admin',
+                'role': 'super_admin',  # Super admin role for platform management
                 'is_staff': True,
                 'is_superuser': True,
             }
@@ -71,6 +71,7 @@ class Command(BaseCommand):
         admin_user.set_password(admin_password)
         admin_user.is_staff = True
         admin_user.is_superuser = True
+        admin_user.role = 'super_admin'  # Ensure role is set correctly
         admin_user.save()
 
         if user_created:
