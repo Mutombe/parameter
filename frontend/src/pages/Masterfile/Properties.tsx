@@ -9,24 +9,23 @@ import {
   MapPin,
   Edit2,
   Trash2,
-  Users,
+  Eye,
   Briefcase,
   Factory,
   Layers,
   DoorOpen,
   TrendingUp,
   TrendingDown,
-  Eye,
-  BarChart3,
+  X,
 } from 'lucide-react'
 import { propertyApi, landlordApi } from '../../services/api'
 import { formatPercent, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, ConfirmDialog, Pagination } from '../../components/ui'
 import toast from 'react-hot-toast'
-import { PiUsersFour } from "react-icons/pi";
-import { TbUserSquareRounded } from "react-icons/tb";
-import { LiaUsersSolid } from "react-icons/lia";
-import { PiBuildingApartmentLight } from "react-icons/pi";
+import { PiBuildingApartmentLight } from "react-icons/pi"
+import { TbUserSquareRounded } from "react-icons/tb"
+
+const PAGE_SIZE = 12
 
 interface Property {
   id: number
@@ -47,79 +46,30 @@ const propertyTypeConfig = {
     icon: Home,
     color: 'text-blue-600',
     bgColor: 'bg-blue-50',
-    gradientFrom: 'from-blue-500',
-    gradientTo: 'to-blue-600',
+    borderColor: 'border-blue-200',
     label: 'Residential',
   },
   commercial: {
     icon: Briefcase,
     color: 'text-purple-600',
     bgColor: 'bg-purple-50',
-    gradientFrom: 'from-purple-500',
-    gradientTo: 'to-purple-600',
+    borderColor: 'border-purple-200',
     label: 'Commercial',
   },
   industrial: {
     icon: Factory,
     color: 'text-amber-600',
     bgColor: 'bg-amber-50',
-    gradientFrom: 'from-amber-500',
-    gradientTo: 'to-amber-600',
+    borderColor: 'border-amber-200',
     label: 'Industrial',
   },
   mixed: {
     icon: Layers,
     color: 'text-emerald-600',
     bgColor: 'bg-emerald-50',
-    gradientFrom: 'from-emerald-500',
-    gradientTo: 'to-emerald-600',
+    borderColor: 'border-emerald-200',
     label: 'Mixed Use',
   },
-}
-
-function SkeletonProperties() {
-  return (
-    <div className="space-y-6">
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="bg-white rounded-xl border border-gray-200 p-5">
-            <div className="flex items-center gap-4">
-              <Skeleton className="w-12 h-12 rounded-xl" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="h-6 w-16" />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <Skeleton className="h-36 w-full" />
-            <div className="p-5 space-y-4">
-              <div className="space-y-2">
-                <Skeleton className="h-5 w-3/4" />
-                <Skeleton className="h-6 w-24 rounded-full" />
-              </div>
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-2/3" />
-              </div>
-              <div className="pt-4 border-t border-gray-100 flex justify-between">
-                <Skeleton className="h-10 w-20" />
-                <Skeleton className="h-10 w-20" />
-                <Skeleton className="h-10 w-20" />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
 }
 
 export default function Properties() {
@@ -127,8 +77,10 @@ export default function Properties() {
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [typeFilter, setTypeFilter] = useState<string>('')
+  const [currentPage, setCurrentPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState({
@@ -140,10 +92,25 @@ export default function Properties() {
     total_units: 1,
   })
 
-  const { data: properties, isLoading } = useQuery({
-    queryKey: ['properties', debouncedSearch],
-    queryFn: () => propertyApi.list({ search: debouncedSearch }).then(r => r.data.results || r.data),
+  // Reset page when search/filter changes
+  const handleSearchChange = (value: string) => {
+    setSearch(value)
+    setCurrentPage(1)
+  }
+
+  const { data: propertiesData, isLoading } = useQuery({
+    queryKey: ['properties', debouncedSearch, currentPage],
+    queryFn: () => propertyApi.list({
+      search: debouncedSearch,
+      page: currentPage,
+      page_size: PAGE_SIZE
+    }).then(r => r.data),
   })
+
+  // Handle both paginated and non-paginated responses
+  const properties = propertiesData?.results || propertiesData || []
+  const totalCount = propertiesData?.count || properties.length
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
   const { data: landlords } = useQuery({
     queryKey: ['landlords-select'],
@@ -203,15 +170,19 @@ export default function Properties() {
     setShowDeleteDialog(true)
   }
 
+  const handleViewDetails = (property: Property) => {
+    setSelectedProperty(property)
+    setShowDetailsModal(true)
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     createMutation.mutate(form)
   }
 
-  const filteredProperties = properties?.filter((property: Property) => {
-    const matchesType = !typeFilter || property.property_type === typeFilter
-    return matchesType
-  }) || []
+  const filteredProperties = typeFilter
+    ? properties.filter((p: Property) => p.property_type === typeFilter)
+    : properties
 
   // Stats
   const totalUnits = properties?.reduce((sum: number, p: Property) => sum + (p.unit_count || 0), 0) || 0
@@ -223,7 +194,7 @@ export default function Properties() {
     : 0
 
   const stats = {
-    total: properties?.length || 0,
+    total: totalCount || 0,
     residential: properties?.filter((p: Property) => p.property_type === 'residential').length || 0,
     commercial: properties?.filter((p: Property) => p.property_type === 'commercial').length || 0,
     industrial: properties?.filter((p: Property) => p.property_type === 'industrial').length || 0,
@@ -244,96 +215,63 @@ export default function Properties() {
         }
       />
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <motion.div
-          whileHover={{ y: -2 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
-        >
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-primary-50 flex items-center justify-center">
-              <PiBuildingApartmentLight className="w-6 h-6 text-primary-600" />
+      {/* Stats Row - Compact */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary-50 flex items-center justify-center">
+              <PiBuildingApartmentLight className="w-5 h-5 text-primary-600" />
             </div>
             <div>
-              <p className="text-sm text-gray-500">Properties</p>
-              {isLoading ? (
-                <div className="h-8 w-12 bg-gray-200 rounded animate-pulse mt-1" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-              )}
+              <p className="text-xs text-gray-500">Total</p>
+              <p className="text-xl font-bold text-gray-900">{isLoading ? '-' : stats.total}</p>
             </div>
           </div>
-        </motion.div>
+        </div>
 
         {Object.entries(propertyTypeConfig).map(([type, config]) => {
           const TypeIcon = config.icon
           const count = stats[type as keyof typeof stats] || 0
           return (
-            <motion.div
+            <button
               key={type}
-              whileHover={{ y: -2 }}
               onClick={() => setTypeFilter(typeFilter === type ? '' : type)}
               className={cn(
-                'bg-white rounded-xl border p-5 cursor-pointer transition-all',
-                typeFilter === type ? 'border-primary-300 ring-1 ring-primary-300' : 'border-gray-200 hover:border-gray-300'
+                'bg-white rounded-xl border p-4 text-left transition-all',
+                typeFilter === type
+                  ? 'border-primary-300 ring-1 ring-primary-300'
+                  : 'border-gray-200 hover:border-gray-300'
               )}
             >
-              <div className="flex items-center gap-4">
-                <div className={cn('w-12 h-12 rounded-xl flex items-center justify-center', config.bgColor)}>
-                  <TypeIcon className={cn('w-6 h-6', config.color)} />
+              <div className="flex items-center gap-3">
+                <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center', config.bgColor)}>
+                  <TypeIcon className={cn('w-5 h-5', config.color)} />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">{config.label}</p>
-                  {isLoading ? (
-                    <div className="h-8 w-12 bg-gray-200 rounded animate-pulse mt-1" />
-                  ) : (
-                    <p className={cn('text-2xl font-bold', config.color)}>{count}</p>
-                  )}
+                  <p className="text-xs text-gray-500">{config.label}</p>
+                  <p className={cn('text-xl font-bold', config.color)}>{isLoading ? '-' : count}</p>
                 </div>
               </div>
-            </motion.div>
+            </button>
           )
         })}
-      </div>
 
-      {/* Overview Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 text-white">
+        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-4 text-white">
           <div className="flex items-center gap-3">
-            <DoorOpen className="w-8 h-8 text-white/80" />
+            <DoorOpen className="w-6 h-6 text-white/80" />
             <div>
-              <p className="text-blue-100 text-sm">Total Units</p>
-              {isLoading ? (
-                <div className="h-9 w-16 bg-white/30 rounded animate-pulse mt-1" />
-              ) : (
-                <p className="text-3xl font-bold">{totalUnits}</p>
-              )}
+              <p className="text-emerald-100 text-xs">Units</p>
+              <p className="text-xl font-bold">{isLoading ? '-' : totalUnits}</p>
             </div>
           </div>
         </div>
-        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-5 text-white">
+
+        <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl p-4 text-white">
           <div className="flex items-center gap-3">
-            <TrendingUp className="w-8 h-8 text-white/80" />
+            <TrendingDown className="w-6 h-6 text-white/80" />
             <div>
-              <p className="text-emerald-100 text-sm">Occupied</p>
-              {isLoading ? (
-                <div className="h-9 w-16 bg-white/30 rounded animate-pulse mt-1" />
-              ) : (
-                <p className="text-3xl font-bold">{totalUnits - totalVacant}</p>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl p-5 text-white">
-          <div className="flex items-center gap-3">
-            <TrendingDown className="w-8 h-8 text-white/80" />
-            <div>
-              <p className="text-rose-100 text-sm">Avg. Vacancy Rate</p>
-              {isLoading ? (
-                <div className="h-9 w-16 bg-white/30 rounded animate-pulse mt-1" />
-              ) : (
-                <p className="text-3xl font-bold">{formatPercent(avgVacancy)}</p>
-              )}
+              <p className="text-rose-100 text-xs">Vacancy</p>
+              <p className="text-xl font-bold">{isLoading ? '-' : formatPercent(avgVacancy)}</p>
             </div>
           </div>
         </div>
@@ -347,7 +285,7 @@ export default function Properties() {
             type="text"
             placeholder="Search properties..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white focus:border-transparent transition-all"
           />
         </div>
@@ -372,61 +310,24 @@ export default function Properties() {
         </div>
       </div>
 
-      {/* Property Grid */}
+      {/* Properties List - Compact Cards */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="h-36 bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center relative">
-                <Home className="w-16 h-16 text-white/30" />
-                <div className="absolute top-4 left-4">
-                  <span className="px-3 py-1.5 bg-white/20 backdrop-blur rounded-lg text-white text-xs font-medium">
-                    Loading...
-                  </span>
+        <div className="space-y-3">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-lg bg-gray-200" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-48 bg-gray-200 rounded" />
+                  <div className="h-3 w-32 bg-gray-100 rounded" />
                 </div>
-                <div className="absolute top-4 right-4 flex gap-2">
-                  <button className="p-2 bg-white/20 backdrop-blur rounded-lg text-white/50">
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button className="p-2 bg-white/20 backdrop-blur rounded-lg text-white/50">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="p-5">
-                <div className="h-6 w-40 bg-gray-200 rounded animate-pulse" />
-                <div className="mt-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-gray-400" />
-                    <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
-                    <div className="h-4 w-28 bg-gray-200 rounded animate-pulse" />
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <div className="flex items-center justify-between text-sm mb-2">
-                    <span className="text-gray-500">Occupancy</span>
-                    <div className="h-4 w-12 bg-gray-200 rounded animate-pulse" />
-                  </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full w-0 bg-gray-300 rounded-full" />
-                  </div>
-                </div>
-                <div className="mt-5 pt-5 border-t border-gray-100 grid grid-cols-3 gap-2 text-center">
-                  <div>
-                    <div className="h-7 w-8 bg-gray-200 rounded animate-pulse mx-auto" />
-                    <p className="text-xs text-gray-500 mt-1">Total Units</p>
-                  </div>
-                  <div>
-                    <div className="h-7 w-8 bg-gray-200 rounded animate-pulse mx-auto" />
-                    <p className="text-xs text-gray-500 mt-1">Occupied</p>
-                  </div>
-                  <div>
-                    <div className="h-7 w-8 bg-gray-200 rounded animate-pulse mx-auto" />
-                    <p className="text-xs text-gray-500 mt-1">Vacant</p>
-                  </div>
+                <div className="h-6 w-20 bg-gray-200 rounded-full" />
+                <div className="h-4 w-16 bg-gray-200 rounded" />
+                <div className="h-4 w-16 bg-gray-200 rounded" />
+                <div className="flex gap-1">
+                  <div className="w-8 h-8 rounded-lg bg-gray-200" />
+                  <div className="w-8 h-8 rounded-lg bg-gray-200" />
+                  <div className="w-8 h-8 rounded-lg bg-gray-200" />
                 </div>
               </div>
             </div>
@@ -445,7 +346,7 @@ export default function Properties() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="space-y-2">
           {filteredProperties.map((property: Property, index: number) => {
             const config = propertyTypeConfig[property.property_type] || propertyTypeConfig.residential
             const TypeIcon = config.icon
@@ -455,87 +356,96 @@ export default function Properties() {
             return (
               <motion.div
                 key={property.id}
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.03 }}
-                className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg hover:border-gray-300 transition-all group"
+                transition={{ delay: index * 0.02 }}
+                className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md hover:border-gray-300 transition-all group"
               >
-                {/* Header Banner */}
-                <div className={cn(
-                  'h-36 bg-gradient-to-br flex items-center justify-center relative',
-                  config.gradientFrom, config.gradientTo
-                )}>
-                  <TypeIcon className="w-16 h-16 text-white/30" />
-                  <div className="absolute top-4 left-4">
-                    <span className="px-3 py-1.5 bg-white/20 backdrop-blur rounded-lg text-white text-xs font-medium">
-                      {config.label}
-                    </span>
+                <div className="flex items-center gap-4">
+                  {/* Icon */}
+                  <div className={cn(
+                    'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
+                    config.bgColor
+                  )}>
+                    <TypeIcon className={cn('w-5 h-5', config.color)} />
                   </div>
-                  <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+
+                  {/* Name & Address */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-gray-900 truncate">{property.name}</h3>
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <MapPin className="w-3 h-3" />
+                      <span className="truncate">{property.address || property.city}</span>
+                    </div>
+                  </div>
+
+                  {/* Type Badge */}
+                  <span className={cn(
+                    'hidden sm:inline-flex px-2.5 py-1 rounded-full text-xs font-medium',
+                    config.bgColor, config.color
+                  )}>
+                    {config.label}
+                  </span>
+
+                  {/* Landlord */}
+                  <div className="hidden md:flex items-center gap-2 text-sm text-gray-600 min-w-[120px]">
+                    <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
+                    <span className="truncate">{property.landlord_name}</span>
+                  </div>
+
+                  {/* Units */}
+                  <div className="hidden lg:flex items-center gap-4 text-sm">
+                    <div className="text-center min-w-[60px]">
+                      <span className="font-semibold text-gray-900">{property.unit_count || 0}</span>
+                      <span className="text-gray-400 ml-1">units</span>
+                    </div>
+                  </div>
+
+                  {/* Occupancy Bar */}
+                  <div className="hidden xl:flex flex-col min-w-[100px]">
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-gray-500">Occupancy</span>
+                      <span className={cn(
+                        'font-medium',
+                        occupancyRate >= 80 ? 'text-emerald-600' :
+                        occupancyRate >= 50 ? 'text-amber-600' : 'text-rose-600'
+                      )}>{formatPercent(occupancyRate)}</span>
+                    </div>
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className={cn(
+                          'h-full rounded-full transition-all',
+                          occupancyRate >= 80 ? 'bg-emerald-500' :
+                          occupancyRate >= 50 ? 'bg-amber-500' : 'bg-rose-500'
+                        )}
+                        style={{ width: `${occupancyRate}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => handleViewDetails(property)}
+                      className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                      title="View details"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => handleEdit(property)}
-                      className="p-2 bg-white/20 backdrop-blur hover:bg-white/30 rounded-lg text-white transition-colors"
+                      className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                      title="Edit"
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleDelete(property)}
-                      className="p-2 bg-white/20 backdrop-blur hover:bg-red-500/50 rounded-lg text-white transition-colors"
+                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Delete"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
-                  </div>
-                </div>
-
-                {/* Content */}
-                <div className="p-5">
-                  <h3 className="font-semibold text-gray-900 text-lg">{property.name}</h3>
-
-                  <div className="mt-3 space-y-2">
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <MapPin className="w-4 h-4 text-gray-400" />
-                      <span>{property.address || property.city}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
-                      <span>{property.landlord_name}</span>
-                    </div>
-                  </div>
-
-                  {/* Occupancy Bar */}
-                  <div className="mt-4">
-                    <div className="flex items-center justify-between text-sm mb-2">
-                      <span className="text-gray-500">Occupancy</span>
-                      <span className="font-semibold text-gray-900">{formatPercent(occupancyRate)}</span>
-                    </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${occupancyRate}%` }}
-                        transition={{ duration: 0.8, delay: index * 0.1 }}
-                        className={cn(
-                          'h-full rounded-full',
-                          occupancyRate >= 80 ? 'bg-emerald-500' :
-                          occupancyRate >= 50 ? 'bg-amber-500' : 'bg-rose-500'
-                        )}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Stats */}
-                  <div className="mt-5 pt-5 border-t border-gray-100 grid grid-cols-3 gap-2 text-center">
-                    <div>
-                      <p className="text-xl font-bold text-gray-900">{property.unit_count || 0}</p>
-                      <p className="text-xs text-gray-500">Total Units</p>
-                    </div>
-                    <div>
-                      <p className="text-xl font-bold text-emerald-600">{occupiedUnits}</p>
-                      <p className="text-xs text-gray-500">Occupied</p>
-                    </div>
-                    <div>
-                      <p className="text-xl font-bold text-rose-500">{(property.unit_count || 0) - occupiedUnits}</p>
-                      <p className="text-xs text-gray-500">Vacant</p>
-                    </div>
                   </div>
                 </div>
               </motion.div>
@@ -543,6 +453,141 @@ export default function Properties() {
           })}
         </div>
       )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="card overflow-hidden">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+            showPageSize={false}
+          />
+        </div>
+      )}
+
+      {/* Details Modal */}
+      <AnimatePresence>
+        {showDetailsModal && selectedProperty && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden"
+            >
+              {/* Header Banner */}
+              {(() => {
+                const config = propertyTypeConfig[selectedProperty.property_type] || propertyTypeConfig.residential
+                const TypeIcon = config.icon
+                const occupancyRate = 100 - (selectedProperty.vacancy_rate || 0)
+                const occupiedUnits = Math.round((selectedProperty.unit_count || 0) * occupancyRate / 100)
+
+                return (
+                  <>
+                    <div className={cn(
+                      'h-32 relative flex items-center justify-center',
+                      config.bgColor
+                    )}>
+                      <TypeIcon className={cn('w-16 h-16 opacity-20', config.color)} />
+                      <button
+                        onClick={() => setShowDetailsModal(false)}
+                        className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                      <div className="absolute bottom-4 left-4">
+                        <span className={cn(
+                          'px-3 py-1.5 rounded-lg text-sm font-medium bg-white/80 backdrop-blur',
+                          config.color
+                        )}>
+                          {config.label}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-6">
+                      <h2 className="text-xl font-bold text-gray-900">{selectedProperty.name}</h2>
+
+                      <div className="mt-4 space-y-3">
+                        <div className="flex items-center gap-3 text-sm text-gray-600">
+                          <MapPin className="w-4 h-4 text-gray-400" />
+                          <span>{selectedProperty.address || selectedProperty.city}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-sm text-gray-600">
+                          <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
+                          <span>Owned by {selectedProperty.landlord_name}</span>
+                        </div>
+                      </div>
+
+                      {/* Occupancy Section */}
+                      <div className="mt-6 p-4 bg-gray-50 rounded-xl">
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="text-sm font-medium text-gray-600">Occupancy Rate</span>
+                          <span className={cn(
+                            'text-lg font-bold',
+                            occupancyRate >= 80 ? 'text-emerald-600' :
+                            occupancyRate >= 50 ? 'text-amber-600' : 'text-rose-600'
+                          )}>{formatPercent(occupancyRate)}</span>
+                        </div>
+                        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${occupancyRate}%` }}
+                            transition={{ duration: 0.5 }}
+                            className={cn(
+                              'h-full rounded-full',
+                              occupancyRate >= 80 ? 'bg-emerald-500' :
+                              occupancyRate >= 50 ? 'bg-amber-500' : 'bg-rose-500'
+                            )}
+                          />
+                        </div>
+                        <div className="mt-4 grid grid-cols-3 gap-4 text-center">
+                          <div>
+                            <p className="text-2xl font-bold text-gray-900">{selectedProperty.unit_count || 0}</p>
+                            <p className="text-xs text-gray-500">Total Units</p>
+                          </div>
+                          <div>
+                            <p className="text-2xl font-bold text-emerald-600">{occupiedUnits}</p>
+                            <p className="text-xs text-gray-500">Occupied</p>
+                          </div>
+                          <div>
+                            <p className="text-2xl font-bold text-rose-500">{(selectedProperty.unit_count || 0) - occupiedUnits}</p>
+                            <p className="text-xs text-gray-500">Vacant</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="mt-6 flex gap-3">
+                        <Button
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => setShowDetailsModal(false)}
+                        >
+                          Close
+                        </Button>
+                        <Button
+                          className="flex-1"
+                          onClick={() => {
+                            setShowDetailsModal(false)
+                            handleEdit(selectedProperty)
+                          }}
+                        >
+                          <Edit2 className="w-4 h-4 mr-2" />
+                          Edit Property
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )
+              })()}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Create/Edit Modal */}
       <Modal

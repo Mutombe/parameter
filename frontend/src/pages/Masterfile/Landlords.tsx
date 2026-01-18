@@ -2,34 +2,27 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Users,
   Plus,
   Search,
-  Building2,
   Phone,
   Mail,
   MapPin,
   Edit2,
   Trash2,
-  MoreVertical,
-  User,
+  Eye,
   Briefcase,
   Shield,
-  DollarSign,
-  TrendingUp,
-  Eye,
-  FileText,
   Home,
   Percent,
+  X,
 } from 'lucide-react'
 import { landlordApi } from '../../services/api'
-import { formatCurrency, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog } from '../../components/ui'
+import { cn, useDebounce } from '../../lib/utils'
+import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, ConfirmDialog, Pagination } from '../../components/ui'
 import toast from 'react-hot-toast'
-import { SiFsecure } from "react-icons/si";
-import { PiUsersFour } from "react-icons/pi";
-import { TbUserSquareRounded } from "react-icons/tb";
-import { PiBuildingApartmentLight } from "react-icons/pi";
+import { TbUserSquareRounded } from "react-icons/tb"
+
+const PAGE_SIZE = 12
 
 interface Landlord {
   id: number
@@ -65,59 +58,15 @@ const landlordTypeConfig = {
   },
 }
 
-function SkeletonLandlords() {
-  return (
-    <div className="space-y-6">
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="bg-white rounded-xl border border-gray-200 p-5">
-            <div className="flex items-center gap-4">
-              <Skeleton className="w-12 h-12 rounded-xl" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="h-6 w-16" />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-start gap-4">
-              <Skeleton className="w-14 h-14 rounded-xl" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-5 w-32" />
-                <Skeleton className="h-6 w-20 rounded-full" />
-              </div>
-            </div>
-            <div className="mt-5 space-y-3">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
-            </div>
-            <div className="mt-5 pt-5 border-t border-gray-100">
-              <div className="flex justify-between">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-4 w-24" />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 export default function Landlords() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [typeFilter, setTypeFilter] = useState<string>('')
+  const [currentPage, setCurrentPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [selectedLandlord, setSelectedLandlord] = useState<Landlord | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState({
@@ -129,10 +78,25 @@ export default function Landlords() {
     commission_rate: '10.00',
   })
 
-  const { data: landlords, isLoading } = useQuery({
-    queryKey: ['landlords', debouncedSearch],
-    queryFn: () => landlordApi.list({ search: debouncedSearch }).then(r => r.data.results || r.data),
+  // Reset page when search/filter changes
+  const handleSearchChange = (value: string) => {
+    setSearch(value)
+    setCurrentPage(1)
+  }
+
+  const { data: landlordsData, isLoading } = useQuery({
+    queryKey: ['landlords', debouncedSearch, currentPage],
+    queryFn: () => landlordApi.list({
+      search: debouncedSearch,
+      page: currentPage,
+      page_size: PAGE_SIZE
+    }).then(r => r.data),
   })
+
+  // Handle both paginated and non-paginated responses
+  const landlords = landlordsData?.results || landlordsData || []
+  const totalCount = landlordsData?.count || landlords.length
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
   const createMutation = useMutation({
     mutationFn: (data: typeof form) =>
@@ -187,22 +151,27 @@ export default function Landlords() {
     setShowDeleteDialog(true)
   }
 
+  const handleViewDetails = (landlord: Landlord) => {
+    setSelectedLandlord(landlord)
+    setShowDetailsModal(true)
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     createMutation.mutate(form)
   }
 
-  const filteredLandlords = landlords?.filter((landlord: Landlord) => {
-    const matchesType = !typeFilter || landlord.landlord_type === typeFilter
-    return matchesType
-  }) || []
+  const filteredLandlords = typeFilter
+    ? landlords.filter((l: Landlord) => l.landlord_type === typeFilter)
+    : landlords
 
   // Stats
   const stats = {
-    total: landlords?.length || 0,
+    total: totalCount || 0,
     individuals: landlords?.filter((l: Landlord) => l.landlord_type === 'individual').length || 0,
     companies: landlords?.filter((l: Landlord) => l.landlord_type === 'company').length || 0,
     trusts: landlords?.filter((l: Landlord) => l.landlord_type === 'trust').length || 0,
+    totalProperties: landlords?.reduce((sum: number, l: Landlord) => sum + (l.property_count || 0), 0) || 0,
   }
 
   return (
@@ -219,56 +188,57 @@ export default function Landlords() {
         }
       />
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <motion.div
-          whileHover={{ y: -2 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
-        >
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-primary-50 flex items-center justify-center">
-              <TbUserSquareRounded className="w-6 h-6 text-primary-600" />
+      {/* Stats Row - Compact */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary-50 flex items-center justify-center">
+              <TbUserSquareRounded className="w-5 h-5 text-primary-600" />
             </div>
             <div>
-              <p className="text-sm text-gray-500">Total Landlords</p>
-              {isLoading ? (
-                <div className="h-8 w-12 bg-gray-200 rounded animate-pulse mt-1" />
-              ) : (
-                <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-              )}
+              <p className="text-xs text-gray-500">Total</p>
+              <p className="text-xl font-bold text-gray-900">{isLoading ? '-' : stats.total}</p>
             </div>
           </div>
-        </motion.div>
+        </div>
 
         {Object.entries(landlordTypeConfig).map(([type, config]) => {
           const TypeIcon = config.icon
-          const count = stats[`${type}s` as keyof typeof stats] || stats[type as keyof typeof stats] || 0
+          const countKey = type === 'individual' ? 'individuals' : type === 'company' ? 'companies' : 'trusts'
+          const count = stats[countKey as keyof typeof stats] || 0
           return (
-            <motion.div
+            <button
               key={type}
-              whileHover={{ y: -2 }}
               onClick={() => setTypeFilter(typeFilter === type ? '' : type)}
               className={cn(
-                'bg-white rounded-xl border p-5 cursor-pointer transition-all',
-                typeFilter === type ? 'border-primary-300 ring-1 ring-primary-300' : 'border-gray-200 hover:border-gray-300'
+                'bg-white rounded-xl border p-4 text-left transition-all',
+                typeFilter === type
+                  ? 'border-primary-300 ring-1 ring-primary-300'
+                  : 'border-gray-200 hover:border-gray-300'
               )}
             >
-              <div className="flex items-center gap-4">
-                <div className={cn('w-12 h-12 rounded-xl flex items-center justify-center', config.bgColor)}>
-                  <TypeIcon className={cn('w-6 h-6', config.color)} />
+              <div className="flex items-center gap-3">
+                <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center', config.bgColor)}>
+                  <TypeIcon className={cn('w-5 h-5', config.color)} />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">{config.label}s</p>
-                  {isLoading ? (
-                    <div className="h-8 w-12 bg-gray-200 rounded animate-pulse mt-1" />
-                  ) : (
-                    <p className={cn('text-2xl font-bold', config.color)}>{count}</p>
-                  )}
+                  <p className="text-xs text-gray-500">{config.label}s</p>
+                  <p className={cn('text-xl font-bold', config.color)}>{isLoading ? '-' : count}</p>
                 </div>
               </div>
-            </motion.div>
+            </button>
           )
         })}
+
+        <div className="bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl p-4 text-white">
+          <div className="flex items-center gap-3">
+            <Home className="w-6 h-6 text-white/80" />
+            <div>
+              <p className="text-primary-100 text-xs">Properties</p>
+              <p className="text-xl font-bold">{isLoading ? '-' : stats.totalProperties}</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Search and Filter */}
@@ -279,7 +249,7 @@ export default function Landlords() {
             type="text"
             placeholder="Search by name, email, or phone..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white focus:border-transparent transition-all"
           />
         </div>
@@ -304,52 +274,24 @@ export default function Landlords() {
         </div>
       </div>
 
-      {/* Landlord Grid */}
+      {/* Landlords List - Compact Cards */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-xl border border-gray-200 p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-xl bg-blue-50 flex items-center justify-center">
-                    <TbUserSquareRounded className="w-7 h-7 text-blue-600" />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="h-5 w-32 bg-gray-200 rounded animate-pulse" />
-                    <div className="h-6 w-20 bg-gray-200 rounded-full animate-pulse" />
-                  </div>
+        <div className="space-y-3">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-lg bg-gray-200" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-40 bg-gray-200 rounded" />
+                  <div className="h-3 w-48 bg-gray-100 rounded" />
                 </div>
-                <div className="flex items-center gap-1">
-                  <button className="p-2 text-gray-300 rounded-lg">
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button className="p-2 text-gray-300 rounded-lg">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="mt-5 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center">
-                    <Mail className="w-4 h-4 text-gray-400" />
-                  </div>
-                  <div className="h-4 w-40 bg-gray-200 rounded animate-pulse" />
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center">
-                    <Phone className="w-4 h-4 text-gray-400" />
-                  </div>
-                  <div className="h-4 w-28 bg-gray-200 rounded animate-pulse" />
-                </div>
-              </div>
-              <div className="mt-5 pt-5 border-t border-gray-100 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Home className="w-4 h-4 text-gray-400" />
-                  <div className="h-4 w-24 bg-gray-200 rounded animate-pulse" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Percent className="w-4 h-4 text-primary-500" />
-                  <div className="h-4 w-12 bg-gray-200 rounded animate-pulse" />
+                <div className="h-6 w-20 bg-gray-200 rounded-full" />
+                <div className="h-4 w-24 bg-gray-200 rounded" />
+                <div className="h-4 w-16 bg-gray-200 rounded" />
+                <div className="flex gap-1">
+                  <div className="w-8 h-8 rounded-lg bg-gray-200" />
+                  <div className="w-8 h-8 rounded-lg bg-gray-200" />
+                  <div className="w-8 h-8 rounded-lg bg-gray-200" />
                 </div>
               </div>
             </div>
@@ -368,7 +310,7 @@ export default function Landlords() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="space-y-2">
           {filteredLandlords.map((landlord: Landlord, index: number) => {
             const config = landlordTypeConfig[landlord.landlord_type] || landlordTypeConfig.individual
             const TypeIcon = config.icon
@@ -376,82 +318,79 @@ export default function Landlords() {
             return (
               <motion.div
                 key={landlord.id}
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.03 }}
-                className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-gray-300 transition-all group"
+                transition={{ delay: index * 0.02 }}
+                className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md hover:border-gray-300 transition-all group"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className={cn(
-                      'w-14 h-14 rounded-xl flex items-center justify-center',
-                      config.bgColor
-                    )}>
-                      <TypeIcon className={cn('w-7 h-7', config.color)} />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900 text-lg">{landlord.name}</h3>
-                      <span className={cn(
-                        'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium mt-1',
-                        config.bgColor, config.color
-                      )}>
-                        <TypeIcon className="w-3 h-3" />
-                        {config.label}
-                      </span>
+                <div className="flex items-center gap-4">
+                  {/* Icon */}
+                  <div className={cn(
+                    'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
+                    config.bgColor
+                  )}>
+                    <TypeIcon className={cn('w-5 h-5', config.color)} />
+                  </div>
+
+                  {/* Name & Email */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-gray-900 truncate">{landlord.name}</h3>
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <Mail className="w-3 h-3" />
+                      <span className="truncate">{landlord.email}</span>
                     </div>
                   </div>
 
+                  {/* Type Badge */}
+                  <span className={cn(
+                    'hidden sm:inline-flex px-2.5 py-1 rounded-full text-xs font-medium',
+                    config.bgColor, config.color
+                  )}>
+                    {config.label}
+                  </span>
+
+                  {/* Phone */}
+                  <div className="hidden md:flex items-center gap-2 text-sm text-gray-600 min-w-[130px]">
+                    <Phone className="w-4 h-4 text-gray-400" />
+                    <span className="truncate">{landlord.phone}</span>
+                  </div>
+
+                  {/* Properties Count */}
+                  <div className="hidden lg:flex items-center gap-2 text-sm min-w-[80px]">
+                    <Home className="w-4 h-4 text-gray-400" />
+                    <span className="font-semibold text-gray-900">{landlord.property_count || 0}</span>
+                    <span className="text-gray-400">props</span>
+                  </div>
+
+                  {/* Commission Rate */}
+                  <div className="hidden xl:flex items-center gap-1 min-w-[70px]">
+                    <Percent className="w-4 h-4 text-primary-500" />
+                    <span className="text-sm font-semibold text-primary-600">{landlord.commission_rate}%</span>
+                  </div>
+
+                  {/* Actions */}
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => handleViewDetails(landlord)}
+                      className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                      title="View details"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => handleEdit(landlord)}
                       className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                      title="Edit"
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleDelete(landlord)}
                       className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Delete"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
-                  </div>
-                </div>
-
-                <div className="mt-5 space-y-3">
-                  <div className="flex items-center gap-3 text-sm text-gray-600">
-                    <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center">
-                      <Mail className="w-4 h-4 text-gray-400" />
-                    </div>
-                    <span className="truncate">{landlord.email}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm text-gray-600">
-                    <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center">
-                      <Phone className="w-4 h-4 text-gray-400" />
-                    </div>
-                    <span>{landlord.phone}</span>
-                  </div>
-                  {landlord.address && (
-                    <div className="flex items-center gap-3 text-sm text-gray-600">
-                      <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center">
-                        <MapPin className="w-4 h-4 text-gray-400" />
-                      </div>
-                      <span className="truncate">{landlord.address}</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-5 pt-5 border-t border-gray-100 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Home className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm font-medium text-gray-900">
-                      {landlord.property_count || 0} Properties
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Percent className="w-4 h-4 text-primary-500" />
-                    <span className="text-sm font-semibold text-primary-600">
-                      {landlord.commission_rate}%
-                    </span>
                   </div>
                 </div>
               </motion.div>
@@ -459,6 +398,124 @@ export default function Landlords() {
           })}
         </div>
       )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="card overflow-hidden">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+            showPageSize={false}
+          />
+        </div>
+      )}
+
+      {/* Details Modal */}
+      <AnimatePresence>
+        {showDetailsModal && selectedLandlord && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden"
+            >
+              {(() => {
+                const config = landlordTypeConfig[selectedLandlord.landlord_type] || landlordTypeConfig.individual
+                const TypeIcon = config.icon
+
+                return (
+                  <>
+                    <div className={cn(
+                      'h-32 relative flex items-center justify-center',
+                      config.bgColor
+                    )}>
+                      <TypeIcon className={cn('w-16 h-16 opacity-20', config.color)} />
+                      <button
+                        onClick={() => setShowDetailsModal(false)}
+                        className="absolute top-4 right-4 p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                      <div className="absolute bottom-4 left-4">
+                        <span className={cn(
+                          'px-3 py-1.5 rounded-lg text-sm font-medium bg-white/80 backdrop-blur',
+                          config.color
+                        )}>
+                          {config.label}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-6">
+                      <h2 className="text-xl font-bold text-gray-900">{selectedLandlord.name}</h2>
+
+                      <div className="mt-4 space-y-3">
+                        <div className="flex items-center gap-3 text-sm text-gray-600">
+                          <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center">
+                            <Mail className="w-4 h-4 text-gray-400" />
+                          </div>
+                          <span>{selectedLandlord.email}</span>
+                        </div>
+                        <div className="flex items-center gap-3 text-sm text-gray-600">
+                          <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center">
+                            <Phone className="w-4 h-4 text-gray-400" />
+                          </div>
+                          <span>{selectedLandlord.phone}</span>
+                        </div>
+                        {selectedLandlord.address && (
+                          <div className="flex items-center gap-3 text-sm text-gray-600">
+                            <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center">
+                              <MapPin className="w-4 h-4 text-gray-400" />
+                            </div>
+                            <span>{selectedLandlord.address}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Stats Section */}
+                      <div className="mt-6 grid grid-cols-2 gap-4">
+                        <div className="p-4 bg-gray-50 rounded-xl text-center">
+                          <p className="text-2xl font-bold text-gray-900">{selectedLandlord.property_count || 0}</p>
+                          <p className="text-xs text-gray-500 mt-1">Properties</p>
+                        </div>
+                        <div className="p-4 bg-primary-50 rounded-xl text-center">
+                          <p className="text-2xl font-bold text-primary-600">{selectedLandlord.commission_rate}%</p>
+                          <p className="text-xs text-gray-500 mt-1">Commission Rate</p>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="mt-6 flex gap-3">
+                        <Button
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => setShowDetailsModal(false)}
+                        >
+                          Close
+                        </Button>
+                        <Button
+                          className="flex-1"
+                          onClick={() => {
+                            setShowDetailsModal(false)
+                            handleEdit(selectedLandlord)
+                          }}
+                        >
+                          <Edit2 className="w-4 h-4 mr-2" />
+                          Edit Landlord
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )
+              })()}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Create/Edit Modal */}
       <Modal

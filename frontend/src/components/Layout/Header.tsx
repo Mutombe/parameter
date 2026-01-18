@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Search, User, LogOut, Settings, ChevronDown, Sparkles, HelpCircle, BookOpen, FileText } from 'lucide-react'
+import { Bell, Search, User, LogOut, Settings, ChevronDown, Sparkles, HelpCircle, BookOpen, FileText, Loader2 } from 'lucide-react'
 import { useAuthStore } from '../../stores/authStore'
 import { useUIStore } from '../../stores/uiStore'
 import { authApi } from '../../services/api'
-import { getMediaUrl } from '../../lib/utils'
+import { getMediaUrl, cn } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import NotificationsPanel, { useUnreadNotifications } from '../Notifications/NotificationsPanel'
 import { PiUsersFour } from "react-icons/pi";
@@ -21,6 +21,7 @@ export default function Header() {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
 
   // Keyboard shortcut for search (Cmd/Ctrl + K) - navigates to search page
   useEffect(() => {
@@ -40,6 +41,7 @@ export default function Header() {
   const unreadCount = useUnreadNotifications()
 
   const handleLogout = async () => {
+    setSigningOut(true)
     try {
       await authApi.logout()
       logout()
@@ -48,6 +50,8 @@ export default function Header() {
     } catch {
       logout()
       navigate('/login')
+    } finally {
+      setSigningOut(false)
     }
   }
 
@@ -183,27 +187,73 @@ export default function Header() {
         {/* User Dropdown */}
         <div className="relative">
           <button
-            onClick={() => setDropdownOpen(!dropdownOpen)}
-            className="flex items-center gap-3 p-1.5 hover:bg-gray-100 rounded-xl transition-colors"
-          >
-            {user?.avatar ? (
-              <img
-                src={getMediaUrl(user.avatar) || ''}
-                alt={user.first_name}
-                className="w-9 h-9 rounded-xl object-cover"
-              />
-            ) : (
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white font-medium text-sm">
-                {user?.first_name?.[0]}{user?.last_name?.[0]}
-              </div>
+            onClick={() => !signingOut && setDropdownOpen(!dropdownOpen)}
+            className={cn(
+              "flex items-center gap-3 p-1.5 rounded-xl transition-colors",
+              signingOut ? "cursor-wait" : "hover:bg-gray-100"
             )}
+            disabled={signingOut}
+          >
+            <div className="relative">
+              {user?.avatar ? (
+                <img
+                  src={getMediaUrl(user.avatar) || ''}
+                  alt={user.first_name}
+                  className={cn(
+                    "w-9 h-9 rounded-xl object-cover transition-opacity",
+                    signingOut && "opacity-50"
+                  )}
+                />
+              ) : (
+                <div className={cn(
+                  "w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white font-medium text-sm transition-opacity",
+                  signingOut && "opacity-50"
+                )}>
+                  {user?.first_name?.[0]}{user?.last_name?.[0]}
+                </div>
+              )}
+              {signingOut && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <svg className="w-11 h-11 animate-spin" viewBox="0 0 44 44">
+                    <circle
+                      className="opacity-25"
+                      cx="22"
+                      cy="22"
+                      r="20"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      fill="none"
+                      strokeLinecap="round"
+                    />
+                    <circle
+                      className="text-primary-600"
+                      cx="22"
+                      cy="22"
+                      r="20"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeDasharray="80"
+                      strokeDashoffset="60"
+                    />
+                  </svg>
+                </div>
+              )}
+            </div>
             <div className="text-left hidden md:block">
-              <p className="text-sm font-medium text-gray-900">
-                {user?.first_name} {user?.last_name}
+              <p className={cn(
+                "text-sm font-medium transition-colors",
+                signingOut ? "text-gray-400" : "text-gray-900"
+              )}>
+                {signingOut ? "Signing out..." : `${user?.first_name} ${user?.last_name}`}
               </p>
               <p className="text-xs text-gray-500 capitalize">{user?.role?.replace('_', ' ')}</p>
             </div>
-            <ChevronDown className="w-4 h-4 text-gray-400 hidden md:block" />
+            <ChevronDown className={cn(
+              "w-4 h-4 hidden md:block transition-colors",
+              signingOut ? "text-gray-300" : "text-gray-400"
+            )} />
           </button>
 
           <AnimatePresence>
@@ -260,10 +310,25 @@ export default function Header() {
                   <div className="border-t border-gray-100 py-2">
                     <button
                       onClick={handleLogout}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                      disabled={signingOut}
+                      className={cn(
+                        "w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors",
+                        signingOut
+                          ? "text-gray-400 cursor-wait"
+                          : "text-red-600 hover:bg-red-50"
+                      )}
                     >
-                      <LogOut className="w-4 h-4" />
-                      Sign out
+                      {signingOut ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Signing out...
+                        </>
+                      ) : (
+                        <>
+                          <LogOut className="w-4 h-4" />
+                          Sign out
+                        </>
+                      )}
                     </button>
                   </div>
                 </motion.div>

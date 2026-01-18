@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   Building2,
@@ -19,25 +19,29 @@ import {
   Server,
   Clock,
   ShieldAlert,
+  Mail,
+  Plus,
+  Send,
+  X,
+  UserPlus,
+  Loader2,
 } from 'lucide-react'
-import { tenantsApi } from '../../services/api'
+import { tenantsApi, tenantInvitationsApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { useAuthStore } from '../../stores/authStore'
-import { Navigate } from 'react-router-dom'
-import { SiFsecure } from "react-icons/si";
-import { TbUserSquareRounded } from "react-icons/tb";
-import { PiBuildingApartmentLight } from "react-icons/pi";
+import toast from 'react-hot-toast'
+import { TbUserSquareRounded } from "react-icons/tb"
 
 interface TenantSummary {
   id: number
   company_name?: string
-  name?: string  // Alternative field name from API
+  name?: string
   subdomain?: string
-  schema_name?: string  // Alternative field name from API
+  schema_name?: string
   plan?: string
-  subscription_plan?: string  // Alternative field name from API
+  subscription_plan?: string
   status?: 'active' | 'trial' | 'suspended' | 'cancelled'
-  account_status?: string  // Alternative field name from API
+  account_status?: string
   users_count?: number
   users?: number
   properties_count?: number
@@ -51,6 +55,8 @@ interface DashboardStats {
   total_tenants: number
   active_tenants: number
   trial_tenants: number
+  demo_tenants: number
+  pending_invitations: number
   total_users: number
   total_mrr: number
   mrr_change: number
@@ -58,29 +64,106 @@ interface DashboardStats {
   storage_used_gb: number
 }
 
+interface Invitation {
+  id: number
+  email: string
+  company_name: string
+  first_name: string
+  last_name: string
+  invitation_type: 'full' | 'demo'
+  subscription_plan: string
+  status: 'pending' | 'accepted' | 'expired' | 'cancelled'
+  created_at: string
+  expires_at: string
+  accepted_at?: string
+  invited_by_name?: string
+}
+
 export default function SuperAdminDashboard() {
+  const queryClient = useQueryClient()
   const { user } = useAuthStore()
+  const [activeTab, setActiveTab] = useState<'companies' | 'invitations'>('companies')
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [, setSelectedTenant] = useState<number | null>(null)
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [inviteForm, setInviteForm] = useState({
+    email: '',
+    company_name: '',
+    first_name: '',
+    last_name: '',
+    invitation_type: 'full' as 'full' | 'demo',
+    subscription_plan: 'basic',
+    message: '',
+  })
 
   // Check if user has super_admin role
   const isSuperAdmin = user?.role === 'super_admin' || user?.is_superuser
 
-  // Fetch dashboard stats - only if user is super admin
-  const { data: stats, error: statsError } = useQuery<DashboardStats>({
+  // Fetch dashboard stats
+  const { data: dashboardData, error: statsError, refetch } = useQuery({
     queryKey: ['super-admin-stats'],
-    queryFn: () => tenantsApi.dashboard().then(r => r.data.overview),
+    queryFn: () => tenantsApi.dashboard().then(r => r.data),
     enabled: isSuperAdmin,
     retry: false,
   })
 
-  // Fetch tenants list - only if user is super admin
-  const { data: tenantsData, isLoading: tenantsLoading, refetch, error: tenantsError } = useQuery({
-    queryKey: ['super-admin-tenants', statusFilter],
-    queryFn: () => tenantsApi.dashboard().then(r => r.data.recent_tenants),
-    enabled: isSuperAdmin,
-    retry: false,
+  const stats = dashboardData?.overview
+  const tenants: TenantSummary[] = dashboardData?.recent_tenants || []
+
+  // Fetch invitations
+  const { data: invitationsData, isLoading: invitationsLoading } = useQuery({
+    queryKey: ['tenant-invitations'],
+    queryFn: () => tenantInvitationsApi.list().then(r => r.data.results || r.data),
+    enabled: isSuperAdmin && activeTab === 'invitations',
+  })
+
+  const invitations: Invitation[] = invitationsData || []
+
+  // Create invitation mutation
+  const createInvitationMutation = useMutation({
+    mutationFn: (data: typeof inviteForm) => tenantInvitationsApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-invitations'] })
+      queryClient.invalidateQueries({ queryKey: ['super-admin-stats'] })
+      toast.success('Invitation sent successfully!')
+      setShowInviteModal(false)
+      setInviteForm({
+        email: '',
+        company_name: '',
+        first_name: '',
+        last_name: '',
+        invitation_type: 'full',
+        subscription_plan: 'basic',
+        message: '',
+      })
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to send invitation')
+    },
+  })
+
+  // Resend invitation mutation
+  const resendMutation = useMutation({
+    mutationFn: (id: number) => tenantInvitationsApi.resend(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-invitations'] })
+      toast.success('Invitation resent!')
+    },
+    onError: () => {
+      toast.error('Failed to resend invitation')
+    },
+  })
+
+  // Cancel invitation mutation
+  const cancelMutation = useMutation({
+    mutationFn: (id: number) => tenantInvitationsApi.cancel(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-invitations'] })
+      toast.success('Invitation cancelled')
+    },
+    onError: () => {
+      toast.error('Failed to cancel invitation')
+    },
   })
 
   // If not authorized, show access denied
@@ -98,7 +181,7 @@ export default function SuperAdminDashboard() {
   }
 
   // Handle API errors
-  if (statsError || tenantsError) {
+  if (statsError) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
         <div className="p-4 bg-yellow-50 rounded-full mb-4">
@@ -116,35 +199,40 @@ export default function SuperAdminDashboard() {
     )
   }
 
-  const tenants: TenantSummary[] = tenantsData || []
-
   const filteredTenants = tenants.filter(tenant => {
     const companyName = tenant.company_name || tenant.name || ''
     const subdomain = tenant.subdomain || tenant.schema_name || ''
     const matchesSearch = companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       subdomain.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = statusFilter === 'all' || tenant.status === statusFilter
+    const tenantStatus = tenant.status || tenant.account_status || 'active'
+    const matchesStatus = statusFilter === 'all' || tenantStatus === statusFilter
     return matchesSearch && matchesStatus
   })
 
   const getStatusBadge = (status: string) => {
-    const styles = {
+    const styles: Record<string, string> = {
       active: 'bg-green-100 text-green-700',
       trial: 'bg-blue-100 text-blue-700',
-      suspended: 'bg-yellow-100 text-yellow-700',
+      pending: 'bg-yellow-100 text-yellow-700',
+      suspended: 'bg-orange-100 text-orange-700',
       cancelled: 'bg-red-100 text-red-700',
+      expired: 'bg-gray-100 text-gray-700',
+      accepted: 'bg-green-100 text-green-700',
     }
-    return styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-700'
+    return styles[status] || 'bg-gray-100 text-gray-700'
   }
 
   const getStatusIcon = (status: string) => {
-    const icons = {
+    const icons: Record<string, any> = {
       active: CheckCircle,
       trial: Clock,
+      pending: Clock,
       suspended: AlertTriangle,
       cancelled: XCircle,
+      expired: XCircle,
+      accepted: CheckCircle,
     }
-    const Icon = icons[status as keyof typeof icons] || Activity
+    const Icon = icons[status] || Activity
     return <Icon className="w-3.5 h-3.5" />
   }
 
@@ -156,13 +244,22 @@ export default function SuperAdminDashboard() {
           <h1 className="text-2xl font-bold text-gray-900">Super Admin Dashboard</h1>
           <p className="text-gray-500 mt-1">Monitor and manage all tenants across the platform</p>
         </div>
-        <button
-          onClick={() => refetch()}
-          className="flex items-center gap-2 px-4 py-2 text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowInviteModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors"
+          >
+            <UserPlus className="w-4 h-4" />
+            Invite Company
+          </button>
+          <button
+            onClick={() => refetch()}
+            className="flex items-center gap-2 px-4 py-2 text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}
@@ -185,7 +282,7 @@ export default function SuperAdminDashboard() {
           <p className="text-sm text-gray-500 mt-1">Total Companies</p>
           <div className="mt-3 flex items-center gap-4 text-xs">
             <span className="text-green-600">{stats?.active_tenants || 0} active</span>
-            <span className="text-blue-600">{stats?.trial_tenants || 0} trial</span>
+            <span className="text-blue-600">{stats?.demo_tenants || 0} demo</span>
           </div>
         </motion.div>
 
@@ -214,21 +311,14 @@ export default function SuperAdminDashboard() {
           className="bg-white rounded-xl border border-gray-200 p-6"
         >
           <div className="flex items-center justify-between mb-4">
-            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-              <DollarSign className="w-6 h-6 text-green-600" />
+            <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
+              <Mail className="w-6 h-6 text-amber-600" />
             </div>
-            <span className={cn(
-              "text-sm font-medium flex items-center gap-1",
-              (stats?.mrr_change || 0) >= 0 ? "text-green-600" : "text-red-600"
-            )}>
-              {(stats?.mrr_change || 0) >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-              {Math.abs(stats?.mrr_change || 0)}%
-            </span>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{formatCurrency(stats?.total_mrr || 0)}</p>
-          <p className="text-sm text-gray-500 mt-1">Monthly Recurring Revenue</p>
+          <p className="text-3xl font-bold text-gray-900">{stats?.pending_invitations || 0}</p>
+          <p className="text-sm text-gray-500 mt-1">Pending Invitations</p>
           <div className="mt-3 text-xs text-gray-500">
-            vs. last month
+            Awaiting response
           </div>
         </motion.div>
 
@@ -278,7 +368,7 @@ export default function SuperAdminDashboard() {
               <Activity className="w-5 h-5 text-green-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-green-900">Celery Workers</p>
+              <p className="text-sm font-medium text-green-900">Task Queue</p>
               <p className="text-xs text-green-600">Operational</p>
             </div>
           </div>
@@ -294,162 +384,408 @@ export default function SuperAdminDashboard() {
         </div>
       </div>
 
-      {/* Tenants Table */}
+      {/* Tabs */}
       <div className="bg-white rounded-xl border border-gray-200">
-        <div className="p-6 border-b border-gray-200">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <h2 className="text-lg font-semibold text-gray-900">All Companies</h2>
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search companies..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent w-64"
-                />
+        <div className="border-b border-gray-200">
+          <div className="flex">
+            <button
+              onClick={() => setActiveTab('companies')}
+              className={cn(
+                "px-6 py-4 text-sm font-medium border-b-2 transition-colors",
+                activeTab === 'companies'
+                  ? "border-primary-600 text-primary-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <Building2 className="w-4 h-4" />
+                Companies
               </div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-4 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              >
-                <option value="all">All Status</option>
-                <option value="active">Active</option>
-                <option value="trial">Trial</option>
-                <option value="suspended">Suspended</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('invitations')}
+              className={cn(
+                "px-6 py-4 text-sm font-medium border-b-2 transition-colors",
+                activeTab === 'invitations'
+                  ? "border-primary-600 text-primary-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <Mail className="w-4 h-4" />
+                Invitations
+                {(stats?.pending_invitations || 0) > 0 && (
+                  <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full">
+                    {stats?.pending_invitations}
+                  </span>
+                )}
+              </div>
+            </button>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Company
-                </th>
-                <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Plan
-                </th>
-                <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Users
-                </th>
-                <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Properties
-                </th>
-                <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  MRR
-                </th>
-                <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Created
-                </th>
-                <th className="text-right py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {tenantsLoading ? (
-                [...Array(5)].map((_, i) => (
-                  <tr key={i} className="animate-pulse">
-                    <td className="py-4 px-6">
-                      <div className="space-y-2">
-                        <div className="h-4 w-32 bg-gray-200 rounded" />
-                        <div className="h-3 w-40 bg-gray-200 rounded" />
-                      </div>
-                    </td>
-                    <td className="py-4 px-6"><div className="h-4 w-16 bg-gray-200 rounded" /></td>
-                    <td className="py-4 px-6">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-400">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span className="h-3 w-10 bg-gray-200 rounded inline-block" />
-                      </span>
-                    </td>
-                    <td className="py-4 px-6"><div className="h-4 w-8 bg-gray-200 rounded" /></td>
-                    <td className="py-4 px-6"><div className="h-4 w-8 bg-gray-200 rounded" /></td>
-                    <td className="py-4 px-6"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
-                    <td className="py-4 px-6"><div className="h-4 w-24 bg-gray-200 rounded" /></td>
-                    <td className="py-4 px-6 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button className="p-2 text-gray-300 rounded-lg">
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button className="p-2 text-gray-300 rounded-lg">
-                          <MoreVertical className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
+        {/* Companies Tab */}
+        {activeTab === 'companies' && (
+          <>
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <h2 className="text-lg font-semibold text-gray-900">All Companies</h2>
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search companies..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent w-64"
+                    />
+                  </div>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="px-4 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="trial">Trial</option>
+                    <option value="suspended">Suspended</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Company</th>
+                    <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Plan</th>
+                    <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Users</th>
+                    <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Properties</th>
+                    <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Created</th>
+                    <th className="text-right py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
-                ))
-              ) : filteredTenants.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-gray-500">
-                    No companies found
-                  </td>
-                </tr>
-              ) : (
-                filteredTenants.map((tenant) => (
-                  <tr key={tenant.id} className="hover:bg-gray-50">
-                    <td className="py-4 px-6">
-                      <div>
-                        <p className="font-medium text-gray-900">{tenant.company_name}</p>
-                        <p className="text-sm text-gray-500">{tenant.subdomain}.parameter.co.zw</p>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className="text-sm text-gray-900 capitalize">{tenant.plan}</span>
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className={cn(
-                        "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium capitalize",
-                        getStatusBadge(tenant.status)
-                      )}>
-                        {getStatusIcon(tenant.status)}
-                        {tenant.status}
-                      </span>
-                    </td>
-                    <td className="py-4 px-6 text-sm text-gray-900">
-                      {tenant.users_count}
-                    </td>
-                    <td className="py-4 px-6 text-sm text-gray-900">
-                      {tenant.properties_count}
-                    </td>
-                    <td className="py-4 px-6 text-sm font-medium text-gray-900">
-                      {formatCurrency(tenant.mrr)}
-                    </td>
-                    <td className="py-4 px-6 text-sm text-gray-500">
-                      {formatDate(tenant.created_at)}
-                    </td>
-                    <td className="py-4 px-6 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => setSelectedTenant(tenant.id)}
-                          className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-                          title="View details"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                        >
-                          <MoreVertical className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredTenants.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-gray-500">
+                        No companies found
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredTenants.map((tenant) => (
+                      <tr key={tenant.id} className="hover:bg-gray-50">
+                        <td className="py-4 px-6">
+                          <div>
+                            <p className="font-medium text-gray-900">{tenant.name || tenant.company_name}</p>
+                            <p className="text-sm text-gray-500">{tenant.schema_name || tenant.subdomain}.parameter.co.zw</p>
+                          </div>
+                        </td>
+                        <td className="py-4 px-6">
+                          <span className="text-sm text-gray-900 capitalize">{tenant.subscription_plan || tenant.plan}</span>
+                        </td>
+                        <td className="py-4 px-6">
+                          <span className={cn(
+                            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium capitalize",
+                            getStatusBadge(tenant.account_status || tenant.status || 'active')
+                          )}>
+                            {getStatusIcon(tenant.account_status || tenant.status || 'active')}
+                            {tenant.account_status || tenant.status || 'active'}
+                          </span>
+                        </td>
+                        <td className="py-4 px-6 text-sm text-gray-900">{tenant.users || tenant.users_count || 0}</td>
+                        <td className="py-4 px-6 text-sm text-gray-900">{tenant.properties || tenant.properties_count || 0}</td>
+                        <td className="py-4 px-6 text-sm text-gray-500">{formatDate(tenant.created_at)}</td>
+                        <td className="py-4 px-6 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors" title="View details">
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* Invitations Tab */}
+        {activeTab === 'invitations' && (
+          <>
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <h2 className="text-lg font-semibold text-gray-900">Company Invitations</h2>
+                <button
+                  onClick={() => setShowInviteModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  New Invitation
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Company</th>
+                    <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</th>
+                    <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+                    <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Plan</th>
+                    <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Sent</th>
+                    <th className="text-left py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Expires</th>
+                    <th className="text-right py-4 px-6 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {invitationsLoading ? (
+                    [...Array(3)].map((_, i) => (
+                      <tr key={i} className="animate-pulse">
+                        <td className="py-4 px-6"><div className="h-4 w-32 bg-gray-200 rounded" /></td>
+                        <td className="py-4 px-6"><div className="h-4 w-40 bg-gray-200 rounded" /></td>
+                        <td className="py-4 px-6"><div className="h-4 w-16 bg-gray-200 rounded" /></td>
+                        <td className="py-4 px-6"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
+                        <td className="py-4 px-6"><div className="h-5 w-20 bg-gray-200 rounded-full" /></td>
+                        <td className="py-4 px-6"><div className="h-4 w-24 bg-gray-200 rounded" /></td>
+                        <td className="py-4 px-6"><div className="h-4 w-24 bg-gray-200 rounded" /></td>
+                        <td className="py-4 px-6"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
+                      </tr>
+                    ))
+                  ) : invitations.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center">
+                        <div className="flex flex-col items-center">
+                          <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                            <Mail className="w-6 h-6 text-gray-400" />
+                          </div>
+                          <p className="text-gray-500 mb-2">No invitations yet</p>
+                          <button
+                            onClick={() => setShowInviteModal(true)}
+                            className="text-primary-600 hover:text-primary-700 font-medium text-sm"
+                          >
+                            Send your first invitation
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    invitations.map((invitation) => (
+                      <tr key={invitation.id} className="hover:bg-gray-50">
+                        <td className="py-4 px-6">
+                          <div>
+                            <p className="font-medium text-gray-900">{invitation.company_name}</p>
+                            {invitation.first_name && (
+                              <p className="text-sm text-gray-500">{invitation.first_name} {invitation.last_name}</p>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-4 px-6 text-sm text-gray-600">{invitation.email}</td>
+                        <td className="py-4 px-6">
+                          <span className={cn(
+                            "px-2 py-1 rounded-full text-xs font-medium capitalize",
+                            invitation.invitation_type === 'demo' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                          )}>
+                            {invitation.invitation_type}
+                          </span>
+                        </td>
+                        <td className="py-4 px-6 text-sm text-gray-900 capitalize">{invitation.subscription_plan}</td>
+                        <td className="py-4 px-6">
+                          <span className={cn(
+                            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium capitalize",
+                            getStatusBadge(invitation.status)
+                          )}>
+                            {getStatusIcon(invitation.status)}
+                            {invitation.status}
+                          </span>
+                        </td>
+                        <td className="py-4 px-6 text-sm text-gray-500">{formatDate(invitation.created_at)}</td>
+                        <td className="py-4 px-6 text-sm text-gray-500">{formatDate(invitation.expires_at)}</td>
+                        <td className="py-4 px-6 text-right">
+                          {invitation.status === 'pending' && (
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => resendMutation.mutate(invitation.id)}
+                                disabled={resendMutation.isPending}
+                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                                title="Resend invitation"
+                              >
+                                <Send className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => cancelMutation.mutate(invitation.id)}
+                                disabled={cancelMutation.isPending}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                                title="Cancel invitation"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
+
+      {/* Invite Modal */}
+      {showInviteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4"
+          >
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
+                  <UserPlus className="w-5 h-5 text-primary-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">Invite New Company</h2>
+                  <p className="text-sm text-gray-500">Send an invitation to join the platform</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowInviteModal(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                createInvitationMutation.mutate(inviteForm)
+              }}
+              className="p-6 space-y-4"
+            >
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
+                  <input
+                    type="text"
+                    value={inviteForm.company_name}
+                    onChange={(e) => setInviteForm({ ...inviteForm, company_name: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    required
+                    placeholder="Acme Real Estate"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    value={inviteForm.email}
+                    onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    required
+                    placeholder="admin@company.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                  <input
+                    type="text"
+                    value={inviteForm.first_name}
+                    onChange={(e) => setInviteForm({ ...inviteForm, first_name: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    placeholder="John"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                  <input
+                    type="text"
+                    value={inviteForm.last_name}
+                    onChange={(e) => setInviteForm({ ...inviteForm, last_name: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    placeholder="Doe"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Account Type</label>
+                  <select
+                    value={inviteForm.invitation_type}
+                    onChange={(e) => setInviteForm({ ...inviteForm, invitation_type: e.target.value as 'full' | 'demo' })}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  >
+                    <option value="full">Full Account</option>
+                    <option value="demo">Demo Account (2 hours)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Subscription Plan</label>
+                  <select
+                    value={inviteForm.subscription_plan}
+                    onChange={(e) => setInviteForm({ ...inviteForm, subscription_plan: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  >
+                    <option value="free">Free Trial</option>
+                    <option value="basic">Basic</option>
+                    <option value="professional">Professional</option>
+                    <option value="enterprise">Enterprise</option>
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Personal Message (optional)</label>
+                  <textarea
+                    value={inviteForm.message}
+                    onChange={(e) => setInviteForm({ ...inviteForm, message: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    rows={3}
+                    placeholder="Welcome to Parameter! We're excited to have you on board..."
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setShowInviteModal(false)}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createInvitationMutation.isPending}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors disabled:opacity-50"
+                >
+                  {createInvitationMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" />
+                      Send Invitation
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
     </div>
   )
 }

@@ -21,6 +21,7 @@ import { formatCurrency, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog } from '../../components/ui'
 import toast from 'react-hot-toast'
 import { PiBuildingApartmentLight } from "react-icons/pi";
+import { TbUserSquareRounded } from "react-icons/tb";
 
 interface Unit {
   id: number
@@ -90,7 +91,7 @@ function SkeletonTableRow() {
       </td>
       <td className="px-6 py-4">
         <div className="flex items-center gap-2">
-          <User className="w-4 h-4 text-gray-400" />
+          <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
           <span className="h-4 w-24 bg-gray-200 rounded" />
         </div>
       </td>
@@ -453,7 +454,7 @@ export default function Units() {
                     <td className="px-6 py-4">
                       {unit.current_tenant ? (
                         <div className="flex items-center gap-2">
-                          <User className="w-4 h-4 text-gray-400" />
+                          <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
                           <span className="text-gray-600">{unit.current_tenant.name}</span>
                         </div>
                       ) : (
