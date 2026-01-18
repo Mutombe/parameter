@@ -20,6 +20,9 @@ import { PageHeader, Button, Input, Card, Badge } from '../components/ui'
 import { useAuthStore } from '../stores/authStore'
 import toast from 'react-hot-toast'
 import { cn } from '../lib/utils'
+import { SiFsecure } from "react-icons/si";
+import { PiBuildingApartmentLight } from "react-icons/pi";
+
 
 interface SettingSection {
   id: string

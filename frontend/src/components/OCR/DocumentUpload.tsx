@@ -14,6 +14,7 @@ import {
 import { aiApi } from '../../services/api'
 import toast from 'react-hot-toast'
 import { cn } from '../../lib/utils'
+import { RiClaudeFill } from "react-icons/ri";
 
 type DocumentType = 'lease' | 'invoice' | 'id'
 
@@ -262,7 +263,7 @@ export default function DocumentUpload({ type, onDataExtracted, className }: Doc
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-5 h-5" />
+                      <RiClaudeFill className="w-5 h-5" />
                       Extract Data with AI
                     </>
                   )}

@@ -24,6 +24,9 @@ import { tenantsApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { useAuthStore } from '../../stores/authStore'
 import { Navigate } from 'react-router-dom'
+import { SiFsecure } from "react-icons/si";
+import { TbUserSquareRounded } from "react-icons/tb";
+import { PiBuildingApartmentLight } from "react-icons/pi";
 
 interface TenantSummary {
   id: number
@@ -186,7 +189,7 @@ export default function SuperAdminDashboard() {
         >
           <div className="flex items-center justify-between mb-4">
             <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-              <Users className="w-6 h-6 text-purple-600" />
+              <TbUserSquareRounded className="w-6 h-6 text-purple-600" />
             </div>
           </div>
           <p className="text-3xl font-bold text-gray-900">{stats?.total_users || 0}</p>

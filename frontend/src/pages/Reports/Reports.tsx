@@ -27,6 +27,7 @@ import { printElement } from '../../lib/print'
 import { exportReport } from '../../lib/export'
 import { PageHeader, Button, Badge, Skeleton, EmptyState } from '../../components/ui'
 import toast from 'react-hot-toast'
+import { PiBuildingApartmentLight } from "react-icons/pi";
 
 type ReportType = 'trial-balance' | 'income-statement' | 'balance-sheet' | 'cash-flow' | 'vacancy' | 'rent-roll'
 

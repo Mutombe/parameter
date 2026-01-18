@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { Search, Shield, Clock, User } from 'lucide-react'
 import { auditApi } from '../../services/api'
 import { formatDate, useDebounce } from '../../lib/utils'
+import { SiFsecure } from "react-icons/si";
+import { TbUserSquareRounded } from "react-icons/tb";
 
 export default function AuditTrail() {
   const [search, setSearch] = useState('')
@@ -74,7 +76,7 @@ export default function AuditTrail() {
                   </div>
                   <div className="flex items-center gap-4 text-xs text-gray-400">
                     <span className="flex items-center gap-1">
-                      <User className="w-3 h-3" />
+                      <TbUserSquareRounded className="w-3 h-3" />
                       <span className="h-3 w-24 bg-gray-200 rounded inline-block" />
                     </span>
                     <span className="flex items-center gap-1">
@@ -113,7 +115,7 @@ export default function AuditTrail() {
 
                   <div className="flex items-center gap-4 text-xs text-gray-500">
                     <span className="flex items-center gap-1">
-                      <User className="w-3 h-3" />
+                      <TbUserSquareRounded className="w-3 h-3" />
                       {log.user_email || 'System'}
                     </span>
                     <span className="flex items-center gap-1">

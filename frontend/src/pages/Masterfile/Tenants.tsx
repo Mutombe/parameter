@@ -6,6 +6,8 @@ import { tenantApi } from '../../services/api'
 import { useDebounce } from '../../lib/utils'
 import { Pagination } from '../../components/ui'
 import toast from 'react-hot-toast'
+import { PiUsersFour } from "react-icons/pi";
+import { TbUserSquareRounded } from "react-icons/tb";
 
 const PAGE_SIZE = 12
 
@@ -169,7 +171,7 @@ export default function Tenants() {
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
-                    <Users className="w-6 h-6 text-purple-600" />
+                    <TbUserSquareRounded className="w-6 h-6 text-purple-600" />
                   </div>
                   <div className="space-y-2">
                     <div className="h-4 w-32 bg-gray-200 rounded" />
@@ -198,7 +200,7 @@ export default function Tenants() {
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
-                    <Users className="w-6 h-6 text-purple-600" />
+                    <TbUserSquareRounded className="w-6 h-6 text-purple-600" />
                   </div>
                   <div>
                     <h3 className="font-semibold text-gray-900">{tenant.name}</h3>

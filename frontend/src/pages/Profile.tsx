@@ -20,6 +20,10 @@ import { authApi } from '../services/api'
 import { getMediaUrl } from '../lib/utils'
 import { PageHeader, Button, Input, Card, CardHeader, CardContent } from '../components/ui'
 import toast from 'react-hot-toast'
+import { SiFsecure } from "react-icons/si";
+import { PiUsersFour } from "react-icons/pi";
+import { TbUserSquareRounded } from "react-icons/tb";
+
 
 export default function Profile() {
   const { user, setUser } = useAuthStore()
@@ -153,7 +157,7 @@ export default function Profile() {
       <PageHeader
         title="My Profile"
         subtitle="Manage your personal information and account settings"
-        icon={User}
+        icon={TbUserSquareRounded}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

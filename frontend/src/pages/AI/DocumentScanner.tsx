@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { FileText, CreditCard, User, Sparkles, Info, ArrowRight } from 'lucide-react'
 import DocumentUpload from '../../components/OCR/DocumentUpload'
 import { cn } from '../../lib/utils'
+import { RiClaudeFill } from "react-icons/ri";
 
 type DocumentCategory = 'lease' | 'invoice' | 'id'
 
@@ -75,7 +76,7 @@ export default function DocumentScanner() {
       <div>
         <div className="flex items-center gap-3 mb-2">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-white" />
+            <RiClaudeFill className="w-5 h-5 text-white" />
           </div>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">AI Document Scanner</h1>

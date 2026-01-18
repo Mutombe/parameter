@@ -7,15 +7,23 @@ import {
   Globe, DollarSign, PieChart, Clock, BookOpen, Lock
 } from 'lucide-react'
 import PrivacyPolicyModal from '../components/PrivacyPolicyModal'
+import { SiFsecure } from "react-icons/si";
+import { PiUsersFour } from "react-icons/pi";
+import { IoCheckmarkDoneCircleOutline } from "react-icons/io5";
+import { TbChartInfographic } from "react-icons/tb";
+import { PiBuildingApartmentLight } from "react-icons/pi";
+import { LiaUsersSolid } from "react-icons/lia";
+
+
 
 const features = [
   {
-    icon: Building2,
+    icon: PiBuildingApartmentLight,
     title: 'Property Management',
     description: 'Manage unlimited properties, units, and track occupancy rates in real-time.'
   },
   {
-    icon: Users,
+    icon: LiaUsersSolid,
     title: 'Tenant Management',
     description: 'Complete tenant lifecycle management from onboarding to lease renewals.'
   },
@@ -25,12 +33,12 @@ const features = [
     description: 'Generate monthly invoices automatically with customizable billing cycles.'
   },
   {
-    icon: BarChart3,
+    icon: TbChartInfographic,
     title: 'Financial Reports',
     description: 'Trial balance, income statements, balance sheets, and cash flow reports.'
   },
   {
-    icon: Shield,
+    icon: SiFsecure,
     title: 'Multi-Tenant Security',
     description: 'Complete data isolation with schema-based multi-tenancy architecture.'
   },
@@ -366,7 +374,7 @@ export default function Landing() {
                 <ul className="space-y-3 mb-8">
                   {plan.features.map((feature) => (
                     <li key={feature} className="flex items-start gap-3 text-gray-600">
-                      <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                      <IoCheckmarkDoneCircleOutline className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
                       {feature}
                     </li>
                   ))}

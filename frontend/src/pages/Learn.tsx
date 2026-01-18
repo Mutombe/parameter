@@ -8,6 +8,10 @@ import {
   ArrowLeft, Menu, X, Phone, Mail
 } from 'lucide-react'
 import PrivacyPolicyModal from '../components/PrivacyPolicyModal'
+import { SiFsecure } from "react-icons/si";
+import { PiUsersFour } from "react-icons/pi";
+import { TbUserSquareRounded } from "react-icons/tb";
+import { PiBuildingApartmentLight } from "react-icons/pi";
 
 const sections = [
   {
@@ -24,7 +28,7 @@ const sections = [
   {
     id: 'masterfile',
     title: 'Masterfile Management',
-    icon: Building2,
+    icon: PiBuildingApartmentLight,
     subsections: [
       { id: 'landlords', title: 'Managing Landlords' },
       { id: 'properties', title: 'Properties & Units' },
@@ -185,7 +189,7 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
           </div>
           <div className="bg-gray-50 rounded-xl p-5">
             <div className="flex items-center gap-2 mb-2">
-              <Building2 className="w-5 h-5 text-blue-600" />
+              <PiBuildingApartmentLight className="w-5 h-5 text-blue-600" />
               <h4 className="font-semibold text-gray-900">Portfolio Stats</h4>
             </div>
             <p className="text-sm text-gray-600">
@@ -237,7 +241,7 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
             </div>
           </div>
           <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-xl">
-            <Building2 className="w-5 h-5 text-primary-600 mt-0.5" />
+            <PiBuildingApartmentLight className="w-5 h-5 text-primary-600 mt-0.5" />
             <div>
               <h4 className="font-semibold text-gray-900">Masterfile</h4>
               <p className="text-sm text-gray-600">Landlords, Properties, Units, Tenants, and Leases</p>

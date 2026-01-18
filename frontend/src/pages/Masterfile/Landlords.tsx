@@ -26,6 +26,10 @@ import { landlordApi } from '../../services/api'
 import { formatCurrency, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog } from '../../components/ui'
 import toast from 'react-hot-toast'
+import { SiFsecure } from "react-icons/si";
+import { PiUsersFour } from "react-icons/pi";
+import { TbUserSquareRounded } from "react-icons/tb";
+import { PiBuildingApartmentLight } from "react-icons/pi";
 
 interface Landlord {
   id: number
@@ -42,7 +46,7 @@ interface Landlord {
 
 const landlordTypeConfig = {
   individual: {
-    icon: User,
+    icon: TbUserSquareRounded,
     color: 'text-blue-600',
     bgColor: 'bg-blue-50',
     label: 'Individual',
@@ -206,7 +210,7 @@ export default function Landlords() {
       <PageHeader
         title="Landlords"
         subtitle="Manage property owners and their portfolios"
-        icon={Users}
+        icon={TbUserSquareRounded}
         actions={
           <Button onClick={() => setShowForm(true)} className="gap-2">
             <Plus className="w-4 h-4" />
@@ -223,7 +227,7 @@ export default function Landlords() {
         >
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-primary-50 flex items-center justify-center">
-              <Users className="w-6 h-6 text-primary-600" />
+              <TbUserSquareRounded className="w-6 h-6 text-primary-600" />
             </div>
             <div>
               <p className="text-sm text-gray-500">Total Landlords</p>
@@ -308,7 +312,7 @@ export default function Landlords() {
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-4">
                   <div className="w-14 h-14 rounded-xl bg-blue-50 flex items-center justify-center">
-                    <User className="w-7 h-7 text-blue-600" />
+                    <TbUserSquareRounded className="w-7 h-7 text-blue-600" />
                   </div>
                   <div className="space-y-2">
                     <div className="h-5 w-32 bg-gray-200 rounded animate-pulse" />
@@ -353,7 +357,7 @@ export default function Landlords() {
         </div>
       ) : filteredLandlords.length === 0 ? (
         <EmptyState
-          icon={Users}
+          icon={TbUserSquareRounded}
           title="No landlords found"
           description="Add your first landlord to start managing property owners."
           action={

@@ -17,6 +17,11 @@ import {
 } from 'lucide-react'
 import { searchApi } from '../services/api'
 import { cn, useDebounce } from '../lib/utils'
+import { PiUsersFour } from "react-icons/pi";
+import { RiClaudeFill } from "react-icons/ri";
+import { TbUserSquareRounded } from "react-icons/tb";
+import { LiaUsersSolid } from "react-icons/lia";
+import { PiBuildingApartmentLight } from "react-icons/pi";
 
 interface SearchResult {
   id: number
@@ -29,10 +34,10 @@ interface SearchResult {
 }
 
 const typeConfig = {
-  landlord: { icon: Users, color: 'bg-blue-100 text-blue-600', label: 'Landlord' },
-  property: { icon: Building2, color: 'bg-emerald-100 text-emerald-600', label: 'Property' },
+  landlord: { icon: PiUsersFour, color: 'bg-blue-100 text-blue-600', label: 'Landlord' },
+  property: { icon: PiBuildingApartmentLight, color: 'bg-emerald-100 text-emerald-600', label: 'Property' },
   unit: { icon: Home, color: 'bg-purple-100 text-purple-600', label: 'Unit' },
-  tenant: { icon: Users, color: 'bg-orange-100 text-orange-600', label: 'Tenant' },
+  tenant: { icon: LiaUsersSolid, color: 'bg-orange-100 text-orange-600', label: 'Tenant' },
   invoice: { icon: Receipt, color: 'bg-cyan-100 text-cyan-600', label: 'Invoice' },
   lease: { icon: FileText, color: 'bg-rose-100 text-rose-600', label: 'Lease' },
 }
@@ -326,8 +331,8 @@ export default function Search() {
             {/* Quick Actions */}
             <div className="mt-8 grid grid-cols-2 md:grid-cols-3 gap-4 max-w-2xl mx-auto">
               {[
-                { label: 'View Tenants', href: '/dashboard/tenants', icon: Users, color: 'text-orange-500' },
-                { label: 'View Properties', href: '/dashboard/properties', icon: Building2, color: 'text-emerald-500' },
+                { label: 'View Tenants', href: '/dashboard/tenants', icon: LiaUsersSolid, color: 'text-orange-500' },
+                { label: 'View Properties', href: '/dashboard/properties', icon: PiBuildingApartmentLight, color: 'text-emerald-500' },
                 { label: 'View Invoices', href: '/dashboard/invoices', icon: Receipt, color: 'text-cyan-500' },
               ].map((action) => (
                 <button

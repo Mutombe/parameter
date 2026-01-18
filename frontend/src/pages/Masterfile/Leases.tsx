@@ -21,7 +21,7 @@ import { leaseApi, tenantApi, unitApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog } from '../../components/ui'
 import toast from 'react-hot-toast'
-
+import { TbUserSquareRounded } from "react-icons/tb";
 interface Lease {
   id: number
   lease_number: string
@@ -74,7 +74,7 @@ function SkeletonTableRow() {
       </td>
       <td className="px-6 py-4">
         <div className="flex items-center gap-2">
-          <User className="w-4 h-4 text-gray-400" />
+          <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
           <span className="h-4 w-28 bg-gray-200 rounded" />
         </div>
       </td>
@@ -456,7 +456,7 @@ export default function Leases() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <User className="w-4 h-4 text-gray-400" />
+                        <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
                         <span className="text-gray-700">{lease.tenant_name}</span>
                       </div>
                     </td>

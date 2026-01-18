@@ -16,6 +16,9 @@ import {
 import { tenantsApi } from '../services/api'
 import { cn } from '../lib/utils'
 import toast from 'react-hot-toast'
+import { PiUsersFour } from "react-icons/pi";
+import { PiBuildingApartmentLight } from "react-icons/pi";
+import { RiClaudeFill } from "react-icons/ri";
 
 const steps = [
   { id: 1, title: 'Company Info', icon: Building2 },

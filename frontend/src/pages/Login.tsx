@@ -5,11 +5,17 @@ import { Eye, EyeOff, Loader2, Building2, Shield, BarChart3, AlertTriangle } fro
 import { useAuthStore } from '../stores/authStore'
 import { authApi } from '../services/api'
 import toast from 'react-hot-toast'
+import { SiFsecure } from "react-icons/si";
+import { PiBuildingApartmentLight } from "react-icons/pi";
+import { PiUsersFour } from "react-icons/pi";
+import { IoCheckmarkDoneCircleOutline } from "react-icons/io5";
+import { TbChartInfographic } from "react-icons/tb";
+
 
 const features = [
-  { icon: Building2, label: 'Property Management' },
-  { icon: Shield, label: 'Multi-tenant Security' },
-  { icon: BarChart3, label: 'Financial Reports' },
+  { icon: PiBuildingApartmentLight, label: 'Property Management' },
+  { icon: SiFsecure, label: 'Multi-tenant Security' },
+  { icon: TbChartInfographic, label: 'Financial Reports' },
 ]
 
 export default function Login() {
@@ -87,7 +93,7 @@ export default function Login() {
             <img
               src="/logo.png"
               alt="Parameter"
-              className="w-12 h-12 rounded-xl object-contain bg-white/10 backdrop-blur p-1"
+              className="w-12 h-12 rounded-xl object-contain backdrop-blur p-1"
             />
             <div>
               <h1 className="text-2xl font-bold text-white">Parameter</h1>

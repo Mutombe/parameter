@@ -14,6 +14,9 @@ import {
 import { notificationsApi } from '../../services/api'
 import { formatDistanceToNow } from '../../lib/utils'
 import toast from 'react-hot-toast'
+import { PiUsersFour } from "react-icons/pi";
+import { TbUserSquareRounded } from "react-icons/tb";
+import { PiBuildingApartmentLight } from "react-icons/pi";
 
 interface NotificationsPanelProps {
   open: boolean
@@ -21,13 +24,13 @@ interface NotificationsPanelProps {
 }
 
 const notificationIcons: Record<string, any> = {
-  masterfile_created: Building2,
-  masterfile_updated: Building2,
-  masterfile_deleted: Building2,
+  masterfile_created: PiBuildingApartmentLight,
+  masterfile_updated: PiBuildingApartmentLight,
+  masterfile_deleted: PiBuildingApartmentLight,
   invoice_overdue: AlertTriangle,
   lease_expiring: Calendar,
   payment_received: FileText,
-  user_invited: Users,
+  user_invited: TbUserSquareRounded,
   system: Settings,
 }
 

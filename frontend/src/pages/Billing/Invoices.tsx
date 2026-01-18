@@ -28,6 +28,7 @@ import { invoiceApi, tenantApi, unitApi, leaseApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog } from '../../components/ui'
 import toast from 'react-hot-toast'
+import { TbUserSquareRounded } from "react-icons/tb";
 
 interface Invoice {
   id: number

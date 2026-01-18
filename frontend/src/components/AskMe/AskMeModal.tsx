@@ -4,6 +4,8 @@ import { X, Send, Sparkles, Loader2, MessageSquare, Lightbulb, TrendingUp, Dolla
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { aiApi } from '../../services/api'
 import { cn } from '../../lib/utils'
+import { RiClaudeFill } from "react-icons/ri";
+import { PiBuildingApartmentLight } from "react-icons/pi";
 
 interface AskMeModalProps {
   open: boolean
@@ -22,7 +24,7 @@ const defaultSuggestions = [
   },
   {
     category: 'Property Analytics',
-    icon: Building2,
+    icon: PiBuildingApartmentLight,
     questions: [
       'What is my vacancy rate?',
       'Which properties need attention?',
@@ -110,7 +112,7 @@ export default function AskMeModal({ open, onClose }: AskMeModalProps) {
             <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-purple-600 via-blue-600 to-blue-700">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
-                  <Sparkles className="w-6 h-6 text-white" />
+                  <RiClaudeFill className="w-6 h-6 text-white" />
                 </div>
                 <div>
                   <h3 className="font-semibold text-white">Parameter AI</h3>

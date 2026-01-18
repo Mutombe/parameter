@@ -9,6 +9,9 @@ import {
 import { tenantInvitationsApi, demoApi, tenantsApi } from '../services/api'
 import { cn } from '../lib/utils'
 import toast from 'react-hot-toast'
+import { PiUsersFour } from "react-icons/pi";
+import { RiClaudeFill } from "react-icons/ri";
+import { PiBuildingApartmentLight } from "react-icons/pi";
 
 interface InvitationData {
   email: string

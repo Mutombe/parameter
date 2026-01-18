@@ -1,6 +1,8 @@
 import { motion } from 'framer-motion'
 import { LucideIcon, FileX, Users, Building2, Receipt, BookOpen, TrendingUp, Plus } from 'lucide-react'
 import { ReactNode } from 'react'
+import { PiUsersFour } from "react-icons/pi";
+import { PiBuildingApartmentLight } from "react-icons/pi";
 
 interface EmptyStateAction {
   label: string
@@ -17,7 +19,7 @@ interface EmptyStateProps {
 const iconMap: Record<string, LucideIcon> = {
   default: FileX,
   users: Users,
-  properties: Building2,
+  properties: PiBuildingApartmentLight,
   invoices: Receipt,
   journals: BookOpen,
   reports: TrendingUp,

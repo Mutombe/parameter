@@ -8,6 +8,10 @@ import { authApi } from '../../services/api'
 import { getMediaUrl } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import NotificationsPanel, { useUnreadNotifications } from '../Notifications/NotificationsPanel'
+import { PiUsersFour } from "react-icons/pi";
+import { TbUserSquareRounded } from "react-icons/tb";
+import { RiClaudeFill } from "react-icons/ri";
+
 
 export default function Header() {
   const navigate = useNavigate()
@@ -71,7 +75,7 @@ export default function Header() {
           onClick={toggleAskMe}
           className="flex items-center gap-2 px-3 py-2 text-sm text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors"
         >
-          <Sparkles className="w-4 h-4" />
+          <RiClaudeFill className="w-4 h-4" />
           <span className="hidden sm:inline font-medium">AI Assistant</span>
         </button>
 
@@ -241,7 +245,7 @@ export default function Header() {
                       onClick={() => { navigate('/dashboard/profile'); setDropdownOpen(false); }}
                       className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                     >
-                      <User className="w-4 h-4 text-gray-400" />
+                      <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
                       My Profile
                     </button>
                     <button

@@ -35,6 +35,10 @@ import {
 import { reportsApi } from '../services/api'
 import { formatCurrency, formatPercent, cn } from '../lib/utils'
 import { useNavigate } from 'react-router-dom'
+import { PiUsersFour } from "react-icons/pi";
+import { TbUserSquareRounded } from "react-icons/tb";
+import { LiaUsersSolid } from "react-icons/lia";
+import { PiBuildingApartmentLight } from "react-icons/pi";
 
 const container = {
   hidden: { opacity: 0 },
@@ -130,7 +134,7 @@ export default function Dashboard() {
       value: stats?.properties?.total || 0,
       subtitle: `${stats?.properties?.units || 0} total units`,
       trend: { value: 12, label: 'vs last month' },
-      icon: Building2,
+      icon: PiBuildingApartmentLight,
       color: 'blue' as const,
     },
     {
@@ -175,7 +179,7 @@ export default function Dashboard() {
   const quickActions = [
     { label: 'New Invoice', href: '/dashboard/invoices', icon: Receipt, color: 'blue' },
     { label: 'Record Receipt', href: '/dashboard/receipts', icon: DollarSign, color: 'green' },
-    { label: 'Add Tenant', href: '/dashboard/tenants', icon: Users, color: 'purple' },
+    { label: 'Add Tenant', href: '/dashboard/tenants', icon: LiaUsersSolid, color: 'purple' },
     { label: 'View Reports', href: '/dashboard/reports', icon: Activity, color: 'orange' },
   ]
 
@@ -459,7 +463,7 @@ export default function Dashboard() {
             >
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-blue-50 rounded-lg">
-                  <Users className="w-5 h-5 text-blue-600" />
+                  <PiUsersFour className="w-5 h-5 text-blue-600" />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Landlords</span>
               </div>
@@ -479,7 +483,7 @@ export default function Dashboard() {
             >
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-purple-50 rounded-lg">
-                  <Users className="w-5 h-5 text-purple-600" />
+                  <LiaUsersSolid className="w-5 h-5 text-purple-600" />
                 </div>
                 <span className="text-sm font-medium text-gray-700">Tenants</span>
               </div>

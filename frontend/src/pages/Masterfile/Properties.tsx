@@ -23,6 +23,10 @@ import { propertyApi, landlordApi } from '../../services/api'
 import { formatPercent, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog } from '../../components/ui'
 import toast from 'react-hot-toast'
+import { PiUsersFour } from "react-icons/pi";
+import { TbUserSquareRounded } from "react-icons/tb";
+import { LiaUsersSolid } from "react-icons/lia";
+import { PiBuildingApartmentLight } from "react-icons/pi";
 
 interface Property {
   id: number
@@ -231,7 +235,7 @@ export default function Properties() {
       <PageHeader
         title="Properties"
         subtitle="Manage buildings and property portfolios"
-        icon={Building2}
+        icon={PiBuildingApartmentLight}
         actions={
           <Button onClick={() => setShowForm(true)} className="gap-2">
             <Plus className="w-4 h-4" />
@@ -248,7 +252,7 @@ export default function Properties() {
         >
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-primary-50 flex items-center justify-center">
-              <Building2 className="w-6 h-6 text-primary-600" />
+              <PiBuildingApartmentLight className="w-6 h-6 text-primary-600" />
             </div>
             <div>
               <p className="text-sm text-gray-500">Properties</p>
@@ -397,7 +401,7 @@ export default function Properties() {
                     <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
                   </div>
                   <div className="flex items-center gap-2">
-                    <Users className="w-4 h-4 text-gray-400" />
+                    <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
                     <div className="h-4 w-28 bg-gray-200 rounded animate-pulse" />
                   </div>
                 </div>
@@ -430,7 +434,7 @@ export default function Properties() {
         </div>
       ) : filteredProperties.length === 0 ? (
         <EmptyState
-          icon={Building2}
+          icon={PiBuildingApartmentLight}
           title="No properties found"
           description="Add your first property to start managing your real estate portfolio."
           action={
@@ -493,7 +497,7 @@ export default function Properties() {
                       <span>{property.address || property.city}</span>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Users className="w-4 h-4 text-gray-400" />
+                      <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
                       <span>{property.landlord_name}</span>
                     </div>
                   </div>

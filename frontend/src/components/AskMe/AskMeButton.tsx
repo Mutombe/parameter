@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { Sparkles } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
+import { RiClaudeFill } from "react-icons/ri";
 
 export default function AskMeButton() {
   const { toggleAskMe } = useUIStore()
@@ -19,7 +20,7 @@ export default function AskMeButton() {
         animate={{ rotate: [0, 15, -15, 0] }}
         transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
       >
-        <Sparkles className="w-5 h-5" />
+        <RiClaudeFill className="w-5 h-5" />
       </motion.div>
       <span className="font-medium">Ask Me</span>
     </motion.button>

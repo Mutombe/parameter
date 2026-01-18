@@ -20,6 +20,7 @@ import { unitApi, propertyApi } from '../../services/api'
 import { formatCurrency, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog } from '../../components/ui'
 import toast from 'react-hot-toast'
+import { PiBuildingApartmentLight } from "react-icons/pi";
 
 interface Unit {
   id: number
@@ -420,7 +421,7 @@ export default function Units() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <Building2 className="w-4 h-4 text-gray-400" />
+                        <PiBuildingApartmentLight className="w-4 h-4 text-gray-400" />
                         <span className="text-gray-600">{unit.property_name}</span>
                       </div>
                     </td>

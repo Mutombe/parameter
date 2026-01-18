@@ -15,6 +15,10 @@ import {
 import { useQuery } from '@tanstack/react-query'
 import { landlordApi, propertyApi, tenantApi, invoiceApi } from '../../services/api'
 import { cn } from '../../lib/utils'
+import { PiUsersFour } from "react-icons/pi";
+import { TbUserSquareRounded } from "react-icons/tb";
+import { LiaUsersSolid } from "react-icons/lia";
+import { PiBuildingApartmentLight } from "react-icons/pi";
 
 interface SearchResult {
   id: number
@@ -69,7 +73,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
           type: 'landlord',
           title: item.name,
           subtitle: item.email || item.phone,
-          icon: Users,
+          icon: PiUsersFour,
           href: '/landlords',
         })
       }
@@ -83,7 +87,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
           type: 'property',
           title: item.name,
           subtitle: item.address || `${item.total_units || 0} units`,
-          icon: Building2,
+          icon: PiBuildingApartmentLight,
           href: '/properties',
         })
       }
@@ -106,9 +110,9 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
 
   // Quick links when no query
   const quickLinks: SearchResult[] = [
-    { id: 1, type: 'landlord', title: 'Landlords', subtitle: 'Manage property owners', icon: Users, href: '/landlords' },
-    { id: 2, type: 'property', title: 'Properties', subtitle: 'View all properties', icon: Building2, href: '/properties' },
-    { id: 3, type: 'tenant', title: 'Tenants', subtitle: 'Manage tenants', icon: UserCheck, href: '/tenants' },
+    { id: 1, type: 'landlord', title: 'Landlords', subtitle: 'Manage property owners', icon: PiUsersFour, href: '/landlords' },
+    { id: 2, type: 'property', title: 'Properties', subtitle: 'View all properties', icon: PiBuildingApartmentLight, href: '/properties' },
+    { id: 3, type: 'tenant', title: 'Tenants', subtitle: 'Manage tenants', icon: LiaUsersSolid, href: '/tenants' },
     { id: 4, type: 'invoice', title: 'Invoices', subtitle: 'Billing & invoices', icon: Receipt, href: '/invoices' },
     { id: 5, type: 'unit', title: 'Units', subtitle: 'Property units', icon: Home, href: '/units' },
   ]

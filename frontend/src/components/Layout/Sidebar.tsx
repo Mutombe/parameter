@@ -23,6 +23,13 @@ import {
 import { useUIStore } from '../../stores/uiStore'
 import { useAuthStore } from '../../stores/authStore'
 import { cn } from '../../lib/utils'
+import { SiFsecure } from "react-icons/si";
+import { PiUsersFour } from "react-icons/pi";
+import { LiaUsersSolid } from "react-icons/lia";
+import { PiBuildingApartmentLight } from "react-icons/pi";
+import { TbUserSquareRounded } from "react-icons/tb";
+import { MdOutlineAdminPanelSettings } from "react-icons/md";
+
 
 interface NavItem {
   name: string
@@ -46,10 +53,10 @@ const navigation: NavSection[] = [
   {
     title: 'Masterfile',
     items: [
-      { name: 'Landlords', href: '/dashboard/landlords', icon: Users },
-      { name: 'Properties', href: '/dashboard/properties', icon: Building2 },
+      { name: 'Landlords', href: '/dashboard/landlords', icon: PiUsersFour },
+      { name: 'Properties', href: '/dashboard/properties', icon: PiBuildingApartmentLight },
       { name: 'Units', href: '/dashboard/units', icon: Home },
-      { name: 'Tenants', href: '/dashboard/tenants', icon: UserCheck },
+      { name: 'Tenants', href: '/dashboard/tenants', icon: LiaUsersSolid },
       { name: 'Leases', href: '/dashboard/leases', icon: FileText },
     ],
   },
@@ -82,8 +89,8 @@ const navigation: NavSection[] = [
   {
     title: 'Administration',
     items: [
-      { name: 'Team', href: '/dashboard/team', icon: UsersRound },
-      { name: 'Audit Trail', href: '/dashboard/audit-trail', icon: Shield },
+      { name: 'Team', href: '/dashboard/team', icon: TbUserSquareRounded },
+      { name: 'Audit Trail', href: '/dashboard/audit-trail', icon: SiFsecure },
     ],
   },
 ]
@@ -103,7 +110,7 @@ export default function Sidebar() {
         {
           title: 'Platform',
           items: [
-            { name: 'Super Admin', href: '/dashboard/super-admin', icon: Crown },
+            { name: 'Super Admin', href: '/dashboard/super-admin', icon: MdOutlineAdminPanelSettings },
           ],
         },
       ]

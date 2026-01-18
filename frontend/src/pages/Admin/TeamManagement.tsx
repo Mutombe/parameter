@@ -17,6 +17,10 @@ import { invitationsApi, usersApi } from '../../services/api'
 import { formatDistanceToNow } from '../../lib/utils'
 import { PageHeader, Button, Modal } from '../../components/ui'
 import toast from 'react-hot-toast'
+import { SiFsecure } from "react-icons/si";
+import { PiUsersFour } from "react-icons/pi";
+import { TbUserSquareRounded } from "react-icons/tb";
+
 
 const roleOptions = [
   { value: 'admin', label: 'Admin', description: 'Full access to all features' },
@@ -115,7 +119,7 @@ export default function TeamManagement() {
       <PageHeader
         title="Team Management"
         description="Manage users and send invitations"
-        icon={Users}
+        icon={TbUserSquareRounded}
         actions={
           <Button onClick={() => setInviteModalOpen(true)} className="gap-2">
             <UserPlus className="w-4 h-4" />
@@ -205,7 +209,7 @@ export default function TeamManagement() {
               </>
             ) : userList.length === 0 ? (
               <div className="p-12 text-center">
-                <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <TbUserSquareRounded className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                 <p className="text-gray-500 font-medium">No users found</p>
                 <p className="text-sm text-gray-400 mt-1">Invite team members to get started</p>
               </div>

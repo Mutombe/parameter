@@ -4,6 +4,8 @@ import { motion } from 'framer-motion'
 import { Eye, EyeOff, CheckCircle, XCircle, Loader2, UserPlus } from 'lucide-react'
 import { invitationsApi } from '../services/api'
 import toast from 'react-hot-toast'
+import { PiUsersFour } from "react-icons/pi";
+import { TbUserSquareRounded } from "react-icons/tb";
 
 interface InvitationData {
   email: string
