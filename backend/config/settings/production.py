@@ -121,3 +121,6 @@ CACHES = {
 
 # Email configuration for production
 EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
+
+# Site URL for invitation links (production default)
+SITE_URL = config('SITE_URL', default='https://parameter.co.zw')

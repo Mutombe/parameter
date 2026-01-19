@@ -584,8 +584,19 @@ class TenantInvitationViewSet(viewsets.ModelViewSet):
         """Send the tenant invitation email."""
         from django.core.mail import send_mail
         from django.conf import settings
+        import logging
+        logger = logging.getLogger(__name__)
 
-        site_url = getattr(settings, 'SITE_URL', 'http://localhost:5173')
+        # Get site URL - prefer production URL
+        site_url = getattr(settings, 'SITE_URL', 'https://parameter.co.zw')
+
+        # Warn if still using localhost in production
+        if 'localhost' in site_url:
+            logger.warning(f"SITE_URL is set to localhost ({site_url}). Set SITE_URL env var for production.")
+            # Use production URL as fallback
+            if not settings.DEBUG:
+                site_url = 'https://parameter.co.zw'
+
         invite_url = f"{site_url}/signup?token={invitation.token}"
 
         inviter_name = invitation.invited_by.get_full_name() if invitation.invited_by else 'Parameter Team'
@@ -622,6 +633,7 @@ The Parameter Team
                 recipient_list=[invitation.email],
                 fail_silently=False
             )
+            logger.info(f"Tenant invitation email sent to {invitation.email} with URL: {invite_url}")
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
