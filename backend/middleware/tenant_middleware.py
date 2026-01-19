@@ -1,8 +1,11 @@
-"""Custom tenant middleware for request context."""
+"""Custom tenant middleware for request context and subdomain routing."""
 import threading
+import logging
 from django.utils.deprecation import MiddlewareMixin
+from django.conf import settings
 
 _thread_locals = threading.local()
+logger = logging.getLogger(__name__)
 
 
 def get_current_tenant():
@@ -13,6 +16,56 @@ def get_current_tenant():
 def get_current_user():
     """Get the current user from thread local storage."""
     return getattr(_thread_locals, 'user', None)
+
+
+class SubdomainHeaderMiddleware(MiddlewareMixin):
+    """
+    Middleware to resolve tenant from X-Tenant-Subdomain header.
+
+    This is used when the frontend and backend are on different domains
+    (e.g., frontend on parameter.co.zw, API on parameter-api.onrender.com).
+
+    The frontend sends the subdomain in the X-Tenant-Subdomain header,
+    and this middleware sets the tenant on the request before
+    TenantMainMiddleware processes it.
+
+    MUST be placed BEFORE TenantMainMiddleware in MIDDLEWARE settings.
+    """
+
+    def process_request(self, request):
+        """Set tenant from X-Tenant-Subdomain header if present."""
+        from apps.tenants.models import Client, Domain
+        from django_tenants.utils import get_tenant_model, get_public_schema_name
+
+        # Check for the custom subdomain header
+        subdomain = request.META.get('HTTP_X_TENANT_SUBDOMAIN')
+
+        if subdomain:
+            subdomain = subdomain.lower().strip()
+            schema_name = subdomain.replace('-', '_').replace(' ', '_')
+
+            try:
+                # Try to find the tenant by schema name
+                TenantModel = get_tenant_model()
+                tenant = TenantModel.objects.get(schema_name=schema_name)
+
+                # Set the tenant on the request
+                request.tenant = tenant
+
+                # Build the expected domain for this tenant
+                domain_suffix = getattr(settings, 'TENANT_DOMAIN_SUFFIX', 'localhost')
+                expected_host = f"{subdomain}.{domain_suffix}"
+
+                # Override HTTP_HOST so django-tenants can process it correctly
+                request.META['HTTP_HOST'] = expected_host
+
+                logger.debug(f"Set tenant from header: {tenant.name} ({schema_name})")
+
+            except TenantModel.DoesNotExist:
+                # Subdomain not found - let django-tenants handle with public schema
+                logger.warning(f"Tenant not found for subdomain: {subdomain}")
+            except Exception as e:
+                logger.error(f"Error resolving tenant from header: {e}")
 
 
 class TenantContextMiddleware(MiddlewareMixin):

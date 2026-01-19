@@ -3,6 +3,25 @@ import axios from 'axios'
 // Use environment variable for API URL, fallback to relative path for same-domain setup
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
+// Extract subdomain from current hostname for multi-tenant routing
+const getSubdomain = (): string | null => {
+  const hostname = window.location.hostname
+  // Check for subdomains (e.g., acme.localhost or acme.parameter.co.zw)
+  const parts = hostname.split('.')
+
+  // Development: subdomain.localhost
+  if (hostname.endsWith('.localhost') && parts.length >= 2) {
+    return parts[0]
+  }
+
+  // Production: subdomain.parameter.co.zw (3+ parts means there's a subdomain)
+  if (parts.length >= 3 && !['www', 'api'].includes(parts[0])) {
+    return parts[0]
+  }
+
+  return null
+}
+
 const api = axios.create({
   baseURL: `${API_BASE_URL}/api`,
   withCredentials: true,
@@ -11,8 +30,9 @@ const api = axios.create({
   },
 })
 
-// Add CSRF token handling for Django
+// Add CSRF token and tenant subdomain handling
 api.interceptors.request.use((config) => {
+  // CSRF token for Django
   const csrfToken = document.cookie
     .split('; ')
     .find(row => row.startsWith('csrftoken='))
@@ -20,6 +40,13 @@ api.interceptors.request.use((config) => {
 
   if (csrfToken) {
     config.headers['X-CSRFToken'] = csrfToken
+  }
+
+  // Add tenant subdomain header for multi-tenant routing
+  // This is used when frontend and API are on different domains
+  const subdomain = getSubdomain()
+  if (subdomain) {
+    config.headers['X-Tenant-Subdomain'] = subdomain
   }
 
   return config

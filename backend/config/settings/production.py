@@ -6,12 +6,17 @@ from .base import *
 # Security settings for production
 DEBUG = False
 
-# Allow Render's domain and your custom domains
+# Allow Render's domain and your custom domains (including wildcard subdomains)
 ALLOWED_HOSTS = config(
     'ALLOWED_HOSTS',
     default='.onrender.com,.parameter.co.zw,parameter.co.zw',
     cast=Csv()
 )
+
+# Production Tenant Domain Configuration
+TENANT_DOMAIN_SUFFIX = config('TENANT_DOMAIN_SUFFIX', default='parameter.co.zw')
+TENANT_FRONTEND_PORT = ''  # No port in production (standard HTTPS port 443)
+TENANT_PROTOCOL = 'https'
 
 # Force HTTPS in production
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
@@ -24,6 +29,12 @@ SECURE_HSTS_PRELOAD = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 
 # CORS settings for production
+# Use regex to allow all subdomains of parameter.co.zw
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://[\w-]+\.parameter\.co\.zw$",  # Allow all subdomains
+    r"^https://parameter\.co\.zw$",  # Main domain
+    r"^https://www\.parameter\.co\.zw$",  # www subdomain
+]
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
     default='https://parameter.co.zw,https://www.parameter.co.zw',
@@ -48,12 +59,13 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+    'x-tenant-subdomain',  # Custom header for multi-tenant subdomain routing
 ]
 
-# CSRF trusted origins for production
+# CSRF trusted origins for production (supports wildcard subdomains)
 CSRF_TRUSTED_ORIGINS = config(
     'CSRF_TRUSTED_ORIGINS',
-    default='https://parameter.co.zw,https://www.parameter.co.zw',
+    default='https://*.parameter.co.zw,https://parameter.co.zw,https://www.parameter.co.zw',
     cast=Csv()
 )
 

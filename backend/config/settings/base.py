@@ -58,8 +58,21 @@ TENANT_DOMAIN_MODEL = "tenants.Domain"
 PUBLIC_SCHEMA_NAME = 'public'
 SHOW_PUBLIC_IF_NO_TENANT_FOUND = True  # Serve public schema for unknown domains
 
+# Tenant Domain Configuration
+# Development: localhost, Production: parameter.co.zw
+TENANT_DOMAIN_SUFFIX = config('TENANT_DOMAIN_SUFFIX', default='localhost')
+TENANT_FRONTEND_PORT = config('TENANT_FRONTEND_PORT', default='5173')
+TENANT_PROTOCOL = config('TENANT_PROTOCOL', default='http')
+
+def get_tenant_url(subdomain):
+    """Build full tenant URL based on environment configuration."""
+    if TENANT_FRONTEND_PORT and TENANT_DOMAIN_SUFFIX == 'localhost':
+        return f"{TENANT_PROTOCOL}://{subdomain}.{TENANT_DOMAIN_SUFFIX}:{TENANT_FRONTEND_PORT}"
+    return f"{TENANT_PROTOCOL}://{subdomain}.{TENANT_DOMAIN_SUFFIX}"
+
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',  # CORS must be first to handle preflight
+    'middleware.tenant_middleware.SubdomainHeaderMiddleware',  # Handle X-Tenant-Subdomain header
     'django_tenants.middleware.main.TenantMainMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -163,6 +176,18 @@ CORS_ALLOWED_ORIGINS = config(
     cast=Csv()
 )
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'x-tenant-subdomain',  # Custom header for multi-tenant subdomain routing
+]
 
 # CSRF Settings
 CSRF_COOKIE_HTTPONLY = False  # Allow JavaScript to read CSRF token

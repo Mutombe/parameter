@@ -82,6 +82,9 @@ class OnboardingService:
             if setup_options.get('send_welcome_email', True):
                 self._send_welcome_email(client, admin_user, is_demo=is_demo)
 
+            # Build tenant URL using settings
+            login_url = self._build_tenant_url(company_data['subdomain'])
+
             result = {
                 'success': True,
                 'tenant': {
@@ -96,7 +99,7 @@ class OnboardingService:
                     'email': admin_user.email,
                     'name': admin_user.get_full_name()
                 },
-                'login_url': f"http://{company_data['subdomain']}.localhost:5177"
+                'login_url': login_url
             }
 
             if is_demo:
@@ -150,9 +153,10 @@ class OnboardingService:
             ai_ocr_enabled=True
         )
 
-        # Create domain
+        # Create domain with configurable suffix
+        domain_suffix = getattr(settings, 'TENANT_DOMAIN_SUFFIX', 'localhost')
         Domain.objects.create(
-            domain=f'{subdomain}.localhost',
+            domain=f'{subdomain}.{domain_suffix}',
             tenant=client,
             is_primary=True
         )
@@ -281,6 +285,7 @@ To continue using Parameter after the demo, please contact our sales team.
                 subject = f'Welcome to Parameter.co.zw - {client.name}'
                 demo_message = ""
 
+            login_url = self._build_tenant_url(client.schema_name)
             message = f"""
 Hello {admin_user.get_full_name()},
 
@@ -289,7 +294,7 @@ Welcome to Parameter.co.zw - Your Real Estate Accounting Platform!
 Your company "{client.name}" has been successfully registered.
 {demo_message}
 Login Details:
-- URL: http://{client.schema_name}.localhost:5177
+- URL: {login_url}
 - Email: {admin_user.email}
 
 Getting Started:
@@ -369,3 +374,16 @@ The Parameter Team
             'available': is_available,
             'error': None if is_available else 'This subdomain is already taken'
         }
+
+    def _build_tenant_url(self, subdomain: str) -> str:
+        """Build the full tenant URL based on environment settings."""
+        domain_suffix = getattr(settings, 'TENANT_DOMAIN_SUFFIX', 'localhost')
+        protocol = getattr(settings, 'TENANT_PROTOCOL', 'http')
+        frontend_port = getattr(settings, 'TENANT_FRONTEND_PORT', '5173')
+
+        # In production (no port needed)
+        if not frontend_port or domain_suffix != 'localhost':
+            return f"{protocol}://{subdomain}.{domain_suffix}"
+
+        # In development (with port)
+        return f"{protocol}://{subdomain}.{domain_suffix}:{frontend_port}"
