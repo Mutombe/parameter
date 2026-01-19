@@ -390,8 +390,14 @@ class CompanyOnboardingView(APIView):
         }
 
         try:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Starting onboarding for: {data['company_name']} ({data['subdomain']})")
+
             service = OnboardingService()
             result = service.register_company(company_data, admin_data, setup_options)
+
+            logger.info(f"Onboarding successful for: {data['company_name']}")
             return Response(result, status=status.HTTP_201_CREATED)
 
         except ValueError as e:
@@ -401,9 +407,15 @@ class CompanyOnboardingView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
+            import traceback
+            import logging
+            logger = logging.getLogger(__name__)
+            error_trace = traceback.format_exc()
+            logger.error(f"Onboarding failed: {str(e)}\n{error_trace}")
             return Response({
                 'success': False,
-                'error': 'Registration failed. Please try again.'
+                'error': str(e),
+                'details': error_trace
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -1000,5 +1012,6 @@ class DemoSignupView(APIView):
             logger.error(f"Demo signup failed: {str(e)}\n{error_trace}")
             return Response({
                 'success': False,
-                'error': f'Demo registration failed: {str(e)}'
+                'error': str(e),
+                'details': error_trace
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
