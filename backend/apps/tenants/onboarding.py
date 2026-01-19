@@ -368,14 +368,28 @@ The Parameter Team
                 'error': 'This subdomain is reserved'
             }
 
-        # Check database
-        is_available = not Client.objects.filter(schema_name=schema_name).exists()
+        # Check database - use public schema context for multi-tenant safety
+        try:
+            from django.db import connection
+            # Ensure we're querying from public schema
+            with connection.cursor() as cursor:
+                cursor.execute("SET search_path TO public")
 
-        return {
-            'valid': True,
-            'available': is_available,
-            'error': None if is_available else 'This subdomain is already taken'
-        }
+            is_available = not Client.objects.filter(schema_name=schema_name).exists()
+
+            return {
+                'valid': True,
+                'available': is_available,
+                'error': None if is_available else 'This subdomain is already taken'
+            }
+        except Exception as e:
+            logger.error(f"Database error checking subdomain availability: {e}")
+            # If we can't check, assume it's available (will fail at creation if not)
+            return {
+                'valid': True,
+                'available': True,
+                'error': None
+            }
 
     def _build_tenant_url(self, subdomain: str) -> str:
         """Build the full tenant URL based on environment settings."""
