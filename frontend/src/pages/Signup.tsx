@@ -247,14 +247,14 @@ export default function Signup() {
       >
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-white rounded-xl shadow-sm border border-gray-200">
+          <a href="/" className="inline-flex items-center gap-2 px-4 py-2 bg-white rounded-xl shadow-sm border border-gray-200">
             <img
               src="/logo.png"
               alt="Parameter"
               className="w-8 h-8 rounded-lg object-contain"
             />
             <span className="font-bold text-xl text-gray-900">Parameter</span>
-          </div>
+          </a>
           <h1 className="mt-6 text-2xl font-bold text-gray-900">
             {mode === 'invited' ? 'Complete Your Registration' : 'Start Your Free Demo'}
           </h1>
@@ -329,7 +329,7 @@ export default function Signup() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="p-8"
+                className="p-5 sm:p-8"
               >
                 <h2 className="text-lg font-semibold text-gray-900 mb-6">Company Setup</h2>
 
@@ -380,21 +380,21 @@ export default function Signup() {
                   )}
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Subdomain * <span className="text-gray-400 font-normal">(your unique URL)</span>
-                    </label>
-                    <div className="flex">
-                      <input
-                        type="text"
-                        value={formData.subdomain}
-                        onChange={(e) => updateForm('subdomain', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                        className="flex-1 px-4 py-3 border border-gray-200 rounded-l-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                        placeholder="acme"
-                      />
-                      <span className="px-4 py-3 bg-gray-50 border border-l-0 border-gray-200 rounded-r-xl text-gray-500 text-sm">
-                        .parameter.co.zw
-                      </span>
-                    </div>
+ <label className="block text-sm font-medium text-gray-700 mb-1">
+    Subdomain * <span className="text-gray-400 font-normal">(your unique URL)</span>
+  </label>
+  <div className="flex flex-col sm:flex-row">
+    <input
+      type="text"
+      value={formData.subdomain}
+      onChange={(e) => updateForm('subdomain', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+      className="w-full px-4 py-3 border border-gray-200 rounded-xl sm:rounded-l-xl sm:rounded-r-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+      placeholder="acme"
+    />
+    <span className="px-4 py-2 sm:py-3 bg-gray-50 border border-t-0 sm:border-t sm:border-l-0 border-gray-200 rounded-b-xl sm:rounded-b-none sm:rounded-r-xl text-gray-500 text-sm flex items-center justify-center sm:justify-start">
+      .parameter.co.zw
+    </span>
+  </div>
                     {subdomainStatus === 'checking' && (
                       <p className="mt-1 text-sm text-gray-500 flex items-center gap-1">
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -415,7 +415,7 @@ export default function Signup() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Phone
@@ -453,12 +453,12 @@ export default function Signup() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="p-8"
+                className="p-5 sm:p-8"
               >
                 <h2 className="text-lg font-semibold text-gray-900 mb-6">Create Admin Account</h2>
 
                 <div className="space-y-5">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         First Name *
@@ -545,7 +545,7 @@ export default function Signup() {
           </AnimatePresence>
 
           {/* Footer */}
-          <div className="px-8 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+          <div className="px-4 sm:px-8 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
             <button
               onClick={handleBack}
               disabled={currentStep === 1}

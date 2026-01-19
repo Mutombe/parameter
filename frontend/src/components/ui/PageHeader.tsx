@@ -55,32 +55,32 @@ export function PageHeader({
         </nav>
       )}
 
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="flex items-start gap-3 sm:gap-4">
           {backLink && (
             <button
               onClick={() => navigate(backLink)}
-              className="mt-1 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              className="mt-0.5 sm:mt-1 p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 transition-colors"
             >
-              <ArrowLeft className="w-5 h-5 text-gray-500" />
+              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500" />
             </button>
           )}
 
           {Icon && (
-            <div className="p-3 bg-primary-50 rounded-xl">
-              <Icon className="w-6 h-6 text-primary-600" />
+            <div className="p-2 sm:p-3 bg-primary-50 rounded-xl">
+              <Icon className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600" />
             </div>
           )}
 
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{title}</h1>
             {displayDescription && (
-              <p className="text-gray-500 mt-1">{displayDescription}</p>
+              <p className="text-sm sm:text-base text-gray-500 mt-0.5 sm:mt-1">{displayDescription}</p>
             )}
           </div>
         </div>
 
-        {actions && <div className="flex items-center gap-3">{actions}</div>}
+        {actions && <div className="flex items-center gap-2 sm:gap-3 flex-wrap">{actions}</div>}
       </div>
     </motion.div>
   )

@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Search, User, LogOut, Settings, ChevronDown, Sparkles, HelpCircle, BookOpen, FileText, Loader2 } from 'lucide-react'
+import { Bell, Search, LogOut, Settings, ChevronDown, Sparkles, HelpCircle, BookOpen, FileText, Loader2, Menu } from 'lucide-react'
 import { useAuthStore } from '../../stores/authStore'
 import { useUIStore } from '../../stores/uiStore'
 import { authApi } from '../../services/api'
 import { getMediaUrl, cn } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import NotificationsPanel, { useUnreadNotifications } from '../Notifications/NotificationsPanel'
-import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
 import { RiClaudeFill } from "react-icons/ri";
 
@@ -17,11 +16,19 @@ export default function Header() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuthStore()
-  const { toggleAskMe } = useUIStore()
+  const { toggleAskMe, toggleMobileSidebar, isMobile } = useUIStore()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
+  const [avatarLoaded, setAvatarLoaded] = useState(false)
+  const [avatarError, setAvatarError] = useState(false)
+
+  // Reset avatar loading state when user changes
+  useEffect(() => {
+    setAvatarLoaded(false)
+    setAvatarError(false)
+  }, [user?.avatar])
 
   // Keyboard shortcut for search (Cmd/Ctrl + K) - navigates to search page
   useEffect(() => {
@@ -55,36 +62,96 @@ export default function Header() {
     }
   }
 
+  // Avatar component with loading state
+  const AvatarDisplay = ({ size = 'sm' }: { size?: 'sm' | 'lg' }) => {
+    const sizeClasses = size === 'sm' ? 'w-9 h-9' : 'w-12 h-12'
+    const textSize = size === 'sm' ? 'text-sm' : 'text-base font-semibold'
+    const avatarUrl = user?.avatar ? getMediaUrl(user.avatar) : null
+
+    // Show initials if no avatar or avatar failed to load
+    if (!avatarUrl || avatarError) {
+      return (
+        <div className={cn(
+          sizeClasses,
+          "rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white transition-opacity",
+          textSize,
+          signingOut && "opacity-50"
+        )}>
+          {user?.first_name?.[0]}{user?.last_name?.[0]}
+        </div>
+      )
+    }
+
+    return (
+      <div className={cn("relative", sizeClasses)}>
+        {/* Skeleton while loading */}
+        {!avatarLoaded && (
+          <div className={cn(sizeClasses, "absolute inset-0 rounded-xl bg-gray-200 animate-pulse")} />
+        )}
+        <img
+          src={avatarUrl}
+          alt={user?.first_name || 'User'}
+          onLoad={() => setAvatarLoaded(true)}
+          onError={() => setAvatarError(true)}
+          className={cn(
+            sizeClasses,
+            "rounded-xl object-cover transition-opacity",
+            !avatarLoaded && "opacity-0",
+            avatarLoaded && "opacity-100",
+            signingOut && "opacity-50"
+          )}
+        />
+      </div>
+    )
+  }
+
   return (
-    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6">
-      {/* Search - navigates to dedicated search page */}
-      <div className="flex-1 max-w-xl">
+    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 md:px-6">
+      {/* Left side - Hamburger + Search */}
+      <div className="flex items-center gap-3 flex-1">
+        {/* Mobile hamburger menu */}
         <button
-          onClick={() => navigate('/dashboard/search')}
-          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl hover:bg-white hover:border-gray-300 transition-all text-left group"
+          onClick={toggleMobileSidebar}
+          className="lg:hidden p-2 -ml-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+          aria-label="Open menu"
         >
-          <Search className="w-4 h-4 text-gray-400 group-hover:text-primary-500 transition-colors" />
-          <span className="text-gray-400 flex-1 group-hover:text-gray-600 transition-colors">Search properties, tenants, invoices...</span>
-          <div className="hidden sm:flex items-center gap-1 text-xs text-gray-400">
-            <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-500">⌘</kbd>
-            <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-500">K</kbd>
-          </div>
+          <Menu className="w-6 h-6" />
         </button>
+
+        {/* Search - navigates to dedicated search page */}
+        <div className="flex-1 max-w-xl">
+          <button
+            onClick={() => navigate('/dashboard/search')}
+            className="w-full flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl hover:bg-white hover:border-gray-300 transition-all text-left group"
+          >
+            <Search className="w-4 h-4 text-gray-400 group-hover:text-primary-500 transition-colors flex-shrink-0" />
+            <span className="text-gray-400 flex-1 group-hover:text-gray-600 transition-colors truncate hidden sm:block">
+              Search properties, tenants, invoices...
+            </span>
+            <span className="text-gray-400 flex-1 group-hover:text-gray-600 transition-colors truncate sm:hidden">
+              Search...
+            </span>
+            <div className="hidden md:flex items-center gap-1 text-xs text-gray-400">
+              <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-500">⌘</kbd>
+              <kbd className="px-1.5 py-0.5 bg-gray-100 rounded text-gray-500">K</kbd>
+            </div>
+          </button>
+        </div>
       </div>
 
       {/* Right side */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 md:gap-2">
         {/* AI Assistant Button */}
         <button
           onClick={toggleAskMe}
-          className="flex items-center gap-2 px-3 py-2 text-sm text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors"
+          className="flex items-center gap-2 px-2 md:px-3 py-2 text-sm text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors"
         >
           <RiClaudeFill className="w-4 h-4" />
-          <span className="hidden sm:inline font-medium">AI Assistant</span>
+          <span className="hidden md:inline font-medium">AI Assistant</span>
         </button>
 
-        {/* Help */}
-        <div className="relative">
+        {/* Help - hidden on mobile */}
+        <div className="relative hidden md:block">
           <button
             onClick={() => setHelpOpen(!helpOpen)}
             className="p-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
@@ -165,11 +232,11 @@ export default function Header() {
         <div className="relative">
           <button
             onClick={() => setNotificationsOpen(!notificationsOpen)}
-            className="relative p-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+            className="relative p-2 md:p-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
           >
             <Bell className="w-5 h-5" />
             {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white text-xs font-medium rounded-full flex items-center justify-center">
+              <span className="absolute top-0.5 right-0.5 md:top-1 md:right-1 w-4 h-4 md:w-5 md:h-5 bg-red-500 text-white text-[10px] md:text-xs font-medium rounded-full flex items-center justify-center">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
@@ -181,37 +248,21 @@ export default function Header() {
           />
         </div>
 
-        {/* Divider */}
-        <div className="h-8 w-px bg-gray-200 mx-2" />
+        {/* Divider - hidden on small mobile */}
+        <div className="hidden sm:block h-8 w-px bg-gray-200 mx-1 md:mx-2" />
 
         {/* User Dropdown */}
         <div className="relative">
           <button
             onClick={() => !signingOut && setDropdownOpen(!dropdownOpen)}
             className={cn(
-              "flex items-center gap-3 p-1.5 rounded-xl transition-colors",
+              "flex items-center gap-2 md:gap-3 p-1 md:p-1.5 rounded-xl transition-colors",
               signingOut ? "cursor-wait" : "hover:bg-gray-100"
             )}
             disabled={signingOut}
           >
             <div className="relative">
-              {user?.avatar ? (
-                <img
-                  src={getMediaUrl(user.avatar) || ''}
-                  alt={user.first_name}
-                  className={cn(
-                    "w-9 h-9 rounded-xl object-cover transition-opacity",
-                    signingOut && "opacity-50"
-                  )}
-                />
-              ) : (
-                <div className={cn(
-                  "w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white font-medium text-sm transition-opacity",
-                  signingOut && "opacity-50"
-                )}>
-                  {user?.first_name?.[0]}{user?.last_name?.[0]}
-                </div>
-              )}
+              <AvatarDisplay size="sm" />
               {signingOut && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <svg className="w-11 h-11 animate-spin" viewBox="0 0 44 44">
@@ -241,7 +292,7 @@ export default function Header() {
                 </div>
               )}
             </div>
-            <div className="text-left hidden md:block">
+            <div className="text-left hidden lg:block">
               <p className={cn(
                 "text-sm font-medium transition-colors",
                 signingOut ? "text-gray-400" : "text-gray-900"
@@ -251,7 +302,7 @@ export default function Header() {
               <p className="text-xs text-gray-500 capitalize">{user?.role?.replace('_', ' ')}</p>
             </div>
             <ChevronDown className={cn(
-              "w-4 h-4 hidden md:block transition-colors",
+              "w-4 h-4 hidden lg:block transition-colors",
               signingOut ? "text-gray-300" : "text-gray-400"
             )} />
           </button>
@@ -272,20 +323,10 @@ export default function Header() {
                 >
                   <div className="p-4 border-b border-gray-100">
                     <div className="flex items-center gap-3">
-                      {user?.avatar ? (
-                        <img
-                          src={getMediaUrl(user.avatar) || ''}
-                          alt={user.first_name}
-                          className="w-12 h-12 rounded-xl object-cover"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white font-semibold">
-                          {user?.first_name?.[0]}{user?.last_name?.[0]}
-                        </div>
-                      )}
-                      <div>
-                        <p className="font-medium text-gray-900">{user?.first_name} {user?.last_name}</p>
-                        <p className="text-sm text-gray-500">{user?.email}</p>
+                      <AvatarDisplay size="lg" />
+                      <div className="min-w-0">
+                        <p className="font-medium text-gray-900 truncate">{user?.first_name} {user?.last_name}</p>
+                        <p className="text-sm text-gray-500 truncate">{user?.email}</p>
                       </div>
                     </div>
                   </div>

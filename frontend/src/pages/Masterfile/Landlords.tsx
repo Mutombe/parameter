@@ -368,8 +368,8 @@ export default function Landlords() {
                     <span className="text-sm font-semibold text-primary-600">{landlord.commission_rate}%</span>
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* Actions - always visible on mobile, hover on desktop */}
+                  <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => handleViewDetails(landlord)}
                       className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"

@@ -78,12 +78,12 @@ function StatCard({ title, value, subtitle, trend, icon: Icon, color, isLoading 
   return (
     <motion.div
       variants={item}
-      className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-gray-300 transition-all duration-300"
+      className="bg-white rounded-xl border border-gray-200 p-4 md:p-6 hover:shadow-lg hover:border-gray-300 transition-all duration-300"
     >
       <div className="flex items-start justify-between">
-        <div className={cn('p-3 rounded-xl', colors.bg)}>
-          <div className={cn('p-2 rounded-lg', colors.icon)}>
-            <Icon className="w-5 h-5 text-white" />
+        <div className={cn('p-2 md:p-3 rounded-xl', colors.bg)}>
+          <div className={cn('p-1.5 md:p-2 rounded-lg', colors.icon)}>
+            <Icon className="w-4 h-4 md:w-5 md:h-5 text-white" />
           </div>
         </div>
         {trend && (
@@ -100,15 +100,15 @@ function StatCard({ title, value, subtitle, trend, icon: Icon, color, isLoading 
           </div>
         )}
       </div>
-      <div className="mt-4">
+      <div className="mt-3 md:mt-4">
         {isLoading ? (
-          <div className="h-9 w-24 bg-gray-200 rounded animate-pulse" />
+          <div className="h-8 md:h-9 w-20 md:w-24 bg-gray-200 rounded animate-pulse" />
         ) : (
-          <h3 className="text-3xl font-bold text-gray-900 tabular-nums">{value}</h3>
+          <h3 className="text-2xl md:text-3xl font-bold text-gray-900 tabular-nums">{value}</h3>
         )}
-        <p className="text-sm text-gray-500 mt-1">{title}</p>
+        <p className="text-xs md:text-sm text-gray-500 mt-1">{title}</p>
         {isLoading ? (
-          <div className="h-4 w-20 bg-gray-200 rounded animate-pulse mt-1" />
+          <div className="h-3 md:h-4 w-16 md:w-20 bg-gray-200 rounded animate-pulse mt-1" />
         ) : subtitle ? (
           <p className="text-xs text-gray-400 mt-1">{subtitle}</p>
         ) : null}
@@ -189,18 +189,18 @@ export default function Dashboard() {
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-start justify-between"
+        className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2"
       >
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 mt-1">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-sm md:text-base text-gray-500 mt-1">
             Welcome back! Here's your property overview for{' '}
             <span className="font-medium text-gray-700">
               {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
             </span>
           </p>
         </div>
-        <div className="flex items-center gap-2 text-sm text-gray-500">
+        <div className="hidden sm:flex items-center gap-2 text-sm text-gray-500">
           <Clock className="w-4 h-4" />
           Last updated: {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
         </div>
@@ -225,25 +225,25 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2"
+          className="bg-white rounded-xl border border-gray-200 p-4 md:p-6 lg:col-span-2"
         >
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4 md:mb-6">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Revenue Overview</h3>
-              <p className="text-sm text-gray-500">Invoiced vs Collected amounts</p>
+              <h3 className="text-base md:text-lg font-semibold text-gray-900">Revenue Overview</h3>
+              <p className="text-xs md:text-sm text-gray-500">Invoiced vs Collected amounts</p>
             </div>
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-blue-500" />
+            <div className="flex items-center gap-3 md:gap-4 text-xs md:text-sm">
+              <div className="flex items-center gap-1.5 md:gap-2">
+                <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-blue-500" />
                 <span className="text-gray-600">Invoiced</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-emerald-500" />
+              <div className="flex items-center gap-1.5 md:gap-2">
+                <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-emerald-500" />
                 <span className="text-gray-600">Collected</span>
               </div>
             </div>
           </div>
-          <div className="h-72">
+          <div className="h-56 md:h-72">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={revenueData}>
                 <defs>

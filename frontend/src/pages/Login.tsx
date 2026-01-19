@@ -141,7 +141,7 @@ export default function Login() {
       </div>
 
       {/* Right Panel - Login Form */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-gray-50">
+      <div className="flex-1 flex items-center justify-center p-4 sm:p-8 bg-gray-50">
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}

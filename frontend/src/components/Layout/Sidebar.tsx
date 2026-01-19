@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard,
@@ -19,6 +19,7 @@ import {
   ScanLine,
   Crown,
   Search,
+  X,
 } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useAuthStore } from '../../stores/authStore'
@@ -40,6 +41,11 @@ interface NavItem {
 interface NavSection {
   title: string
   items: NavItem[]
+}
+
+interface SidebarProps {
+  isMobileDrawer?: boolean
+  onClose?: () => void
 }
 
 const navigation: NavSection[] = [
@@ -95,10 +101,11 @@ const navigation: NavSection[] = [
   },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProps) {
   const { sidebarOpen, toggleSidebar } = useUIStore()
   const { user } = useAuthStore()
   const location = useLocation()
+  const navigate = useNavigate()
 
   // Add Super Admin section for super_admin users
   const isSuperAdmin = user?.role === 'super_admin'
@@ -116,12 +123,26 @@ export default function Sidebar() {
       ]
     : navigation
 
+  // On mobile drawer, always show expanded state
+  const isExpanded = isMobileDrawer ? true : sidebarOpen
+
+  // Handle navigation - close mobile sidebar after navigation
+  const handleNavClick = (href: string) => {
+    if (isMobileDrawer && onClose) {
+      navigate(href)
+      onClose()
+    }
+  }
+
   return (
     <motion.aside
       initial={false}
-      animate={{ width: sidebarOpen ? 280 : 80 }}
+      animate={{ width: isExpanded ? 280 : 80 }}
       transition={{ duration: 0.3, ease: 'easeInOut' }}
-      className="fixed left-0 top-0 h-screen bg-white border-r border-gray-200 z-40 flex flex-col"
+      className={cn(
+        "h-screen bg-white border-r border-gray-200 flex flex-col",
+        isMobileDrawer ? "w-[280px]" : "fixed left-0 top-0 z-40"
+      )}
     >
       {/* Logo Section */}
       <div className="h-16 flex items-center justify-between px-4 border-b border-gray-100">
@@ -132,7 +153,7 @@ export default function Sidebar() {
             className="w-10 h-10 rounded-xl flex-shrink-0 object-contain"
           />
           <AnimatePresence>
-            {sidebarOpen && (
+            {isExpanded && (
               <motion.div
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -149,6 +170,16 @@ export default function Sidebar() {
             )}
           </AnimatePresence>
         </div>
+
+        {/* Close button for mobile drawer */}
+        {isMobileDrawer && onClose && (
+          <button
+            onClick={onClose}
+            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* Navigation */}
@@ -156,7 +187,7 @@ export default function Sidebar() {
         {fullNavigation.map((section) => (
           <div key={section.title}>
             <AnimatePresence>
-              {sidebarOpen && (
+              {isExpanded && (
                 <motion.h3
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -168,7 +199,7 @@ export default function Sidebar() {
               )}
             </AnimatePresence>
 
-            {!sidebarOpen && section.title !== 'Overview' && (
+            {!isExpanded && section.title !== 'Overview' && (
               <div className="border-t border-gray-100 mx-3 mb-2" />
             )}
 
@@ -177,7 +208,39 @@ export default function Sidebar() {
                 const isActive = location.pathname === item.href ||
                   (item.href !== '/dashboard' && location.pathname.startsWith(item.href))
 
-                return (
+                return isMobileDrawer ? (
+                  // Mobile: use button for navigation to handle close
+                  <button
+                    key={item.href}
+                    onClick={() => handleNavClick(item.href)}
+                    className={cn(
+                      'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative',
+                      isActive
+                        ? 'bg-primary-50 text-primary-700'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    )}
+                  >
+                    {isActive && (
+                      <motion.div
+                        layoutId="mobileActiveIndicator"
+                        className="absolute -left-3 top-0 bottom-0 my-auto w-1 h-6 bg-primary-600 rounded-r-full"
+                        transition={{ type: 'spring', duration: 0.3 }}
+                      />
+                    )}
+
+                    <item.icon
+                      className={cn(
+                        'w-5 h-5 flex-shrink-0 transition-colors',
+                        isActive ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-600'
+                      )}
+                    />
+
+                    <span className="text-sm font-medium whitespace-nowrap">
+                      {item.name}
+                    </span>
+                  </button>
+                ) : (
+                  // Desktop: use NavLink
                   <NavLink
                     key={item.href}
                     to={item.href}
@@ -204,7 +267,7 @@ export default function Sidebar() {
                     />
 
                     <AnimatePresence>
-                      {sidebarOpen && (
+                      {isExpanded && (
                         <motion.span
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
@@ -223,22 +286,24 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Collapse Toggle */}
-      <div className="border-t border-gray-100 p-3">
-        <button
-          onClick={toggleSidebar}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
-        >
-          {sidebarOpen ? (
-            <>
-              <ChevronLeft className="w-5 h-5" />
-              <span>Collapse</span>
-            </>
-          ) : (
-            <ChevronRight className="w-5 h-5" />
-          )}
-        </button>
-      </div>
+      {/* Collapse Toggle - only show on desktop */}
+      {!isMobileDrawer && (
+        <div className="border-t border-gray-100 p-3">
+          <button
+            onClick={toggleSidebar}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+          >
+            {isExpanded ? (
+              <>
+                <ChevronLeft className="w-5 h-5" />
+                <span>Collapse</span>
+              </>
+            ) : (
+              <ChevronRight className="w-5 h-5" />
+            )}
+          </button>
+        </div>
+      )}
     </motion.aside>
   )
 }

@@ -216,15 +216,15 @@ export default function Properties() {
       />
 
       {/* Stats Row - Compact */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-primary-50 flex items-center justify-center">
-              <PiBuildingApartmentLight className="w-5 h-5 text-primary-600" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-3">
+        <div className="bg-white rounded-xl border border-gray-200 p-3 sm:p-4">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-primary-50 flex items-center justify-center">
+              <PiBuildingApartmentLight className="w-4 h-4 sm:w-5 sm:h-5 text-primary-600" />
             </div>
             <div>
-              <p className="text-xs text-gray-500">Total</p>
-              <p className="text-xl font-bold text-gray-900">{isLoading ? '-' : stats.total}</p>
+              <p className="text-[10px] sm:text-xs text-gray-500">Total</p>
+              <p className="text-lg sm:text-xl font-bold text-gray-900">{isLoading ? '-' : stats.total}</p>
             </div>
           </div>
         </div>
@@ -237,41 +237,41 @@ export default function Properties() {
               key={type}
               onClick={() => setTypeFilter(typeFilter === type ? '' : type)}
               className={cn(
-                'bg-white rounded-xl border p-4 text-left transition-all',
+                'bg-white rounded-xl border p-3 sm:p-4 text-left transition-all',
                 typeFilter === type
                   ? 'border-primary-300 ring-1 ring-primary-300'
                   : 'border-gray-200 hover:border-gray-300'
               )}
             >
-              <div className="flex items-center gap-3">
-                <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center', config.bgColor)}>
-                  <TypeIcon className={cn('w-5 h-5', config.color)} />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className={cn('w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center', config.bgColor)}>
+                  <TypeIcon className={cn('w-4 h-4 sm:w-5 sm:h-5', config.color)} />
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">{config.label}</p>
-                  <p className={cn('text-xl font-bold', config.color)}>{isLoading ? '-' : count}</p>
+                  <p className="text-[10px] sm:text-xs text-gray-500">{config.label}</p>
+                  <p className={cn('text-lg sm:text-xl font-bold', config.color)}>{isLoading ? '-' : count}</p>
                 </div>
               </div>
             </button>
           )
         })}
 
-        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-4 text-white">
-          <div className="flex items-center gap-3">
-            <DoorOpen className="w-6 h-6 text-white/80" />
+        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-3 sm:p-4 text-white">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <DoorOpen className="w-5 h-5 sm:w-6 sm:h-6 text-white/80" />
             <div>
-              <p className="text-emerald-100 text-xs">Units</p>
-              <p className="text-xl font-bold">{isLoading ? '-' : totalUnits}</p>
+              <p className="text-emerald-100 text-[10px] sm:text-xs">Units</p>
+              <p className="text-lg sm:text-xl font-bold">{isLoading ? '-' : totalUnits}</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl p-4 text-white">
-          <div className="flex items-center gap-3">
-            <TrendingDown className="w-6 h-6 text-white/80" />
+        <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl p-3 sm:p-4 text-white">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <TrendingDown className="w-5 h-5 sm:w-6 sm:h-6 text-white/80" />
             <div>
-              <p className="text-rose-100 text-xs">Vacancy</p>
-              <p className="text-xl font-bold">{isLoading ? '-' : formatPercent(avgVacancy)}</p>
+              <p className="text-rose-100 text-[10px] sm:text-xs">Vacancy</p>
+              <p className="text-lg sm:text-xl font-bold">{isLoading ? '-' : formatPercent(avgVacancy)}</p>
             </div>
           </div>
         </div>
@@ -423,8 +423,8 @@ export default function Properties() {
                     </div>
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* Actions - always visible on mobile, hover on desktop */}
+                  <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => handleViewDetails(property)}
                       className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"

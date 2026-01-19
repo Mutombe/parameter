@@ -12,6 +12,7 @@ import { SiFsecure } from "react-icons/si";
 import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
 import { PiBuildingApartmentLight } from "react-icons/pi";
+import { AiOutlineDollar } from "react-icons/ai";
 
 const sections = [
   {
@@ -180,7 +181,7 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
         <div className="grid md:grid-cols-2 gap-4">
           <div className="bg-gray-50 rounded-xl p-5">
             <div className="flex items-center gap-2 mb-2">
-              <DollarSign className="w-5 h-5 text-emerald-600" />
+              <AiOutlineDollar className="w-5 h-5 text-emerald-600" />
               <h4 className="font-semibold text-gray-900">Revenue Overview</h4>
             </div>
             <p className="text-sm text-gray-600">
@@ -228,7 +229,7 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
   navigation: {
     title: 'Navigation Guide',
     content: (
-      <div className="space-y-6">
+      <div className="space-y-6 pt-4">
         <p className="text-gray-600 leading-relaxed">
           Parameter uses a sidebar navigation system for easy access to all features:
         </p>
@@ -935,8 +936,8 @@ export default function Learn() {
         <div className="flex gap-8">
           {/* Sidebar */}
           <aside className={`
-            ${mobileMenuOpen ? 'fixed inset-0 z-30 bg-white p-6 overflow-auto' : 'hidden'}
-            md:block md:relative md:w-64 md:flex-shrink-0
+            ${mobileMenuOpen ? 'fixed inset-0 z-30 bg-white px-6 pt-28 pb-6 overflow-auto' : 'hidden'}
+            md:block md:relative md:w-64 md:flex-shrink-0 md:pt-0
           `}>
             {mobileMenuOpen && (
               <button

@@ -359,35 +359,35 @@ export default function Invoices() {
         subtitle="Manage rent and utility invoices"
         icon={Receipt}
         actions={
-          <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={() => setShowGenerateModal(true)} className="gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Button variant="outline" onClick={() => setShowGenerateModal(true)} className="gap-1.5 sm:gap-2 px-2.5 sm:px-4">
               <Zap className="w-4 h-4" />
-              Generate Monthly
+              <span className="hidden sm:inline">Generate Monthly</span>
             </Button>
-            <Button onClick={() => setShowForm(true)} className="gap-2">
+            <Button onClick={() => setShowForm(true)} className="gap-1.5 sm:gap-2 px-2.5 sm:px-4">
               <Plus className="w-4 h-4" />
-              Create Invoice
+              <span className="hidden sm:inline">Create Invoice</span>
             </Button>
           </div>
         }
       />
 
       {/* Status Filter Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4">
         <motion.div
           whileHover={{ y: -2 }}
-          className="bg-white rounded-xl border border-gray-200 p-5"
+          className="bg-white rounded-xl border border-gray-200 p-3 sm:p-5"
         >
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-primary-50 flex items-center justify-center">
-              <Receipt className="w-6 h-6 text-primary-600" />
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-primary-50 flex items-center justify-center">
+              <Receipt className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600" />
             </div>
             <div>
-              <p className="text-sm text-gray-500">Total</p>
+              <p className="text-xs sm:text-sm text-gray-500">Total</p>
               {isLoading ? (
-                <div className="h-8 w-12 bg-gray-200 rounded animate-pulse mt-1" />
+                <div className="h-6 sm:h-8 w-10 sm:w-12 bg-gray-200 rounded animate-pulse mt-1" />
               ) : (
-                <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</p>
               )}
             </div>
           </div>
@@ -403,20 +403,20 @@ export default function Invoices() {
               whileHover={{ y: -2 }}
               onClick={() => setStatusFilter(statusFilter === status ? '' : status)}
               className={cn(
-                'bg-white rounded-xl border p-5 cursor-pointer transition-all',
+                'bg-white rounded-xl border p-3 sm:p-5 cursor-pointer transition-all',
                 statusFilter === status ? config.borderColor : 'border-gray-200 hover:border-gray-300'
               )}
             >
-              <div className="flex items-center gap-4">
-                <div className={cn('w-12 h-12 rounded-xl flex items-center justify-center', config.bgColor)}>
-                  <StatusIcon className={cn('w-6 h-6', config.color)} />
+              <div className="flex items-center gap-2 sm:gap-4">
+                <div className={cn('w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center', config.bgColor)}>
+                  <StatusIcon className={cn('w-5 h-5 sm:w-6 sm:h-6', config.color)} />
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">{config.label}</p>
+                  <p className="text-xs sm:text-sm text-gray-500">{config.label}</p>
                   {isLoading ? (
-                    <div className="h-8 w-12 bg-gray-200 rounded animate-pulse mt-1" />
+                    <div className="h-6 sm:h-8 w-10 sm:w-12 bg-gray-200 rounded animate-pulse mt-1" />
                   ) : (
-                    <p className={cn('text-2xl font-bold', config.color)}>{count}</p>
+                    <p className={cn('text-xl sm:text-2xl font-bold', config.color)}>{count}</p>
                   )}
                 </div>
               </div>
@@ -426,47 +426,47 @@ export default function Invoices() {
       </div>
 
       {/* Financial Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 text-white">
-          <div className="flex items-center gap-3">
-            <DollarSign className="w-8 h-8 text-white/80" />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-3 sm:p-5 text-white">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-white/80" />
             <div>
-              <p className="text-blue-100 text-sm">Total Billed</p>
+              <p className="text-blue-100 text-xs sm:text-sm">Total Billed</p>
               {isLoading ? (
-                <div className="h-8 w-24 bg-white/30 rounded animate-pulse mt-1" />
+                <div className="h-6 sm:h-8 w-20 sm:w-24 bg-white/30 rounded animate-pulse mt-1" />
               ) : (
-                <p className="text-2xl font-bold">{formatCurrency(totalAmount)}</p>
+                <p className="text-lg sm:text-2xl font-bold">{formatCurrency(totalAmount)}</p>
               )}
             </div>
           </div>
         </div>
-        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-5 text-white">
-          <div className="flex items-center gap-3">
-            <TrendingUp className="w-8 h-8 text-white/80" />
+        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-3 sm:p-5 text-white">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-white/80" />
             <div>
               {isLoading ? (
                 <>
-                  <p className="text-emerald-100 text-sm">Collected</p>
-                  <div className="h-8 w-24 bg-white/30 rounded animate-pulse mt-1" />
+                  <p className="text-emerald-100 text-xs sm:text-sm">Collected</p>
+                  <div className="h-6 sm:h-8 w-20 sm:w-24 bg-white/30 rounded animate-pulse mt-1" />
                 </>
               ) : (
                 <>
-                  <p className="text-emerald-100 text-sm">Collected ({collectionRate.toFixed(0)}%)</p>
-                  <p className="text-2xl font-bold">{formatCurrency(totalCollected)}</p>
+                  <p className="text-emerald-100 text-xs sm:text-sm">Collected ({collectionRate.toFixed(0)}%)</p>
+                  <p className="text-lg sm:text-2xl font-bold">{formatCurrency(totalCollected)}</p>
                 </>
               )}
             </div>
           </div>
         </div>
-        <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl p-5 text-white">
-          <div className="flex items-center gap-3">
-            <TrendingDown className="w-8 h-8 text-white/80" />
+        <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl p-3 sm:p-5 text-white">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <TrendingDown className="w-6 h-6 sm:w-8 sm:h-8 text-white/80" />
             <div>
-              <p className="text-rose-100 text-sm">Outstanding</p>
+              <p className="text-rose-100 text-xs sm:text-sm">Outstanding</p>
               {isLoading ? (
-                <div className="h-8 w-24 bg-white/30 rounded animate-pulse mt-1" />
+                <div className="h-6 sm:h-8 w-20 sm:w-24 bg-white/30 rounded animate-pulse mt-1" />
               ) : (
-                <p className="text-2xl font-bold">{formatCurrency(totalOutstanding)}</p>
+                <p className="text-lg sm:text-2xl font-bold">{formatCurrency(totalOutstanding)}</p>
               )}
             </div>
           </div>

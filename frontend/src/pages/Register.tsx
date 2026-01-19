@@ -228,41 +228,41 @@ export default function Register() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Subdomain * <span className="text-gray-400 font-normal">(your unique URL)</span>
-                    </label>
-                    <div className="flex">
-                      <input
-                        type="text"
-                        value={formData.subdomain}
-                        onChange={(e) => updateForm('subdomain', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                        className="flex-1 px-4 py-3 border border-gray-200 rounded-l-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                        placeholder="acme"
-                      />
-                      <span className="px-4 py-3 bg-gray-50 border border-l-0 border-gray-200 rounded-r-xl text-gray-500">
-                        .parameter.co.zw
-                      </span>
-                    </div>
-                    {subdomainStatus === 'checking' && (
-                      <p className="mt-1 text-sm text-gray-500 flex items-center gap-1">
-                        <span className="w-4 h-4 border-2 border-gray-300 border-t-primary-500 rounded-full animate-spin" />
-                        Checking availability...
-                      </p>
-                    )}
-                    {subdomainStatus === 'available' && (
-                      <p className="mt-1 text-sm text-emerald-600 flex items-center gap-1">
-                        <CheckCircle className="w-4 h-4" />
-                        Subdomain is available!
-                      </p>
-                    )}
-                    {subdomainStatus === 'taken' && (
-                      <p className="mt-1 text-sm text-rose-600 flex items-center gap-1">
-                        <AlertCircle className="w-4 h-4" />
-                        This subdomain is already taken
-                      </p>
-                    )}
-                  </div>
+<div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">
+    Subdomain * <span className="text-gray-400 font-normal">(your unique URL)</span>
+  </label>
+  <div className="flex flex-col sm:flex-row">
+    <input
+      type="text"
+      value={formData.subdomain}
+      onChange={(e) => updateForm('subdomain', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+      className="w-full px-4 py-3 border border-gray-200 rounded-xl sm:rounded-l-xl sm:rounded-r-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+      placeholder="acme"
+    />
+    <span className="px-4 py-2 sm:py-3 bg-gray-50 border border-t-0 sm:border-t sm:border-l-0 border-gray-200 rounded-b-xl sm:rounded-b-none sm:rounded-r-xl text-gray-500 text-sm flex items-center justify-center sm:justify-start whitespace-nowrap">
+      .parameter.co.zw
+    </span>
+  </div>
+  {subdomainStatus === 'checking' && (
+    <p className="mt-1 text-sm text-gray-500 flex items-center gap-1">
+      <span className="w-4 h-4 border-2 border-gray-300 border-t-primary-500 rounded-full animate-spin" />
+      Checking availability...
+    </p>
+  )}
+  {subdomainStatus === 'available' && (
+    <p className="mt-1 text-sm text-emerald-600 flex items-center gap-1">
+      <CheckCircle className="w-4 h-4" />
+      Subdomain is available!
+    </p>
+  )}
+  {subdomainStatus === 'taken' && (
+    <p className="mt-1 text-sm text-rose-600 flex items-center gap-1">
+      <AlertCircle className="w-4 h-4" />
+      This subdomain is already taken
+    </p>
+  )}
+</div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
