@@ -118,7 +118,7 @@ export default function Properties() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: typeof form) =>
+    mutationFn: (data: { landlord: number; name: string; property_type: string; address: string; city: string; total_units: number }) =>
       editingId ? propertyApi.update(editingId, data) : propertyApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['properties'] })
