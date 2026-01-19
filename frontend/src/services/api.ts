@@ -287,6 +287,8 @@ export const tenantsApi = {
   clients: (params?: object) => api.get('/tenants/clients/', { params }),
   toggleAI: (id: number, feature: string, enabled: boolean) =>
     api.post(`/tenants/clients/${id}/toggle_ai/`, { feature, enabled }),
+  // Seed demo data for current tenant (admin only)
+  seedDemoData: () => api.post('/tenants/seed-demo-data/'),
 }
 
 // Tenant Invitations API (Super Admin)
