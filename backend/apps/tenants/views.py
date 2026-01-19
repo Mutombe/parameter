@@ -929,16 +929,26 @@ class DemoSignupView(APIView):
 
     def post(self, request):
         import logging
+        import traceback
         logger = logging.getLogger(__name__)
 
-        serializer = DemoSignupSerializer(data=request.data)
+        try:
+            serializer = DemoSignupSerializer(data=request.data)
 
-        if not serializer.is_valid():
-            logger.warning(f"Demo signup validation failed: {serializer.errors}")
+            if not serializer.is_valid():
+                logger.warning(f"Demo signup validation failed: {serializer.errors}")
+                return Response({
+                    'success': False,
+                    'errors': serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            error_trace = traceback.format_exc()
+            logger.error(f"Demo signup serializer error: {str(e)}\n{error_trace}")
             return Response({
                 'success': False,
-                'errors': serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
+                'error': f'Validation error: {str(e)}',
+                'details': error_trace
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         data = serializer.validated_data
 
