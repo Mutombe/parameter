@@ -974,33 +974,23 @@ class DemoSignupView(APIView):
             logger.info(f"Starting demo signup for: {data['company_name']} ({data['subdomain']})")
 
             service = OnboardingService()
+
+            # Step 1: Try registering the company
+            logger.info("Step 1: Calling register_company...")
             result = service.register_company(
                 company_data,
                 admin_data,
                 {
                     'create_sample_coa': True,
-                    'send_welcome_email': True,
+                    'send_welcome_email': False,  # Skip email for now
                     'is_demo': True,
-                    'seed_demo_data': False  # Skip demo data seeding for faster signup
+                    'seed_demo_data': False
                 }
             )
+            logger.info(f"Step 1 complete: {result}")
 
-            logger.info(f"Demo tenant created successfully: {result['tenant']['id']}")
-
-            # Also create a tenant invitation record for tracking
-            TenantInvitation.objects.create(
-                email=data['admin_email'],
-                company_name=data['company_name'],
-                first_name=data['admin_first_name'],
-                last_name=data['admin_last_name'],
-                invitation_type='demo',
-                subscription_plan='free',
-                token=TenantInvitation.generate_token(),
-                status=TenantInvitation.Status.ACCEPTED,
-                created_tenant=Client.objects.get(id=result['tenant']['id']),
-                expires_at=timezone.now() + timedelta(days=7),
-                accepted_at=timezone.now()
-            )
+            # Step 2: Create invitation record (skip for now to isolate issue)
+            logger.info("Step 2: Skipping invitation record creation...")
 
             return Response({
                 **result,
