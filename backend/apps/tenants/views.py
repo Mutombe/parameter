@@ -820,6 +820,58 @@ class SeedDemoDataView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+class CreateDemoTenantView(APIView):
+    """
+    Create a complete demo tenant with all data.
+    Public endpoint for quick demo setup.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        from django.core.management import call_command
+        import io
+
+        subdomain = request.data.get('subdomain', 'demo')
+        email = request.data.get('email', f'admin@{subdomain}.parameter.co.zw')
+        password = request.data.get('password', 'demo123')
+
+        try:
+            out = io.StringIO()
+            call_command(
+                'create_demo_tenant',
+                f'--subdomain={subdomain}',
+                f'--email={email}',
+                f'--password={password}',
+                verbosity=1,
+                stdout=out
+            )
+
+            # Get domain suffix from settings
+            from django.conf import settings
+            domain_suffix = getattr(settings, 'TENANT_DOMAIN_SUFFIX', 'localhost')
+            protocol = getattr(settings, 'TENANT_PROTOCOL', 'https')
+
+            return Response({
+                'success': True,
+                'message': 'Demo tenant created successfully',
+                'tenant': {
+                    'subdomain': subdomain,
+                    'login_url': f'{protocol}://{subdomain}.{domain_suffix}',
+                    'email': email,
+                    'password': password
+                },
+                'output': out.getvalue()
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            import traceback
+            return Response({
+                'success': False,
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class DemoSignupView(APIView):
     """
     Public demo signup endpoint.
