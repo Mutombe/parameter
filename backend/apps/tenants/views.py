@@ -930,9 +930,13 @@ class DemoSignupView(APIView):
     def post(self, request):
         import logging
         import traceback
+        import time
         logger = logging.getLogger(__name__)
 
+        start_time = time.time()
+
         try:
+            logger.info("Demo signup: Starting validation...")
             serializer = DemoSignupSerializer(data=request.data)
 
             if not serializer.is_valid():
@@ -941,6 +945,8 @@ class DemoSignupView(APIView):
                     'success': False,
                     'errors': serializer.errors
                 }, status=status.HTTP_400_BAD_REQUEST)
+
+            logger.info(f"Demo signup: Validation passed in {time.time() - start_time:.2f}s")
         except Exception as e:
             error_trace = traceback.format_exc()
             logger.error(f"Demo signup serializer error: {str(e)}\n{error_trace}")
@@ -971,32 +977,29 @@ class DemoSignupView(APIView):
         }
 
         try:
-            logger.info(f"Starting demo signup for: {data['company_name']} ({data['subdomain']})")
-
+            logger.info(f"Demo signup: Creating OnboardingService...")
             service = OnboardingService()
+            logger.info(f"Demo signup: OnboardingService created in {time.time() - start_time:.2f}s")
 
-            # Step 1: Try registering the company
-            logger.info("Step 1: Calling register_company...")
+            logger.info(f"Demo signup: Starting register_company for {data['company_name']}...")
             result = service.register_company(
                 company_data,
                 admin_data,
                 {
-                    'create_sample_coa': True,
-                    'send_welcome_email': False,  # Skip email for now
+                    'create_sample_coa': False,  # Skip COA for faster signup
+                    'send_welcome_email': False,
                     'is_demo': True,
                     'seed_demo_data': False
                 }
             )
-            logger.info(f"Step 1 complete: {result}")
-
-            # Step 2: Create invitation record (skip for now to isolate issue)
-            logger.info("Step 2: Skipping invitation record creation...")
+            logger.info(f"Demo signup: register_company complete in {time.time() - start_time:.2f}s")
 
             return Response({
                 **result,
                 'is_demo': True,
                 'demo_expires_at': (timezone.now() + timedelta(hours=2)).isoformat(),
-                'message': 'Demo account created! Your account will expire in 2 hours.'
+                'message': 'Demo account created! Your account will expire in 2 hours.',
+                'timing': f'{time.time() - start_time:.2f}s'
             }, status=status.HTTP_201_CREATED)
 
         except ValueError as e:
