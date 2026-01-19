@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     ClientViewSet, GlobalSettingsViewSet,
     SuperAdminDashboardView, TenantDetailStatsView, SystemHealthView,
+    PublicHealthCheckView,
     CompanyOnboardingView, SubdomainCheckView, SubscriptionPlansView,
     TenantInvitationViewSet, AcceptTenantInvitationView, DemoSignupView,
     SeedDemoDataView, CreateDemoTenantView
@@ -16,6 +17,8 @@ router.register('invitations', TenantInvitationViewSet, basename='tenant-invitat
 
 urlpatterns = [
     path('', include(router.urls)),
+    # Public health check (for Render.com monitoring)
+    path('healthz/', PublicHealthCheckView.as_view(), name='public-health-check'),
     # Company Onboarding (Public)
     path('onboarding/', CompanyOnboardingView.as_view(), name='company-onboarding'),
     path('check-subdomain/', SubdomainCheckView.as_view(), name='check-subdomain'),

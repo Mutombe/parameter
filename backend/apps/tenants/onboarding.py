@@ -194,61 +194,63 @@ class OnboardingService:
         from apps.accounting.models import ChartOfAccount
 
         # Standard Real Estate Chart of Accounts
+        # Format: (code, name, account_type, account_subtype, is_system)
         accounts = [
             # Assets (1xxx)
-            {'code': '1000', 'name': 'Cash and Cash Equivalents', 'account_type': 'asset', 'normal_balance': 'debit'},
-            {'code': '1010', 'name': 'Petty Cash', 'account_type': 'asset', 'normal_balance': 'debit'},
-            {'code': '1100', 'name': 'Accounts Receivable - Tenants', 'account_type': 'asset', 'normal_balance': 'debit'},
-            {'code': '1110', 'name': 'Accounts Receivable - Other', 'account_type': 'asset', 'normal_balance': 'debit'},
-            {'code': '1200', 'name': 'Prepaid Expenses', 'account_type': 'asset', 'normal_balance': 'debit'},
-            {'code': '1300', 'name': 'Security Deposits Held', 'account_type': 'asset', 'normal_balance': 'debit'},
-            {'code': '1500', 'name': 'Property and Equipment', 'account_type': 'asset', 'normal_balance': 'debit'},
-            {'code': '1510', 'name': 'Accumulated Depreciation', 'account_type': 'asset', 'normal_balance': 'credit'},
+            ('1000', 'Cash and Cash Equivalents', 'asset', 'cash', True),
+            ('1010', 'Petty Cash', 'asset', 'cash', True),
+            ('1100', 'Accounts Receivable - Tenants', 'asset', 'accounts_receivable', True),
+            ('1110', 'Accounts Receivable - Other', 'asset', 'accounts_receivable', False),
+            ('1200', 'Prepaid Expenses', 'asset', 'prepaid', False),
+            ('1300', 'Security Deposits Held', 'asset', 'prepaid', False),
+            ('1500', 'Property and Equipment', 'asset', 'fixed_asset', False),
+            ('1510', 'Accumulated Depreciation', 'asset', 'fixed_asset', False),
 
             # Liabilities (2xxx)
-            {'code': '2000', 'name': 'Accounts Payable', 'account_type': 'liability', 'normal_balance': 'credit'},
-            {'code': '2100', 'name': 'Landlord Payables', 'account_type': 'liability', 'normal_balance': 'credit'},
-            {'code': '2200', 'name': 'Tenant Deposits Liability', 'account_type': 'liability', 'normal_balance': 'credit'},
-            {'code': '2300', 'name': 'Accrued Expenses', 'account_type': 'liability', 'normal_balance': 'credit'},
-            {'code': '2400', 'name': 'VAT Payable', 'account_type': 'liability', 'normal_balance': 'credit'},
-            {'code': '2500', 'name': 'Deferred Revenue', 'account_type': 'liability', 'normal_balance': 'credit'},
+            ('2000', 'Accounts Payable', 'liability', 'accounts_payable', True),
+            ('2100', 'Landlord Payables', 'liability', 'accounts_payable', True),
+            ('2200', 'Tenant Deposits Liability', 'liability', 'tenant_deposits', True),
+            ('2300', 'Accrued Expenses', 'liability', 'accounts_payable', False),
+            ('2400', 'VAT Payable', 'liability', 'vat_payable', True),
+            ('2500', 'Deferred Revenue', 'liability', 'accounts_payable', False),
 
             # Equity (3xxx)
-            {'code': '3000', 'name': 'Owner Capital', 'account_type': 'equity', 'normal_balance': 'credit'},
-            {'code': '3100', 'name': 'Retained Earnings', 'account_type': 'equity', 'normal_balance': 'credit'},
-            {'code': '3200', 'name': 'Owner Drawings', 'account_type': 'equity', 'normal_balance': 'debit'},
+            ('3000', 'Owner Capital', 'equity', 'capital', True),
+            ('3100', 'Retained Earnings', 'equity', 'retained_earnings', True),
+            ('3200', 'Owner Drawings', 'equity', 'capital', False),
 
             # Revenue (4xxx)
-            {'code': '4000', 'name': 'Rental Income', 'account_type': 'revenue', 'normal_balance': 'credit'},
-            {'code': '4010', 'name': 'Late Fee Income', 'account_type': 'revenue', 'normal_balance': 'credit'},
-            {'code': '4020', 'name': 'Service Fee Income', 'account_type': 'revenue', 'normal_balance': 'credit'},
-            {'code': '4100', 'name': 'Management Fee Income', 'account_type': 'revenue', 'normal_balance': 'credit'},
-            {'code': '4200', 'name': 'Commission Income', 'account_type': 'revenue', 'normal_balance': 'credit'},
-            {'code': '4900', 'name': 'Other Income', 'account_type': 'revenue', 'normal_balance': 'credit'},
+            ('4000', 'Rental Income', 'revenue', 'rental_income', True),
+            ('4010', 'Late Fee Income', 'revenue', 'other_income', False),
+            ('4020', 'Service Fee Income', 'revenue', 'other_income', False),
+            ('4100', 'Management Fee Income', 'revenue', 'commission_income', False),
+            ('4200', 'Commission Income', 'revenue', 'commission_income', True),
+            ('4900', 'Other Income', 'revenue', 'other_income', True),
 
             # Expenses (5xxx)
-            {'code': '5000', 'name': 'Property Management Expenses', 'account_type': 'expense', 'normal_balance': 'debit'},
-            {'code': '5100', 'name': 'Repairs and Maintenance', 'account_type': 'expense', 'normal_balance': 'debit'},
-            {'code': '5200', 'name': 'Utilities Expense', 'account_type': 'expense', 'normal_balance': 'debit'},
-            {'code': '5300', 'name': 'Insurance Expense', 'account_type': 'expense', 'normal_balance': 'debit'},
-            {'code': '5400', 'name': 'Property Taxes', 'account_type': 'expense', 'normal_balance': 'debit'},
-            {'code': '5500', 'name': 'Legal and Professional Fees', 'account_type': 'expense', 'normal_balance': 'debit'},
-            {'code': '5600', 'name': 'Advertising and Marketing', 'account_type': 'expense', 'normal_balance': 'debit'},
-            {'code': '5700', 'name': 'Salaries and Wages', 'account_type': 'expense', 'normal_balance': 'debit'},
-            {'code': '5800', 'name': 'Office Expenses', 'account_type': 'expense', 'normal_balance': 'debit'},
-            {'code': '5900', 'name': 'Depreciation Expense', 'account_type': 'expense', 'normal_balance': 'debit'},
-            {'code': '5950', 'name': 'Bad Debt Expense', 'account_type': 'expense', 'normal_balance': 'debit'},
-            {'code': '5999', 'name': 'Miscellaneous Expense', 'account_type': 'expense', 'normal_balance': 'debit'},
+            ('5000', 'Property Management Expenses', 'expense', 'operating_expense', True),
+            ('5100', 'Repairs and Maintenance', 'expense', 'maintenance', True),
+            ('5200', 'Utilities Expense', 'expense', 'utilities', True),
+            ('5300', 'Insurance Expense', 'expense', 'operating_expense', False),
+            ('5400', 'Property Taxes', 'expense', 'operating_expense', False),
+            ('5500', 'Legal and Professional Fees', 'expense', 'operating_expense', False),
+            ('5600', 'Advertising and Marketing', 'expense', 'operating_expense', False),
+            ('5700', 'Salaries and Wages', 'expense', 'operating_expense', False),
+            ('5800', 'Office Expenses', 'expense', 'operating_expense', False),
+            ('5900', 'Depreciation Expense', 'expense', 'operating_expense', False),
+            ('5950', 'Bad Debt Expense', 'expense', 'operating_expense', False),
+            ('5999', 'Miscellaneous Expense', 'expense', 'operating_expense', False),
         ]
 
         with tenant_context(client):
-            for acc_data in accounts:
+            for code, name, acc_type, subtype, is_system in accounts:
                 ChartOfAccount.objects.get_or_create(
-                    code=acc_data['code'],
+                    code=code,
                     defaults={
-                        'name': acc_data['name'],
-                        'account_type': acc_data['account_type'],
-                        'normal_balance': acc_data['normal_balance'],
+                        'name': name,
+                        'account_type': acc_type,
+                        'account_subtype': subtype,
+                        'is_system': is_system,
                         'is_active': True
                     }
                 )

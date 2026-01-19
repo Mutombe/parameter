@@ -42,7 +42,7 @@ services:
         sync: false
       - key: PYTHON_VERSION
         value: "3.11.4"
-    healthCheckPath: /api/docs/
+    healthCheckPath: /api/tenants/healthz/
 
   # Frontend
   - type: web

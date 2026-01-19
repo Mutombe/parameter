@@ -273,8 +273,32 @@ class TenantDetailStatsView(APIView):
             return Response({'error': str(e)}, status=500)
 
 
+class PublicHealthCheckView(APIView):
+    """
+    Public health check endpoint for Render.com and monitoring.
+    Does not require authentication.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        try:
+            # Simple database connectivity check
+            connection.ensure_connection()
+            return Response({
+                'status': 'healthy',
+                'service': 'parameter-backend',
+                'timestamp': timezone.now().isoformat()
+            })
+        except Exception as e:
+            return Response({
+                'status': 'unhealthy',
+                'error': str(e),
+                'timestamp': timezone.now().isoformat()
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
 class SystemHealthView(APIView):
-    """System health check and status."""
+    """System health check and status (detailed, requires admin)."""
     permission_classes = [IsAdminUser]
 
     def get(self, request):
@@ -880,9 +904,13 @@ class DemoSignupView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        import logging
+        logger = logging.getLogger(__name__)
+
         serializer = DemoSignupSerializer(data=request.data)
 
         if not serializer.is_valid():
+            logger.warning(f"Demo signup validation failed: {serializer.errors}")
             return Response({
                 'success': False,
                 'errors': serializer.errors
@@ -909,6 +937,8 @@ class DemoSignupView(APIView):
         }
 
         try:
+            logger.info(f"Starting demo signup for: {data['company_name']} ({data['subdomain']})")
+
             service = OnboardingService()
             result = service.register_company(
                 company_data,
@@ -917,9 +947,11 @@ class DemoSignupView(APIView):
                     'create_sample_coa': True,
                     'send_welcome_email': True,
                     'is_demo': True,
-                    'seed_demo_data': True
+                    'seed_demo_data': False  # Skip demo data seeding for faster signup
                 }
             )
+
+            logger.info(f"Demo tenant created successfully: {result['tenant']['id']}")
 
             # Also create a tenant invitation record for tracking
             TenantInvitation.objects.create(
@@ -944,6 +976,7 @@ class DemoSignupView(APIView):
             }, status=status.HTTP_201_CREATED)
 
         except ValueError as e:
+            logger.warning(f"Demo signup value error: {str(e)}")
             return Response({
                 'success': False,
                 'error': str(e)
@@ -951,8 +984,9 @@ class DemoSignupView(APIView):
 
         except Exception as e:
             import traceback
-            traceback.print_exc()
+            error_trace = traceback.format_exc()
+            logger.error(f"Demo signup failed: {str(e)}\n{error_trace}")
             return Response({
                 'success': False,
-                'error': 'Demo registration failed. Please try again.'
+                'error': f'Demo registration failed: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
