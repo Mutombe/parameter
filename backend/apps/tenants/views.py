@@ -780,6 +780,46 @@ class AcceptTenantInvitationView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+class SeedDemoDataView(APIView):
+    """
+    Seed demo data for the current tenant.
+    Only available to admin users.
+    """
+    permission_classes = [IsAdminUser]
+
+    def post(self, request):
+        from django.core.management import call_command
+        from django.db import connection
+        import io
+
+        # Only allow in tenant context (not public schema)
+        if connection.schema_name == 'public':
+            return Response({
+                'success': False,
+                'error': 'Cannot seed demo data in public schema'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Capture command output
+            out = io.StringIO()
+            call_command('seed_demo_data', '--skip-tenant-creation', verbosity=1, stdout=out)
+            output = out.getvalue()
+
+            return Response({
+                'success': True,
+                'message': 'Demo data seeded successfully',
+                'output': output
+            })
+
+        except Exception as e:
+            import traceback
+            return Response({
+                'success': False,
+                'error': str(e),
+                'traceback': traceback.format_exc()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class DemoSignupView(APIView):
     """
     Public demo signup endpoint.
