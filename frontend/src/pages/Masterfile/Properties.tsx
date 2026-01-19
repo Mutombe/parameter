@@ -125,7 +125,13 @@ export default function Properties() {
       toast.success(editingId ? 'Property updated successfully' : 'Property created successfully')
       resetForm()
     },
-    onError: () => toast.error('Failed to save property'),
+    onError: (error: any) => {
+      const message = error?.response?.data?.detail
+        || error?.response?.data?.message
+        || Object.values(error?.response?.data || {})[0]
+        || 'Failed to save property'
+      toast.error(Array.isArray(message) ? message[0] : message)
+    },
   })
 
   const deleteMutation = useMutation({
@@ -177,7 +183,11 @@ export default function Properties() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    createMutation.mutate(form)
+    // Convert landlord to integer for the API
+    createMutation.mutate({
+      ...form,
+      landlord: parseInt(form.landlord, 10),
+    })
   }
 
   const filteredProperties = typeFilter
