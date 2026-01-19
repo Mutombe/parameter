@@ -5,6 +5,21 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
 // Extract subdomain from current hostname for multi-tenant routing
 const getSubdomain = (): string | null => {
+  // First check URL parameter (for demo/testing when DNS isn't set up)
+  const urlParams = new URLSearchParams(window.location.search)
+  const tenantParam = urlParams.get('tenant')
+  if (tenantParam) {
+    // Store in sessionStorage for subsequent requests
+    sessionStorage.setItem('tenant_subdomain', tenantParam)
+    return tenantParam
+  }
+
+  // Check sessionStorage (persists tenant across page navigations)
+  const storedTenant = sessionStorage.getItem('tenant_subdomain')
+  if (storedTenant) {
+    return storedTenant
+  }
+
   const hostname = window.location.hostname
   // Check for subdomains (e.g., acme.localhost or acme.parameter.co.zw)
   const parts = hostname.split('.')
@@ -15,7 +30,8 @@ const getSubdomain = (): string | null => {
   }
 
   // Production: subdomain.parameter.co.zw (3+ parts means there's a subdomain)
-  if (parts.length >= 3 && !['www', 'api'].includes(parts[0])) {
+  // Exclude onrender.com domains
+  if (parts.length >= 3 && !['www', 'api'].includes(parts[0]) && !hostname.includes('onrender.com')) {
     return parts[0]
   }
 
