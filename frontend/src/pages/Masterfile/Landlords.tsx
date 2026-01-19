@@ -106,7 +106,13 @@ export default function Landlords() {
       toast.success(editingId ? 'Landlord updated successfully' : 'Landlord created successfully')
       resetForm()
     },
-    onError: () => toast.error('Failed to save landlord'),
+    onError: (error: any) => {
+      const message = error?.response?.data?.detail
+        || error?.response?.data?.message
+        || Object.values(error?.response?.data || {})[0]
+        || 'Failed to save landlord'
+      toast.error(Array.isArray(message) ? message[0] : message)
+    },
   })
 
   const deleteMutation = useMutation({

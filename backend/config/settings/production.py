@@ -29,15 +29,16 @@ SECURE_HSTS_PRELOAD = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 
 # CORS settings for production
-# Use regex to allow all subdomains of parameter.co.zw
+# Use regex to allow all subdomains of parameter.co.zw and Render domains
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://[\w-]+\.parameter\.co\.zw$",  # Allow all subdomains
     r"^https://parameter\.co\.zw$",  # Main domain
     r"^https://www\.parameter\.co\.zw$",  # www subdomain
+    r"^https://[\w-]+\.onrender\.com$",  # Allow Render domains for staging/testing
 ]
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='https://parameter.co.zw,https://www.parameter.co.zw',
+    default='https://parameter.co.zw,https://www.parameter.co.zw,https://parameter-frontend.onrender.com',
     cast=Csv()
 )
 CORS_ALLOW_CREDENTIALS = True
@@ -65,7 +66,7 @@ CORS_ALLOW_HEADERS = [
 # CSRF trusted origins for production (supports wildcard subdomains)
 CSRF_TRUSTED_ORIGINS = config(
     'CSRF_TRUSTED_ORIGINS',
-    default='https://*.parameter.co.zw,https://parameter.co.zw,https://www.parameter.co.zw',
+    default='https://*.parameter.co.zw,https://parameter.co.zw,https://www.parameter.co.zw,https://*.onrender.com,https://parameter-frontend.onrender.com',
     cast=Csv()
 )
 
