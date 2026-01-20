@@ -964,23 +964,49 @@ class DemoSignupView(APIView):
 
             logger.info(f"Demo signup request created: {signup_request.request_id}")
 
-            # Queue the tenant creation task using Django-Q
-            async_task(
-                'apps.tenants.tasks.create_demo_tenant_async',
-                signup_request.request_id,
-                task_name=f'demo_signup_{signup_request.request_id}'
-            )
+            # Run the task using Django-Q with sync=True for reliability on free tier
+            # This ensures the task completes even without a separate worker
+            try:
+                task_result = async_task(
+                    'apps.tenants.tasks.create_demo_tenant_async',
+                    signup_request.request_id,
+                    task_name=f'demo_signup_{signup_request.request_id}',
+                    sync=True  # Run synchronously - more reliable on free tier
+                )
+                logger.info(f"Tenant creation completed for: {signup_request.request_id}")
 
-            logger.info(f"Tenant creation task queued for: {signup_request.request_id}")
+                # Refresh the signup request to get updated status
+                signup_request.refresh_from_db()
 
-            return Response({
-                'success': True,
-                'message': 'Your demo account is being created. You will receive an email when it\'s ready.',
-                'request_id': signup_request.request_id,
-                'status': 'pending',
-                'status_url': f'/api/tenants/demo-signup-status/{signup_request.request_id}/',
-                'estimated_time': '1-2 minutes'
-            }, status=status.HTTP_202_ACCEPTED)
+                if signup_request.status == DemoSignupRequest.Status.COMPLETED:
+                    domain_suffix = getattr(settings, 'TENANT_DOMAIN_SUFFIX', 'parameter.co.zw')
+                    return Response({
+                        'success': True,
+                        'message': 'Your demo account is ready!',
+                        'request_id': signup_request.request_id,
+                        'status': 'completed',
+                        'login_url': f"https://{signup_request.subdomain}.{domain_suffix}",
+                        'admin_email': signup_request.admin_email
+                    }, status=status.HTTP_201_CREATED)
+                else:
+                    return Response({
+                        'success': False,
+                        'message': signup_request.error_message or 'Account creation failed',
+                        'request_id': signup_request.request_id,
+                        'status': signup_request.status
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            except Exception as task_error:
+                logger.error(f"Task execution failed: {task_error}")
+                signup_request.status = DemoSignupRequest.Status.FAILED
+                signup_request.error_message = str(task_error)
+                signup_request.save()
+                return Response({
+                    'success': False,
+                    'error': str(task_error),
+                    'request_id': signup_request.request_id,
+                    'status': 'failed'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         except Exception as e:
             import traceback
