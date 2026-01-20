@@ -923,12 +923,14 @@ class CreateDemoTenantView(APIView):
 class DemoSignupView(APIView):
     """
     Public demo signup endpoint.
-    Creates tenant and admin user directly (synchronous).
+    Stores signup request and returns immediately.
+    Actual tenant creation happens via ProcessDemoSignupView.
     """
     permission_classes = [AllowAny]
 
     def post(self, request):
         import logging
+        import json
         logger = logging.getLogger(__name__)
 
         # Validate input
@@ -941,27 +943,118 @@ class DemoSignupView(APIView):
 
         data = serializer.validated_data
 
-        # Prepare data for onboarding service
-        company_data = {
-            'name': data['company_name'],
-            'subdomain': data['subdomain'],
-            'email': data['company_email'],
-            'phone': data.get('company_phone', ''),
-            'address': '',
-            'subscription_plan': 'free',
-            'default_currency': data.get('default_currency', 'USD')
-        }
+        try:
+            # Store signup request in GlobalSettings (using it as a simple key-value store)
+            # This avoids needing a separate migration
+            import secrets
+            request_id = secrets.token_urlsafe(16)
 
-        admin_data = {
-            'email': data['admin_email'],
-            'password': data['admin_password'],
-            'first_name': data['admin_first_name'],
-            'last_name': data['admin_last_name'],
-            'phone': data.get('admin_phone', '')
-        }
+            signup_data = {
+                'request_id': request_id,
+                'status': 'pending',
+                'company_name': data['company_name'],
+                'subdomain': data['subdomain'],
+                'company_email': data['company_email'],
+                'company_phone': data.get('company_phone', ''),
+                'default_currency': data.get('default_currency', 'USD'),
+                'admin_email': data['admin_email'],
+                'admin_password': data['admin_password'],
+                'admin_first_name': data['admin_first_name'],
+                'admin_last_name': data['admin_last_name'],
+                'admin_phone': data.get('admin_phone', ''),
+            }
+
+            # Store in GlobalSettings as JSON
+            GlobalSettings.objects.update_or_create(
+                key=f'demo_signup_{request_id}',
+                defaults={'value': json.dumps(signup_data)}
+            )
+
+            logger.info(f"Demo signup request stored: {request_id}")
+
+            return Response({
+                'success': True,
+                'message': 'Your demo account request has been received. Please wait while we create your account.',
+                'request_id': request_id,
+                'status': 'pending',
+                'process_url': f'/api/tenants/process-demo-signup/{request_id}/',
+                'status_url': f'/api/tenants/demo-signup-status/{request_id}/',
+                'instructions': 'Call the process_url to complete account creation (this may take up to 2 minutes).'
+            }, status=status.HTTP_202_ACCEPTED)
+
+        except Exception as e:
+            import traceback
+            logger.error(f"Demo signup failed: {str(e)}\n{traceback.format_exc()}")
+            return Response({
+                'success': False,
+                'error': f'Failed to process signup request: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ProcessDemoSignupView(APIView):
+    """
+    Process a pending demo signup request.
+    This is called separately to allow longer execution time.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request, request_id):
+        import logging
+        import json
+        logger = logging.getLogger(__name__)
 
         try:
-            logger.info(f"Creating demo tenant: {data['company_name']}")
+            # Get signup data from GlobalSettings
+            try:
+                setting = GlobalSettings.objects.get(key=f'demo_signup_{request_id}')
+                signup_data = json.loads(setting.value)
+            except GlobalSettings.DoesNotExist:
+                return Response({
+                    'success': False,
+                    'error': 'Signup request not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+
+            # Check if already processed
+            if signup_data.get('status') == 'completed':
+                return Response({
+                    'success': True,
+                    'message': 'Account already created',
+                    'status': 'completed',
+                    'login_url': signup_data.get('login_url', '')
+                })
+
+            if signup_data.get('status') == 'processing':
+                return Response({
+                    'success': False,
+                    'message': 'Account creation is already in progress',
+                    'status': 'processing'
+                }, status=status.HTTP_409_CONFLICT)
+
+            # Mark as processing
+            signup_data['status'] = 'processing'
+            setting.value = json.dumps(signup_data)
+            setting.save()
+
+            # Prepare data for onboarding service
+            company_data = {
+                'name': signup_data['company_name'],
+                'subdomain': signup_data['subdomain'],
+                'email': signup_data['company_email'],
+                'phone': signup_data.get('company_phone', ''),
+                'address': '',
+                'subscription_plan': 'free',
+                'default_currency': signup_data.get('default_currency', 'USD')
+            }
+
+            admin_data = {
+                'email': signup_data['admin_email'],
+                'password': signup_data['admin_password'],
+                'first_name': signup_data['admin_first_name'],
+                'last_name': signup_data['admin_last_name'],
+                'phone': signup_data.get('admin_phone', '')
+            }
+
+            logger.info(f"Creating demo tenant: {signup_data['company_name']}")
 
             service = OnboardingService()
             result = service.register_company(
@@ -975,20 +1068,38 @@ class DemoSignupView(APIView):
                 }
             )
 
-            logger.info(f"Demo tenant created successfully: {data['company_name']}")
+            logger.info(f"Demo tenant created: {signup_data['company_name']}")
 
+            # Update status
             domain_suffix = getattr(settings, 'TENANT_DOMAIN_SUFFIX', 'parameter.co.zw')
+            login_url = f"https://{signup_data['subdomain']}.{domain_suffix}"
+            signup_data['status'] = 'completed'
+            signup_data['login_url'] = login_url
+            signup_data['admin_password'] = '[REDACTED]'  # Clear password
+            setting.value = json.dumps(signup_data)
+            setting.save()
+
             return Response({
                 'success': True,
                 'message': 'Your demo account is ready!',
                 'status': 'completed',
-                'login_url': f"https://{data['subdomain']}.{domain_suffix}",
-                'admin_email': data['admin_email'],
+                'login_url': login_url,
+                'admin_email': signup_data['admin_email'],
                 'tenant': result.get('tenant', {})
             }, status=status.HTTP_201_CREATED)
 
         except ValueError as e:
             logger.warning(f"Demo signup validation error: {str(e)}")
+            # Update status to failed
+            try:
+                setting = GlobalSettings.objects.get(key=f'demo_signup_{request_id}')
+                signup_data = json.loads(setting.value)
+                signup_data['status'] = 'failed'
+                signup_data['error'] = str(e)
+                setting.value = json.dumps(signup_data)
+                setting.save()
+            except:
+                pass
             return Response({
                 'success': False,
                 'error': str(e)
@@ -996,7 +1107,17 @@ class DemoSignupView(APIView):
 
         except Exception as e:
             import traceback
-            logger.error(f"Demo signup failed: {str(e)}\n{traceback.format_exc()}")
+            logger.error(f"Demo signup processing failed: {str(e)}\n{traceback.format_exc()}")
+            # Update status to failed
+            try:
+                setting = GlobalSettings.objects.get(key=f'demo_signup_{request_id}')
+                signup_data = json.loads(setting.value)
+                signup_data['status'] = 'failed'
+                signup_data['error'] = str(e)
+                setting.value = json.dumps(signup_data)
+                setting.save()
+            except:
+                pass
             return Response({
                 'success': False,
                 'error': f'Registration failed: {str(e)}'
@@ -1008,44 +1129,46 @@ class DemoSignupStatusView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, request_id):
-        from .models import DemoSignupRequest
+        import json
 
         try:
-            signup_request = DemoSignupRequest.objects.get(request_id=request_id)
-        except DemoSignupRequest.DoesNotExist:
+            setting = GlobalSettings.objects.get(key=f'demo_signup_{request_id}')
+            signup_data = json.loads(setting.value)
+        except GlobalSettings.DoesNotExist:
             return Response({
                 'error': 'Signup request not found'
             }, status=status.HTTP_404_NOT_FOUND)
 
+        status_val = signup_data.get('status', 'pending')
+
         response_data = {
-            'request_id': signup_request.request_id,
-            'status': signup_request.status,
-            'company_name': signup_request.company_name,
-            'created_at': signup_request.created_at.isoformat(),
+            'request_id': request_id,
+            'status': status_val,
+            'company_name': signup_data.get('company_name', ''),
         }
 
-        if signup_request.status == DemoSignupRequest.Status.COMPLETED:
-            # Get tenant login URL
+        if status_val == 'completed':
             domain_suffix = getattr(settings, 'TENANT_DOMAIN_SUFFIX', 'parameter.co.zw')
             response_data.update({
-                'login_url': f"https://{signup_request.subdomain}.{domain_suffix}",
-                'admin_email': signup_request.admin_email,
-                'message': 'Your demo account is ready! Check your email for login details.',
-                'completed_at': signup_request.completed_at.isoformat() if signup_request.completed_at else None
+                'login_url': signup_data.get('login_url', f"https://{signup_data.get('subdomain', '')}.{domain_suffix}"),
+                'admin_email': signup_data.get('admin_email', ''),
+                'message': 'Your demo account is ready! Check your email for login details.'
             })
-        elif signup_request.status == DemoSignupRequest.Status.FAILED:
+        elif status_val == 'failed':
             response_data.update({
-                'error': signup_request.error_message or 'Account creation failed',
+                'error': signup_data.get('error', 'Account creation failed'),
                 'message': 'We encountered an issue creating your account. Please try again.'
             })
-        elif signup_request.status == DemoSignupRequest.Status.PROCESSING:
+        elif status_val == 'processing':
             response_data.update({
                 'message': 'Your account is being created. This usually takes 1-2 minutes.',
-                'started_at': signup_request.started_at.isoformat() if signup_request.started_at else None
+                'process_url': f'/api/tenants/process-demo-signup/{request_id}/'
             })
-        else:  # PENDING
+        else:  # pending
             response_data.update({
-                'message': 'Your request is queued and will be processed shortly.'
+                'message': 'Your request is ready to be processed.',
+                'process_url': f'/api/tenants/process-demo-signup/{request_id}/',
+                'instructions': 'Call the process_url endpoint to complete account creation.'
             })
 
         return Response(response_data)

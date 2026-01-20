@@ -7,7 +7,7 @@ from .views import (
     PublicHealthCheckView,
     CompanyOnboardingView, SubdomainCheckView, SubscriptionPlansView,
     TenantInvitationViewSet, AcceptTenantInvitationView, DemoSignupView,
-    DemoSignupStatusView,
+    DemoSignupStatusView, ProcessDemoSignupView,
     SeedDemoDataView, CreateDemoTenantView
 )
 
@@ -28,6 +28,7 @@ urlpatterns = [
     path('accept-invitation/', AcceptTenantInvitationView.as_view(), name='accept-tenant-invitation'),
     path('demo-signup/', DemoSignupView.as_view(), name='demo-signup'),
     path('demo-signup-status/<str:request_id>/', DemoSignupStatusView.as_view(), name='demo-signup-status'),
+    path('process-demo-signup/<str:request_id>/', ProcessDemoSignupView.as_view(), name='process-demo-signup'),
     path('seed-demo-data/', SeedDemoDataView.as_view(), name='seed-demo-data'),
     path('create-demo-tenant/', CreateDemoTenantView.as_view(), name='create-demo-tenant'),
     # Super Admin Dashboard (Admin only)
