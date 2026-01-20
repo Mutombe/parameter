@@ -991,16 +991,101 @@ class DemoSignupView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+def _process_demo_signup_background(request_id: str):
+    """
+    Background worker to process demo signup.
+    Runs in a separate thread to survive connection timeouts.
+    """
+    import logging
+    import json
+    from django.db import connection
+    from django.conf import settings as django_settings
+
+    logger = logging.getLogger(__name__)
+
+    # Close any existing database connections to get fresh ones in this thread
+    connection.close()
+
+    try:
+        setting = GlobalSettings.objects.get(key=f'demo_signup_{request_id}')
+        signup_data = json.loads(setting.value)
+
+        company_data = {
+            'name': signup_data['company_name'],
+            'subdomain': signup_data['subdomain'],
+            'email': signup_data['company_email'],
+            'phone': signup_data.get('company_phone', ''),
+            'address': '',
+            'subscription_plan': 'free',
+            'default_currency': signup_data.get('default_currency', 'USD')
+        }
+
+        admin_data = {
+            'email': signup_data['admin_email'],
+            'password': signup_data['admin_password'],
+            'first_name': signup_data['admin_first_name'],
+            'last_name': signup_data['admin_last_name'],
+            'phone': signup_data.get('admin_phone', '')
+        }
+
+        logger.info(f"[BG] Creating demo tenant: {signup_data['company_name']}")
+
+        service = OnboardingService()
+        result = service.register_company(
+            company_data,
+            admin_data,
+            {
+                'create_sample_coa': False,
+                'send_welcome_email': True,  # Send email when done
+                'is_demo': True,
+                'seed_demo_data': False
+            }
+        )
+
+        logger.info(f"[BG] Demo tenant created: {signup_data['company_name']}")
+
+        # Update status
+        domain_suffix = getattr(django_settings, 'TENANT_DOMAIN_SUFFIX', 'parameter.co.zw')
+        login_url = f"https://{signup_data['subdomain']}.{domain_suffix}"
+
+        # Refresh setting from DB
+        setting.refresh_from_db()
+        signup_data = json.loads(setting.value)
+        signup_data['status'] = 'completed'
+        signup_data['login_url'] = login_url
+        signup_data['admin_password'] = '[REDACTED]'
+        setting.value = json.dumps(signup_data)
+        setting.save()
+
+        logger.info(f"[BG] Demo signup completed: {request_id}")
+
+    except Exception as e:
+        import traceback
+        logger.error(f"[BG] Demo signup failed: {str(e)}\n{traceback.format_exc()}")
+        try:
+            setting = GlobalSettings.objects.get(key=f'demo_signup_{request_id}')
+            signup_data = json.loads(setting.value)
+            signup_data['status'] = 'failed'
+            signup_data['error'] = str(e)
+            setting.value = json.dumps(signup_data)
+            setting.save()
+        except:
+            pass
+
+
 class ProcessDemoSignupView(APIView):
     """
     Process a pending demo signup request.
-    This is called separately to allow longer execution time.
+    Starts processing in background thread and returns immediately.
     """
     permission_classes = [AllowAny]
 
     def post(self, request, request_id):
         import logging
         import json
+        import threading
+        import datetime
+
         logger = logging.getLogger(__name__)
 
         try:
@@ -1025,7 +1110,6 @@ class ProcessDemoSignupView(APIView):
 
             if signup_data.get('status') == 'processing':
                 # Check if it's been stuck for more than 5 minutes - reset to pending
-                import datetime
                 started_at = signup_data.get('started_at')
                 if started_at:
                     try:
@@ -1040,104 +1124,41 @@ class ProcessDemoSignupView(APIView):
 
                 if signup_data.get('status') == 'processing':
                     return Response({
-                        'success': False,
-                        'message': 'Account creation is already in progress',
-                        'status': 'processing'
-                    }, status=status.HTTP_409_CONFLICT)
+                        'success': True,
+                        'message': 'Account creation is in progress. Check back in 1-2 minutes.',
+                        'status': 'processing',
+                        'status_url': f'/api/tenants/demo-signup-status/{request_id}/'
+                    }, status=status.HTTP_202_ACCEPTED)
 
             # Mark as processing with timestamp
-            import datetime
             signup_data['status'] = 'processing'
             signup_data['started_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
             setting.value = json.dumps(signup_data)
             setting.save()
 
-            # Prepare data for onboarding service
-            company_data = {
-                'name': signup_data['company_name'],
-                'subdomain': signup_data['subdomain'],
-                'email': signup_data['company_email'],
-                'phone': signup_data.get('company_phone', ''),
-                'address': '',
-                'subscription_plan': 'free',
-                'default_currency': signup_data.get('default_currency', 'USD')
-            }
-
-            admin_data = {
-                'email': signup_data['admin_email'],
-                'password': signup_data['admin_password'],
-                'first_name': signup_data['admin_first_name'],
-                'last_name': signup_data['admin_last_name'],
-                'phone': signup_data.get('admin_phone', '')
-            }
-
-            logger.info(f"Creating demo tenant: {signup_data['company_name']}")
-
-            service = OnboardingService()
-            result = service.register_company(
-                company_data,
-                admin_data,
-                {
-                    'create_sample_coa': False,  # Skip CoA to speed up creation
-                    'send_welcome_email': False,  # Skip email to speed up creation
-                    'is_demo': True,
-                    'seed_demo_data': False
-                }
+            # Start background thread for actual processing
+            thread = threading.Thread(
+                target=_process_demo_signup_background,
+                args=(request_id,),
+                daemon=True  # Allow process to exit even if thread is running
             )
+            thread.start()
 
-            logger.info(f"Demo tenant created: {signup_data['company_name']}")
-
-            # Update status
-            domain_suffix = getattr(settings, 'TENANT_DOMAIN_SUFFIX', 'parameter.co.zw')
-            login_url = f"https://{signup_data['subdomain']}.{domain_suffix}"
-            signup_data['status'] = 'completed'
-            signup_data['login_url'] = login_url
-            signup_data['admin_password'] = '[REDACTED]'  # Clear password
-            setting.value = json.dumps(signup_data)
-            setting.save()
+            logger.info(f"Started background processing for: {request_id}")
 
             return Response({
                 'success': True,
-                'message': 'Your demo account is ready!',
-                'status': 'completed',
-                'login_url': login_url,
-                'admin_email': signup_data['admin_email'],
-                'tenant': result.get('tenant', {})
-            }, status=status.HTTP_201_CREATED)
-
-        except ValueError as e:
-            logger.warning(f"Demo signup validation error: {str(e)}")
-            # Update status to failed
-            try:
-                setting = GlobalSettings.objects.get(key=f'demo_signup_{request_id}')
-                signup_data = json.loads(setting.value)
-                signup_data['status'] = 'failed'
-                signup_data['error'] = str(e)
-                setting.value = json.dumps(signup_data)
-                setting.save()
-            except:
-                pass
-            return Response({
-                'success': False,
-                'error': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+                'message': 'Account creation started. This takes 1-2 minutes. Check status for updates.',
+                'status': 'processing',
+                'status_url': f'/api/tenants/demo-signup-status/{request_id}/'
+            }, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
             import traceback
             logger.error(f"Demo signup processing failed: {str(e)}\n{traceback.format_exc()}")
-            # Update status to failed
-            try:
-                setting = GlobalSettings.objects.get(key=f'demo_signup_{request_id}')
-                signup_data = json.loads(setting.value)
-                signup_data['status'] = 'failed'
-                signup_data['error'] = str(e)
-                setting.value = json.dumps(signup_data)
-                setting.save()
-            except:
-                pass
             return Response({
                 'success': False,
-                'error': f'Registration failed: {str(e)}'
+                'error': f'Failed to start processing: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
