@@ -1024,14 +1024,31 @@ class ProcessDemoSignupView(APIView):
                 })
 
             if signup_data.get('status') == 'processing':
-                return Response({
-                    'success': False,
-                    'message': 'Account creation is already in progress',
-                    'status': 'processing'
-                }, status=status.HTTP_409_CONFLICT)
+                # Check if it's been stuck for more than 5 minutes - reset to pending
+                import datetime
+                started_at = signup_data.get('started_at')
+                if started_at:
+                    try:
+                        started = datetime.datetime.fromisoformat(started_at)
+                        if (datetime.datetime.now(datetime.timezone.utc) - started).total_seconds() > 300:
+                            logger.info(f"Resetting stuck processing request: {request_id}")
+                            signup_data['status'] = 'pending'
+                            setting.value = json.dumps(signup_data)
+                            setting.save()
+                    except:
+                        pass
 
-            # Mark as processing
+                if signup_data.get('status') == 'processing':
+                    return Response({
+                        'success': False,
+                        'message': 'Account creation is already in progress',
+                        'status': 'processing'
+                    }, status=status.HTTP_409_CONFLICT)
+
+            # Mark as processing with timestamp
+            import datetime
             signup_data['status'] = 'processing'
+            signup_data['started_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
             setting.value = json.dumps(signup_data)
             setting.save()
 
@@ -1061,8 +1078,8 @@ class ProcessDemoSignupView(APIView):
                 company_data,
                 admin_data,
                 {
-                    'create_sample_coa': True,
-                    'send_welcome_email': True,
+                    'create_sample_coa': False,  # Skip CoA to speed up creation
+                    'send_welcome_email': False,  # Skip email to speed up creation
                     'is_demo': True,
                     'seed_demo_data': False
                 }
