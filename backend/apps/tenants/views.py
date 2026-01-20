@@ -923,8 +923,7 @@ class CreateDemoTenantView(APIView):
 class DemoSignupView(APIView):
     """
     Public demo signup endpoint.
-    Queues tenant creation as a background task to avoid timeouts.
-    Returns immediately with a request_id to check status.
+    Creates tenant and admin user directly (synchronous).
     """
     permission_classes = [AllowAny]
 
@@ -942,74 +941,65 @@ class DemoSignupView(APIView):
 
         data = serializer.validated_data
 
-        try:
-            # Create a signup request record
-            from .models import DemoSignupRequest
-            from .tasks import create_demo_tenant_async
+        # Prepare data for onboarding service
+        company_data = {
+            'name': data['company_name'],
+            'subdomain': data['subdomain'],
+            'email': data['company_email'],
+            'phone': data.get('company_phone', ''),
+            'address': '',
+            'subscription_plan': 'free',
+            'default_currency': data.get('default_currency', 'USD')
+        }
 
-            signup_request = DemoSignupRequest.objects.create(
-                request_id=DemoSignupRequest.generate_request_id(),
-                company_name=data['company_name'],
-                subdomain=data['subdomain'],
-                company_email=data['company_email'],
-                company_phone=data.get('company_phone', ''),
-                default_currency=data.get('default_currency', 'USD'),
-                admin_email=data['admin_email'],
-                admin_password=data['admin_password'],  # Stored temporarily, cleared after use
-                admin_first_name=data['admin_first_name'],
-                admin_last_name=data['admin_last_name'],
-                admin_phone=data.get('admin_phone', ''),
-                status=DemoSignupRequest.Status.PENDING
+        admin_data = {
+            'email': data['admin_email'],
+            'password': data['admin_password'],
+            'first_name': data['admin_first_name'],
+            'last_name': data['admin_last_name'],
+            'phone': data.get('admin_phone', '')
+        }
+
+        try:
+            logger.info(f"Creating demo tenant: {data['company_name']}")
+
+            service = OnboardingService()
+            result = service.register_company(
+                company_data,
+                admin_data,
+                {
+                    'create_sample_coa': True,
+                    'send_welcome_email': True,
+                    'is_demo': True,
+                    'seed_demo_data': False
+                }
             )
 
-            logger.info(f"Demo signup request created: {signup_request.request_id}")
+            logger.info(f"Demo tenant created successfully: {data['company_name']}")
 
-            # Run the task directly (synchronous - no Django-Q dependency)
-            try:
-                result = create_demo_tenant_async(signup_request.request_id)
-                logger.info(f"Tenant creation completed for: {signup_request.request_id}")
+            domain_suffix = getattr(settings, 'TENANT_DOMAIN_SUFFIX', 'parameter.co.zw')
+            return Response({
+                'success': True,
+                'message': 'Your demo account is ready!',
+                'status': 'completed',
+                'login_url': f"https://{data['subdomain']}.{domain_suffix}",
+                'admin_email': data['admin_email'],
+                'tenant': result.get('tenant', {})
+            }, status=status.HTTP_201_CREATED)
 
-                # Refresh the signup request to get updated status
-                signup_request.refresh_from_db()
-
-                if result.get('success'):
-                    domain_suffix = getattr(settings, 'TENANT_DOMAIN_SUFFIX', 'parameter.co.zw')
-                    return Response({
-                        'success': True,
-                        'message': 'Your demo account is ready!',
-                        'request_id': signup_request.request_id,
-                        'status': 'completed',
-                        'login_url': f"https://{signup_request.subdomain}.{domain_suffix}",
-                        'admin_email': signup_request.admin_email
-                    }, status=status.HTTP_201_CREATED)
-                else:
-                    return Response({
-                        'success': False,
-                        'message': result.get('error', 'Account creation failed'),
-                        'request_id': signup_request.request_id,
-                        'status': signup_request.status
-                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-            except Exception as task_error:
-                logger.error(f"Task execution failed: {task_error}")
-                import traceback
-                logger.error(traceback.format_exc())
-                signup_request.status = DemoSignupRequest.Status.FAILED
-                signup_request.error_message = str(task_error)
-                signup_request.save()
-                return Response({
-                    'success': False,
-                    'error': str(task_error),
-                    'request_id': signup_request.request_id,
-                    'status': 'failed'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except ValueError as e:
+            logger.warning(f"Demo signup validation error: {str(e)}")
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
             import traceback
             logger.error(f"Demo signup failed: {str(e)}\n{traceback.format_exc()}")
             return Response({
                 'success': False,
-                'error': f'Failed to initiate demo signup: {str(e)}'
+                'error': f'Registration failed: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
