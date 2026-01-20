@@ -945,7 +945,7 @@ class DemoSignupView(APIView):
         try:
             # Create a signup request record
             from .models import DemoSignupRequest
-            from django_q.tasks import async_task
+            from .tasks import create_demo_tenant_async
 
             signup_request = DemoSignupRequest.objects.create(
                 request_id=DemoSignupRequest.generate_request_id(),
@@ -964,21 +964,15 @@ class DemoSignupView(APIView):
 
             logger.info(f"Demo signup request created: {signup_request.request_id}")
 
-            # Run the task using Django-Q with sync=True for reliability on free tier
-            # This ensures the task completes even without a separate worker
+            # Run the task directly (synchronous - no Django-Q dependency)
             try:
-                task_result = async_task(
-                    'apps.tenants.tasks.create_demo_tenant_async',
-                    signup_request.request_id,
-                    task_name=f'demo_signup_{signup_request.request_id}',
-                    sync=True  # Run synchronously - more reliable on free tier
-                )
+                result = create_demo_tenant_async(signup_request.request_id)
                 logger.info(f"Tenant creation completed for: {signup_request.request_id}")
 
                 # Refresh the signup request to get updated status
                 signup_request.refresh_from_db()
 
-                if signup_request.status == DemoSignupRequest.Status.COMPLETED:
+                if result.get('success'):
                     domain_suffix = getattr(settings, 'TENANT_DOMAIN_SUFFIX', 'parameter.co.zw')
                     return Response({
                         'success': True,
@@ -991,13 +985,15 @@ class DemoSignupView(APIView):
                 else:
                     return Response({
                         'success': False,
-                        'message': signup_request.error_message or 'Account creation failed',
+                        'message': result.get('error', 'Account creation failed'),
                         'request_id': signup_request.request_id,
                         'status': signup_request.status
                     }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             except Exception as task_error:
                 logger.error(f"Task execution failed: {task_error}")
+                import traceback
+                logger.error(traceback.format_exc())
                 signup_request.status = DemoSignupRequest.Status.FAILED
                 signup_request.error_message = str(task_error)
                 signup_request.save()
@@ -1013,7 +1009,7 @@ class DemoSignupView(APIView):
             logger.error(f"Demo signup failed: {str(e)}\n{traceback.format_exc()}")
             return Response({
                 'success': False,
-                'error': 'Failed to initiate demo signup. Please try again.'
+                'error': f'Failed to initiate demo signup: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
