@@ -930,7 +930,6 @@ class DemoSignupView(APIView):
 
     def post(self, request):
         import logging
-        import json
         logger = logging.getLogger(__name__)
 
         # Validate input
@@ -967,7 +966,7 @@ class DemoSignupView(APIView):
             # Store in GlobalSettings as JSON
             GlobalSettings.objects.update_or_create(
                 key=f'demo_signup_{request_id}',
-                defaults={'value': json.dumps(signup_data)}
+                defaults={'value': signup_data}
             )
 
             logger.info(f"Demo signup request stored: {request_id}")
@@ -997,7 +996,6 @@ def _process_demo_signup_background(request_id: str):
     Runs in a separate thread to survive connection timeouts.
     """
     import logging
-    import json
     from django.db import connection
     from django.conf import settings as django_settings
 
@@ -1008,7 +1006,7 @@ def _process_demo_signup_background(request_id: str):
 
     try:
         setting = GlobalSettings.objects.get(key=f'demo_signup_{request_id}')
-        signup_data = json.loads(setting.value)
+        signup_data = setting.value
 
         company_data = {
             'name': signup_data['company_name'],
@@ -1050,11 +1048,11 @@ def _process_demo_signup_background(request_id: str):
 
         # Refresh setting from DB
         setting.refresh_from_db()
-        signup_data = json.loads(setting.value)
+        signup_data = setting.value
         signup_data['status'] = 'completed'
         signup_data['login_url'] = login_url
         signup_data['admin_password'] = '[REDACTED]'
-        setting.value = json.dumps(signup_data)
+        setting.value = signup_data
         setting.save()
 
         logger.info(f"[BG] Demo signup completed: {request_id}")
@@ -1064,10 +1062,10 @@ def _process_demo_signup_background(request_id: str):
         logger.error(f"[BG] Demo signup failed: {str(e)}\n{traceback.format_exc()}")
         try:
             setting = GlobalSettings.objects.get(key=f'demo_signup_{request_id}')
-            signup_data = json.loads(setting.value)
+            signup_data = setting.value
             signup_data['status'] = 'failed'
             signup_data['error'] = str(e)
-            setting.value = json.dumps(signup_data)
+            setting.value = signup_data
             setting.save()
         except:
             pass
@@ -1082,7 +1080,6 @@ class ProcessDemoSignupView(APIView):
 
     def post(self, request, request_id):
         import logging
-        import json
         import threading
         import datetime
 
@@ -1092,7 +1089,7 @@ class ProcessDemoSignupView(APIView):
             # Get signup data from GlobalSettings
             try:
                 setting = GlobalSettings.objects.get(key=f'demo_signup_{request_id}')
-                signup_data = json.loads(setting.value)
+                signup_data = setting.value
             except GlobalSettings.DoesNotExist:
                 return Response({
                     'success': False,
@@ -1117,7 +1114,7 @@ class ProcessDemoSignupView(APIView):
                         if (datetime.datetime.now(datetime.timezone.utc) - started).total_seconds() > 300:
                             logger.info(f"Resetting stuck processing request: {request_id}")
                             signup_data['status'] = 'pending'
-                            setting.value = json.dumps(signup_data)
+                            setting.value = signup_data
                             setting.save()
                     except:
                         pass
@@ -1133,7 +1130,7 @@ class ProcessDemoSignupView(APIView):
             # Mark as processing with timestamp
             signup_data['status'] = 'processing'
             signup_data['started_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            setting.value = json.dumps(signup_data)
+            setting.value = signup_data
             setting.save()
 
             # Start background thread for actual processing
@@ -1167,10 +1164,6 @@ class DemoSignupStatusView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, request_id):
-        import json
-        import logging
-        logger = logging.getLogger(__name__)
-
         try:
             setting = GlobalSettings.objects.get(key=f'demo_signup_{request_id}')
         except GlobalSettings.DoesNotExist:
@@ -1178,14 +1171,7 @@ class DemoSignupStatusView(APIView):
                 'error': 'Signup request not found'
             }, status=status.HTTP_404_NOT_FOUND)
 
-        try:
-            signup_data = json.loads(setting.value)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse signup data for {request_id}: {e}")
-            return Response({
-                'error': 'Invalid signup data format',
-                'request_id': request_id
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        signup_data = setting.value
 
         status_val = signup_data.get('status', 'pending')
 
