@@ -923,98 +923,117 @@ class CreateDemoTenantView(APIView):
 class DemoSignupView(APIView):
     """
     Public demo signup endpoint.
-    Creates a demo account with sample data that expires in 2 hours.
+    Queues tenant creation as a background task to avoid timeouts.
+    Returns immediately with a request_id to check status.
     """
     permission_classes = [AllowAny]
 
     def post(self, request):
         import logging
-        import traceback
-        import time
         logger = logging.getLogger(__name__)
 
-        start_time = time.time()
-
-        try:
-            logger.info("Demo signup: Starting validation...")
-            serializer = DemoSignupSerializer(data=request.data)
-
-            if not serializer.is_valid():
-                logger.warning(f"Demo signup validation failed: {serializer.errors}")
-                return Response({
-                    'success': False,
-                    'errors': serializer.errors
-                }, status=status.HTTP_400_BAD_REQUEST)
-
-            logger.info(f"Demo signup: Validation passed in {time.time() - start_time:.2f}s")
-        except Exception as e:
-            error_trace = traceback.format_exc()
-            logger.error(f"Demo signup serializer error: {str(e)}\n{error_trace}")
+        # Validate input
+        serializer = DemoSignupSerializer(data=request.data)
+        if not serializer.is_valid():
             return Response({
                 'success': False,
-                'error': f'Validation error: {str(e)}',
-                'details': error_trace
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         data = serializer.validated_data
 
-        company_data = {
-            'name': data['company_name'],
-            'subdomain': data['subdomain'],
-            'email': data['company_email'],
-            'phone': data.get('company_phone', ''),
-            'address': '',
-            'subscription_plan': 'free',
-            'default_currency': data.get('default_currency', 'USD')
-        }
-
-        admin_data = {
-            'email': data['admin_email'],
-            'password': data['admin_password'],
-            'first_name': data['admin_first_name'],
-            'last_name': data['admin_last_name'],
-            'phone': data.get('admin_phone', '')
-        }
-
         try:
-            logger.info(f"Demo signup: Creating OnboardingService...")
-            service = OnboardingService()
-            logger.info(f"Demo signup: OnboardingService created in {time.time() - start_time:.2f}s")
+            # Create a signup request record
+            from .models import DemoSignupRequest
+            from django_q.tasks import async_task
 
-            logger.info(f"Demo signup: Starting register_company for {data['company_name']}...")
-            result = service.register_company(
-                company_data,
-                admin_data,
-                {
-                    'create_sample_coa': False,  # Skip COA for faster signup
-                    'send_welcome_email': False,
-                    'is_demo': True,
-                    'seed_demo_data': False
-                }
+            signup_request = DemoSignupRequest.objects.create(
+                request_id=DemoSignupRequest.generate_request_id(),
+                company_name=data['company_name'],
+                subdomain=data['subdomain'],
+                company_email=data['company_email'],
+                company_phone=data.get('company_phone', ''),
+                default_currency=data.get('default_currency', 'USD'),
+                admin_email=data['admin_email'],
+                admin_password=data['admin_password'],  # Stored temporarily, cleared after use
+                admin_first_name=data['admin_first_name'],
+                admin_last_name=data['admin_last_name'],
+                admin_phone=data.get('admin_phone', ''),
+                status=DemoSignupRequest.Status.PENDING
             )
-            logger.info(f"Demo signup: register_company complete in {time.time() - start_time:.2f}s")
+
+            logger.info(f"Demo signup request created: {signup_request.request_id}")
+
+            # Queue the tenant creation task using Django-Q
+            async_task(
+                'apps.tenants.tasks.create_demo_tenant_async',
+                signup_request.request_id,
+                task_name=f'demo_signup_{signup_request.request_id}'
+            )
+
+            logger.info(f"Tenant creation task queued for: {signup_request.request_id}")
 
             return Response({
-                **result,
-                'is_demo': True,
-                'demo_expires_at': (timezone.now() + timedelta(hours=2)).isoformat(),
-                'message': 'Demo account created! Your account will expire in 2 hours.',
-                'timing': f'{time.time() - start_time:.2f}s'
-            }, status=status.HTTP_201_CREATED)
-
-        except ValueError as e:
-            logger.warning(f"Demo signup value error: {str(e)}")
-            return Response({
-                'success': False,
-                'error': str(e)
-            }, status=status.HTTP_400_BAD_REQUEST)
+                'success': True,
+                'message': 'Your demo account is being created. You will receive an email when it\'s ready.',
+                'request_id': signup_request.request_id,
+                'status': 'pending',
+                'status_url': f'/api/tenants/demo-signup-status/{signup_request.request_id}/',
+                'estimated_time': '1-2 minutes'
+            }, status=status.HTTP_202_ACCEPTED)
 
         except Exception as e:
             import traceback
-            error_trace = traceback.format_exc()
-            logger.error(f"Demo signup failed: {str(e)}\n{error_trace}")
+            logger.error(f"Demo signup failed: {str(e)}\n{traceback.format_exc()}")
             return Response({
                 'success': False,
-                'error': str(e),
-                'details': error_trace
+                'error': 'Failed to initiate demo signup. Please try again.'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class DemoSignupStatusView(APIView):
+    """Check the status of a demo signup request."""
+    permission_classes = [AllowAny]
+
+    def get(self, request, request_id):
+        from .models import DemoSignupRequest
+
+        try:
+            signup_request = DemoSignupRequest.objects.get(request_id=request_id)
+        except DemoSignupRequest.DoesNotExist:
+            return Response({
+                'error': 'Signup request not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        response_data = {
+            'request_id': signup_request.request_id,
+            'status': signup_request.status,
+            'company_name': signup_request.company_name,
+            'created_at': signup_request.created_at.isoformat(),
+        }
+
+        if signup_request.status == DemoSignupRequest.Status.COMPLETED:
+            # Get tenant login URL
+            domain_suffix = getattr(settings, 'TENANT_DOMAIN_SUFFIX', 'parameter.co.zw')
+            response_data.update({
+                'login_url': f"https://{signup_request.subdomain}.{domain_suffix}",
+                'admin_email': signup_request.admin_email,
+                'message': 'Your demo account is ready! Check your email for login details.',
+                'completed_at': signup_request.completed_at.isoformat() if signup_request.completed_at else None
+            })
+        elif signup_request.status == DemoSignupRequest.Status.FAILED:
+            response_data.update({
+                'error': signup_request.error_message or 'Account creation failed',
+                'message': 'We encountered an issue creating your account. Please try again.'
+            })
+        elif signup_request.status == DemoSignupRequest.Status.PROCESSING:
+            response_data.update({
+                'message': 'Your account is being created. This usually takes 1-2 minutes.',
+                'started_at': signup_request.started_at.isoformat() if signup_request.started_at else None
+            })
+        else:  # PENDING
+            response_data.update({
+                'message': 'Your request is queued and will be processed shortly.'
+            })
+
+        return Response(response_data)

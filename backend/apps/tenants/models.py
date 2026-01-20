@@ -218,3 +218,66 @@ class GlobalSettings(models.Model):
 
     def __str__(self):
         return self.key
+
+
+class DemoSignupRequest(models.Model):
+    """
+    Track async demo signup requests.
+    Used to handle tenant creation in background tasks.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Pending'
+        PROCESSING = 'processing', 'Processing'
+        COMPLETED = 'completed', 'Completed'
+        FAILED = 'failed', 'Failed'
+
+    # Request tracking
+    request_id = models.CharField(max_length=100, unique=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING
+    )
+
+    # Company details
+    company_name = models.CharField(max_length=255)
+    subdomain = models.CharField(max_length=30)
+    company_email = models.EmailField()
+    company_phone = models.CharField(max_length=20, blank=True)
+    default_currency = models.CharField(max_length=3, default='USD')
+
+    # Admin details
+    admin_email = models.EmailField()
+    admin_password = models.CharField(max_length=255)  # Will be hashed in task
+    admin_first_name = models.CharField(max_length=150)
+    admin_last_name = models.CharField(max_length=150)
+    admin_phone = models.CharField(max_length=20, blank=True)
+
+    # Result tracking
+    created_tenant = models.ForeignKey(
+        Client,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='signup_request'
+    )
+    error_message = models.TextField(blank=True)
+    login_url = models.URLField(blank=True)
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Demo Signup Request'
+        verbose_name_plural = 'Demo Signup Requests'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.company_name} ({self.status})'
+
+    @classmethod
+    def generate_request_id(cls):
+        import secrets
+        return secrets.token_urlsafe(16)
