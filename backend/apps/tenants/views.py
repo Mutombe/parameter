@@ -1164,14 +1164,33 @@ class DemoSignupStatusView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, request_id):
+        import logging
+        logger = logging.getLogger(__name__)
+
         try:
             setting = GlobalSettings.objects.get(key=f'demo_signup_{request_id}')
         except GlobalSettings.DoesNotExist:
             return Response({
                 'error': 'Signup request not found'
             }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Error fetching signup request: {e}")
+            return Response({
+                'error': f'Database error: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        signup_data = setting.value
+        try:
+            signup_data = setting.value
+            # Ensure signup_data is a dict
+            if isinstance(signup_data, str):
+                import json
+                signup_data = json.loads(signup_data)
+        except Exception as e:
+            logger.error(f"Error parsing signup data for {request_id}: {e}, value type: {type(setting.value)}")
+            return Response({
+                'error': f'Data parsing error: {str(e)}',
+                'value_type': str(type(setting.value))
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         status_val = signup_data.get('status', 'pending')
 
