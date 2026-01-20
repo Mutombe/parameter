@@ -1168,14 +1168,24 @@ class DemoSignupStatusView(APIView):
 
     def get(self, request, request_id):
         import json
+        import logging
+        logger = logging.getLogger(__name__)
 
         try:
             setting = GlobalSettings.objects.get(key=f'demo_signup_{request_id}')
-            signup_data = json.loads(setting.value)
         except GlobalSettings.DoesNotExist:
             return Response({
                 'error': 'Signup request not found'
             }, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            signup_data = json.loads(setting.value)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse signup data for {request_id}: {e}")
+            return Response({
+                'error': 'Invalid signup data format',
+                'request_id': request_id
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         status_val = signup_data.get('status', 'pending')
 
