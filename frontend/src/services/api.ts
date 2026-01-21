@@ -1,7 +1,12 @@
 import axios from 'axios'
 
-// Use environment variable for API URL, fallback to relative path for same-domain setup
-const API_BASE_URL = import.meta.env.VITE_API_URL || ''
+// API base URL - use environment variable for production, localhost for development
+// In production on Render, frontend is served from same origin as API
+const API_BASE_URL = import.meta.env.VITE_API_URL || (
+  typeof window !== 'undefined' && window.location.hostname.includes('localhost')
+    ? 'http://localhost:8000'
+    : ''
+)
 
 // Extract subdomain from current hostname for multi-tenant routing
 const getSubdomain = (): string | null => {

@@ -1,17 +1,45 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, CreditCard, Plus, Send, Loader2 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { Search, CreditCard, Plus, Send, Loader2, Eye, X, User, FileText } from 'lucide-react'
 import { receiptApi, tenantApi, invoiceApi } from '../../services/api'
-import { formatCurrency, formatDate, useDebounce } from '../../lib/utils'
-import { EmptyTableState } from '../../components/ui'
-import toast from 'react-hot-toast'
+import { formatCurrency, formatDate, useDebounce, cn } from '../../lib/utils'
+import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea } from '../../components/ui'
+import { Skeleton, OptimisticItemSkeleton } from '../../components/ui/Skeleton'
+import { showToast, parseApiError } from '../../lib/toast'
+
+interface Receipt {
+  id: number | string
+  receipt_number: string
+  tenant: number
+  tenant_name: string
+  invoice?: number
+  invoice_number?: string
+  date: string
+  amount: number
+  payment_method: string
+  reference: string
+  description: string
+  journal?: number
+  journal_number?: string
+  _isOptimistic?: boolean
+}
+
+const methodLabels: Record<string, string> = {
+  cash: 'Cash',
+  bank_transfer: 'Bank Transfer',
+  ecocash: 'EcoCash',
+  card: 'Card',
+  cheque: 'Cheque',
+}
 
 export default function Receipts() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [showForm, setShowForm] = useState(false)
+  const [showDetailModal, setShowDetailModal] = useState(false)
+  const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null)
   const [postingId, setPostingId] = useState<number | null>(null)
   const [form, setForm] = useState({
     tenant: '',
@@ -23,29 +51,76 @@ export default function Receipts() {
     description: '',
   })
 
-  const { data: receipts, isLoading } = useQuery({
+  const { data: receiptsData, isLoading } = useQuery({
     queryKey: ['receipts', debouncedSearch],
     queryFn: () => receiptApi.list({ search: debouncedSearch }).then(r => r.data.results || r.data),
   })
 
-  const { data: tenants } = useQuery({
+  // Tenants dropdown - loads when form opens
+  const { data: tenants, isLoading: tenantsLoading } = useQuery({
     queryKey: ['tenants-select'],
     queryFn: () => tenantApi.list().then(r => r.data.results || r.data),
     enabled: showForm,
+    staleTime: 30000, // Cache for 30 seconds
   })
 
-  const { data: invoices } = useQuery({
+  // Invoices dropdown - loads when form opens
+  const { data: invoices, isLoading: invoicesLoading } = useQuery({
     queryKey: ['invoices-unpaid'],
     queryFn: () => invoiceApi.list({ status: 'sent' }).then(r => r.data.results || r.data),
     enabled: showForm,
+    staleTime: 30000,
   })
 
+  const receipts = receiptsData || []
+
+  // Optimistic create mutation
   const createMutation = useMutation({
-    mutationFn: (data: any) => receiptApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['receipts'] })
-      toast.success('Receipt created')
+    mutationFn: (data: typeof form) => receiptApi.create(data),
+    onMutate: async (newData) => {
+      // Close modal immediately (optimistic)
       setShowForm(false)
+      resetForm()
+
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['receipts'] })
+
+      // Snapshot previous data
+      const previousReceipts = queryClient.getQueryData(['receipts', debouncedSearch])
+
+      // Optimistically add new receipt with loading state
+      const optimisticReceipt: Receipt = {
+        id: `temp-${Date.now()}`,
+        receipt_number: 'Creating...',
+        tenant: Number(newData.tenant),
+        tenant_name: tenants?.find((t: any) => t.id === Number(newData.tenant))?.name || 'Loading...',
+        invoice: newData.invoice ? Number(newData.invoice) : undefined,
+        date: newData.date,
+        amount: Number(newData.amount),
+        payment_method: newData.payment_method,
+        reference: newData.reference,
+        description: newData.description,
+        _isOptimistic: true,
+      }
+
+      queryClient.setQueryData(['receipts', debouncedSearch], (old: any) => {
+        const items = old || []
+        return [optimisticReceipt, ...items]
+      })
+
+      return { previousReceipts }
+    },
+    onSuccess: () => {
+      showToast.success('Receipt recorded successfully')
+      queryClient.invalidateQueries({ queryKey: ['receipts'] })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+    },
+    onError: (error, _, context) => {
+      // Rollback on error
+      if (context?.previousReceipts) {
+        queryClient.setQueryData(['receipts', debouncedSearch], context.previousReceipts)
+      }
+      showToast.error(parseApiError(error, 'Failed to record receipt'))
     },
   })
 
@@ -53,41 +128,133 @@ export default function Receipts() {
     mutationFn: (id: number) => receiptApi.postToLedger(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['receipts'] })
-      toast.success('Receipt posted to ledger')
+      showToast.success('Receipt posted to ledger')
       setPostingId(null)
     },
-    onError: () => {
-      toast.error('Failed to post receipt')
+    onError: (error) => {
+      showToast.error(parseApiError(error, 'Failed to post receipt'))
       setPostingId(null)
     },
   })
+
+  const resetForm = () => {
+    setForm({
+      tenant: '',
+      invoice: '',
+      date: new Date().toISOString().split('T')[0],
+      amount: '',
+      payment_method: 'bank_transfer',
+      reference: '',
+      description: '',
+    })
+  }
 
   const handlePost = (id: number) => {
     setPostingId(id)
     postMutation.mutate(id)
   }
 
-  const methodLabels: Record<string, string> = {
-    cash: 'Cash',
-    bank_transfer: 'Bank Transfer',
-    ecocash: 'EcoCash',
-    card: 'Card',
-    cheque: 'Cheque',
+  const handleViewDetails = (receipt: Receipt) => {
+    setSelectedReceipt(receipt)
+    setShowDetailModal(true)
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    createMutation.mutate(form)
+  }
+
+  // Stats
+  const stats = {
+    total: receipts.length,
+    totalAmount: receipts.reduce((sum: number, r: Receipt) => sum + Number(r.amount || 0), 0),
+    posted: receipts.filter((r: Receipt) => r.journal).length,
+    unposted: receipts.filter((r: Receipt) => !r.journal).length,
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Receipts</h1>
-          <p className="text-gray-500 mt-1">Record payments received</p>
+      <PageHeader
+        title="Receipts"
+        subtitle="Record and manage payment receipts"
+        icon={CreditCard}
+        actions={
+          <Button onClick={() => setShowForm(true)} className="gap-2">
+            <Plus className="w-4 h-4" />
+            Record Receipt
+          </Button>
+        }
+      />
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-primary-50 flex items-center justify-center">
+              <CreditCard className="w-6 h-6 text-primary-600" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Total Receipts</p>
+              {isLoading ? (
+                <Skeleton className="h-7 w-12 mt-1" />
+              ) : (
+                <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+              )}
+            </div>
+          </div>
         </div>
-        <button onClick={() => setShowForm(true)} className="btn-primary">
-          <Plus className="w-4 h-4 mr-2" /> Record Receipt
-        </button>
+
+        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-5 text-white">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+              <CreditCard className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <p className="text-emerald-100 text-sm">Total Collected</p>
+              {isLoading ? (
+                <Skeleton className="h-7 w-24 mt-1 bg-white/30" />
+              ) : (
+                <p className="text-2xl font-bold">{formatCurrency(stats.totalAmount)}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center">
+              <Send className="w-6 h-6 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Posted to GL</p>
+              {isLoading ? (
+                <Skeleton className="h-7 w-12 mt-1" />
+              ) : (
+                <p className="text-2xl font-bold text-blue-600">{stats.posted}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center">
+              <FileText className="w-6 h-6 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Pending Post</p>
+              {isLoading ? (
+                <Skeleton className="h-7 w-12 mt-1" />
+              ) : (
+                <p className="text-2xl font-bold text-amber-600">{stats.unposted}</p>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="card p-4">
+      {/* Search */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input
@@ -95,70 +262,13 @@ export default function Receipts() {
             placeholder="Search receipts..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="input pl-10"
+            className="w-full pl-10 pr-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition-all"
           />
         </div>
       </div>
 
-      {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 p-6">
-            <h2 className="text-lg font-semibold mb-4">Record Receipt</h2>
-            <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(form); }} className="space-y-4">
-              <div>
-                <label className="label">Tenant</label>
-                <select value={form.tenant} onChange={(e) => setForm({ ...form, tenant: e.target.value })} className="input" required>
-                  <option value="">Select tenant</option>
-                  {tenants?.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="label">Against Invoice (Optional)</label>
-                <select value={form.invoice} onChange={(e) => setForm({ ...form, invoice: e.target.value })} className="input">
-                  <option value="">Select invoice</option>
-                  {invoices?.map((inv: any) => <option key={inv.id} value={inv.id}>{inv.invoice_number} - {formatCurrency(inv.balance)}</option>)}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Date</label>
-                  <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="input" required />
-                </div>
-                <div>
-                  <label className="label">Amount</label>
-                  <input type="number" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="input" required />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Payment Method</label>
-                  <select value={form.payment_method} onChange={(e) => setForm({ ...form, payment_method: e.target.value })} className="input">
-                    <option value="cash">Cash</option>
-                    <option value="bank_transfer">Bank Transfer</option>
-                    <option value="ecocash">EcoCash</option>
-                    <option value="card">Card</option>
-                    <option value="cheque">Cheque</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Reference</label>
-                  <input type="text" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} className="input" placeholder="Bank ref, EcoCash ref..." />
-                </div>
-              </div>
-              <div>
-                <label className="label">Description</label>
-                <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input" rows={2} />
-              </div>
-              <div className="flex justify-end gap-3 pt-4">
-                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
-                <button type="submit" className="btn-primary">Record Receipt</button>
-              </div>
-            </form>
-          </motion.div>
-        </div>
-      )}
-
-      <div className="card overflow-hidden">
+      {/* Receipts Table */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
@@ -180,22 +290,18 @@ export default function Receipts() {
                       <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
                         <CreditCard className="w-5 h-5 text-emerald-600" />
                       </div>
-                      <div className="h-4 w-28 bg-gray-200 rounded" />
+                      <Skeleton className="h-4 w-28" />
                     </div>
                   </td>
-                  <td className="px-6 py-4"><div className="h-4 w-32 bg-gray-200 rounded" /></td>
-                  <td className="px-6 py-4"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
-                  <td className="px-6 py-4"><div className="h-5 w-24 bg-gray-200 rounded-full" /></td>
-                  <td className="px-6 py-4"><div className="h-4 w-28 bg-gray-200 rounded" /></td>
-                  <td className="px-6 py-4"><div className="h-4 w-24 bg-gray-200 rounded" /></td>
-                  <td className="px-6 py-4">
-                    <button className="text-gray-300 text-sm font-medium flex items-center gap-1">
-                      <Send className="w-4 h-4" /> Post
-                    </button>
-                  </td>
+                  <td className="px-6 py-4"><Skeleton className="h-4 w-32" /></td>
+                  <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
+                  <td className="px-6 py-4"><Skeleton className="h-5 w-24 rounded-full" /></td>
+                  <td className="px-6 py-4"><Skeleton className="h-4 w-28" /></td>
+                  <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
+                  <td className="px-6 py-4"><Skeleton className="h-8 w-16" /></td>
                 </tr>
               ))
-            ) : !receipts?.length ? (
+            ) : !receipts.length ? (
               <EmptyTableState
                 title="No receipts yet"
                 description="Record your first payment receipt to track tenant payments."
@@ -204,14 +310,36 @@ export default function Receipts() {
                   onClick: () => setShowForm(true)
                 }}
               />
-            ) : receipts?.map((receipt: any) => (
-                <tr key={receipt.id} className="hover:bg-gray-50">
+            ) : (
+              receipts.map((receipt: Receipt, index: number) => (
+                <motion.tr
+                  key={receipt.id}
+                  initial={receipt._isOptimistic ? { opacity: 0.5, backgroundColor: 'rgb(239 246 255)' } : { opacity: 0 }}
+                  animate={{ opacity: 1, backgroundColor: 'transparent' }}
+                  transition={{ duration: 0.3, delay: receipt._isOptimistic ? 0 : index * 0.02 }}
+                  className={cn(
+                    'hover:bg-gray-50 transition-colors',
+                    receipt._isOptimistic && 'bg-blue-50'
+                  )}
+                >
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-                        <CreditCard className="w-5 h-5 text-emerald-600" />
+                      <div className={cn(
+                        'w-10 h-10 rounded-lg flex items-center justify-center',
+                        receipt._isOptimistic ? 'bg-blue-100' : 'bg-emerald-100'
+                      )}>
+                        {receipt._isOptimistic ? (
+                          <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                        ) : (
+                          <CreditCard className="w-5 h-5 text-emerald-600" />
+                        )}
                       </div>
-                      <span className="font-medium">{receipt.receipt_number}</span>
+                      <span className={cn(
+                        'font-medium',
+                        receipt._isOptimistic ? 'text-blue-600' : 'text-gray-900'
+                      )}>
+                        {receipt._isOptimistic ? 'Creating...' : receipt.receipt_number}
+                      </span>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-gray-600">{receipt.tenant_name}</td>
@@ -224,11 +352,13 @@ export default function Receipts() {
                   <td className="px-6 py-4 text-gray-600">{receipt.reference || '-'}</td>
                   <td className="px-6 py-4 text-gray-600">{formatDate(receipt.date)}</td>
                   <td className="px-6 py-4">
-                    {receipt.journal ? (
+                    {receipt._isOptimistic ? (
+                      <span className="text-blue-600 text-sm">Processing...</span>
+                    ) : receipt.journal ? (
                       <span className="text-green-600 text-sm">{receipt.journal_number}</span>
                     ) : (
                       <button
-                        onClick={() => handlePost(receipt.id)}
+                        onClick={() => handlePost(receipt.id as number)}
                         disabled={postingId === receipt.id}
                         className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1 disabled:opacity-50"
                       >
@@ -244,11 +374,143 @@ export default function Receipts() {
                       </button>
                     )}
                   </td>
-                </tr>
-              ))}
+                </motion.tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
+
+      {/* Create Receipt Modal */}
+      <Modal
+        open={showForm}
+        onClose={() => { setShowForm(false); resetForm(); }}
+        title="Record Receipt"
+        icon={Plus}
+      >
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Tenant Select with Loading */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Tenant <span className="text-red-500">*</span>
+            </label>
+            {tenantsLoading ? (
+              <div className="relative">
+                <Skeleton className="h-11 w-full rounded-xl" />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                </div>
+              </div>
+            ) : (
+              <select
+                value={form.tenant}
+                onChange={(e) => setForm({ ...form, tenant: e.target.value })}
+                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                required
+              >
+                <option value="">Select tenant</option>
+                {tenants?.map((t: any) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Invoice Select with Loading */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Against Invoice (Optional)
+            </label>
+            {invoicesLoading ? (
+              <div className="relative">
+                <Skeleton className="h-11 w-full rounded-xl" />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                </div>
+              </div>
+            ) : (
+              <select
+                value={form.invoice}
+                onChange={(e) => setForm({ ...form, invoice: e.target.value })}
+                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+              >
+                <option value="">Select invoice</option>
+                {invoices?.map((inv: any) => (
+                  <option key={inv.id} value={inv.id}>
+                    {inv.invoice_number} - {formatCurrency(inv.balance)} ({inv.tenant_name})
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              type="date"
+              label="Date"
+              value={form.date}
+              onChange={(e) => setForm({ ...form, date: e.target.value })}
+              required
+            />
+            <Input
+              type="number"
+              label="Amount"
+              placeholder="0.00"
+              step="0.01"
+              min="0"
+              value={form.amount}
+              onChange={(e) => setForm({ ...form, amount: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Payment Method"
+              value={form.payment_method}
+              onChange={(e) => setForm({ ...form, payment_method: e.target.value })}
+            >
+              <option value="cash">Cash</option>
+              <option value="bank_transfer">Bank Transfer</option>
+              <option value="ecocash">EcoCash</option>
+              <option value="card">Card</option>
+              <option value="cheque">Cheque</option>
+            </Select>
+            <Input
+              label="Reference"
+              placeholder="Bank ref, EcoCash ref..."
+              value={form.reference}
+              onChange={(e) => setForm({ ...form, reference: e.target.value })}
+            />
+          </div>
+
+          <Textarea
+            label="Description"
+            placeholder="Payment description..."
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            rows={2}
+          />
+
+          <div className="flex gap-3 pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => { setShowForm(false); resetForm(); }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="flex-1"
+              disabled={createMutation.isPending || tenantsLoading}
+            >
+              {createMutation.isPending ? 'Recording...' : 'Record Receipt'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

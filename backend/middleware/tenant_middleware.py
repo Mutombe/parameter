@@ -3,9 +3,38 @@ import threading
 import logging
 from django.utils.deprecation import MiddlewareMixin
 from django.conf import settings
+from django.http import HttpResponse
 
 _thread_locals = threading.local()
 logger = logging.getLogger(__name__)
+
+
+class SimpleCorsMiddleware(MiddlewareMixin):
+    """
+    Simple CORS middleware for development.
+    Adds CORS headers to all responses.
+    """
+
+    def process_request(self, request):
+        """Handle preflight OPTIONS requests."""
+        if request.method == 'OPTIONS':
+            response = HttpResponse()
+            response['Access-Control-Allow-Origin'] = request.META.get('HTTP_ORIGIN', '*')
+            response['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+            response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-CSRFToken, X-Tenant-Subdomain, X-Requested-With'
+            response['Access-Control-Allow-Credentials'] = 'true'
+            response['Access-Control-Max-Age'] = '86400'
+            return response
+        return None
+
+    def process_response(self, request, response):
+        """Add CORS headers to all responses."""
+        origin = request.META.get('HTTP_ORIGIN', '*')
+        response['Access-Control-Allow-Origin'] = origin
+        response['Access-Control-Allow-Credentials'] = 'true'
+        response['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+        response['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-CSRFToken, X-Tenant-Subdomain, X-Requested-With'
+        return response
 
 
 def get_current_tenant():

@@ -27,11 +27,11 @@ import {
 import { invoiceApi, tenantApi, unitApi, leaseApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog } from '../../components/ui'
-import toast from 'react-hot-toast'
+import { showToast, parseApiError } from '../../lib/toast'
 import { TbUserSquareRounded } from "react-icons/tb";
 
 interface Invoice {
-  id: number
+  id: number | string
   invoice_number: string
   tenant: number
   tenant_name: string
@@ -44,6 +44,7 @@ interface Invoice {
   status: 'draft' | 'sent' | 'partial' | 'paid' | 'overdue' | 'cancelled'
   description?: string
   created_at: string
+  _isOptimistic?: boolean
 }
 
 const statusConfig = {
@@ -171,46 +172,93 @@ export default function Invoices() {
     },
   })
 
-  const { data: tenants } = useQuery({
+  const { data: tenants, isLoading: tenantsLoading } = useQuery({
     queryKey: ['tenants-select'],
     queryFn: () => tenantApi.list().then(r => r.data.results || r.data),
     enabled: showForm,
+    staleTime: 30000,
   })
 
-  const { data: units } = useQuery({
+  const { data: units, isLoading: unitsLoading } = useQuery({
     queryKey: ['units-select'],
     queryFn: () => unitApi.list().then(r => r.data.results || r.data),
     enabled: showForm,
+    staleTime: 30000,
   })
 
+  const resetForm = () => {
+    setShowForm(false)
+    setForm({
+      tenant: '',
+      unit: '',
+      invoice_type: 'rent',
+      date: new Date().toISOString().split('T')[0],
+      due_date: '',
+      amount: '',
+      description: '',
+    })
+  }
+
+  // Optimistic create mutation
   const createMutation = useMutation({
     mutationFn: (data: any) => invoiceApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] })
-      toast.success('Invoice created successfully')
-      setShowForm(false)
-      setForm({
-        tenant: '',
-        unit: '',
-        invoice_type: 'rent',
-        date: new Date().toISOString().split('T')[0],
-        due_date: '',
-        amount: '',
-        description: '',
+    onMutate: async (newData) => {
+      // Close modal immediately (optimistic)
+      resetForm()
+
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['invoices'] })
+
+      // Snapshot previous data
+      const previousInvoices = queryClient.getQueryData(['invoices', debouncedSearch, statusFilter])
+
+      // Optimistically add new invoice with loading state
+      const optimisticInvoice: Invoice = {
+        id: `temp-${Date.now()}`,
+        invoice_number: 'Creating...',
+        tenant: Number(newData.tenant),
+        tenant_name: tenants?.find((t: any) => t.id === Number(newData.tenant))?.name || 'Loading...',
+        unit_name: units?.find((u: any) => u.id === Number(newData.unit))?.unit_number,
+        invoice_type: newData.invoice_type,
+        date: newData.date,
+        due_date: newData.due_date,
+        total_amount: Number(newData.amount),
+        balance: Number(newData.amount),
+        status: 'draft',
+        description: newData.description,
+        created_at: new Date().toISOString(),
+        _isOptimistic: true,
+      }
+
+      queryClient.setQueryData(['invoices', debouncedSearch, statusFilter], (old: any) => {
+        const items = old || []
+        return [optimisticInvoice, ...items]
       })
+
+      return { previousInvoices }
     },
-    onError: () => toast.error('Failed to create invoice'),
+    onSuccess: () => {
+      showToast.success('Invoice created successfully')
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+    },
+    onError: (error, _, context) => {
+      // Rollback on error
+      if (context?.previousInvoices) {
+        queryClient.setQueryData(['invoices', debouncedSearch, statusFilter], context.previousInvoices)
+      }
+      showToast.error(parseApiError(error, 'Failed to create invoice'))
+    },
   })
 
   const postMutation = useMutation({
     mutationFn: (id: number) => invoiceApi.postToLedger(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
-      toast.success('Invoice posted to ledger')
+      showToast.success('Invoice posted to ledger')
       setPostingId(null)
     },
-    onError: () => {
-      toast.error('Failed to post invoice')
+    onError: (error) => {
+      showToast.error(parseApiError(error, 'Failed to post invoice'))
       setPostingId(null)
     },
   })
@@ -332,10 +380,10 @@ export default function Invoices() {
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
       const count = response.data?.created_count || response.data?.length || 0
-      toast.success(`Generated ${count} invoices`)
+      showToast.success(`Generated ${count} invoices successfully`)
       setShowGenerateModal(false)
     },
-    onError: () => toast.error('Failed to generate invoices'),
+    onError: (error) => showToast.error(parseApiError(error, 'Failed to generate invoices')),
   })
 
   // Stats calculations
@@ -602,29 +650,45 @@ export default function Invoices() {
                         invoice.status !== 'cancelled' &&
                         new Date(invoice.due_date) < new Date()
                       )
+                      const isOptimistic = invoice._isOptimistic
 
                       return (
                         <motion.tr
                           key={invoice.id}
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          transition={{ delay: index * 0.02 }}
-                          className="hover:bg-gray-50 transition-colors"
+                          initial={isOptimistic ? { opacity: 0.5, backgroundColor: 'rgb(239 246 255)' } : { opacity: 0 }}
+                          animate={{ opacity: 1, backgroundColor: 'transparent' }}
+                          transition={{ delay: isOptimistic ? 0 : index * 0.02, duration: 0.3 }}
+                          className={cn(
+                            'transition-colors',
+                            isOptimistic ? 'bg-blue-50' : 'hover:bg-gray-50'
+                          )}
                         >
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
                               <div className={cn(
                                 'w-10 h-10 rounded-lg flex items-center justify-center',
-                                isOverdue ? 'bg-rose-100' : 'bg-primary-50'
+                                isOptimistic ? 'bg-blue-100' : isOverdue ? 'bg-rose-100' : 'bg-primary-50'
                               )}>
-                                {isOverdue ? (
+                                {isOptimistic ? (
+                                  <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                                ) : isOverdue ? (
                                   <AlertTriangle className="w-5 h-5 text-rose-600" />
                                 ) : (
                                   <Receipt className="w-5 h-5 text-primary-600" />
                                 )}
                               </div>
                               <div>
-                                <p className="font-semibold text-gray-900">{invoice.invoice_number}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className={cn(
+                                    'font-semibold',
+                                    isOptimistic ? 'text-blue-600' : 'text-gray-900'
+                                  )}>
+                                    {isOptimistic ? 'Creating...' : invoice.invoice_number}
+                                  </p>
+                                  {isOptimistic && (
+                                    <span className="text-xs text-blue-500">Processing...</span>
+                                  )}
+                                </div>
                                 <p className="text-xs text-gray-500">{formatDate(invoice.date)}</p>
                               </div>
                             </div>
@@ -669,42 +733,46 @@ export default function Invoices() {
                             </span>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="flex items-center justify-end gap-2">
-                              {invoice.status === 'draft' && (
-                                <Button
-                                  size="sm"
-                                  onClick={() => handlePost(invoice.id)}
-                                  disabled={postingId === invoice.id}
-                                  className="gap-1"
+                            {isOptimistic ? (
+                              <span className="text-sm text-blue-600">Processing...</span>
+                            ) : (
+                              <div className="flex items-center justify-end gap-2">
+                                {invoice.status === 'draft' && (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handlePost(invoice.id as number)}
+                                    disabled={postingId === invoice.id}
+                                    className="gap-1"
+                                  >
+                                    {postingId === invoice.id ? (
+                                      <>
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                        Posting...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Send className="w-3 h-3" />
+                                        Post
+                                      </>
+                                    )}
+                                  </Button>
+                                )}
+                                <button
+                                  onClick={() => handleViewDetails(invoice)}
+                                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                  title="View Details"
                                 >
-                                  {postingId === invoice.id ? (
-                                    <>
-                                      <Loader2 className="w-3 h-3 animate-spin" />
-                                      Posting...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Send className="w-3 h-3" />
-                                      Post
-                                    </>
-                                  )}
-                                </Button>
-                              )}
-                              <button
-                                onClick={() => handleViewDetails(invoice)}
-                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                title="View Details"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handlePrint(invoice)}
-                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                                title="Print Invoice"
-                              >
-                                <Printer className="w-4 h-4" />
-                              </button>
-                            </div>
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => handlePrint(invoice)}
+                                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                  title="Print Invoice"
+                                >
+                                  <Printer className="w-4 h-4" />
+                                </button>
+                              </div>
+                            )}
                           </td>
                         </motion.tr>
                       )
@@ -718,33 +786,63 @@ export default function Invoices() {
       {/* Create Invoice Modal */}
       <Modal
         open={showForm}
-        onClose={() => setShowForm(false)}
+        onClose={resetForm}
         title="Create Invoice"
         icon={Plus}
       >
         <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(form); }} className="space-y-5">
-          <Select
-            label="Tenant"
-            value={form.tenant}
-            onChange={(e) => setForm({ ...form, tenant: e.target.value })}
-            required
-          >
-            <option value="">Select tenant</option>
-            {tenants?.map((t: any) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </Select>
+          {/* Tenant Select with Loading */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Tenant <span className="text-red-500">*</span>
+            </label>
+            {tenantsLoading ? (
+              <div className="relative">
+                <Skeleton className="h-11 w-full rounded-xl" />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                </div>
+              </div>
+            ) : (
+              <select
+                value={form.tenant}
+                onChange={(e) => setForm({ ...form, tenant: e.target.value })}
+                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                required
+              >
+                <option value="">Select tenant</option>
+                {tenants?.map((t: any) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
 
-          <Select
-            label="Unit (Optional)"
-            value={form.unit}
-            onChange={(e) => setForm({ ...form, unit: e.target.value })}
-          >
-            <option value="">Select unit</option>
-            {units?.map((u: any) => (
-              <option key={u.id} value={u.id}>{u.property_name} - {u.unit_number}</option>
-            ))}
-          </Select>
+          {/* Unit Select with Loading */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Unit (Optional)
+            </label>
+            {unitsLoading ? (
+              <div className="relative">
+                <Skeleton className="h-11 w-full rounded-xl" />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                </div>
+              </div>
+            ) : (
+              <select
+                value={form.unit}
+                onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+              >
+                <option value="">Select unit</option>
+                {units?.map((u: any) => (
+                  <option key={u.id} value={u.id}>{u.property_name} - {u.unit_number}</option>
+                ))}
+              </select>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <Input
@@ -796,10 +894,10 @@ export default function Invoices() {
           />
 
           <div className="flex gap-3 pt-4">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowForm(false)}>
+            <Button type="button" variant="outline" className="flex-1" onClick={resetForm}>
               Cancel
             </Button>
-            <Button type="submit" className="flex-1" disabled={createMutation.isPending}>
+            <Button type="submit" className="flex-1" disabled={createMutation.isPending || tenantsLoading}>
               {createMutation.isPending ? 'Creating...' : 'Create Invoice'}
             </Button>
           </div>

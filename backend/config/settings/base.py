@@ -71,7 +71,7 @@ def get_tenant_url(subdomain):
     return f"{TENANT_PROTOCOL}://{subdomain}.{TENANT_DOMAIN_SUFFIX}"
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',  # CORS must be first to handle preflight
+    'middleware.tenant_middleware.SimpleCorsMiddleware',  # Custom CORS - must be first
     'middleware.tenant_middleware.SubdomainHeaderMiddleware',  # Handle X-Tenant-Subdomain header
     'django_tenants.middleware.main.TenantMainMiddleware',
     'django.middleware.security.SecurityMiddleware',
@@ -167,6 +167,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'EXCEPTION_HANDLER': 'config.exception_handler.custom_exception_handler',
 }
 
 # CORS settings

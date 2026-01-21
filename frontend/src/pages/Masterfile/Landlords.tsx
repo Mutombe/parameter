@@ -15,17 +15,18 @@ import {
   Home,
   Percent,
   X,
+  Loader2,
 } from 'lucide-react'
 import { landlordApi } from '../../services/api'
 import { cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, ConfirmDialog, Pagination } from '../../components/ui'
-import toast from 'react-hot-toast'
+import { showToast, parseApiError } from '../../lib/toast'
 import { TbUserSquareRounded } from "react-icons/tb"
 
 const PAGE_SIZE = 12
 
 interface Landlord {
-  id: number
+  id: number | string
   name: string
   landlord_type: 'individual' | 'company' | 'trust'
   email: string
@@ -35,6 +36,8 @@ interface Landlord {
   property_count: number
   total_balance?: number
   created_at: string
+  _isOptimistic?: boolean
+  _isUpdating?: boolean
 }
 
 const landlordTypeConfig = {
@@ -98,32 +101,105 @@ export default function Landlords() {
   const totalCount = landlordsData?.count || landlords.length
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
+  // Optimistic create/update mutation
   const createMutation = useMutation({
     mutationFn: (data: typeof form) =>
       editingId ? landlordApi.update(editingId, data) : landlordApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['landlords'] })
-      toast.success(editingId ? 'Landlord updated successfully' : 'Landlord created successfully')
+    onMutate: async (newData) => {
+      const isUpdating = !!editingId
+
+      // Close modal immediately (optimistic)
       resetForm()
+
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['landlords'] })
+
+      // Snapshot previous data
+      const previousData = queryClient.getQueryData(['landlords', debouncedSearch, currentPage])
+
+      if (!isUpdating) {
+        // Optimistically add new landlord
+        const optimisticLandlord: Landlord = {
+          id: `temp-${Date.now()}`,
+          name: newData.name,
+          landlord_type: newData.landlord_type as Landlord['landlord_type'],
+          email: newData.email,
+          phone: newData.phone,
+          address: newData.address,
+          commission_rate: newData.commission_rate,
+          property_count: 0,
+          created_at: new Date().toISOString(),
+          _isOptimistic: true,
+        }
+
+        queryClient.setQueryData(['landlords', debouncedSearch, currentPage], (old: any) => {
+          const items = old?.results || old || []
+          return old?.results
+            ? { ...old, results: [optimisticLandlord, ...items] }
+            : [optimisticLandlord, ...items]
+        })
+      } else {
+        // Optimistically update existing landlord
+        queryClient.setQueryData(['landlords', debouncedSearch, currentPage], (old: any) => {
+          const items = old?.results || old || []
+          const updatedItems = items.map((item: Landlord) =>
+            item.id === editingId
+              ? { ...item, ...newData, _isUpdating: true }
+              : item
+          )
+          return old?.results ? { ...old, results: updatedItems } : updatedItems
+        })
+      }
+
+      return { previousData, isUpdating }
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.detail
-        || error?.response?.data?.message
-        || Object.values(error?.response?.data || {})[0]
-        || 'Failed to save landlord'
-      toast.error(Array.isArray(message) ? message[0] : message)
+    onSuccess: (_, __, context) => {
+      showToast.success(context?.isUpdating ? 'Landlord updated successfully' : 'Landlord created successfully')
+      queryClient.invalidateQueries({ queryKey: ['landlords'] })
+    },
+    onError: (error, _, context) => {
+      // Rollback on error
+      if (context?.previousData) {
+        queryClient.setQueryData(['landlords', debouncedSearch, currentPage], context.previousData)
+      }
+      showToast.error(parseApiError(error, 'Failed to save landlord'))
     },
   })
 
+  // Optimistic delete mutation
   const deleteMutation = useMutation({
     mutationFn: (id: number) => landlordApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['landlords'] })
-      toast.success('Landlord deleted')
+    onMutate: async (id) => {
+      // Close dialog immediately
       setShowDeleteDialog(false)
+
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['landlords'] })
+
+      // Snapshot previous data
+      const previousData = queryClient.getQueryData(['landlords', debouncedSearch, currentPage])
+
+      // Optimistically remove the landlord
+      queryClient.setQueryData(['landlords', debouncedSearch, currentPage], (old: any) => {
+        const items = old?.results || old || []
+        const filteredItems = items.filter((item: Landlord) => item.id !== id)
+        return old?.results ? { ...old, results: filteredItems } : filteredItems
+      })
+
+      return { previousData }
+    },
+    onSuccess: () => {
+      showToast.success('Landlord deleted successfully')
+      queryClient.invalidateQueries({ queryKey: ['landlords'] })
       setSelectedLandlord(null)
     },
-    onError: () => toast.error('Failed to delete landlord'),
+    onError: (error, _, context) => {
+      // Rollback on error
+      if (context?.previousData) {
+        queryClient.setQueryData(['landlords', debouncedSearch, currentPage], context.previousData)
+      }
+      showToast.error(parseApiError(error, 'Failed to delete landlord'))
+    },
   })
 
   const resetForm = () => {
@@ -320,27 +396,51 @@ export default function Landlords() {
           {filteredLandlords.map((landlord: Landlord, index: number) => {
             const config = landlordTypeConfig[landlord.landlord_type] || landlordTypeConfig.individual
             const TypeIcon = config.icon
+            const isOptimistic = landlord._isOptimistic
+            const isUpdating = landlord._isUpdating
 
             return (
               <motion.div
                 key={landlord.id}
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.02 }}
-                className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md hover:border-gray-300 transition-all group"
+                initial={isOptimistic ? { opacity: 0.5, backgroundColor: 'rgb(239 246 255)' } : { opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0, backgroundColor: 'transparent' }}
+                transition={{ delay: isOptimistic ? 0 : index * 0.02, duration: 0.3 }}
+                className={cn(
+                  'bg-white rounded-xl border p-4 transition-all group',
+                  isOptimistic || isUpdating
+                    ? 'border-primary-200 bg-primary-50/50'
+                    : 'border-gray-200 hover:shadow-md hover:border-gray-300'
+                )}
               >
                 <div className="flex items-center gap-4">
                   {/* Icon */}
                   <div className={cn(
                     'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
-                    config.bgColor
+                    isOptimistic || isUpdating ? 'bg-primary-100' : config.bgColor
                   )}>
-                    <TypeIcon className={cn('w-5 h-5', config.color)} />
+                    {isOptimistic || isUpdating ? (
+                      <Loader2 className="w-5 h-5 text-primary-600 animate-spin" />
+                    ) : (
+                      <TypeIcon className={cn('w-5 h-5', config.color)} />
+                    )}
                   </div>
 
                   {/* Name & Email */}
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 truncate">{landlord.name}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className={cn(
+                        'font-semibold truncate',
+                        isOptimistic || isUpdating ? 'text-primary-700' : 'text-gray-900'
+                      )}>
+                        {landlord.name}
+                      </h3>
+                      {isOptimistic && (
+                        <span className="text-xs text-primary-600 font-medium">Creating...</span>
+                      )}
+                      {isUpdating && (
+                        <span className="text-xs text-primary-600 font-medium">Updating...</span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 text-sm text-gray-500">
                       <Mail className="w-3 h-3" />
                       <span className="truncate">{landlord.email}</span>
@@ -374,30 +474,34 @@ export default function Landlords() {
                     <span className="text-sm font-semibold text-primary-600">{landlord.commission_rate}%</span>
                   </div>
 
-                  {/* Actions - always visible on mobile, hover on desktop */}
-                  <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => handleViewDetails(landlord)}
-                      className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-                      title="View details"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleEdit(landlord)}
-                      className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-                      title="Edit"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(landlord)}
-                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  {/* Actions - hidden for optimistic items */}
+                  {!isOptimistic && !isUpdating ? (
+                    <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => handleViewDetails(landlord)}
+                        className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                        title="View details"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleEdit(landlord)}
+                        className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                        title="Edit"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(landlord)}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-24" /> // Spacer for optimistic items
+                  )}
                 </div>
               </motion.div>
             )

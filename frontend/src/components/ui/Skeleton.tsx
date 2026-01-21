@@ -15,6 +15,110 @@ export function Skeleton({ className }: SkeletonProps) {
   )
 }
 
+// Skeleton for dropdown options while loading
+export function SkeletonDropdownOptions({ count = 4 }: { count?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="px-3 py-2 flex items-center gap-2">
+          <Skeleton className="h-4 w-4 rounded" />
+          <Skeleton className={cn('h-4 rounded', i % 2 === 0 ? 'w-3/4' : 'w-1/2')} />
+        </div>
+      ))}
+    </>
+  )
+}
+
+// Skeleton for a select/dropdown input
+export function SkeletonSelect({ label }: { label?: string }) {
+  return (
+    <div className="space-y-2">
+      {label && <Skeleton className="h-4 w-20" />}
+      <div className="relative">
+        <Skeleton className="h-10 w-full rounded-lg" />
+        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+          <Skeleton className="h-4 w-4 rounded" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Skeleton overlay for optimistic item (shows loading state over existing content)
+export function SkeletonOverlay({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative">
+      <div className="opacity-50 pointer-events-none">
+        {children}
+      </div>
+      <div className="absolute inset-0 flex items-center justify-center bg-white/50 backdrop-blur-[1px] rounded-xl">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="w-4 h-4 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm text-gray-600">Saving...</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Skeleton for a single list item (compact row style)
+export function SkeletonListItem() {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse">
+      <div className="flex items-center gap-4">
+        <Skeleton className="w-10 h-10 rounded-lg" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-3 w-48" />
+        </div>
+        <Skeleton className="h-6 w-20 rounded-full" />
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-4 w-16" />
+        <div className="flex gap-1">
+          <Skeleton className="w-8 h-8 rounded-lg" />
+          <Skeleton className="w-8 h-8 rounded-lg" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Optimistic item skeleton - shows when an item is being created/updated
+export function OptimisticItemSkeleton({
+  icon: Icon,
+  iconBgColor = 'bg-gray-100',
+  iconColor = 'text-gray-400'
+}: {
+  icon?: React.ComponentType<{ className?: string }>
+  iconBgColor?: string
+  iconColor?: string
+}) {
+  return (
+    <div className="bg-white rounded-xl border border-primary-200 p-4 animate-pulse relative overflow-hidden">
+      {/* Shimmer effect */}
+      <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-primary-50/50 to-transparent" />
+
+      <div className="flex items-center gap-4 relative">
+        <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center', iconBgColor)}>
+          {Icon ? (
+            <Icon className={cn('w-5 h-5', iconColor)} />
+          ) : (
+            <Skeleton className="w-5 h-5 rounded" />
+          )}
+        </div>
+        <div className="flex-1 space-y-2">
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-4 w-32" />
+            <span className="text-xs text-primary-600 font-medium">Creating...</span>
+          </div>
+          <Skeleton className="h-3 w-48" />
+        </div>
+        <div className="w-4 h-4 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    </div>
+  )
+}
+
 export function SkeletonCard() {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
