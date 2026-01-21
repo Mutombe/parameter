@@ -70,7 +70,7 @@ export default function DemoExpiryBanner() {
         <span className="font-bold">{formatTime(timeRemaining)}</span>
       </span>
       <a
-        href="mailto:sales@parameter.co.zw"
+        href="mailto:admin@bitstudio.co.zw"
         className={cn(
           'font-medium underline underline-offset-2',
           isCritical && 'hover:text-white/80',
