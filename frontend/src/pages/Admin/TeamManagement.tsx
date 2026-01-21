@@ -60,25 +60,25 @@ export default function TeamManagement() {
   })
 
   // Check if current user can invite others
-  const canInvite = currentUser?.role && ['super_admin', 'admin', 'accountant'].includes(currentUser.role)
+  const canInvite = Boolean(currentUser?.role && ['super_admin', 'admin', 'accountant'].includes(currentUser.role))
 
   // Check if current user can manage users (activate/deactivate)
-  const canManageUsers = currentUser?.role && ['super_admin', 'admin'].includes(currentUser.role)
+  const canManageUsers = Boolean(currentUser?.role && ['super_admin', 'admin'].includes(currentUser.role))
 
   // Queries
-  const { data: users, isLoading: usersLoading } = useQuery({
+  const { data: users, isLoading: usersLoading } = useQuery<{ results?: any[] } | any[]>({
     queryKey: ['users'],
     queryFn: () => usersApi.list().then(r => r.data),
   })
 
-  const { data: invitations, isLoading: invitationsLoading } = useQuery({
+  const { data: invitations, isLoading: invitationsLoading } = useQuery<{ results?: any[] } | any[]>({
     queryKey: ['invitations'],
     queryFn: () => invitationsApi.list().then(r => r.data),
     enabled: canInvite, // Only fetch invitations if user can invite
   })
 
   // Get allowed roles for this user
-  const { data: allowedRolesData } = useQuery({
+  const { data: allowedRolesData } = useQuery<{ allowed_roles: { value: string; label: string }[] }>({
     queryKey: ['allowed-roles'],
     queryFn: () => invitationsApi.allowedRoles().then(r => r.data),
     enabled: canInvite,
@@ -87,7 +87,7 @@ export default function TeamManagement() {
   // Filter role options based on what user is allowed to invite
   const roleOptions = useMemo(() => {
     if (!allowedRolesData?.allowed_roles) return []
-    const allowedValues = allowedRolesData.allowed_roles.map((r: { value: string }) => r.value)
+    const allowedValues = allowedRolesData.allowed_roles.map((r) => r.value)
     return allRoleOptions.filter(role => allowedValues.includes(role.value))
   }, [allowedRolesData])
 
@@ -154,8 +154,8 @@ export default function TeamManagement() {
     setInviteModalOpen(true)
   }
 
-  const userList = users?.results || users || []
-  const invitationList = invitations?.results || invitations || []
+  const userList = (users as any)?.results || users || []
+  const invitationList = (invitations as any)?.results || invitations || []
 
   return (
     <div className="space-y-6">
