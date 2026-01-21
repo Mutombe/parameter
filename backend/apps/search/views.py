@@ -247,38 +247,38 @@ class UnifiedSearchView(APIView):
             computed['title'] = obj.name
             computed['subtitle'] = obj.email or obj.phone or 'No contact'
             computed['meta'] = obj.landlord_type
-            computed['href'] = f'/landlords?id={obj.id}'
+            computed['href'] = f'/dashboard/landlords?view={obj.id}'
 
         elif entity_type == 'property':
             computed['title'] = obj.name
             computed['subtitle'] = f'{obj.address}, {obj.city}' if obj.address else obj.city
             computed['meta'] = f'{getattr(obj, "unit_count", 0)} units'
-            computed['href'] = f'/properties?id={obj.id}'
+            computed['href'] = f'/dashboard/properties?view={obj.id}'
 
         elif entity_type == 'unit':
             computed['title'] = obj.unit_number
             computed['subtitle'] = str(obj.property) if hasattr(obj, 'property') and obj.property else 'Unknown property'
             computed['meta'] = f'${obj.rental_amount}' if obj.rental_amount else ''
             computed['status'] = 'Occupied' if obj.is_occupied else 'Vacant'
-            computed['href'] = f'/units?id={obj.id}'
+            computed['href'] = f'/dashboard/units?view={obj.id}'
 
         elif entity_type == 'tenant':
             computed['title'] = obj.name
             computed['subtitle'] = obj.email or obj.phone or 'No contact'
             computed['meta'] = 'Active' if obj.is_active else 'Inactive'
-            computed['href'] = f'/tenants?id={obj.id}'
+            computed['href'] = f'/dashboard/tenants?view={obj.id}'
 
         elif entity_type == 'invoice':
             computed['title'] = obj.invoice_number
             computed['subtitle'] = str(obj.tenant) if hasattr(obj, 'tenant') and obj.tenant else 'Unknown tenant'
             computed['meta'] = f'${obj.total_amount}' if obj.total_amount else ''
-            computed['href'] = f'/invoices?id={obj.id}'
+            computed['href'] = f'/dashboard/invoices?view={obj.id}'
 
         elif entity_type == 'lease':
             computed['title'] = obj.lease_number
             computed['subtitle'] = str(obj.tenant) if hasattr(obj, 'tenant') and obj.tenant else 'Unknown tenant'
             computed['meta'] = f'${obj.monthly_rent}/mo' if obj.monthly_rent else ''
-            computed['href'] = f'/leases?id={obj.id}'
+            computed['href'] = f'/dashboard/leases?view={obj.id}'
 
         return computed
 
