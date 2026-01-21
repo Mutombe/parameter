@@ -25,10 +25,29 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_avatar(self, obj):
         if obj.avatar:
+            from django.conf import settings
             request = self.context.get('request')
+
+            # Try to build absolute URI from request
             if request:
-                return request.build_absolute_uri(obj.avatar.url)
-            return obj.avatar.url
+                try:
+                    absolute_url = request.build_absolute_uri(obj.avatar.url)
+                    # Check if it's a valid URL (not just filename)
+                    if absolute_url.startswith('http'):
+                        return absolute_url
+                except Exception:
+                    pass
+
+            # Fallback: construct URL using SITE_URL or backend URL
+            avatar_url = obj.avatar.url
+            if avatar_url.startswith('/'):
+                # Use backend URL for media files
+                backend_url = getattr(settings, 'BACKEND_URL', None) or getattr(settings, 'SITE_URL', '')
+                # For production, use the backend domain
+                if hasattr(settings, 'RENDER') or not settings.DEBUG:
+                    backend_url = 'https://parameter-backend.onrender.com'
+                return f"{backend_url}{avatar_url}"
+            return avatar_url
         return None
 
     def get_tenant_info(self, obj):

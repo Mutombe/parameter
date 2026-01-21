@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -15,7 +15,7 @@ import {
   Clock,
   TrendingUp,
 } from 'lucide-react'
-import { searchApi } from '../services/api'
+import { searchApi, landlordApi, propertyApi, tenantApi, invoiceApi, leaseApi, unitApi } from '../services/api'
 import { cn, useDebounce } from '../lib/utils'
 import { PiUsersFour } from "react-icons/pi";
 import { RiClaudeFill } from "react-icons/ri";
@@ -105,8 +105,8 @@ export default function Search() {
     }
   }, [debouncedQuery, activeFilter])
 
-  // Use unified search API
-  const { data: searchData, isLoading, error } = useQuery({
+  // Use unified search API (with fallback to client-side search)
+  const { data: searchData, isLoading: apiLoading, error: apiError } = useQuery({
     queryKey: ['unified-search', debouncedQuery, activeFilter],
     queryFn: () => searchApi.search({
       q: debouncedQuery,
@@ -116,27 +116,159 @@ export default function Search() {
     enabled: debouncedQuery.length >= 2,
     staleTime: 30000,
     gcTime: 5 * 60 * 1000,
+    retry: 1, // Only retry once
   })
+
+  // Fetch data for client-side search fallback when API fails
+  const useClientSearch = apiError || (!apiLoading && !searchData && debouncedQuery.length >= 2)
+
+  const { data: landlords } = useQuery({
+    queryKey: ['search-landlords-fallback'],
+    queryFn: () => landlordApi.list({ page_size: 100 }).then(r => r.data.results || r.data || []),
+    enabled: useClientSearch && (!activeFilter || activeFilter === 'landlord'),
+    staleTime: 60000,
+  })
+
+  const { data: properties } = useQuery({
+    queryKey: ['search-properties-fallback'],
+    queryFn: () => propertyApi.list({ page_size: 100 }).then(r => r.data.results || r.data || []),
+    enabled: useClientSearch && (!activeFilter || activeFilter === 'property'),
+    staleTime: 60000,
+  })
+
+  const { data: tenants } = useQuery({
+    queryKey: ['search-tenants-fallback'],
+    queryFn: () => tenantApi.list({ page_size: 100 }).then(r => r.data.results || r.data || []),
+    enabled: useClientSearch && (!activeFilter || activeFilter === 'tenant'),
+    staleTime: 60000,
+  })
+
+  const { data: invoices } = useQuery({
+    queryKey: ['search-invoices-fallback'],
+    queryFn: () => invoiceApi.list({ page_size: 100 }).then(r => r.data.results || r.data || []),
+    enabled: useClientSearch && (!activeFilter || activeFilter === 'invoice'),
+    staleTime: 60000,
+  })
+
+  // Client-side search results
+  const clientResults = useMemo(() => {
+    if (!useClientSearch || debouncedQuery.length < 2) return []
+
+    const results: SearchResult[] = []
+    const lowerQuery = debouncedQuery.toLowerCase()
+
+    // Search landlords
+    if (!activeFilter || activeFilter === 'landlord') {
+      (landlords || []).forEach((item: any) => {
+        if (
+          item.name?.toLowerCase().includes(lowerQuery) ||
+          item.email?.toLowerCase().includes(lowerQuery) ||
+          item.phone?.includes(lowerQuery)
+        ) {
+          results.push({
+            id: item.id,
+            type: 'landlord',
+            title: item.name,
+            subtitle: item.email || item.phone || 'No contact',
+            meta: item.landlord_type,
+            href: '/landlords',
+            score: item.name?.toLowerCase().startsWith(lowerQuery) ? 100 : 50,
+          })
+        }
+      })
+    }
+
+    // Search properties
+    if (!activeFilter || activeFilter === 'property') {
+      (properties || []).forEach((item: any) => {
+        if (
+          item.name?.toLowerCase().includes(lowerQuery) ||
+          item.address?.toLowerCase().includes(lowerQuery) ||
+          item.city?.toLowerCase().includes(lowerQuery)
+        ) {
+          results.push({
+            id: item.id,
+            type: 'property',
+            title: item.name,
+            subtitle: item.address || item.city || '',
+            meta: `${item.total_units || 0} units`,
+            href: '/properties',
+            score: item.name?.toLowerCase().startsWith(lowerQuery) ? 100 : 50,
+          })
+        }
+      })
+    }
+
+    // Search tenants
+    if (!activeFilter || activeFilter === 'tenant') {
+      (tenants || []).forEach((item: any) => {
+        if (
+          item.name?.toLowerCase().includes(lowerQuery) ||
+          item.email?.toLowerCase().includes(lowerQuery) ||
+          item.phone?.includes(lowerQuery)
+        ) {
+          results.push({
+            id: item.id,
+            type: 'tenant',
+            title: item.name,
+            subtitle: item.email || item.phone || 'No contact',
+            meta: item.is_active ? 'Active' : 'Inactive',
+            href: '/tenants',
+            score: item.name?.toLowerCase().startsWith(lowerQuery) ? 100 : 50,
+          })
+        }
+      })
+    }
+
+    // Search invoices
+    if (!activeFilter || activeFilter === 'invoice') {
+      (invoices || []).forEach((item: any) => {
+        if (
+          item.invoice_number?.toLowerCase().includes(lowerQuery) ||
+          item.tenant_name?.toLowerCase().includes(lowerQuery)
+        ) {
+          results.push({
+            id: item.id,
+            type: 'invoice',
+            title: item.invoice_number,
+            subtitle: item.tenant_name || 'Unknown tenant',
+            meta: `$${item.total_amount || item.amount || 0}`,
+            href: '/invoices',
+            score: item.invoice_number?.toLowerCase().startsWith(lowerQuery) ? 100 : 50,
+          })
+        }
+      })
+    }
+
+    // Sort by score
+    results.sort((a, b) => (b.score || 0) - (a.score || 0))
+    return results.slice(0, 20)
+  }, [useClientSearch, debouncedQuery, activeFilter, landlords, properties, tenants, invoices])
 
   // Get suggestions for autocomplete
   const { data: suggestionsData } = useQuery({
     queryKey: ['search-suggestions', query],
     queryFn: () => searchApi.suggestions(query).then(r => r.data),
-    enabled: query.length >= 1 && query.length < 3,
+    enabled: query.length >= 1 && query.length < 3 && !useClientSearch,
     staleTime: 10000,
   })
 
-  const results: SearchResult[] = searchData?.results?.map((r: any) => ({
-    id: r.id,
-    type: r.type,
-    title: r.title,
-    subtitle: r.subtitle,
-    meta: r.meta,
-    href: r.href,
-    score: r.score,
-  })) || []
+  // Use API results if available, otherwise use client-side results
+  const results: SearchResult[] = useClientSearch
+    ? clientResults
+    : (searchData?.results?.map((r: any) => ({
+        id: r.id,
+        type: r.type,
+        title: r.title,
+        subtitle: r.subtitle,
+        meta: r.meta,
+        href: r.href,
+        score: r.score,
+      })) || [])
 
-  const totalCount = searchData?.total || 0
+  const totalCount = useClientSearch ? clientResults.length : (searchData?.total || 0)
+  const isLoading = apiLoading && !useClientSearch
+  const error = apiError && clientResults.length === 0
 
   const filters = [
     { key: null, label: 'All', count: totalCount },

@@ -79,55 +79,81 @@ class UnifiedSearchView(APIView):
         - limit: Results per type (default 10, max 50)
         - cursor: Pagination cursor for infinite scroll
         """
-        query = request.query_params.get('q', '').strip()
-        entity_type = request.query_params.get('type', None)
-        limit = min(int(request.query_params.get('limit', 10)), 50)
+        import logging
+        logger = logging.getLogger(__name__)
 
-        if len(query) < 2:
+        try:
+            query = request.query_params.get('q', '').strip()
+            entity_type = request.query_params.get('type', None)
+
+            try:
+                limit = min(int(request.query_params.get('limit', 10)), 50)
+            except (ValueError, TypeError):
+                limit = 10
+
+            if len(query) < 2:
+                return Response({
+                    'error': 'Search query must be at least 2 characters',
+                    'results': [],
+                    'total': 0
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Check cache first (with error handling)
+            cache_key = f"search:{request.user.id}:{query}:{entity_type}:{limit}"
+            try:
+                cached_result = cache.get(cache_key)
+                if cached_result:
+                    return Response(cached_result)
+            except Exception as cache_error:
+                logger.warning(f"Cache error in search: {cache_error}")
+
+            results = []
+            total_count = 0
+
+            # Determine which entities to search
+            entities_to_search = [entity_type] if entity_type else list(self.SEARCH_CONFIG.keys())
+
+            for entity in entities_to_search:
+                if entity not in self.SEARCH_CONFIG:
+                    continue
+
+                try:
+                    config = self.SEARCH_CONFIG[entity]
+                    entity_results, count = self._search_entity(query, config, entity, limit)
+                    results.extend(entity_results)
+                    total_count += count
+                except Exception as entity_error:
+                    logger.warning(f"Error searching {entity}: {entity_error}")
+                    continue
+
+            # Sort by relevance score
+            results.sort(key=lambda x: x.get('score', 0), reverse=True)
+
+            response_data = {
+                'query': query,
+                'results': results[:limit * len(entities_to_search)] if not entity_type else results,
+                'total': total_count,
+                'filters': {
+                    'type': entity_type,
+                    'limit': limit
+                }
+            }
+
+            # Cache for 30 seconds (with error handling)
+            try:
+                cache.set(cache_key, response_data, 30)
+            except Exception as cache_error:
+                logger.warning(f"Cache set error: {cache_error}")
+
+            return Response(response_data)
+
+        except Exception as e:
+            logger.error(f"Search error: {e}", exc_info=True)
             return Response({
-                'error': 'Search query must be at least 2 characters',
+                'error': 'Search temporarily unavailable',
                 'results': [],
                 'total': 0
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Check cache first
-        cache_key = f"search:{request.user.id}:{query}:{entity_type}:{limit}"
-        cached_result = cache.get(cache_key)
-        if cached_result:
-            return Response(cached_result)
-
-        results = []
-        total_count = 0
-
-        # Determine which entities to search
-        entities_to_search = [entity_type] if entity_type else self.SEARCH_CONFIG.keys()
-
-        for entity in entities_to_search:
-            if entity not in self.SEARCH_CONFIG:
-                continue
-
-            config = self.SEARCH_CONFIG[entity]
-            entity_results, count = self._search_entity(query, config, entity, limit)
-            results.extend(entity_results)
-            total_count += count
-
-        # Sort by relevance score
-        results.sort(key=lambda x: x.get('score', 0), reverse=True)
-
-        response_data = {
-            'query': query,
-            'results': results[:limit * len(entities_to_search)] if not entity_type else results,
-            'total': total_count,
-            'filters': {
-                'type': entity_type,
-                'limit': limit
-            }
-        }
-
-        # Cache for 30 seconds
-        cache.set(cache_key, response_data, 30)
-
-        return Response(response_data)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def _search_entity(self, query, config, entity_type, limit):
         """
