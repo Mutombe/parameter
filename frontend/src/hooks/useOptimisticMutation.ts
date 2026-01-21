@@ -60,7 +60,7 @@ export function useOptimisticMutation<TData extends { id: string | number }, TVa
               ...createPlaceholder(variables),
               _isOptimistic: true,
               _isLoading: true,
-            } as TData
+            } as unknown as TData
             newItems = [placeholder, ...items]
           } else if (updateItem) {
             // Update: transform items

@@ -216,7 +216,7 @@ export default function Landlords() {
   }
 
   const handleEdit = (landlord: Landlord) => {
-    setEditingId(landlord.id)
+    setEditingId(typeof landlord.id === 'number' ? landlord.id : null)
     setForm({
       name: landlord.name,
       landlord_type: landlord.landlord_type,
@@ -711,7 +711,7 @@ export default function Landlords() {
           setShowDeleteDialog(false)
           setSelectedLandlord(null)
         }}
-        onConfirm={() => selectedLandlord && deleteMutation.mutate(selectedLandlord.id)}
+        onConfirm={() => selectedLandlord && typeof selectedLandlord.id === 'number' && deleteMutation.mutate(selectedLandlord.id)}
         title="Delete Landlord"
         description={`Are you sure you want to delete "${selectedLandlord?.name}"? This action cannot be undone and will remove all associated data.`}
         confirmText="Delete"

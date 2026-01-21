@@ -276,7 +276,7 @@ export default function Invoices() {
   const handlePrint = (invoice: Invoice) => {
     const printWindow = window.open('', '_blank')
     if (!printWindow) {
-      toast.error('Unable to open print window')
+      showToast.error('Unable to open print window')
       return
     }
 
