@@ -65,12 +65,18 @@ export default function Receipts() {
   })
 
   // Invoices dropdown - loads when form opens
-  const { data: invoices, isLoading: invoicesLoading } = useQuery({
-    queryKey: ['invoices-unpaid'],
-    queryFn: () => invoiceApi.list({ status: 'sent' }).then(r => r.data.results || r.data),
+  // Fetch all invoices and filter for those with outstanding balance
+  const { data: allInvoices, isLoading: invoicesLoading } = useQuery({
+    queryKey: ['invoices-for-receipt'],
+    queryFn: () => invoiceApi.list().then(r => r.data.results || r.data),
     enabled: showForm,
     staleTime: 30000,
   })
+
+  // Filter invoices with outstanding balance (sent, partial, or overdue with balance > 0)
+  const invoices = allInvoices?.filter((inv: any) =>
+    ['sent', 'partial', 'overdue'].includes(inv.status) && Number(inv.balance) > 0
+  )
 
   const receipts = receiptsData || []
 

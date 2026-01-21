@@ -16,11 +16,13 @@ import {
   Clock,
   AlertTriangle,
   Play,
+  Loader2,
 } from 'lucide-react'
 import { leaseApi, tenantApi, unitApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog } from '../../components/ui'
-import toast from 'react-hot-toast'
+import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, ConfirmDialog } from '../../components/ui'
+import { Skeleton } from '../../components/ui/Skeleton'
+import { showToast, parseApiError } from '../../lib/toast'
 import { TbUserSquareRounded } from "react-icons/tb";
 interface Lease {
   id: number
@@ -139,38 +141,49 @@ export default function Leases() {
     },
   })
 
-  const { data: tenants } = useQuery({
+  const { data: tenants, isLoading: tenantsLoading } = useQuery({
     queryKey: ['tenants-list'],
     queryFn: () => tenantApi.list().then(r => r.data.results || r.data),
+    enabled: showForm,
+    staleTime: 30000,
   })
 
-  const { data: units } = useQuery({
-    queryKey: ['units-vacant'],
-    queryFn: () => unitApi.vacant().then(r => r.data.results || r.data),
+  // Fetch all units - filter for vacant ones in the dropdown display
+  // This allows both creating new leases (vacant units) and editing existing ones (assigned unit)
+  const { data: allUnits, isLoading: unitsLoading } = useQuery({
+    queryKey: ['units-all'],
+    queryFn: () => unitApi.list().then(r => r.data.results || r.data),
+    enabled: showForm,
+    staleTime: 30000,
   })
+
+  // When editing, include the current unit even if occupied; for new leases, show only vacant
+  const units = allUnits?.filter((u: Unit) =>
+    !u.is_occupied || (editingId && form.unit === String(u.id))
+  )
 
   const createMutation = useMutation({
     mutationFn: (data: any) =>
       editingId ? leaseApi.update(editingId, data) : leaseApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leases'] })
-      queryClient.invalidateQueries({ queryKey: ['units-vacant'] })
-      toast.success(editingId ? 'Lease updated successfully' : 'Lease created successfully')
+      queryClient.invalidateQueries({ queryKey: ['units-all'] })
+      showToast.success(editingId ? 'Lease updated successfully' : 'Lease created successfully')
       resetForm()
     },
-    onError: () => toast.error('Failed to save lease'),
+    onError: (error) => showToast.error(parseApiError(error, 'Failed to save lease')),
   })
 
   const activateMutation = useMutation({
     mutationFn: (id: number) => leaseApi.activate(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leases'] })
-      queryClient.invalidateQueries({ queryKey: ['units'] })
-      toast.success('Lease activated successfully')
+      queryClient.invalidateQueries({ queryKey: ['units-all'] })
+      showToast.success('Lease activated successfully')
       setShowActivateDialog(false)
       setSelectedLease(null)
     },
-    onError: () => toast.error('Failed to activate lease'),
+    onError: (error) => showToast.error(parseApiError(error, 'Failed to activate lease')),
   })
 
   const terminateMutation = useMutation({
@@ -178,12 +191,12 @@ export default function Leases() {
       leaseApi.terminate(id, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leases'] })
-      queryClient.invalidateQueries({ queryKey: ['units'] })
-      toast.success('Lease terminated')
+      queryClient.invalidateQueries({ queryKey: ['units-all'] })
+      showToast.success('Lease terminated')
       setShowDeleteDialog(false)
       setSelectedLease(null)
     },
-    onError: () => toast.error('Failed to terminate lease'),
+    onError: (error) => showToast.error(parseApiError(error, 'Failed to terminate lease')),
   })
 
   const resetForm = () => {
@@ -539,31 +552,61 @@ export default function Leases() {
       >
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-2 gap-4">
-            <Select
-              label="Tenant"
-              value={form.tenant}
-              onChange={(e) => setForm({ ...form, tenant: e.target.value })}
-              required
-            >
-              <option value="">Select Tenant</option>
-              {tenants?.map((t: Tenant) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </Select>
+            {/* Tenant Select with Loading */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Tenant <span className="text-red-500">*</span>
+              </label>
+              {tenantsLoading ? (
+                <div className="relative">
+                  <Skeleton className="h-11 w-full rounded-xl" />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                  </div>
+                </div>
+              ) : (
+                <select
+                  value={form.tenant}
+                  onChange={(e) => setForm({ ...form, tenant: e.target.value })}
+                  className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                  required
+                >
+                  <option value="">Select Tenant</option>
+                  {tenants?.map((t: Tenant) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              )}
+            </div>
 
-            <Select
-              label="Unit"
-              value={form.unit}
-              onChange={(e) => setForm({ ...form, unit: e.target.value })}
-              required
-            >
-              <option value="">Select Unit</option>
-              {units?.map((u: Unit) => (
-                <option key={u.id} value={u.id}>
-                  {u.unit_number} - {u.property_name}
-                </option>
-              ))}
-            </Select>
+            {/* Unit Select with Loading */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Unit <span className="text-red-500">*</span>
+              </label>
+              {unitsLoading ? (
+                <div className="relative">
+                  <Skeleton className="h-11 w-full rounded-xl" />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                  </div>
+                </div>
+              ) : (
+                <select
+                  value={form.unit}
+                  onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                  className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                  required
+                >
+                  <option value="">Select Unit</option>
+                  {units?.map((u: Unit) => (
+                    <option key={u.id} value={u.id}>
+                      {u.unit_number} - {u.property_name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-4">
@@ -638,7 +681,7 @@ export default function Leases() {
             <Button type="button" variant="outline" className="flex-1" onClick={resetForm}>
               Cancel
             </Button>
-            <Button type="submit" className="flex-1" disabled={createMutation.isPending}>
+            <Button type="submit" className="flex-1" disabled={createMutation.isPending || tenantsLoading || unitsLoading}>
               {createMutation.isPending ? 'Saving...' : editingId ? 'Update Lease' : 'Create Lease'}
             </Button>
           </div>
