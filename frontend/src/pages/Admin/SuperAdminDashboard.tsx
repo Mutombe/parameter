@@ -25,11 +25,15 @@ import {
   X,
   UserPlus,
   Loader2,
+  Pause,
+  Play,
+  Trash2,
+  RotateCcw,
 } from 'lucide-react'
 import { tenantsApi, tenantInvitationsApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { useAuthStore } from '../../stores/authStore'
-import toast from 'react-hot-toast'
+import { showToast, parseApiError } from '../../lib/toast'
 import { TbUserSquareRounded } from "react-icons/tb"
 
 interface TenantSummary {
@@ -42,6 +46,10 @@ interface TenantSummary {
   subscription_plan?: string
   status?: 'active' | 'trial' | 'suspended' | 'cancelled'
   account_status?: string
+  is_active?: boolean
+  scheduled_deletion_at?: string
+  is_scheduled_for_deletion?: boolean
+  deletion_time_remaining?: number
   users_count?: number
   users?: number
   properties_count?: number
@@ -125,7 +133,7 @@ export default function SuperAdminDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-invitations'] })
       queryClient.invalidateQueries({ queryKey: ['super-admin-stats'] })
-      toast.success('Invitation sent successfully!')
+      showToast.success('Invitation sent successfully!')
       setShowInviteModal(false)
       setInviteForm({
         email: '',
@@ -138,7 +146,7 @@ export default function SuperAdminDashboard() {
       })
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to send invitation')
+      showToast.error(error.response?.data?.error || 'Failed to send invitation')
     },
   })
 
@@ -147,10 +155,10 @@ export default function SuperAdminDashboard() {
     mutationFn: (id: number) => tenantInvitationsApi.resend(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-invitations'] })
-      toast.success('Invitation resent!')
+      showToast.success('Invitation resent!')
     },
     onError: () => {
-      toast.error('Failed to resend invitation')
+      showToast.error('Failed to resend invitation')
     },
   })
 
@@ -159,12 +167,69 @@ export default function SuperAdminDashboard() {
     mutationFn: (id: number) => tenantInvitationsApi.cancel(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant-invitations'] })
-      toast.success('Invitation cancelled')
+      showToast.success('Invitation cancelled')
     },
     onError: () => {
-      toast.error('Failed to cancel invitation')
+      showToast.error('Failed to cancel invitation')
     },
   })
+
+  // Company management mutations
+  const suspendMutation = useMutation({
+    mutationFn: (id: number) => tenantsApi.suspend(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['super-admin-stats'] })
+      showToast.success('Company suspended')
+      setActionMenuOpen(null)
+    },
+    onError: (error) => {
+      showToast.error(parseApiError(error, 'Failed to suspend company'))
+    },
+  })
+
+  const activateMutation = useMutation({
+    mutationFn: (id: number) => tenantsApi.activate(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['super-admin-stats'] })
+      showToast.success('Company activated')
+      setActionMenuOpen(null)
+    },
+    onError: (error) => {
+      showToast.error(parseApiError(error, 'Failed to activate company'))
+    },
+  })
+
+  const scheduleDeletionMutation = useMutation({
+    mutationFn: (id: number) => tenantsApi.scheduleDeletion(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['super-admin-stats'] })
+      showToast.success('Company scheduled for deletion in 24 hours')
+      setActionMenuOpen(null)
+      setConfirmDialog(null)
+    },
+    onError: (error) => {
+      showToast.error(parseApiError(error, 'Failed to schedule deletion'))
+    },
+  })
+
+  const cancelDeletionMutation = useMutation({
+    mutationFn: (id: number) => tenantsApi.cancelDeletion(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['super-admin-stats'] })
+      showToast.success('Deletion cancelled, company reactivated')
+      setActionMenuOpen(null)
+    },
+    onError: (error) => {
+      showToast.error(parseApiError(error, 'Failed to cancel deletion'))
+    },
+  })
+
+  // State for action menu and confirm dialog
+  const [actionMenuOpen, setActionMenuOpen] = useState<number | null>(null)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    type: 'suspend' | 'delete'
+    tenant: TenantSummary
+  } | null>(null)
 
   // If not authorized, show access denied
   if (!isSuperAdmin) {
@@ -501,13 +566,67 @@ export default function SuperAdminDashboard() {
                         <td className="py-4 px-6 text-sm text-gray-900">{tenant.properties || tenant.properties_count || 0}</td>
                         <td className="py-4 px-6 text-sm text-gray-500">{tenant.created_at ? formatDate(tenant.created_at) : '-'}</td>
                         <td className="py-4 px-6 text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-2 relative">
                             <button className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors" title="View details">
                               <Eye className="w-4 h-4" />
                             </button>
-                            <button className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">
+                            <button
+                              onClick={() => setActionMenuOpen(actionMenuOpen === tenant.id ? null : tenant.id)}
+                              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                            >
                               <MoreVertical className="w-4 h-4" />
                             </button>
+
+                            {/* Action Dropdown Menu */}
+                            {actionMenuOpen === tenant.id && (
+                              <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl border border-gray-200 shadow-lg z-50 py-1">
+                                {/* Scheduled for deletion - show cancel */}
+                                {tenant.is_scheduled_for_deletion || tenant.scheduled_deletion_at ? (
+                                  <>
+                                    <div className="px-3 py-2 text-xs text-red-600 border-b border-gray-100">
+                                      Scheduled for deletion
+                                    </div>
+                                    <button
+                                      onClick={() => cancelDeletionMutation.mutate(tenant.id)}
+                                      disabled={cancelDeletionMutation.isPending}
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-green-600 hover:bg-green-50"
+                                    >
+                                      <RotateCcw className="w-4 h-4" />
+                                      Cancel Deletion
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    {/* Active company - can suspend */}
+                                    {(tenant.is_active !== false && tenant.account_status !== 'suspended') ? (
+                                      <button
+                                        onClick={() => setConfirmDialog({ type: 'suspend', tenant })}
+                                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-amber-600 hover:bg-amber-50"
+                                      >
+                                        <Pause className="w-4 h-4" />
+                                        Suspend Company
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={() => activateMutation.mutate(tenant.id)}
+                                        disabled={activateMutation.isPending}
+                                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-green-600 hover:bg-green-50"
+                                      >
+                                        <Play className="w-4 h-4" />
+                                        Activate Company
+                                      </button>
+                                    )}
+                                    <button
+                                      onClick={() => setConfirmDialog({ type: 'delete', tenant })}
+                                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-red-600 hover:bg-red-50"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                      Schedule Deletion
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -785,6 +904,94 @@ export default function SuperAdminDashboard() {
             </form>
           </motion.div>
         </div>
+      )}
+
+      {/* Confirmation Dialog */}
+      {confirmDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 p-6"
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className={cn(
+                "w-10 h-10 rounded-full flex items-center justify-center",
+                confirmDialog.type === 'delete' ? 'bg-red-100' : 'bg-amber-100'
+              )}>
+                {confirmDialog.type === 'delete' ? (
+                  <Trash2 className="w-5 h-5 text-red-600" />
+                ) : (
+                  <Pause className="w-5 h-5 text-amber-600" />
+                )}
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {confirmDialog.type === 'delete' ? 'Schedule Deletion' : 'Suspend Company'}
+                </h3>
+                <p className="text-sm text-gray-500">{confirmDialog.tenant.name || confirmDialog.tenant.company_name}</p>
+              </div>
+            </div>
+
+            <p className="text-gray-600 mb-6">
+              {confirmDialog.type === 'delete' ? (
+                <>
+                  This will schedule <strong>{confirmDialog.tenant.name || confirmDialog.tenant.company_name}</strong> for deletion.
+                  The company will be permanently deleted after <strong>24 hours</strong>.
+                  You can cancel this action during the grace period.
+                </>
+              ) : (
+                <>
+                  This will suspend <strong>{confirmDialog.tenant.name || confirmDialog.tenant.company_name}</strong>.
+                  Users will not be able to access the system until reactivated.
+                </>
+              )}
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmDialog(null)}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (confirmDialog.type === 'delete') {
+                    scheduleDeletionMutation.mutate(confirmDialog.tenant.id)
+                  } else {
+                    suspendMutation.mutate(confirmDialog.tenant.id)
+                    setConfirmDialog(null)
+                  }
+                }}
+                disabled={scheduleDeletionMutation.isPending || suspendMutation.isPending}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 rounded-xl transition-colors disabled:opacity-50",
+                  confirmDialog.type === 'delete'
+                    ? 'bg-red-600 text-white hover:bg-red-700'
+                    : 'bg-amber-600 text-white hover:bg-amber-700'
+                )}
+              >
+                {(scheduleDeletionMutation.isPending || suspendMutation.isPending) ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : confirmDialog.type === 'delete' ? (
+                  <Trash2 className="w-4 h-4" />
+                ) : (
+                  <Pause className="w-4 h-4" />
+                )}
+                {confirmDialog.type === 'delete' ? 'Schedule Deletion' : 'Suspend'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Click outside to close action menu */}
+      {actionMenuOpen && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setActionMenuOpen(null)}
+        />
       )}
     </div>
   )

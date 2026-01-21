@@ -15,6 +15,7 @@ from .serializers import (
     ChangePasswordSerializer, UserActivitySerializer,
     UserInvitationSerializer, CreateInvitationSerializer, AcceptInvitationSerializer
 )
+from .permissions import CanInviteUsers, CanManageUsers, get_allowed_invite_roles
 
 
 class AuthViewSet(viewsets.ViewSet):
@@ -244,15 +245,22 @@ class UserViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(role=role)
         return queryset
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[CanManageUsers])
     def deactivate(self, request, pk=None):
+        """Deactivate a user. Only admins can do this."""
         user = self.get_object()
+        if user == request.user:
+            return Response(
+                {'error': 'You cannot deactivate yourself'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         user.is_active = False
         user.save()
         return Response({'message': f'User {user.email} deactivated'})
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[CanManageUsers])
     def activate(self, request, pk=None):
+        """Activate a user. Only admins can do this."""
         user = self.get_object()
         user.is_active = True
         user.save()
@@ -271,7 +279,7 @@ class UserActivityViewSet(viewsets.ReadOnlyModelViewSet):
 class UserInvitationViewSet(viewsets.ModelViewSet):
     """Manage user invitations."""
     serializer_class = UserInvitationSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [CanInviteUsers]
 
     def get_queryset(self):
         return UserInvitation.objects.all()
@@ -281,13 +289,25 @@ class UserInvitationViewSet(viewsets.ModelViewSet):
             return CreateInvitationSerializer
         return UserInvitationSerializer
 
+    @action(detail=False, methods=['get'])
+    def allowed_roles(self, request):
+        """Get the list of roles the current user can invite."""
+        allowed = get_allowed_invite_roles(request.user)
+        return Response({
+            'allowed_roles': [
+                {'value': role.value, 'label': role.label}
+                for role in allowed
+            ]
+        })
+
     def create(self, request):
         """Create and send a new invitation."""
         from datetime import timedelta
         from django.core.mail import send_mail
         from django.conf import settings
 
-        serializer = CreateInvitationSerializer(data=request.data)
+        # Pass request context for role validation
+        serializer = CreateInvitationSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
 
         data = serializer.validated_data

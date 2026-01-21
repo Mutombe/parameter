@@ -122,6 +122,79 @@ class RentalTenantViewSet(viewsets.ModelViewSet):
     ordering_fields = ['name', 'created_at']
     ordering = ['-created_at']
 
+    def get_queryset(self):
+        """Enhanced queryset with lease_status filtering."""
+        queryset = super().get_queryset()
+
+        # Filter by lease_status (active/inactive based on having active leases)
+        lease_status = self.request.query_params.get('lease_status')
+        if lease_status == 'active':
+            # Tenants with at least one active lease
+            queryset = queryset.filter(leases__status='active').distinct()
+        elif lease_status == 'inactive':
+            # Tenants without any active lease
+            queryset = queryset.exclude(leases__status='active').distinct()
+
+        return queryset
+
+    @action(detail=True, methods=['get'])
+    def detail_view(self, request, pk=None):
+        """Get comprehensive tenant details including lease history and billing summary."""
+        tenant = self.get_object()
+
+        # Import here to avoid circular imports
+        from apps.billing.models import Invoice, Receipt
+        from apps.billing.serializers import InvoiceSerializer, ReceiptSerializer
+
+        # Get all leases (not just active)
+        all_leases = tenant.leases.select_related('unit', 'unit__property').order_by('-start_date')
+        active_leases = all_leases.filter(status='active')
+        past_leases = all_leases.exclude(status='active')
+
+        # Get billing summary
+        invoices = Invoice.objects.filter(tenant=tenant).order_by('-date')
+        receipts = Receipt.objects.filter(tenant=tenant).order_by('-date')
+
+        total_invoiced = invoices.aggregate(Sum('amount'))['amount__sum'] or 0
+        total_paid = receipts.aggregate(Sum('amount'))['amount__sum'] or 0
+        overdue = invoices.filter(status='overdue').aggregate(Sum('amount'))['amount__sum'] or 0
+
+        return Response({
+            'tenant': RentalTenantSerializer(tenant).data,
+            'active_leases': [{
+                'id': l.id,
+                'lease_number': l.lease_number,
+                'unit': str(l.unit),
+                'property': l.unit.property.name,
+                'monthly_rent': str(l.monthly_rent),
+                'currency': l.currency,
+                'start_date': l.start_date,
+                'end_date': l.end_date,
+                'status': l.status,
+            } for l in active_leases],
+            'lease_history': [{
+                'id': l.id,
+                'lease_number': l.lease_number,
+                'unit': str(l.unit),
+                'property': l.unit.property.name,
+                'monthly_rent': str(l.monthly_rent),
+                'start_date': l.start_date,
+                'end_date': l.end_date,
+                'status': l.status,
+                'termination_reason': l.termination_reason,
+            } for l in past_leases],
+            'billing_summary': {
+                'total_invoiced': total_invoiced,
+                'total_paid': total_paid,
+                'balance_due': total_invoiced - total_paid,
+                'overdue_amount': overdue,
+                'invoice_count': invoices.count(),
+                'receipt_count': receipts.count(),
+            },
+            'recent_invoices': InvoiceSerializer(invoices[:5], many=True).data,
+            'recent_receipts': ReceiptSerializer(receipts[:5], many=True).data,
+        })
+
     @action(detail=True, methods=['get'])
     def ledger(self, request, pk=None):
         """Get tenant's financial ledger (invoices and receipts)."""

@@ -60,6 +60,91 @@ class ClientViewSet(viewsets.ModelViewSet):
 
         return Response(ClientSerializer(client).data)
 
+    @action(detail=True, methods=['post'])
+    def suspend(self, request, pk=None):
+        """Suspend a company (sets is_active=False, account_status='suspended')."""
+        client = self.get_object()
+
+        if not client.is_active and client.account_status == Client.AccountStatus.SUSPENDED:
+            return Response(
+                {'error': 'Company is already suspended'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        client.is_active = False
+        client.account_status = Client.AccountStatus.SUSPENDED
+        client.save(update_fields=['is_active', 'account_status', 'updated_at'])
+
+        return Response({
+            'message': f'Company "{client.name}" has been suspended',
+            'client': ClientSerializer(client).data
+        })
+
+    @action(detail=True, methods=['post'])
+    def activate(self, request, pk=None):
+        """Activate a company (sets is_active=True, clears deletion schedule)."""
+        client = self.get_object()
+
+        if client.is_active and client.account_status == Client.AccountStatus.ACTIVE:
+            return Response(
+                {'error': 'Company is already active'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        client.is_active = True
+        client.account_status = Client.AccountStatus.ACTIVE
+        client.scheduled_deletion_at = None  # Clear any scheduled deletion
+        client.save(update_fields=['is_active', 'account_status', 'scheduled_deletion_at', 'updated_at'])
+
+        return Response({
+            'message': f'Company "{client.name}" has been activated',
+            'client': ClientSerializer(client).data
+        })
+
+    @action(detail=True, methods=['post'])
+    def schedule_deletion(self, request, pk=None):
+        """Schedule company deletion with 24-hour grace period."""
+        client = self.get_object()
+
+        if client.scheduled_deletion_at:
+            return Response(
+                {'error': 'Company is already scheduled for deletion'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Schedule deletion for 24 hours from now
+        client.scheduled_deletion_at = timezone.now() + timedelta(hours=24)
+        client.is_active = False
+        client.account_status = Client.AccountStatus.SUSPENDED
+        client.save(update_fields=['scheduled_deletion_at', 'is_active', 'account_status', 'updated_at'])
+
+        return Response({
+            'message': f'Company "{client.name}" scheduled for deletion in 24 hours',
+            'deletion_at': client.scheduled_deletion_at.isoformat(),
+            'client': ClientSerializer(client).data
+        })
+
+    @action(detail=True, methods=['post'])
+    def cancel_deletion(self, request, pk=None):
+        """Cancel scheduled deletion and reactivate the company."""
+        client = self.get_object()
+
+        if not client.scheduled_deletion_at:
+            return Response(
+                {'error': 'No deletion scheduled for this company'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        client.scheduled_deletion_at = None
+        client.is_active = True
+        client.account_status = Client.AccountStatus.ACTIVE
+        client.save(update_fields=['scheduled_deletion_at', 'is_active', 'account_status', 'updated_at'])
+
+        return Response({
+            'message': f'Scheduled deletion cancelled for "{client.name}"',
+            'client': ClientSerializer(client).data
+        })
+
 
 class GlobalSettingsViewSet(viewsets.ModelViewSet):
     """Manage global settings (Super Admin only)."""

@@ -156,6 +156,7 @@ export const tenantApi = {
   update: (id: number, data: object) => api.patch(`/masterfile/tenants/${id}/`, data),
   delete: (id: number) => api.delete(`/masterfile/tenants/${id}/`),
   ledger: (id: number) => api.get(`/masterfile/tenants/${id}/ledger/`),
+  detailView: (id: number) => api.get(`/masterfile/tenants/${id}/detail_view/`),
 }
 
 export const leaseApi = {
@@ -275,6 +276,8 @@ export const invitationsApi = {
     api.post('/accounts/invitations/', data),
   resend: (id: number) => api.post(`/accounts/invitations/${id}/resend/`),
   cancel: (id: number) => api.post(`/accounts/invitations/${id}/cancel/`),
+  // Get allowed roles for current user
+  allowedRoles: () => api.get('/accounts/invitations/allowed_roles/'),
   // Accept invitation (public)
   validate: (token: string) => api.get('/accounts/accept-invitation/', { params: { token } }),
   accept: (data: { token: string; password: string; confirm_password: string; first_name?: string; last_name?: string }) =>
@@ -310,6 +313,11 @@ export const tenantsApi = {
     api.post(`/tenants/clients/${id}/toggle_ai/`, { feature, enabled }),
   // Seed demo data for current tenant (admin only)
   seedDemoData: () => api.post('/tenants/seed-demo-data/'),
+  // Company management actions (Super Admin)
+  suspend: (id: number) => api.post(`/tenants/clients/${id}/suspend/`),
+  activate: (id: number) => api.post(`/tenants/clients/${id}/activate/`),
+  scheduleDeletion: (id: number) => api.post(`/tenants/clients/${id}/schedule_deletion/`),
+  cancelDeletion: (id: number) => api.post(`/tenants/clients/${id}/cancel_deletion/`),
 }
 
 // Tenant Invitations API (Super Admin)

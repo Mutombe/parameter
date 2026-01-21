@@ -22,7 +22,8 @@ urlpatterns = [
 ]
 
 # Serve media files - use explicit view to work with django-tenants
-if settings.DEBUG:
-    urlpatterns += [
-        re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
-    ]
+# Note: Always serve media files regardless of DEBUG mode for avatar uploads to work in production
+# For better performance in high-traffic production, consider using cloud storage (S3/Cloudinary)
+urlpatterns += [
+    re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
+]

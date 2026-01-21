@@ -176,3 +176,101 @@ The Parameter Team
 
     except Exception as e:
         logger.warning(f"Failed to send demo failed email: {e}")
+
+
+# =============================================================================
+# Scheduled Deletion Tasks
+# =============================================================================
+
+def process_scheduled_deletions():
+    """
+    Process companies scheduled for deletion.
+    Deletes companies whose scheduled_deletion_at has passed (24h grace period).
+
+    Run this task hourly via cron or scheduled task on Render.
+    Example cron: 0 * * * * cd /app && python manage.py shell -c "from apps.tenants.tasks import process_scheduled_deletions; process_scheduled_deletions()"
+
+    Returns dict with count of deleted companies.
+    """
+    from .models import Client
+
+    now = timezone.now()
+    clients_to_delete = Client.objects.filter(
+        scheduled_deletion_at__lte=now,
+        scheduled_deletion_at__isnull=False
+    )
+
+    deleted_count = 0
+    deleted_names = []
+
+    for client in clients_to_delete:
+        try:
+            name = client.name
+            schema = client.schema_name
+            logger.info(f"Permanently deleting company: {name} (schema: {schema})")
+
+            # django-tenants auto_drop_schema=True will handle schema deletion
+            client.delete()
+
+            deleted_count += 1
+            deleted_names.append(name)
+            logger.info(f"Successfully deleted company: {name}")
+
+        except Exception as e:
+            logger.error(f"Failed to delete company {client.name}: {e}")
+
+    if deleted_count > 0:
+        logger.info(f"Deletion task completed. Deleted {deleted_count} companies: {deleted_names}")
+    else:
+        logger.debug("Deletion task completed. No companies to delete.")
+
+    return {
+        'deleted': deleted_count,
+        'companies': deleted_names
+    }
+
+
+def check_expired_demos():
+    """
+    Check for expired demo accounts and update their status.
+    Run this hourly to keep demo_expired status current.
+    """
+    from .models import Client
+
+    now = timezone.now()
+    expired_demos = Client.objects.filter(
+        is_demo=True,
+        demo_expires_at__lte=now,
+        account_status__in=['pending', 'active']
+    )
+
+    updated_count = expired_demos.update(
+        account_status=Client.AccountStatus.DEMO_EXPIRED,
+        is_active=False
+    )
+
+    if updated_count > 0:
+        logger.info(f"Marked {updated_count} demo accounts as expired")
+
+    return {'expired': updated_count}
+
+
+def run_scheduled_tasks():
+    """
+    Run all scheduled maintenance tasks.
+    Call this from a cron job or scheduled task.
+    """
+    logger.info("Running scheduled tenant maintenance tasks...")
+
+    # Process scheduled deletions
+    deletion_result = process_scheduled_deletions()
+    logger.info(f"Deletion result: {deletion_result}")
+
+    # Check for expired demos
+    demo_result = check_expired_demos()
+    logger.info(f"Demo expiry result: {demo_result}")
+
+    return {
+        'deletions': deletion_result,
+        'expired_demos': demo_result
+    }

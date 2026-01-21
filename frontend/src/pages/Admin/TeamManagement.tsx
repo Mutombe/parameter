@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -20,9 +20,11 @@ import toast from 'react-hot-toast'
 import { SiFsecure } from "react-icons/si";
 import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
+import { useAuthStore } from '../../stores/authStore'
 
 
-const roleOptions = [
+// Full list of role options with descriptions
+const allRoleOptions = [
   { value: 'admin', label: 'Admin', description: 'Full access to all features' },
   { value: 'accountant', label: 'Accountant', description: 'Can manage finances and billing' },
   { value: 'clerk', label: 'Clerk', description: 'Basic data entry access' },
@@ -47,6 +49,7 @@ export default function TeamManagement() {
   const queryClient = useQueryClient()
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'users' | 'invitations'>('users')
+  const { user: currentUser } = useAuthStore()
 
   // Form state
   const [inviteForm, setInviteForm] = useState({
@@ -55,6 +58,12 @@ export default function TeamManagement() {
     last_name: '',
     role: 'clerk',
   })
+
+  // Check if current user can invite others
+  const canInvite = currentUser?.role && ['super_admin', 'admin', 'accountant'].includes(currentUser.role)
+
+  // Check if current user can manage users (activate/deactivate)
+  const canManageUsers = currentUser?.role && ['super_admin', 'admin'].includes(currentUser.role)
 
   // Queries
   const { data: users, isLoading: usersLoading } = useQuery({
@@ -65,7 +74,22 @@ export default function TeamManagement() {
   const { data: invitations, isLoading: invitationsLoading } = useQuery({
     queryKey: ['invitations'],
     queryFn: () => invitationsApi.list().then(r => r.data),
+    enabled: canInvite, // Only fetch invitations if user can invite
   })
+
+  // Get allowed roles for this user
+  const { data: allowedRolesData } = useQuery({
+    queryKey: ['allowed-roles'],
+    queryFn: () => invitationsApi.allowedRoles().then(r => r.data),
+    enabled: canInvite,
+  })
+
+  // Filter role options based on what user is allowed to invite
+  const roleOptions = useMemo(() => {
+    if (!allowedRolesData?.allowed_roles) return []
+    const allowedValues = allowedRolesData.allowed_roles.map((r: { value: string }) => r.value)
+    return allRoleOptions.filter(role => allowedValues.includes(role.value))
+  }, [allowedRolesData])
 
   // Mutations
   const createInvitationMutation = useMutation({
@@ -77,7 +101,19 @@ export default function TeamManagement() {
       toast.success('Invitation sent successfully')
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to send invitation')
+      const errorData = error.response?.data
+      // Handle validation errors (Django REST Framework format)
+      if (errorData?.role) {
+        toast.error(errorData.role[0] || errorData.role)
+      } else if (errorData?.email) {
+        toast.error(errorData.email[0] || errorData.email)
+      } else if (errorData?.error) {
+        toast.error(errorData.error)
+      } else if (errorData?.detail) {
+        toast.error(errorData.detail)
+      } else {
+        toast.error('Failed to send invitation')
+      }
     },
   })
 
@@ -111,6 +147,13 @@ export default function TeamManagement() {
     createInvitationMutation.mutate(inviteForm)
   }
 
+  // Reset form when modal opens with default allowed role
+  const handleOpenInviteModal = () => {
+    const defaultRole = roleOptions.length > 0 ? roleOptions[roleOptions.length - 1].value : 'clerk'
+    setInviteForm({ email: '', first_name: '', last_name: '', role: defaultRole })
+    setInviteModalOpen(true)
+  }
+
   const userList = users?.results || users || []
   const invitationList = invitations?.results || invitations || []
 
@@ -121,10 +164,12 @@ export default function TeamManagement() {
         description="Manage users and send invitations"
         icon={TbUserSquareRounded}
         actions={
-          <Button onClick={() => setInviteModalOpen(true)} className="gap-2">
-            <UserPlus className="w-4 h-4" />
-            Invite Team Member
-          </Button>
+          canInvite ? (
+            <Button onClick={handleOpenInviteModal} className="gap-2">
+              <UserPlus className="w-4 h-4" />
+              Invite Team Member
+            </Button>
+          ) : null
         }
       />
 
@@ -140,16 +185,18 @@ export default function TeamManagement() {
         >
           Active Users ({userList.length})
         </button>
-        <button
-          onClick={() => setActiveTab('invitations')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'invitations'
-              ? 'border-primary-500 text-primary-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Pending Invitations ({invitationList.filter((i: any) => i.status === 'pending').length})
-        </button>
+        {canInvite && (
+          <button
+            onClick={() => setActiveTab('invitations')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'invitations'
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Pending Invitations ({invitationList.filter((i: any) => i.status === 'pending').length})
+          </button>
+        )}
       </div>
 
       {/* Content */}
@@ -256,19 +303,21 @@ export default function TeamManagement() {
                         {user.last_activity ? formatDistanceToNow(user.last_activity) : 'Never'}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => toggleUserStatusMutation.mutate({
-                            id: user.id,
-                            active: !user.is_active
-                          })}
-                          className={`text-sm font-medium ${
-                            user.is_active
-                              ? 'text-rose-600 hover:text-rose-700'
-                              : 'text-emerald-600 hover:text-emerald-700'
-                          }`}
-                        >
-                          {user.is_active ? 'Deactivate' : 'Activate'}
-                        </button>
+                        {canManageUsers && user.id !== currentUser?.id && (
+                          <button
+                            onClick={() => toggleUserStatusMutation.mutate({
+                              id: user.id,
+                              active: !user.is_active
+                            })}
+                            className={`text-sm font-medium ${
+                              user.is_active
+                                ? 'text-rose-600 hover:text-rose-700'
+                                : 'text-emerald-600 hover:text-emerald-700'
+                            }`}
+                          >
+                            {user.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

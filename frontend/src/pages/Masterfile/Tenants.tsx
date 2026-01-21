@@ -1,15 +1,28 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Users, Phone, Mail, Trash2, Loader2 } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { Plus, Search, Users, Phone, Mail, Trash2, Loader2, Eye, X, FileText, Receipt, Building2, Calendar, DollarSign, AlertCircle } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { tenantApi } from '../../services/api'
-import { useDebounce } from '../../lib/utils'
-import { Pagination, EmptyState } from '../../components/ui'
+import { useDebounce, formatCurrency } from '../../lib/utils'
+import { Pagination, EmptyState, Modal } from '../../components/ui'
 import toast from 'react-hot-toast'
 import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
 
 const PAGE_SIZE = 12
+
+// Filter options
+const tenantTypeOptions = [
+  { value: '', label: 'All Types' },
+  { value: 'individual', label: 'Individual' },
+  { value: 'company', label: 'Company' },
+]
+
+const leaseStatusOptions = [
+  { value: '', label: 'All Lease Status' },
+  { value: 'active', label: 'With Active Lease' },
+  { value: 'inactive', label: 'No Active Lease' },
+]
 
 export default function Tenants() {
   const queryClient = useQueryClient()
@@ -18,6 +31,15 @@ export default function Tenants() {
   const [currentPage, setCurrentPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
+
+  // Filter state
+  const [tenantTypeFilter, setTenantTypeFilter] = useState('')
+  const [leaseStatusFilter, setLeaseStatusFilter] = useState('')
+
+  // Detail modal state
+  const [selectedTenantId, setSelectedTenantId] = useState<number | null>(null)
+  const [showDetailModal, setShowDetailModal] = useState(false)
+
   const [form, setForm] = useState({
     name: '',
     tenant_type: 'individual',
@@ -27,20 +49,40 @@ export default function Tenants() {
     id_number: '',
   })
 
-  // Reset to page 1 when search changes
+  // Reset to page 1 when search or filters change
   const handleSearchChange = (value: string) => {
     setSearch(value)
     setCurrentPage(1)
   }
 
+  const handleFilterChange = (filter: 'tenantType' | 'leaseStatus', value: string) => {
+    if (filter === 'tenantType') setTenantTypeFilter(value)
+    if (filter === 'leaseStatus') setLeaseStatusFilter(value)
+    setCurrentPage(1)
+  }
+
   const { data: tenantsData, isLoading } = useQuery({
-    queryKey: ['tenants', debouncedSearch, currentPage],
+    queryKey: ['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter],
     queryFn: () => tenantApi.list({
       search: debouncedSearch,
       page: currentPage,
-      page_size: PAGE_SIZE
+      page_size: PAGE_SIZE,
+      ...(tenantTypeFilter && { tenant_type: tenantTypeFilter }),
+      ...(leaseStatusFilter && { lease_status: leaseStatusFilter }),
     }).then(r => r.data),
   })
+
+  // Query for tenant detail
+  const { data: tenantDetail, isLoading: detailLoading } = useQuery({
+    queryKey: ['tenant-detail', selectedTenantId],
+    queryFn: () => tenantApi.detailView(selectedTenantId!).then(r => r.data),
+    enabled: !!selectedTenantId && showDetailModal,
+  })
+
+  const handleViewDetails = (tenantId: number) => {
+    setSelectedTenantId(tenantId)
+    setShowDetailModal(true)
+  }
 
   // Handle both paginated and non-paginated responses
   const tenants = tenantsData?.results || tenantsData || []
@@ -87,8 +129,8 @@ export default function Tenants() {
       </div>
 
       <div className="card p-4">
-        <div className="flex items-center justify-between">
-          <div className="relative max-w-md flex-1">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="relative flex-1 min-w-[200px] max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
@@ -98,7 +140,25 @@ export default function Tenants() {
               className="input pl-10"
             />
           </div>
-          <p className="text-sm text-gray-500 ml-4">
+          <select
+            value={tenantTypeFilter}
+            onChange={(e) => handleFilterChange('tenantType', e.target.value)}
+            className="input min-w-[140px]"
+          >
+            {tenantTypeOptions.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <select
+            value={leaseStatusFilter}
+            onChange={(e) => handleFilterChange('leaseStatus', e.target.value)}
+            className="input min-w-[160px]"
+          >
+            {leaseStatusOptions.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          <p className="text-sm text-gray-500 ml-auto">
             {totalCount} tenant{totalCount !== 1 ? 's' : ''} total
           </p>
         </div>
@@ -216,20 +276,39 @@ export default function Tenants() {
                   </div>
                   <div>
                     <h3 className="font-semibold text-gray-900">{tenant.name}</h3>
-                    <span className="text-xs text-gray-500">{tenant.code}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">{tenant.code}</span>
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${
+                        tenant.tenant_type === 'company'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {tenant.tenant_type === 'company' ? 'Company' : 'Individual'}
+                      </span>
+                    </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleDelete(tenant.id)}
-                  disabled={deletingId === tenant.id}
-                  className="text-gray-400 hover:text-red-500 disabled:opacity-50"
-                >
-                  {deletingId === tenant.id ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="w-4 h-4" />
-                  )}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleViewDetails(tenant.id)}
+                    className="text-gray-400 hover:text-primary-600 transition-colors"
+                    title="View details"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(tenant.id)}
+                    disabled={deletingId === tenant.id}
+                    className="text-gray-400 hover:text-red-500 disabled:opacity-50"
+                    title="Delete tenant"
+                  >
+                    {deletingId === tenant.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
               </div>
               <div className="mt-4 space-y-2">
                 <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -239,13 +318,18 @@ export default function Tenants() {
                   <Phone className="w-4 h-4" /> {tenant.phone}
                 </div>
               </div>
-              {tenant.active_leases?.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-gray-100">
+              <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                {tenant.has_active_lease ? (
                   <p className="text-sm text-green-600">
-                    {tenant.active_leases.length} active lease(s)
+                    {tenant.active_leases?.length || 0} active lease(s)
                   </p>
-                </div>
-              )}
+                ) : (
+                  <p className="text-sm text-gray-400">No active lease</p>
+                )}
+                {tenant.lease_count > 0 && (
+                  <p className="text-xs text-gray-400">{tenant.lease_count} total leases</p>
+                )}
+              </div>
             </div>
           ))}
       </div>
@@ -263,6 +347,240 @@ export default function Tenants() {
           />
         </div>
       )}
+
+      {/* Tenant Detail Modal */}
+      <AnimatePresence>
+        {showDetailModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
+                    <TbUserSquareRounded className="w-6 h-6 text-purple-600" />
+                  </div>
+                  {detailLoading ? (
+                    <div className="space-y-2">
+                      <div className="h-5 w-40 bg-gray-200 rounded animate-pulse" />
+                      <div className="h-3 w-24 bg-gray-100 rounded animate-pulse" />
+                    </div>
+                  ) : (
+                    <div>
+                      <h2 className="text-xl font-semibold text-gray-900">
+                        {tenantDetail?.tenant?.name}
+                      </h2>
+                      <p className="text-sm text-gray-500">{tenantDetail?.tenant?.code}</p>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => {
+                    setShowDetailModal(false)
+                    setSelectedTenantId(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+                {detailLoading ? (
+                  <div className="space-y-6 animate-pulse">
+                    <div className="grid grid-cols-2 gap-4">
+                      {[...Array(4)].map((_, i) => (
+                        <div key={i} className="space-y-2">
+                          <div className="h-3 w-20 bg-gray-200 rounded" />
+                          <div className="h-4 w-32 bg-gray-100 rounded" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : tenantDetail && (
+                  <div className="space-y-6">
+                    {/* Contact Info */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                        Contact Information
+                      </h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-xs text-gray-500">Email</p>
+                          <p className="text-sm font-medium">{tenantDetail.tenant.email}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Phone</p>
+                          <p className="text-sm font-medium">{tenantDetail.tenant.phone}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">Type</p>
+                          <p className="text-sm font-medium capitalize">{tenantDetail.tenant.tenant_type}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500">ID Number</p>
+                          <p className="text-sm font-medium">{tenantDetail.tenant.id_number || '-'}</p>
+                        </div>
+                        {tenantDetail.tenant.employer_name && (
+                          <div>
+                            <p className="text-xs text-gray-500">Employer</p>
+                            <p className="text-sm font-medium">{tenantDetail.tenant.employer_name}</p>
+                          </div>
+                        )}
+                        {tenantDetail.tenant.occupation && (
+                          <div>
+                            <p className="text-xs text-gray-500">Occupation</p>
+                            <p className="text-sm font-medium">{tenantDetail.tenant.occupation}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Billing Summary */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                        Billing Summary
+                      </h3>
+                      <div className="grid grid-cols-4 gap-4">
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-xs text-gray-500">Total Invoiced</p>
+                          <p className="text-lg font-semibold text-gray-900">
+                            {formatCurrency(tenantDetail.billing_summary?.total_invoiced || 0)}
+                          </p>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-xs text-gray-500">Total Paid</p>
+                          <p className="text-lg font-semibold text-green-600">
+                            {formatCurrency(tenantDetail.billing_summary?.total_paid || 0)}
+                          </p>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-xs text-gray-500">Balance Due</p>
+                          <p className={`text-lg font-semibold ${
+                            tenantDetail.billing_summary?.balance_due > 0 ? 'text-amber-600' : 'text-gray-900'
+                          }`}>
+                            {formatCurrency(tenantDetail.billing_summary?.balance_due || 0)}
+                          </p>
+                        </div>
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <p className="text-xs text-gray-500">Overdue</p>
+                          <p className={`text-lg font-semibold ${
+                            tenantDetail.billing_summary?.overdue_amount > 0 ? 'text-red-600' : 'text-gray-900'
+                          }`}>
+                            {formatCurrency(tenantDetail.billing_summary?.overdue_amount || 0)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Active Leases */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                        Active Leases ({tenantDetail.active_leases?.length || 0})
+                      </h3>
+                      {tenantDetail.active_leases?.length > 0 ? (
+                        <div className="space-y-2">
+                          {tenantDetail.active_leases.map((lease: any) => (
+                            <div key={lease.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-100">
+                              <div className="flex items-center gap-3">
+                                <Building2 className="w-5 h-5 text-green-600" />
+                                <div>
+                                  <p className="font-medium text-gray-900">{lease.unit}</p>
+                                  <p className="text-xs text-gray-500">{lease.property} • {lease.lease_number}</p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-semibold text-gray-900">
+                                  {lease.currency} {lease.monthly_rent}/mo
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                  Ends: {new Date(lease.end_date).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-400 italic">No active leases</p>
+                      )}
+                    </div>
+
+                    {/* Lease History */}
+                    {tenantDetail.lease_history?.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                          Lease History ({tenantDetail.lease_history?.length || 0})
+                        </h3>
+                        <div className="space-y-2">
+                          {tenantDetail.lease_history.map((lease: any) => (
+                            <div key={lease.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                              <div className="flex items-center gap-3">
+                                <Building2 className="w-5 h-5 text-gray-400" />
+                                <div>
+                                  <p className="font-medium text-gray-700">{lease.unit}</p>
+                                  <p className="text-xs text-gray-500">
+                                    {lease.property} • {new Date(lease.start_date).toLocaleDateString()} - {new Date(lease.end_date).toLocaleDateString()}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className={`text-xs px-2 py-1 rounded ${
+                                lease.status === 'terminated'
+                                  ? 'bg-red-100 text-red-700'
+                                  : lease.status === 'expired'
+                                  ? 'bg-gray-100 text-gray-600'
+                                  : 'bg-amber-100 text-amber-700'
+                              }`}>
+                                {lease.status}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recent Invoices */}
+                    {tenantDetail.recent_invoices?.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                          Recent Invoices
+                        </h3>
+                        <div className="space-y-2">
+                          {tenantDetail.recent_invoices.slice(0, 5).map((invoice: any) => (
+                            <div key={invoice.id} className="flex items-center justify-between p-2 border border-gray-100 rounded-lg">
+                              <div className="flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-gray-400" />
+                                <span className="text-sm font-medium">{invoice.invoice_number}</span>
+                                <span className="text-xs text-gray-500">{new Date(invoice.date).toLocaleDateString()}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium">{formatCurrency(invoice.amount)}</span>
+                                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                  invoice.status === 'paid'
+                                    ? 'bg-green-100 text-green-700'
+                                    : invoice.status === 'overdue'
+                                    ? 'bg-red-100 text-red-700'
+                                    : 'bg-amber-100 text-amber-700'
+                                }`}>
+                                  {invoice.status}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

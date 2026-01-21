@@ -87,6 +87,8 @@ class PropertyListSerializer(serializers.ModelSerializer):
 
 class RentalTenantSerializer(serializers.ModelSerializer):
     active_leases = serializers.SerializerMethodField()
+    has_active_lease = serializers.SerializerMethodField()
+    lease_count = serializers.SerializerMethodField()
 
     class Meta:
         model = RentalTenant
@@ -95,7 +97,7 @@ class RentalTenantSerializer(serializers.ModelSerializer):
             'id_type', 'id_number', 'emergency_contact_name', 'emergency_contact_phone',
             'emergency_contact_relation', 'employer_name', 'employer_address',
             'occupation', 'portal_user', 'is_active', 'notes', 'active_leases',
-            'created_at', 'updated_at'
+            'has_active_lease', 'lease_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['code', 'created_at', 'updated_at']
 
@@ -108,6 +110,12 @@ class RentalTenantSerializer(serializers.ModelSerializer):
             'monthly_rent': str(l.monthly_rent),
             'end_date': l.end_date
         } for l in leases]
+
+    def get_has_active_lease(self, obj):
+        return obj.leases.filter(status='active').exists()
+
+    def get_lease_count(self, obj):
+        return obj.leases.count()
 
 
 class LeaseAgreementSerializer(serializers.ModelSerializer):

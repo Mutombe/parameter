@@ -11,17 +11,21 @@ class DomainSerializer(serializers.ModelSerializer):
 
 class ClientSerializer(serializers.ModelSerializer):
     domains = DomainSerializer(many=True, read_only=True)
+    is_scheduled_for_deletion = serializers.BooleanField(read_only=True)
+    deletion_time_remaining = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Client
         fields = [
             'id', 'schema_name', 'name', 'description', 'logo',
-            'email', 'phone', 'address', 'is_active', 'subscription_plan',
-            'ai_accounting_enabled', 'ai_reconciliation_enabled',
+            'email', 'phone', 'address', 'is_active', 'account_status',
+            'is_demo', 'demo_expires_at', 'scheduled_deletion_at',
+            'is_scheduled_for_deletion', 'deletion_time_remaining',
+            'subscription_plan', 'ai_accounting_enabled', 'ai_reconciliation_enabled',
             'ai_reports_enabled', 'ai_ocr_enabled', 'default_currency',
             'created_at', 'updated_at', 'domains'
         ]
-        read_only_fields = ['schema_name', 'created_at', 'updated_at']
+        read_only_fields = ['schema_name', 'created_at', 'updated_at', 'scheduled_deletion_at']
 
 
 class ClientCreateSerializer(serializers.ModelSerializer):

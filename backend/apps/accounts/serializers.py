@@ -156,6 +156,29 @@ class CreateInvitationSerializer(serializers.Serializer):
             raise serializers.ValidationError('Cannot invite super admin users')
         return value
 
+    def validate(self, data):
+        """Validate that inviter can invite the requested role."""
+        from .permissions import get_allowed_invite_roles
+
+        request = self.context.get('request')
+        if not request or not request.user:
+            raise serializers.ValidationError('Authentication required')
+
+        inviter = request.user
+        invited_role = data.get('role', User.Role.CLERK)
+
+        # Get allowed roles for this inviter
+        allowed_roles = get_allowed_invite_roles(inviter)
+
+        # Check if inviter can invite this role
+        if invited_role not in allowed_roles:
+            allowed_names = [r.label for r in allowed_roles] if allowed_roles else []
+            raise serializers.ValidationError({
+                'role': f'You cannot invite users with this role. Allowed roles: {", ".join(allowed_names) or "None"}'
+            })
+
+        return data
+
 
 class AcceptInvitationSerializer(serializers.Serializer):
     """Serializer for accepting an invitation."""

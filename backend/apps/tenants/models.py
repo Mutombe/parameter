@@ -37,6 +37,11 @@ class Client(TenantMixin):
 
     # Subscription & Features
     is_active = models.BooleanField(default=True)
+    scheduled_deletion_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='When set, company will be permanently deleted after this time (24h grace period)'
+    )
     subscription_plan = models.CharField(
         max_length=20,
         choices=[
@@ -94,6 +99,19 @@ class Client(TenantMixin):
         self.demo_expires_at = None
         self.account_status = self.AccountStatus.ACTIVE
         self.save()
+
+    @property
+    def is_scheduled_for_deletion(self):
+        """Check if company is scheduled for deletion."""
+        return self.scheduled_deletion_at is not None
+
+    @property
+    def deletion_time_remaining(self):
+        """Get remaining time until deletion in seconds."""
+        if not self.scheduled_deletion_at:
+            return None
+        remaining = self.scheduled_deletion_at - timezone.now()
+        return max(0, int(remaining.total_seconds()))
 
 
 class Domain(DomainMixin):
