@@ -171,7 +171,7 @@ export default function Search() {
             title: item.name,
             subtitle: item.email || item.phone || 'No contact',
             meta: item.landlord_type,
-            href: '/landlords',
+            href: `/dashboard/landlords?view=${item.id}`,
             score: item.name?.toLowerCase().startsWith(lowerQuery) ? 100 : 50,
           })
         }
@@ -192,7 +192,7 @@ export default function Search() {
             title: item.name,
             subtitle: item.address || item.city || '',
             meta: `${item.total_units || 0} units`,
-            href: '/properties',
+            href: `/dashboard/properties?view=${item.id}`,
             score: item.name?.toLowerCase().startsWith(lowerQuery) ? 100 : 50,
           })
         }
@@ -213,7 +213,7 @@ export default function Search() {
             title: item.name,
             subtitle: item.email || item.phone || 'No contact',
             meta: item.is_active ? 'Active' : 'Inactive',
-            href: '/tenants',
+            href: `/dashboard/tenants?view=${item.id}`,
             score: item.name?.toLowerCase().startsWith(lowerQuery) ? 100 : 50,
           })
         }
@@ -233,7 +233,7 @@ export default function Search() {
             title: item.invoice_number,
             subtitle: item.tenant_name || 'Unknown tenant',
             meta: `$${item.total_amount || item.amount || 0}`,
-            href: '/invoices',
+            href: `/dashboard/invoices?view=${item.id}`,
             score: item.invoice_number?.toLowerCase().startsWith(lowerQuery) ? 100 : 50,
           })
         }
@@ -463,9 +463,9 @@ export default function Search() {
             {/* Quick Actions */}
             <div className="mt-8 grid grid-cols-2 md:grid-cols-3 gap-4 max-w-2xl mx-auto">
               {[
-                { label: 'View Tenants', href: '/dashboard/tenants', icon: LiaUsersSolid, color: 'text-orange-500' },
+                { label: 'View Landlords', href: '/dashboard/landlords', icon: PiUsersFour, color: 'text-blue-500' },
                 { label: 'View Properties', href: '/dashboard/properties', icon: PiBuildingApartmentLight, color: 'text-emerald-500' },
-                { label: 'View Invoices', href: '/dashboard/invoices', icon: Receipt, color: 'text-cyan-500' },
+                { label: 'View Tenants', href: '/dashboard/tenants', icon: LiaUsersSolid, color: 'text-orange-500' },
               ].map((action) => (
                 <button
                   key={action.href}

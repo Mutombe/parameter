@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -74,6 +75,7 @@ const propertyTypeConfig = {
 
 export default function Properties() {
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [typeFilter, setTypeFilter] = useState<string>('')
@@ -180,6 +182,21 @@ export default function Properties() {
     setSelectedProperty(property)
     setShowDetailsModal(true)
   }
+
+  // Handle "view" query parameter from search navigation
+  useEffect(() => {
+    const viewId = searchParams.get('view')
+    if (viewId && properties.length > 0) {
+      const property = properties.find((p: Property) => String(p.id) === viewId)
+      if (property) {
+        setSelectedProperty(property)
+        setShowDetailsModal(true)
+        // Clear the view param from URL
+        searchParams.delete('view')
+        setSearchParams(searchParams, { replace: true })
+      }
+    }
+  }, [searchParams, properties, setSearchParams])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

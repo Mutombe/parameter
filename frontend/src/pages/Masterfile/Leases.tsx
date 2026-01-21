@@ -268,10 +268,10 @@ export default function Leases() {
     }).length || 0,
   }
 
-  // Calculate total monthly rent
+  // Calculate total monthly rent (guard against null/undefined monthly_rent values)
   const totalMonthlyRent = leases
     ?.filter((l: Lease) => l.status === 'active')
-    .reduce((sum: number, l: Lease) => sum + l.monthly_rent, 0) || 0
+    .reduce((sum: number, l: Lease) => sum + (Number(l.monthly_rent) || 0), 0) || 0
 
   return (
     <div className="space-y-6">

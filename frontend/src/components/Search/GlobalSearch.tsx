@@ -74,7 +74,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
           title: item.name,
           subtitle: item.email || item.phone,
           icon: PiUsersFour,
-          href: '/landlords',
+          href: `/dashboard/landlords?view=${item.id}`,
         })
       }
     })
@@ -88,7 +88,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
           title: item.name,
           subtitle: item.address || `${item.total_units || 0} units`,
           icon: PiBuildingApartmentLight,
-          href: '/properties',
+          href: `/dashboard/properties?view=${item.id}`,
         })
       }
     })
@@ -102,7 +102,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
           title: item.name,
           subtitle: item.email || item.phone,
           icon: UserCheck,
-          href: '/tenants',
+          href: `/dashboard/tenants?view=${item.id}`,
         })
       }
     })
@@ -110,11 +110,11 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
 
   // Quick links when no query
   const quickLinks: SearchResult[] = [
-    { id: 1, type: 'landlord', title: 'Landlords', subtitle: 'Manage property owners', icon: PiUsersFour, href: '/landlords' },
-    { id: 2, type: 'property', title: 'Properties', subtitle: 'View all properties', icon: PiBuildingApartmentLight, href: '/properties' },
-    { id: 3, type: 'tenant', title: 'Tenants', subtitle: 'Manage tenants', icon: LiaUsersSolid, href: '/tenants' },
-    { id: 4, type: 'invoice', title: 'Invoices', subtitle: 'Billing & invoices', icon: Receipt, href: '/invoices' },
-    { id: 5, type: 'unit', title: 'Units', subtitle: 'Property units', icon: Home, href: '/units' },
+    { id: 1, type: 'landlord', title: 'Landlords', subtitle: 'Manage property owners', icon: PiUsersFour, href: '/dashboard/landlords' },
+    { id: 2, type: 'property', title: 'Properties', subtitle: 'View all properties', icon: PiBuildingApartmentLight, href: '/dashboard/properties' },
+    { id: 3, type: 'tenant', title: 'Tenants', subtitle: 'Manage tenants', icon: LiaUsersSolid, href: '/dashboard/tenants' },
+    { id: 4, type: 'invoice', title: 'Invoices', subtitle: 'Billing & invoices', icon: Receipt, href: '/dashboard/invoices' },
+    { id: 5, type: 'unit', title: 'Units', subtitle: 'Property units', icon: Home, href: '/dashboard/units' },
   ]
 
   const displayResults = query.length >= 2 ? results : quickLinks

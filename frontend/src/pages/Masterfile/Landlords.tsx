@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -63,6 +64,7 @@ const landlordTypeConfig = {
 
 export default function Landlords() {
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [typeFilter, setTypeFilter] = useState<string>('')
@@ -100,6 +102,21 @@ export default function Landlords() {
   const landlords = landlordsData?.results || landlordsData || []
   const totalCount = landlordsData?.count || landlords.length
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
+
+  // Handle "view" query parameter from search navigation
+  useEffect(() => {
+    const viewId = searchParams.get('view')
+    if (viewId && landlords.length > 0) {
+      const landlord = landlords.find((l: Landlord) => String(l.id) === viewId)
+      if (landlord) {
+        setSelectedLandlord(landlord)
+        setShowDetailsModal(true)
+        // Clear the query param after opening modal
+        searchParams.delete('view')
+        setSearchParams(searchParams, { replace: true })
+      }
+    }
+  }, [searchParams, landlords])
 
   // Optimistic create/update mutation
   const createMutation = useMutation({

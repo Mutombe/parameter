@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Users, Phone, Mail, Trash2, Loader2, Eye, X, FileText, Receipt, Building2, Calendar, DollarSign, AlertCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -26,6 +27,7 @@ const leaseStatusOptions = [
 
 export default function Tenants() {
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [currentPage, setCurrentPage] = useState(1)
@@ -83,6 +85,21 @@ export default function Tenants() {
     setSelectedTenantId(tenantId)
     setShowDetailModal(true)
   }
+
+  // Handle "view" query parameter from search navigation
+  useEffect(() => {
+    const viewId = searchParams.get('view')
+    if (viewId) {
+      const tenantId = parseInt(viewId, 10)
+      if (!isNaN(tenantId)) {
+        setSelectedTenantId(tenantId)
+        setShowDetailModal(true)
+        // Clear the view param from URL
+        searchParams.delete('view')
+        setSearchParams(searchParams, { replace: true })
+      }
+    }
+  }, [searchParams, setSearchParams])
 
   // Handle both paginated and non-paginated responses
   const tenants = tenantsData?.results || tenantsData || []
