@@ -5,7 +5,7 @@ Implements Activities 1 (Debt Recognition) and 2 (Payment Receipt).
 from decimal import Decimal
 from django.db import models, transaction
 from django.conf import settings
-from apps.masterfile.models import RentalTenant, Unit, LeaseAgreement
+from apps.masterfile.models import RentalTenant, Unit, LeaseAgreement, Property
 from apps.accounting.models import Journal, JournalEntry, ChartOfAccount, AuditTrail
 
 
@@ -24,10 +24,18 @@ class Invoice(models.Model):
         CANCELLED = 'cancelled', 'Cancelled'
 
     class InvoiceType(models.TextChoices):
+        # Rental income types
         RENT = 'rent', 'Rent'
         DEPOSIT = 'deposit', 'Deposit'
+        # Levy income types (for residential associations)
+        LEVY = 'levy', 'Levy'
+        SPECIAL_LEVY = 'special_levy', 'Special Levy'
+        RATES = 'rates', 'Rates'
+        PARKING = 'parking', 'Parking'
+        # Other types
         UTILITY = 'utility', 'Utility'
         MAINTENANCE = 'maintenance', 'Maintenance'
+        VAT = 'vat', 'VAT'
         OTHER = 'other', 'Other'
 
     invoice_number = models.CharField(max_length=50, unique=True)
@@ -41,6 +49,16 @@ class Invoice(models.Model):
     unit = models.ForeignKey(
         Unit, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='invoices'
+    )
+    # Property reference for easier filtering and reporting
+    property = models.ForeignKey(
+        Property, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='invoices'
+    )
+    # Income type for detailed income analysis
+    income_type = models.ForeignKey(
+        'accounting.IncomeType', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='invoices'
     )
 
     invoice_type = models.CharField(
@@ -95,6 +113,10 @@ class Invoice(models.Model):
     def save(self, *args, **kwargs):
         if not self.invoice_number:
             self.invoice_number = self.generate_invoice_number()
+
+        # Auto-populate property from unit
+        if self.unit and not self.property:
+            self.property = self.unit.property
 
         # Calculate totals
         self.total_amount = self.amount + self.vat_amount
@@ -189,6 +211,19 @@ class Receipt(models.Model):
         related_name='receipts'
     )
 
+    # Bank account for proper receipt tracking
+    bank_account = models.ForeignKey(
+        'accounting.BankAccount', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='receipts',
+        help_text='Bank account into which payment was received'
+    )
+
+    # Income type for receipt analysis
+    income_type = models.ForeignKey(
+        'accounting.IncomeType', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='receipts'
+    )
+
     date = models.DateField()
     amount = models.DecimalField(max_digits=18, decimal_places=2)
     currency = models.CharField(max_length=3, default='USD')
@@ -199,7 +234,7 @@ class Receipt(models.Model):
         default=PaymentMethod.CASH
     )
     reference = models.CharField(max_length=100, blank=True)  # Bank ref, EcoCash ref, etc.
-    bank_name = models.CharField(max_length=100, blank=True)
+    bank_name = models.CharField(max_length=100, blank=True)  # Legacy field, use bank_account instead
 
     description = models.TextField(blank=True)
     notes = models.TextField(blank=True)

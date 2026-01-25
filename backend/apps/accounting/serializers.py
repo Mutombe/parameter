@@ -3,7 +3,9 @@ from decimal import Decimal
 from rest_framework import serializers
 from .models import (
     ChartOfAccount, ExchangeRate, Journal, JournalEntry,
-    GeneralLedger, AuditTrail, FiscalPeriod
+    GeneralLedger, AuditTrail, FiscalPeriod, BankAccount,
+    BankTransaction, BankReconciliation, ExpenseCategory,
+    JournalReallocation, IncomeType
 )
 
 
@@ -178,3 +180,155 @@ class TrialBalanceSerializer(serializers.Serializer):
     account_type = serializers.CharField()
     debit_balance = serializers.DecimalField(max_digits=18, decimal_places=2)
     credit_balance = serializers.DecimalField(max_digits=18, decimal_places=2)
+
+
+class BankAccountSerializer(serializers.ModelSerializer):
+    """Serializer for Bank Accounts."""
+    gl_account_name = serializers.CharField(source='gl_account.name', read_only=True)
+    gl_account_code = serializers.CharField(source='gl_account.code', read_only=True)
+    unreconciled_difference = serializers.ReadOnlyField()
+
+    class Meta:
+        model = BankAccount
+        fields = [
+            'id', 'code', 'name', 'account_type', 'bank_name', 'branch',
+            'account_number', 'swift_code', 'currency', 'gl_account',
+            'gl_account_name', 'gl_account_code', 'book_balance', 'bank_balance',
+            'last_reconciled_date', 'last_reconciled_balance',
+            'unreconciled_difference', 'is_active', 'is_default',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['code', 'book_balance', 'bank_balance',
+                           'last_reconciled_date', 'last_reconciled_balance',
+                           'created_at', 'updated_at']
+
+
+class BankTransactionSerializer(serializers.ModelSerializer):
+    """Serializer for Bank Transactions."""
+    bank_account_name = serializers.CharField(source='bank_account.name', read_only=True)
+    matched_receipt_number = serializers.CharField(
+        source='matched_receipt.receipt_number', read_only=True
+    )
+    reconciled_by_name = serializers.CharField(
+        source='reconciled_by.get_full_name', read_only=True
+    )
+
+    class Meta:
+        model = BankTransaction
+        fields = [
+            'id', 'bank_account', 'bank_account_name', 'transaction_date',
+            'value_date', 'reference', 'description', 'transaction_type',
+            'amount', 'running_balance', 'status', 'matched_receipt',
+            'matched_receipt_number', 'matched_journal', 'reconciled_at',
+            'reconciled_by', 'reconciled_by_name', 'ai_match_confidence',
+            'ai_match_suggestion', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['status', 'matched_receipt', 'matched_journal',
+                           'reconciled_at', 'reconciled_by', 'created_at', 'updated_at']
+
+
+class BankTransactionUploadSerializer(serializers.Serializer):
+    """Serializer for uploading bank statement."""
+    file = serializers.FileField()
+    bank_account = serializers.PrimaryKeyRelatedField(queryset=BankAccount.objects.all())
+    file_format = serializers.ChoiceField(
+        choices=[('csv', 'CSV'), ('excel', 'Excel'), ('ofx', 'OFX')],
+        default='csv'
+    )
+
+
+class BankReconciliationSerializer(serializers.ModelSerializer):
+    """Serializer for Bank Reconciliation."""
+    bank_account_name = serializers.CharField(source='bank_account.name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    completed_by_name = serializers.CharField(
+        source='completed_by.get_full_name', read_only=True
+    )
+    difference = serializers.ReadOnlyField()
+    is_balanced = serializers.ReadOnlyField()
+
+    class Meta:
+        model = BankReconciliation
+        fields = [
+            'id', 'bank_account', 'bank_account_name', 'period_start',
+            'period_end', 'statement_balance', 'book_balance',
+            'adjusted_book_balance', 'outstanding_deposits',
+            'outstanding_withdrawals', 'status', 'notes', 'difference',
+            'is_balanced', 'created_by', 'created_by_name',
+            'completed_at', 'completed_by', 'completed_by_name',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['status', 'completed_at', 'completed_by',
+                           'created_at', 'updated_at']
+
+
+class ExpenseCategorySerializer(serializers.ModelSerializer):
+    """Serializer for Expense Categories."""
+    gl_account_name = serializers.CharField(source='gl_account.name', read_only=True)
+    gl_account_code = serializers.CharField(source='gl_account.code', read_only=True)
+
+    class Meta:
+        model = ExpenseCategory
+        fields = [
+            'id', 'code', 'name', 'description', 'gl_account',
+            'gl_account_name', 'gl_account_code', 'is_deductible',
+            'requires_approval', 'approval_threshold', 'is_active',
+            'is_system', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['code', 'is_system', 'created_at', 'updated_at']
+
+
+class JournalReallocationSerializer(serializers.ModelSerializer):
+    """Serializer for Journal Reallocations."""
+    from_account_code = serializers.CharField(source='from_account.code', read_only=True)
+    from_account_name = serializers.CharField(source='from_account.name', read_only=True)
+    to_account_code = serializers.CharField(source='to_account.code', read_only=True)
+    to_account_name = serializers.CharField(source='to_account.name', read_only=True)
+    reallocated_by_name = serializers.CharField(
+        source='reallocated_by.get_full_name', read_only=True
+    )
+
+    class Meta:
+        model = JournalReallocation
+        fields = [
+            'id', 'original_entry', 'new_entry', 'from_account',
+            'from_account_code', 'from_account_name', 'to_account',
+            'to_account_code', 'to_account_name', 'amount', 'reason',
+            'reallocated_by', 'reallocated_by_name', 'created_at'
+        ]
+        read_only_fields = ['original_entry', 'new_entry', 'from_account',
+                           'reallocated_by', 'created_at']
+
+
+class ReallocationCreateSerializer(serializers.Serializer):
+    """Serializer for creating reallocations."""
+    original_entry_id = serializers.IntegerField()
+    to_account_id = serializers.IntegerField()
+    amount = serializers.DecimalField(max_digits=18, decimal_places=2)
+    reason = serializers.CharField(max_length=500)
+
+    def validate_original_entry_id(self, value):
+        if not JournalEntry.objects.filter(id=value).exists():
+            raise serializers.ValidationError('Journal entry not found')
+        return value
+
+    def validate_to_account_id(self, value):
+        if not ChartOfAccount.objects.filter(id=value).exists():
+            raise serializers.ValidationError('Account not found')
+        return value
+
+
+class IncomeTypeSerializer(serializers.ModelSerializer):
+    """Serializer for Income Types."""
+    gl_account_name = serializers.CharField(source='gl_account.name', read_only=True)
+    gl_account_code = serializers.CharField(source='gl_account.code', read_only=True)
+
+    class Meta:
+        model = IncomeType
+        fields = [
+            'id', 'code', 'name', 'description', 'gl_account',
+            'gl_account_name', 'gl_account_code', 'is_commissionable',
+            'default_commission_rate', 'is_vatable', 'vat_rate',
+            'is_active', 'display_order', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['code', 'created_at', 'updated_at']

@@ -1,10 +1,12 @@
 """Views for user accounts and authentication."""
+from decimal import Decimal
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.views import APIView
 from django.contrib.auth import login, logout
+from django.db.models import Sum, Q
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
@@ -15,7 +17,7 @@ from .serializers import (
     ChangePasswordSerializer, UserActivitySerializer,
     UserInvitationSerializer, CreateInvitationSerializer, AcceptInvitationSerializer
 )
-from .permissions import CanInviteUsers, CanManageUsers, get_allowed_invite_roles
+from .permissions import CanInviteUsers, CanManageUsers, get_allowed_invite_roles, IsTenantPortalUser, IsTenantPortalOrStaff
 
 
 class AuthViewSet(viewsets.ViewSet):
@@ -94,9 +96,12 @@ class AuthViewSet(viewsets.ViewSet):
             return response
 
         except Exception as e:
+            import traceback
+            print(f"Login error: {e}")
+            print(traceback.format_exc())
             return Response({
                 'error': 'An unexpected error occurred. Please try again.',
-                'details': str(e) if request.user.is_superuser else None
+                'details': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
@@ -504,3 +509,407 @@ class AcceptInvitationView(APIView):
             'message': 'Account created successfully',
             'user': UserSerializer(user, context={'request': request}).data
         }, status=status.HTTP_201_CREATED)
+
+
+class TenantPortalViewSet(viewsets.ViewSet):
+    """
+    Tenant Portal API.
+    Allows invited tenants to view their account information, invoices,
+    receipts, lease details, and submit payment notifications.
+    """
+    permission_classes = [IsTenantPortalOrStaff]
+
+    def get_tenant(self, request):
+        """Get the RentalTenant linked to the current user."""
+        from apps.masterfile.models import RentalTenant
+
+        if request.user.role == User.Role.TENANT_PORTAL:
+            try:
+                return request.user.rental_tenant
+            except RentalTenant.DoesNotExist:
+                return None
+        return None
+
+    @action(detail=False, methods=['get'])
+    def profile(self, request):
+        """Get tenant profile information."""
+        tenant = self.get_tenant(request)
+
+        if not tenant:
+            return Response(
+                {'error': 'No tenant profile linked to this account'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        from apps.masterfile.serializers import RentalTenantSerializer
+        return Response(RentalTenantSerializer(tenant).data)
+
+    @action(detail=False, methods=['get'])
+    def dashboard(self, request):
+        """Get tenant dashboard summary."""
+        tenant = self.get_tenant(request)
+
+        if not tenant:
+            return Response(
+                {'error': 'No tenant profile linked to this account'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        from apps.billing.models import Invoice, Receipt
+        from apps.masterfile.models import LeaseAgreement
+
+        # Get active lease
+        active_lease = LeaseAgreement.objects.filter(
+            tenant=tenant,
+            status='active'
+        ).first()
+
+        # Get invoice totals
+        invoices = Invoice.objects.filter(tenant=tenant)
+        total_invoiced = invoices.aggregate(total=Sum('total_amount'))['total'] or Decimal('0')
+        total_paid = invoices.aggregate(paid=Sum('amount_paid'))['paid'] or Decimal('0')
+        total_balance = total_invoiced - total_paid
+
+        # Get overdue invoices
+        overdue = invoices.filter(
+            status='overdue'
+        ).aggregate(total=Sum('balance'))['total'] or Decimal('0')
+
+        # Recent invoices
+        recent_invoices = invoices.order_by('-date')[:5]
+
+        # Recent receipts
+        recent_receipts = Receipt.objects.filter(tenant=tenant).order_by('-date')[:5]
+
+        return Response({
+            'tenant': {
+                'id': tenant.id,
+                'code': tenant.code,
+                'name': tenant.name,
+                'email': tenant.email,
+                'phone': tenant.phone,
+            },
+            'lease': {
+                'id': active_lease.id if active_lease else None,
+                'unit': str(active_lease.unit) if active_lease else None,
+                'monthly_rent': active_lease.monthly_rent if active_lease else None,
+                'currency': active_lease.currency if active_lease else None,
+                'start_date': active_lease.start_date if active_lease else None,
+                'end_date': active_lease.end_date if active_lease else None,
+            } if active_lease else None,
+            'account_summary': {
+                'total_invoiced': total_invoiced,
+                'total_paid': total_paid,
+                'current_balance': total_balance,
+                'overdue_amount': overdue,
+            },
+            'recent_invoices': [
+                {
+                    'id': inv.id,
+                    'invoice_number': inv.invoice_number,
+                    'date': inv.date,
+                    'due_date': inv.due_date,
+                    'amount': inv.total_amount,
+                    'balance': inv.balance,
+                    'status': inv.status,
+                }
+                for inv in recent_invoices
+            ],
+            'recent_receipts': [
+                {
+                    'id': rec.id,
+                    'receipt_number': rec.receipt_number,
+                    'date': rec.date,
+                    'amount': rec.amount,
+                    'payment_method': rec.payment_method,
+                }
+                for rec in recent_receipts
+            ]
+        })
+
+    @action(detail=False, methods=['get'])
+    def invoices(self, request):
+        """Get tenant invoices with filtering."""
+        tenant = self.get_tenant(request)
+
+        if not tenant:
+            return Response(
+                {'error': 'No tenant profile linked to this account'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        from apps.billing.models import Invoice
+        from apps.billing.serializers import InvoiceSerializer
+
+        invoices = Invoice.objects.filter(tenant=tenant)
+
+        # Filter by status
+        status_filter = request.query_params.get('status')
+        if status_filter:
+            invoices = invoices.filter(status=status_filter)
+
+        # Filter by date range
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        if start_date:
+            invoices = invoices.filter(date__gte=start_date)
+        if end_date:
+            invoices = invoices.filter(date__lte=end_date)
+
+        invoices = invoices.order_by('-date')
+
+        return Response({
+            'count': invoices.count(),
+            'total_amount': invoices.aggregate(total=Sum('total_amount'))['total'] or Decimal('0'),
+            'total_balance': invoices.aggregate(balance=Sum('balance'))['balance'] or Decimal('0'),
+            'invoices': InvoiceSerializer(invoices, many=True).data
+        })
+
+    @action(detail=False, methods=['get'])
+    def receipts(self, request):
+        """Get tenant receipts."""
+        tenant = self.get_tenant(request)
+
+        if not tenant:
+            return Response(
+                {'error': 'No tenant profile linked to this account'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        from apps.billing.models import Receipt
+        from apps.billing.serializers import ReceiptSerializer
+
+        receipts = Receipt.objects.filter(tenant=tenant)
+
+        # Filter by date range
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        if start_date:
+            receipts = receipts.filter(date__gte=start_date)
+        if end_date:
+            receipts = receipts.filter(date__lte=end_date)
+
+        receipts = receipts.order_by('-date')
+
+        return Response({
+            'count': receipts.count(),
+            'total_paid': receipts.aggregate(total=Sum('amount'))['total'] or Decimal('0'),
+            'receipts': ReceiptSerializer(receipts, many=True).data
+        })
+
+    @action(detail=False, methods=['get'])
+    def statement(self, request):
+        """Get tenant account statement."""
+        tenant = self.get_tenant(request)
+
+        if not tenant:
+            return Response(
+                {'error': 'No tenant profile linked to this account'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        from apps.billing.models import Invoice, Receipt
+
+        # Get date range
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date', timezone.now().date())
+
+        # Get all invoices and receipts
+        invoices = Invoice.objects.filter(tenant=tenant)
+        receipts = Receipt.objects.filter(tenant=tenant)
+
+        if start_date:
+            invoices = invoices.filter(date__gte=start_date)
+            receipts = receipts.filter(date__gte=start_date)
+        if end_date:
+            invoices = invoices.filter(date__lte=end_date)
+            receipts = receipts.filter(date__lte=end_date)
+
+        # Build statement entries
+        entries = []
+
+        for inv in invoices:
+            entries.append({
+                'date': inv.date,
+                'type': 'invoice',
+                'reference': inv.invoice_number,
+                'description': f'{inv.get_invoice_type_display()} - {inv.description or ""}',
+                'debit': inv.total_amount,
+                'credit': Decimal('0'),
+            })
+
+        for rec in receipts:
+            entries.append({
+                'date': rec.date,
+                'type': 'receipt',
+                'reference': rec.receipt_number,
+                'description': f'Payment - {rec.get_payment_method_display()}',
+                'debit': Decimal('0'),
+                'credit': rec.amount,
+            })
+
+        # Sort by date
+        entries.sort(key=lambda x: x['date'])
+
+        # Calculate running balance
+        running_balance = Decimal('0')
+        for entry in entries:
+            running_balance += entry['debit'] - entry['credit']
+            entry['balance'] = running_balance
+
+        # Totals
+        total_debit = sum(e['debit'] for e in entries)
+        total_credit = sum(e['credit'] for e in entries)
+
+        return Response({
+            'tenant': {
+                'id': tenant.id,
+                'name': tenant.name,
+                'code': tenant.code,
+            },
+            'period': {
+                'start_date': start_date,
+                'end_date': str(end_date),
+            },
+            'entries': entries,
+            'totals': {
+                'total_debit': total_debit,
+                'total_credit': total_credit,
+                'closing_balance': running_balance,
+            }
+        })
+
+    @action(detail=False, methods=['get'])
+    def lease(self, request):
+        """Get tenant lease details."""
+        tenant = self.get_tenant(request)
+
+        if not tenant:
+            return Response(
+                {'error': 'No tenant profile linked to this account'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        from apps.masterfile.models import LeaseAgreement
+        from apps.masterfile.serializers import LeaseAgreementSerializer
+
+        leases = LeaseAgreement.objects.filter(tenant=tenant).order_by('-start_date')
+
+        active_lease = leases.filter(status='active').first()
+        past_leases = leases.exclude(status__in=['active', 'draft'])
+
+        return Response({
+            'active_lease': LeaseAgreementSerializer(active_lease).data if active_lease else None,
+            'past_leases': LeaseAgreementSerializer(past_leases, many=True).data
+        })
+
+    @action(detail=False, methods=['post'])
+    def notify_payment(self, request):
+        """
+        Submit payment notification.
+        Tenants can notify about a payment they've made.
+        """
+        tenant = self.get_tenant(request)
+
+        if not tenant:
+            return Response(
+                {'error': 'No tenant profile linked to this account'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Validate required fields
+        amount = request.data.get('amount')
+        payment_method = request.data.get('payment_method')
+        reference = request.data.get('reference', '')
+        notes = request.data.get('notes', '')
+        payment_date = request.data.get('payment_date', str(timezone.now().date()))
+
+        if not amount or not payment_method:
+            return Response(
+                {'error': 'amount and payment_method are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Create payment notification (this could be a separate model)
+        # For now, we'll create an activity log
+        UserActivity.objects.create(
+            user=request.user,
+            action='payment_notification',
+            details={
+                'tenant_id': tenant.id,
+                'tenant_name': tenant.name,
+                'amount': str(amount),
+                'payment_method': payment_method,
+                'reference': reference,
+                'payment_date': payment_date,
+                'notes': notes,
+            }
+        )
+
+        return Response({
+            'message': 'Payment notification submitted successfully. Our team will process it shortly.',
+            'notification': {
+                'tenant': tenant.name,
+                'amount': amount,
+                'payment_method': payment_method,
+                'reference': reference,
+                'payment_date': payment_date,
+            }
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'])
+    def payment_history(self, request):
+        """Get payment history with chart data."""
+        tenant = self.get_tenant(request)
+
+        if not tenant:
+            return Response(
+                {'error': 'No tenant profile linked to this account'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        from apps.billing.models import Receipt
+        from django.db.models.functions import TruncMonth
+
+        # Get monthly payment totals for the last 12 months
+        receipts = Receipt.objects.filter(tenant=tenant)
+
+        monthly_payments = receipts.annotate(
+            month=TruncMonth('date')
+        ).values('month').annotate(
+            total=Sum('amount')
+        ).order_by('month')
+
+        # Payment method breakdown
+        method_breakdown = receipts.values('payment_method').annotate(
+            total=Sum('amount'),
+            count=Sum(1)
+        )
+
+        return Response({
+            'monthly_payments': [
+                {
+                    'month': p['month'].strftime('%Y-%m') if p['month'] else None,
+                    'total': p['total'],
+                }
+                for p in monthly_payments
+            ],
+            'payment_methods': [
+                {
+                    'method': p['payment_method'],
+                    'total': p['total'],
+                    'count': p['count'],
+                }
+                for p in method_breakdown
+            ],
+            'chart_data': {
+                'type': 'bar',
+                'labels': [p['month'].strftime('%b %Y') if p['month'] else 'Unknown' for p in monthly_payments],
+                'datasets': [
+                    {
+                        'label': 'Monthly Payments',
+                        'data': [float(p['total']) for p in monthly_payments],
+                    }
+                ]
+            }
+        })

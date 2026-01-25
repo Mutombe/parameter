@@ -1,20 +1,30 @@
 """Views for accounting module."""
+import csv
+import io
 from decimal import Decimal
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Sum, Q
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.db import transaction
+from django.db.models import Sum, Q, Count
+from django.http import HttpResponse
 from django.utils import timezone
 from .models import (
     ChartOfAccount, ExchangeRate, Journal, JournalEntry,
-    GeneralLedger, AuditTrail, FiscalPeriod
+    GeneralLedger, AuditTrail, FiscalPeriod, BankAccount,
+    BankTransaction, BankReconciliation, ExpenseCategory,
+    JournalReallocation, IncomeType
 )
 from .serializers import (
     ChartOfAccountSerializer, ExchangeRateSerializer,
     JournalSerializer, JournalCreateSerializer, JournalEntrySerializer,
     GeneralLedgerSerializer, AuditTrailSerializer, FiscalPeriodSerializer,
-    TrialBalanceSerializer
+    TrialBalanceSerializer, BankAccountSerializer, BankTransactionSerializer,
+    BankTransactionUploadSerializer, BankReconciliationSerializer,
+    ExpenseCategorySerializer, JournalReallocationSerializer,
+    ReallocationCreateSerializer, IncomeTypeSerializer
 )
 
 
@@ -292,3 +302,653 @@ class FiscalPeriodViewSet(viewsets.ModelViewSet):
         )
 
         return Response(FiscalPeriodSerializer(period).data)
+
+
+class BankAccountViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Bank Accounts.
+    Supports FBC Bank, EcoCash, ZB Bank, CABS, Cash with USD/ZWG currencies.
+    """
+    queryset = BankAccount.objects.select_related('gl_account').all()
+    serializer_class = BankAccountSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['account_type', 'currency', 'is_active', 'is_default']
+    search_fields = ['code', 'name', 'bank_name', 'account_number']
+    ordering_fields = ['name', 'book_balance', 'bank_balance']
+    ordering = ['name']
+
+    @action(detail=False, methods=['get'])
+    def by_currency(self, request):
+        """Get bank accounts grouped by currency."""
+        result = {}
+        for currency in BankAccount.Currency.values:
+            accounts = self.get_queryset().filter(currency=currency, is_active=True)
+            result[currency] = BankAccountSerializer(accounts, many=True).data
+        return Response(result)
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        """Get summary of all bank accounts."""
+        accounts = self.get_queryset().filter(is_active=True)
+
+        usd_total = accounts.filter(currency='USD').aggregate(
+            book_total=Sum('book_balance'),
+            bank_total=Sum('bank_balance')
+        )
+        zwg_total = accounts.filter(currency='ZWG').aggregate(
+            book_total=Sum('book_balance'),
+            bank_total=Sum('bank_balance')
+        )
+
+        return Response({
+            'total_accounts': accounts.count(),
+            'usd': {
+                'book_balance': usd_total['book_total'] or Decimal('0'),
+                'bank_balance': usd_total['bank_total'] or Decimal('0'),
+                'difference': (usd_total['bank_total'] or Decimal('0')) - (usd_total['book_total'] or Decimal('0'))
+            },
+            'zwg': {
+                'book_balance': zwg_total['book_total'] or Decimal('0'),
+                'bank_balance': zwg_total['bank_total'] or Decimal('0'),
+                'difference': (zwg_total['bank_total'] or Decimal('0')) - (zwg_total['book_total'] or Decimal('0'))
+            },
+            'accounts': BankAccountSerializer(accounts, many=True).data
+        })
+
+    @action(detail=True, methods=['post'])
+    def set_default(self, request, pk=None):
+        """Set this bank account as default for its currency."""
+        account = self.get_object()
+        account.is_default = True
+        account.save()
+        return Response(BankAccountSerializer(account).data)
+
+    @action(detail=False, methods=['post'])
+    def seed_defaults(self, request):
+        """Seed default bank accounts (FBC, EcoCash, ZB, CABS, Cash)."""
+        # Get or create the cash GL account
+        cash_account, _ = ChartOfAccount.objects.get_or_create(
+            code='1100',
+            defaults={
+                'name': 'Bank - USD',
+                'account_type': 'asset',
+                'account_subtype': 'cash',
+                'is_system': True
+            }
+        )
+
+        defaults = [
+            ('FBC', 'FBC Bank', 'bank', 'FBC Bank Limited', 'USD'),
+            ('ECOCASH', 'EcoCash', 'mobile_money', 'EcoCash', 'USD'),
+            ('ZB', 'ZB Bank', 'bank', 'ZB Bank Limited', 'USD'),
+            ('CABS', 'CABS Bank', 'bank', 'CABS Building Society', 'USD'),
+            ('CASH', 'Petty Cash', 'cash', 'Cash', 'USD'),
+            ('FBC_ZWG', 'FBC Bank ZWG', 'bank', 'FBC Bank Limited', 'ZWG'),
+            ('ECOCASH_ZWG', 'EcoCash ZWG', 'mobile_money', 'EcoCash', 'ZWG'),
+        ]
+
+        created = 0
+        for code, name, acc_type, bank_name, currency in defaults:
+            _, was_created = BankAccount.objects.get_or_create(
+                code=code,
+                defaults={
+                    'name': name,
+                    'account_type': acc_type,
+                    'bank_name': bank_name,
+                    'currency': currency,
+                    'gl_account': cash_account
+                }
+            )
+            if was_created:
+                created += 1
+
+        return Response({'message': f'Created {created} default bank accounts'})
+
+
+class BankTransactionViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Bank Transactions.
+    Supports uploading bank statements and AI-assisted matching.
+    """
+    queryset = BankTransaction.objects.select_related(
+        'bank_account', 'matched_receipt', 'matched_journal', 'reconciled_by'
+    ).all()
+    serializer_class = BankTransactionSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+    filterset_fields = ['bank_account', 'status', 'transaction_type', 'transaction_date']
+    search_fields = ['reference', 'description']
+    ordering_fields = ['transaction_date', 'amount']
+    ordering = ['-transaction_date']
+
+    @action(detail=False, methods=['post'])
+    def upload_statement(self, request):
+        """Upload bank statement from CSV/Excel file."""
+        serializer = BankTransactionUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        file = serializer.validated_data['file']
+        bank_account = serializer.validated_data['bank_account']
+        file_format = serializer.validated_data['file_format']
+
+        transactions_created = 0
+        errors = []
+
+        try:
+            if file_format == 'csv':
+                decoded_file = file.read().decode('utf-8')
+                reader = csv.DictReader(io.StringIO(decoded_file))
+
+                for row in reader:
+                    try:
+                        # Parse CSV row - adjust field names as needed
+                        trans_date = row.get('Date') or row.get('date') or row.get('Transaction Date')
+                        reference = row.get('Reference') or row.get('reference') or row.get('Ref')
+                        description = row.get('Description') or row.get('description') or row.get('Narration')
+                        debit = row.get('Debit') or row.get('debit') or row.get('DR')
+                        credit = row.get('Credit') or row.get('credit') or row.get('CR')
+                        balance = row.get('Balance') or row.get('balance')
+
+                        # Determine transaction type and amount
+                        if debit and float(debit.replace(',', '') or 0) > 0:
+                            trans_type = 'debit'
+                            amount = Decimal(debit.replace(',', ''))
+                        elif credit and float(credit.replace(',', '') or 0) > 0:
+                            trans_type = 'credit'
+                            amount = Decimal(credit.replace(',', ''))
+                        else:
+                            continue
+
+                        BankTransaction.objects.create(
+                            bank_account=bank_account,
+                            transaction_date=trans_date,
+                            reference=reference or '',
+                            description=description or '',
+                            transaction_type=trans_type,
+                            amount=amount,
+                            running_balance=Decimal(balance.replace(',', '')) if balance else None
+                        )
+                        transactions_created += 1
+                    except Exception as e:
+                        errors.append(f'Row error: {str(e)}')
+
+            return Response({
+                'message': f'Uploaded {transactions_created} transactions',
+                'transactions_created': transactions_created,
+                'errors': errors
+            })
+
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to parse file: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'])
+    def reconcile(self, request, pk=None):
+        """Manually reconcile a transaction."""
+        transaction_obj = self.get_object()
+        receipt_id = request.data.get('receipt_id')
+        journal_id = request.data.get('journal_id')
+
+        receipt = None
+        journal = None
+
+        if receipt_id:
+            from apps.billing.models import Receipt
+            try:
+                receipt = Receipt.objects.get(id=receipt_id)
+            except Receipt.DoesNotExist:
+                return Response(
+                    {'error': 'Receipt not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        if journal_id:
+            try:
+                journal = Journal.objects.get(id=journal_id)
+            except Journal.DoesNotExist:
+                return Response(
+                    {'error': 'Journal not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        transaction_obj.reconcile(receipt=receipt, journal=journal, user=request.user)
+        return Response(BankTransactionSerializer(transaction_obj).data)
+
+    @action(detail=False, methods=['get'])
+    def unreconciled(self, request):
+        """Get all unreconciled transactions."""
+        bank_account_id = request.query_params.get('bank_account')
+        queryset = self.get_queryset().filter(status='unreconciled')
+
+        if bank_account_id:
+            queryset = queryset.filter(bank_account_id=bank_account_id)
+
+        return Response({
+            'count': queryset.count(),
+            'total_credits': queryset.filter(transaction_type='credit').aggregate(total=Sum('amount'))['total'] or Decimal('0'),
+            'total_debits': queryset.filter(transaction_type='debit').aggregate(total=Sum('amount'))['total'] or Decimal('0'),
+            'transactions': BankTransactionSerializer(queryset[:100], many=True).data
+        })
+
+    @action(detail=False, methods=['post'])
+    def auto_match(self, request):
+        """AI-assisted auto-matching of transactions with receipts."""
+        bank_account_id = request.data.get('bank_account')
+
+        if not bank_account_id:
+            return Response(
+                {'error': 'bank_account is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        from apps.billing.models import Receipt
+
+        unreconciled = BankTransaction.objects.filter(
+            bank_account_id=bank_account_id,
+            status='unreconciled',
+            transaction_type='credit'
+        )
+
+        matched = 0
+        suggestions = []
+
+        for trans in unreconciled:
+            # Try to find matching receipt by amount and date range
+            potential_matches = Receipt.objects.filter(
+                amount=trans.amount,
+                date__gte=trans.transaction_date - timezone.timedelta(days=3),
+                date__lte=trans.transaction_date + timezone.timedelta(days=3),
+                journal__isnull=False
+            ).exclude(bank_transactions__isnull=False)
+
+            if potential_matches.count() == 1:
+                # Exact match found
+                receipt = potential_matches.first()
+                trans.matched_receipt = receipt
+                trans.ai_match_confidence = 95
+                trans.ai_match_suggestion = {
+                    'receipt_id': receipt.id,
+                    'receipt_number': receipt.receipt_number,
+                    'tenant': receipt.tenant.name,
+                    'confidence': 95
+                }
+                trans.save()
+                suggestions.append({
+                    'transaction_id': trans.id,
+                    'match_type': 'exact',
+                    'receipt': {
+                        'id': receipt.id,
+                        'number': receipt.receipt_number,
+                        'tenant': receipt.tenant.name
+                    },
+                    'confidence': 95
+                })
+                matched += 1
+            elif potential_matches.count() > 1:
+                # Multiple potential matches
+                trans.ai_match_confidence = 60
+                trans.ai_match_suggestion = {
+                    'potential_matches': [
+                        {'id': r.id, 'number': r.receipt_number, 'tenant': r.tenant.name}
+                        for r in potential_matches[:5]
+                    ],
+                    'confidence': 60
+                }
+                trans.save()
+                suggestions.append({
+                    'transaction_id': trans.id,
+                    'match_type': 'multiple',
+                    'potential_receipts': [
+                        {'id': r.id, 'number': r.receipt_number, 'tenant': r.tenant.name}
+                        for r in potential_matches[:5]
+                    ],
+                    'confidence': 60
+                })
+
+        return Response({
+            'matched': matched,
+            'total_processed': unreconciled.count(),
+            'suggestions': suggestions
+        })
+
+
+class BankReconciliationViewSet(viewsets.ModelViewSet):
+    """
+    Bank Reconciliation management.
+    Supports creating, completing, and exporting reconciliations.
+    """
+    queryset = BankReconciliation.objects.select_related(
+        'bank_account', 'created_by', 'completed_by'
+    ).all()
+    serializer_class = BankReconciliationSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['bank_account', 'status']
+    ordering_fields = ['period_end', 'created_at']
+    ordering = ['-period_end']
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def complete(self, request, pk=None):
+        """Complete the reconciliation."""
+        reconciliation = self.get_object()
+
+        if reconciliation.status == 'completed':
+            return Response(
+                {'error': 'Reconciliation is already completed'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not reconciliation.is_balanced:
+            return Response(
+                {'error': f'Reconciliation is not balanced. Difference: {reconciliation.difference}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        reconciliation.status = 'completed'
+        reconciliation.completed_at = timezone.now()
+        reconciliation.completed_by = request.user
+        reconciliation.save()
+
+        # Update bank account
+        reconciliation.bank_account.last_reconciled_date = reconciliation.period_end
+        reconciliation.bank_account.last_reconciled_balance = reconciliation.statement_balance
+        reconciliation.bank_account.save()
+
+        AuditTrail.objects.create(
+            action='reconciliation_completed',
+            model_name='BankReconciliation',
+            record_id=reconciliation.id,
+            changes={
+                'bank_account': reconciliation.bank_account.name,
+                'period_end': str(reconciliation.period_end),
+                'statement_balance': str(reconciliation.statement_balance)
+            },
+            user=request.user
+        )
+
+        return Response(BankReconciliationSerializer(reconciliation).data)
+
+    @action(detail=True, methods=['get'])
+    def export_excel(self, request, pk=None):
+        """Export reconciliation to Excel/CSV format."""
+        reconciliation = self.get_object()
+
+        # Create CSV response
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="reconciliation_{reconciliation.id}.csv"'
+
+        writer = csv.writer(response)
+
+        # Header info
+        writer.writerow(['Bank Reconciliation Report'])
+        writer.writerow([''])
+        writer.writerow(['Bank Account:', reconciliation.bank_account.name])
+        writer.writerow(['Period:', f'{reconciliation.period_start} to {reconciliation.period_end}'])
+        writer.writerow([''])
+
+        # Balances
+        writer.writerow(['Statement Balance:', reconciliation.statement_balance])
+        writer.writerow(['Book Balance:', reconciliation.book_balance])
+        writer.writerow(['Outstanding Deposits:', reconciliation.outstanding_deposits])
+        writer.writerow(['Outstanding Withdrawals:', reconciliation.outstanding_withdrawals])
+        writer.writerow(['Adjusted Book Balance:', reconciliation.adjusted_book_balance or reconciliation.book_balance])
+        writer.writerow(['Difference:', reconciliation.difference])
+        writer.writerow(['Status:', 'Balanced' if reconciliation.is_balanced else 'Unbalanced'])
+        writer.writerow([''])
+
+        # Unreconciled transactions
+        writer.writerow(['Unreconciled Transactions'])
+        writer.writerow(['Date', 'Reference', 'Description', 'Type', 'Amount'])
+
+        unreconciled = BankTransaction.objects.filter(
+            bank_account=reconciliation.bank_account,
+            transaction_date__lte=reconciliation.period_end,
+            status='unreconciled'
+        )
+
+        for trans in unreconciled:
+            writer.writerow([
+                trans.transaction_date,
+                trans.reference,
+                trans.description,
+                trans.transaction_type,
+                trans.amount
+            ])
+
+        return response
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        """Get reconciliation summary for all bank accounts."""
+        bank_accounts = BankAccount.objects.filter(is_active=True)
+
+        summary = []
+        for account in bank_accounts:
+            last_recon = account.reconciliations.filter(status='completed').first()
+            pending = account.transactions.filter(status='unreconciled').count()
+
+            summary.append({
+                'bank_account': BankAccountSerializer(account).data,
+                'last_reconciled': last_recon.period_end if last_recon else None,
+                'last_reconciled_balance': account.last_reconciled_balance,
+                'pending_transactions': pending,
+                'unreconciled_difference': account.unreconciled_difference
+            })
+
+        return Response(summary)
+
+
+class ExpenseCategoryViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Expense Categories.
+    Allows dynamic creation of expense item types.
+    """
+    queryset = ExpenseCategory.objects.select_related('gl_account').all()
+    serializer_class = ExpenseCategorySerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['is_active', 'is_deductible', 'requires_approval']
+    search_fields = ['code', 'name', 'description']
+    ordering = ['name']
+
+    def destroy(self, request, *args, **kwargs):
+        """Prevent deletion of system categories."""
+        category = self.get_object()
+        if category.is_system:
+            return Response(
+                {'error': 'System categories cannot be deleted'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=['post'])
+    def seed_defaults(self, request):
+        """Seed default expense categories."""
+        # Get or create expense GL account
+        expense_account, _ = ChartOfAccount.objects.get_or_create(
+            code='5000',
+            defaults={
+                'name': 'Operating Expenses',
+                'account_type': 'expense',
+                'account_subtype': 'operating_expense',
+                'is_system': True
+            }
+        )
+
+        defaults = [
+            ('MAINT', 'Maintenance', 'Property maintenance and repairs'),
+            ('UTIL', 'Utilities', 'Water, electricity, and other utilities'),
+            ('MGMT', 'Management Fees', 'Property management fees'),
+            ('INSUR', 'Insurance', 'Property insurance'),
+            ('LEGAL', 'Legal Fees', 'Legal and professional fees'),
+            ('SECUR', 'Security', 'Security services'),
+            ('CLEAN', 'Cleaning', 'Cleaning and sanitation'),
+            ('GARDEN', 'Gardening', 'Landscaping and gardening'),
+            ('RATES', 'Rates & Taxes', 'Municipal rates and taxes'),
+        ]
+
+        created = 0
+        for code, name, desc in defaults:
+            _, was_created = ExpenseCategory.objects.get_or_create(
+                code=code,
+                defaults={
+                    'name': name,
+                    'description': desc,
+                    'gl_account': expense_account,
+                    'is_system': True
+                }
+            )
+            if was_created:
+                created += 1
+
+        return Response({'message': f'Created {created} default expense categories'})
+
+
+class JournalReallocationViewSet(viewsets.ModelViewSet):
+    """
+    Journal Reallocation management.
+    Allows moving expenses between accounts.
+    """
+    queryset = JournalReallocation.objects.select_related(
+        'original_entry', 'new_entry', 'from_account', 'to_account', 'reallocated_by'
+    ).all()
+    serializer_class = JournalReallocationSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['from_account', 'to_account']
+    search_fields = ['reason']
+    ordering = ['-created_at']
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return ReallocationCreateSerializer
+        return JournalReallocationSerializer
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        """Create a new reallocation."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        original_entry = JournalEntry.objects.get(id=serializer.validated_data['original_entry_id'])
+        to_account = ChartOfAccount.objects.get(id=serializer.validated_data['to_account_id'])
+        amount = serializer.validated_data['amount']
+        reason = serializer.validated_data['reason']
+
+        reallocation = JournalReallocation.create_reallocation(
+            original_entry=original_entry,
+            to_account=to_account,
+            amount=amount,
+            reason=reason,
+            user=request.user
+        )
+
+        return Response(
+            JournalReallocationSerializer(reallocation).data,
+            status=status.HTTP_201_CREATED
+        )
+
+    @action(detail=False, methods=['get'])
+    def by_account(self, request):
+        """Get reallocations grouped by account."""
+        from_account = request.query_params.get('from_account')
+        to_account = request.query_params.get('to_account')
+
+        queryset = self.get_queryset()
+
+        if from_account:
+            queryset = queryset.filter(from_account_id=from_account)
+        if to_account:
+            queryset = queryset.filter(to_account_id=to_account)
+
+        total = queryset.aggregate(total=Sum('amount'))['total'] or Decimal('0')
+
+        return Response({
+            'count': queryset.count(),
+            'total_reallocated': total,
+            'reallocations': JournalReallocationSerializer(queryset, many=True).data
+        })
+
+
+class IncomeTypeViewSet(viewsets.ModelViewSet):
+    """
+    CRUD for Income Types.
+    Defines income categories for detailed analysis (Rent, Levy, Special Levy, etc.).
+    """
+    queryset = IncomeType.objects.select_related('gl_account').all()
+    serializer_class = IncomeTypeSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['is_active', 'is_commissionable', 'is_vatable']
+    search_fields = ['code', 'name', 'description']
+    ordering = ['display_order', 'name']
+
+    @action(detail=False, methods=['post'])
+    def seed_defaults(self, request):
+        """Seed default income types."""
+        # Get or create revenue GL account
+        income_account, _ = ChartOfAccount.objects.get_or_create(
+            code='4000',
+            defaults={
+                'name': 'Rental Income',
+                'account_type': 'revenue',
+                'account_subtype': 'rental_income',
+                'is_system': True
+            }
+        )
+
+        defaults = [
+            ('RENT', 'Rental Income', 'rental_income', True, False, 1),
+            ('LEVY', 'Levy Income', 'levy_income', False, False, 2),
+            ('SPECIAL_LEVY', 'Special Levy', 'special_levy_income', False, False, 3),
+            ('RATES', 'Rates Recovery', 'rates_income', False, False, 4),
+            ('PARKING', 'Parking Income', 'parking_income', True, False, 5),
+            ('VAT', 'VAT Income', 'vat_income', False, True, 6),
+            ('DEPOSIT', 'Deposit Income', 'other_income', False, False, 7),
+            ('OTHER', 'Other Income', 'other_income', True, False, 8),
+        ]
+
+        created = 0
+        for code, name, subtype, commissionable, vatable, order in defaults:
+            gl_acct, _ = ChartOfAccount.objects.get_or_create(
+                account_subtype=subtype,
+                defaults={
+                    'code': f'4{order}00',
+                    'name': name,
+                    'account_type': 'revenue',
+                    'is_system': True
+                }
+            )
+
+            _, was_created = IncomeType.objects.get_or_create(
+                code=code,
+                defaults={
+                    'name': name,
+                    'gl_account': gl_acct,
+                    'is_commissionable': commissionable,
+                    'is_vatable': vatable,
+                    'display_order': order
+                }
+            )
+            if was_created:
+                created += 1
+
+        return Response({'message': f'Created {created} default income types'})
+
+    @action(detail=False, methods=['get'])
+    def for_invoicing(self, request):
+        """Get income types available for invoicing."""
+        income_types = self.get_queryset().filter(is_active=True)
+        return Response([
+            {
+                'id': it.id,
+                'code': it.code,
+                'name': it.name,
+                'is_commissionable': it.is_commissionable,
+                'commission_rate': it.default_commission_rate,
+                'is_vatable': it.is_vatable,
+                'vat_rate': it.vat_rate
+            }
+            for it in income_types
+        ])

@@ -20,6 +20,10 @@ import {
   Crown,
   Search,
   X,
+  Landmark,
+  DollarSign,
+  Wallet,
+  GitCompare,
 } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useAuthStore } from '../../stores/authStore'
@@ -78,6 +82,9 @@ const navigation: NavSection[] = [
     items: [
       { name: 'Chart of Accounts', href: '/dashboard/chart-of-accounts', icon: BookOpen },
       { name: 'Journals', href: '/dashboard/journals', icon: FileSpreadsheet },
+      { name: 'Bank Accounts', href: '/dashboard/bank-accounts', icon: Landmark },
+      { name: 'Income Types', href: '/dashboard/income-types', icon: DollarSign },
+      { name: 'Expense Categories', href: '/dashboard/expense-categories', icon: Wallet },
     ],
   },
   {

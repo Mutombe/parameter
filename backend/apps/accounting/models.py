@@ -39,14 +39,20 @@ class ChartOfAccount(models.Model):
         # Equity
         RETAINED_EARNINGS = 'retained_earnings', 'Retained Earnings'
         CAPITAL = 'capital', 'Capital'
-        # Revenue
+        # Revenue - Real Estate Income Types
         RENTAL_INCOME = 'rental_income', 'Rental Income'
+        LEVY_INCOME = 'levy_income', 'Levy Income'
+        SPECIAL_LEVY_INCOME = 'special_levy_income', 'Special Levy Income'
+        RATES_INCOME = 'rates_income', 'Rates Income'
+        PARKING_INCOME = 'parking_income', 'Parking Income'
+        VAT_INCOME = 'vat_income', 'VAT Income'
         COMMISSION_INCOME = 'commission_income', 'Commission Income'
         OTHER_INCOME = 'other_income', 'Other Income'
         # Expenses
         OPERATING_EXPENSE = 'operating_expense', 'Operating Expenses'
         MAINTENANCE = 'maintenance', 'Maintenance & Repairs'
         UTILITIES = 'utilities', 'Utilities'
+        CUSTOM_EXPENSE = 'custom_expense', 'Custom Expense'
 
     code = models.CharField(max_length=20, unique=True)
     name = models.CharField(max_length=255)
@@ -451,3 +457,432 @@ class FiscalPeriod(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.start_date} - {self.end_date})'
+
+
+class BankAccount(models.Model):
+    """
+    Bank Account - Represents physical bank accounts for receipt tracking.
+    Examples: FBC Bank, EcoCash, ZB Bank, CABS, Cash
+    """
+
+    class AccountType(models.TextChoices):
+        BANK = 'bank', 'Bank Account'
+        MOBILE_MONEY = 'mobile_money', 'Mobile Money'
+        CASH = 'cash', 'Cash'
+
+    class Currency(models.TextChoices):
+        USD = 'USD', 'US Dollar'
+        ZWG = 'ZWG', 'Zimbabwe Gold (ZiG)'
+        ZWL = 'ZWL', 'Zimbabwe Dollar'
+
+    code = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=255)
+    account_type = models.CharField(max_length=20, choices=AccountType.choices, default=AccountType.BANK)
+
+    # Bank details
+    bank_name = models.CharField(max_length=100)
+    branch = models.CharField(max_length=100, blank=True)
+    account_number = models.CharField(max_length=50, blank=True)
+    swift_code = models.CharField(max_length=20, blank=True)
+
+    # Currency support
+    currency = models.CharField(max_length=3, choices=Currency.choices, default=Currency.USD)
+
+    # GL Integration
+    gl_account = models.ForeignKey(
+        ChartOfAccount, on_delete=models.PROTECT,
+        related_name='bank_accounts',
+        limit_choices_to={'account_subtype': 'cash'}
+    )
+
+    # Balances
+    book_balance = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('0.00'))
+    bank_balance = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('0.00'))
+    last_reconciled_date = models.DateField(null=True, blank=True)
+    last_reconciled_balance = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('0.00'))
+
+    is_active = models.BooleanField(default=True)
+    is_default = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Bank Account'
+        verbose_name_plural = 'Bank Accounts'
+        ordering = ['name']
+
+    def __str__(self):
+        return f'{self.name} ({self.currency})'
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = self.generate_code()
+        # Ensure only one default per currency
+        if self.is_default:
+            BankAccount.objects.filter(
+                currency=self.currency, is_default=True
+            ).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def generate_code(cls):
+        last = cls.objects.order_by('-id').first()
+        num = (last.id + 1) if last else 1
+        return f'BA{num:04d}'
+
+    @property
+    def unreconciled_difference(self):
+        """Calculate difference between book and bank balance."""
+        return self.bank_balance - self.book_balance
+
+
+class BankTransaction(models.Model):
+    """
+    Bank Transaction - Records individual bank statement transactions for reconciliation.
+    """
+
+    class Status(models.TextChoices):
+        UNRECONCILED = 'unreconciled', 'Unreconciled'
+        RECONCILED = 'reconciled', 'Reconciled'
+        DISPUTED = 'disputed', 'Disputed'
+
+    class TransactionType(models.TextChoices):
+        CREDIT = 'credit', 'Credit (Deposit)'
+        DEBIT = 'debit', 'Debit (Withdrawal)'
+
+    bank_account = models.ForeignKey(
+        BankAccount, on_delete=models.CASCADE, related_name='transactions'
+    )
+
+    transaction_date = models.DateField()
+    value_date = models.DateField(null=True, blank=True)
+    reference = models.CharField(max_length=255)  # Bank statement reference
+    description = models.TextField(blank=True)
+
+    transaction_type = models.CharField(max_length=10, choices=TransactionType.choices)
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+    running_balance = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.UNRECONCILED)
+
+    # Matching
+    matched_receipt = models.ForeignKey(
+        'billing.Receipt', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='bank_transactions'
+    )
+    matched_journal = models.ForeignKey(
+        Journal, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='bank_transactions'
+    )
+
+    reconciled_at = models.DateTimeField(null=True, blank=True)
+    reconciled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='reconciled_transactions'
+    )
+
+    # AI matching result
+    ai_match_confidence = models.PositiveIntegerField(null=True, blank=True)
+    ai_match_suggestion = models.JSONField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Bank Transaction'
+        verbose_name_plural = 'Bank Transactions'
+        ordering = ['-transaction_date', '-created_at']
+        indexes = [
+            models.Index(fields=['bank_account', 'status']),
+            models.Index(fields=['transaction_date']),
+        ]
+
+    def __str__(self):
+        return f'{self.transaction_date} - {self.reference}: {self.amount}'
+
+    @transaction.atomic
+    def reconcile(self, receipt=None, journal=None, user=None):
+        """Mark transaction as reconciled."""
+        from django.utils import timezone
+
+        self.status = self.Status.RECONCILED
+        self.matched_receipt = receipt
+        self.matched_journal = journal
+        self.reconciled_at = timezone.now()
+        self.reconciled_by = user
+        self.save()
+
+        # Update bank account book balance
+        if self.transaction_type == self.TransactionType.CREDIT:
+            self.bank_account.book_balance += self.amount
+        else:
+            self.bank_account.book_balance -= self.amount
+        self.bank_account.save()
+
+
+class BankReconciliation(models.Model):
+    """
+    Bank Reconciliation - Reconciliation session/report.
+    """
+
+    class Status(models.TextChoices):
+        DRAFT = 'draft', 'Draft'
+        COMPLETED = 'completed', 'Completed'
+
+    bank_account = models.ForeignKey(
+        BankAccount, on_delete=models.CASCADE, related_name='reconciliations'
+    )
+
+    period_start = models.DateField()
+    period_end = models.DateField()
+
+    statement_balance = models.DecimalField(max_digits=18, decimal_places=2)
+    book_balance = models.DecimalField(max_digits=18, decimal_places=2)
+    adjusted_book_balance = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+
+    # Outstanding items
+    outstanding_deposits = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('0.00'))
+    outstanding_withdrawals = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('0.00'))
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+
+    notes = models.TextField(blank=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, related_name='created_reconciliations'
+    )
+    completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='completed_reconciliations'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Bank Reconciliation'
+        verbose_name_plural = 'Bank Reconciliations'
+        ordering = ['-period_end']
+
+    def __str__(self):
+        return f'{self.bank_account.name} - {self.period_end}'
+
+    @property
+    def difference(self):
+        """Calculate reconciliation difference."""
+        adjusted = self.adjusted_book_balance or self.book_balance
+        return self.statement_balance - adjusted
+
+    @property
+    def is_balanced(self):
+        """Check if reconciliation is balanced."""
+        return abs(self.difference) < Decimal('0.01')
+
+
+class ExpenseCategory(models.Model):
+    """
+    Dynamic Expense Categories - User-created expense types.
+    """
+    code = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+
+    # GL account mapping
+    gl_account = models.ForeignKey(
+        ChartOfAccount, on_delete=models.PROTECT,
+        related_name='expense_categories',
+        limit_choices_to={'account_type': 'expense'}
+    )
+
+    # Categorization
+    is_deductible = models.BooleanField(default=True)
+    requires_approval = models.BooleanField(default=False)
+    approval_threshold = models.DecimalField(
+        max_digits=18, decimal_places=2, null=True, blank=True,
+        help_text='Amount above which approval is required'
+    )
+
+    is_active = models.BooleanField(default=True)
+    is_system = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Expense Category'
+        verbose_name_plural = 'Expense Categories'
+        ordering = ['name']
+
+    def __str__(self):
+        return f'{self.code} - {self.name}'
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = self.generate_code()
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def generate_code(cls):
+        last = cls.objects.order_by('-id').first()
+        num = (last.id + 1) if last else 1
+        return f'EXP{num:04d}'
+
+
+class JournalReallocation(models.Model):
+    """
+    Journal Reallocation - Track expense reallocations to different accounts.
+    Allows preparers to move expenses to more appropriate accounts after initial allocation.
+    """
+    original_entry = models.ForeignKey(
+        JournalEntry, on_delete=models.PROTECT, related_name='reallocations_from'
+    )
+    new_entry = models.ForeignKey(
+        JournalEntry, on_delete=models.PROTECT, related_name='reallocations_to'
+    )
+
+    from_account = models.ForeignKey(
+        ChartOfAccount, on_delete=models.PROTECT, related_name='reallocated_from'
+    )
+    to_account = models.ForeignKey(
+        ChartOfAccount, on_delete=models.PROTECT, related_name='reallocated_to'
+    )
+
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+    reason = models.TextField()
+
+    reallocated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, related_name='reallocations'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Journal Reallocation'
+        verbose_name_plural = 'Journal Reallocations'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Reallocation: {self.from_account.code} → {self.to_account.code} ({self.amount})'
+
+    @classmethod
+    @transaction.atomic
+    def create_reallocation(cls, original_entry, to_account, amount, reason, user):
+        """
+        Create a reallocation entry.
+        This creates a journal that moves the amount from original account to new account.
+        """
+        from django.utils import timezone
+
+        from_account = original_entry.account
+
+        # Create reallocation journal
+        journal = Journal.objects.create(
+            journal_type=Journal.JournalType.ADJUSTMENT,
+            date=timezone.now().date(),
+            description=f'Reallocation: {from_account.code} → {to_account.code}. Reason: {reason}',
+            created_by=user
+        )
+
+        # Reverse from original account
+        reverse_entry = JournalEntry.objects.create(
+            journal=journal,
+            account=from_account,
+            description=f'Reallocation out - {reason}',
+            credit_amount=amount if from_account.normal_balance == 'debit' else Decimal('0'),
+            debit_amount=Decimal('0') if from_account.normal_balance == 'debit' else amount
+        )
+
+        # Credit to new account
+        new_entry = JournalEntry.objects.create(
+            journal=journal,
+            account=to_account,
+            description=f'Reallocation in - {reason}',
+            debit_amount=amount if to_account.normal_balance == 'debit' else Decimal('0'),
+            credit_amount=Decimal('0') if to_account.normal_balance == 'debit' else amount
+        )
+
+        # Post the journal
+        journal.post(user)
+
+        # Create reallocation record
+        reallocation = cls.objects.create(
+            original_entry=original_entry,
+            new_entry=new_entry,
+            from_account=from_account,
+            to_account=to_account,
+            amount=amount,
+            reason=reason,
+            reallocated_by=user
+        )
+
+        # Audit trail
+        AuditTrail.objects.create(
+            action='expense_reallocated',
+            model_name='JournalReallocation',
+            record_id=reallocation.id,
+            changes={
+                'from_account': from_account.code,
+                'to_account': to_account.code,
+                'amount': str(amount),
+                'reason': reason
+            },
+            user=user
+        )
+
+        return reallocation
+
+
+class IncomeType(models.Model):
+    """
+    Income Type - Defines different types of income for detailed tracking.
+    Links to specific GL accounts and enables income analysis.
+    """
+    code = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+
+    # GL account mapping
+    gl_account = models.ForeignKey(
+        ChartOfAccount, on_delete=models.PROTECT,
+        related_name='income_types',
+        limit_choices_to={'account_type': 'revenue'}
+    )
+
+    # Commission settings
+    is_commissionable = models.BooleanField(default=True)
+    default_commission_rate = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('10.00')
+    )
+
+    # VAT settings
+    is_vatable = models.BooleanField(default=False)
+    vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('15.00'))
+
+    is_active = models.BooleanField(default=True)
+    display_order = models.PositiveIntegerField(default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Income Type'
+        verbose_name_plural = 'Income Types'
+        ordering = ['display_order', 'name']
+
+    def __str__(self):
+        return f'{self.code} - {self.name}'
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = self.generate_code()
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def generate_code(cls):
+        last = cls.objects.order_by('-id').first()
+        num = (last.id + 1) if last else 1
+        return f'INC{num:04d}'

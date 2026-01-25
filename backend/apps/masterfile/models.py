@@ -224,13 +224,20 @@ class Unit(models.Model):
 
 class RentalTenant(models.Model):
     """
-    Tenant who rents a unit.
+    Tenant who rents a unit or pays levies.
     Named RentalTenant to avoid confusion with django-tenants.
+    Supports both rental tenants and levy account holders.
     """
 
     class TenantType(models.TextChoices):
         INDIVIDUAL = 'individual', 'Individual'
         COMPANY = 'company', 'Company'
+
+    class AccountType(models.TextChoices):
+        """Differentiates rental tenants from levy account holders."""
+        RENTAL = 'rental', 'Rental Tenant'
+        LEVY = 'levy', 'Levy Account Holder'
+        BOTH = 'both', 'Both (Rental & Levy)'
 
     code = models.CharField(max_length=20, unique=True)
     name = models.CharField(max_length=255)
@@ -238,6 +245,12 @@ class RentalTenant(models.Model):
         max_length=20,
         choices=TenantType.choices,
         default=TenantType.INDIVIDUAL
+    )
+    account_type = models.CharField(
+        max_length=20,
+        choices=AccountType.choices,
+        default=AccountType.RENTAL,
+        help_text='Rental tenant or levy account holder'
     )
 
     # Contact
@@ -301,7 +314,13 @@ class RentalTenant(models.Model):
 
 
 class LeaseAgreement(models.Model):
-    """Lease agreement between tenant and unit."""
+    """
+    Lease agreement between tenant and unit.
+
+    IMPORTANT: One lease per tenant constraint is enforced:
+    - A tenant can only have ONE active lease at a time
+    - A unit can only have ONE active lease at a time
+    """
 
     class Status(models.TextChoices):
         DRAFT = 'draft', 'Draft'
@@ -309,11 +328,27 @@ class LeaseAgreement(models.Model):
         EXPIRED = 'expired', 'Expired'
         TERMINATED = 'terminated', 'Terminated'
 
+    class LeaseType(models.TextChoices):
+        """Type of lease - rental or levy."""
+        RENTAL = 'rental', 'Rental Lease'
+        LEVY = 'levy', 'Levy Account'
+
     tenant = models.ForeignKey(
         RentalTenant, on_delete=models.PROTECT, related_name='leases'
     )
     unit = models.ForeignKey(
         Unit, on_delete=models.PROTECT, related_name='leases'
+    )
+    # Property reference for easy querying (denormalized from unit.property)
+    property = models.ForeignKey(
+        Property, on_delete=models.PROTECT, related_name='leases',
+        null=True, blank=True
+    )
+
+    lease_type = models.CharField(
+        max_length=20,
+        choices=LeaseType.choices,
+        default=LeaseType.RENTAL
     )
 
     lease_number = models.CharField(max_length=50, unique=True)
@@ -372,7 +407,47 @@ class LeaseAgreement(models.Model):
     def save(self, *args, **kwargs):
         if not self.lease_number:
             self.lease_number = self.generate_lease_number()
+
+        # Auto-populate property from unit
+        if self.unit and not self.property:
+            self.property = self.unit.property
+
+        # Validate 1:1 constraints for ACTIVE leases only
+        if self.status == self.Status.ACTIVE:
+            self._validate_one_lease_per_tenant()
+            self._validate_one_lease_per_unit()
+
         super().save(*args, **kwargs)
+
+    def _validate_one_lease_per_tenant(self):
+        """Ensure tenant has only one active lease."""
+        from django.core.exceptions import ValidationError
+
+        existing = LeaseAgreement.objects.filter(
+            tenant=self.tenant,
+            status=self.Status.ACTIVE
+        ).exclude(pk=self.pk).exists()
+
+        if existing:
+            raise ValidationError(
+                f'Tenant {self.tenant.name} already has an active lease. '
+                f'A tenant can only have one active lease at a time.'
+            )
+
+    def _validate_one_lease_per_unit(self):
+        """Ensure unit has only one active lease."""
+        from django.core.exceptions import ValidationError
+
+        existing = LeaseAgreement.objects.filter(
+            unit=self.unit,
+            status=self.Status.ACTIVE
+        ).exclude(pk=self.pk).exists()
+
+        if existing:
+            raise ValidationError(
+                f'Unit {self.unit} already has an active lease. '
+                f'A unit can only have one active lease at a time.'
+            )
 
     @classmethod
     def generate_lease_number(cls):

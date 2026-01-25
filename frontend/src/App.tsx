@@ -21,6 +21,9 @@ const Invoices = lazy(() => import('./pages/Billing/Invoices'))
 const Receipts = lazy(() => import('./pages/Billing/Receipts'))
 const ChartOfAccounts = lazy(() => import('./pages/Accounting/ChartOfAccounts'))
 const Journals = lazy(() => import('./pages/Accounting/Journals'))
+const BankAccounts = lazy(() => import('./pages/Accounting/BankAccounts'))
+const IncomeTypes = lazy(() => import('./pages/Accounting/IncomeTypes'))
+const ExpenseCategories = lazy(() => import('./pages/Accounting/ExpenseCategories'))
 const Reports = lazy(() => import('./pages/Reports/Reports'))
 const AuditTrail = lazy(() => import('./pages/Admin/AuditTrail'))
 const TeamManagement = lazy(() => import('./pages/Admin/TeamManagement'))
@@ -91,6 +94,9 @@ export default function App() {
         <Route path="receipts" element={<LazyPage><Receipts /></LazyPage>} />
         <Route path="chart-of-accounts" element={<LazyPage><ChartOfAccounts /></LazyPage>} />
         <Route path="journals" element={<LazyPage><Journals /></LazyPage>} />
+        <Route path="bank-accounts" element={<LazyPage><BankAccounts /></LazyPage>} />
+        <Route path="income-types" element={<LazyPage><IncomeTypes /></LazyPage>} />
+        <Route path="expense-categories" element={<LazyPage><ExpenseCategories /></LazyPage>} />
         <Route path="reports" element={<LazyPage><Reports /></LazyPage>} />
         <Route path="audit-trail" element={<LazyPage><AuditTrail /></LazyPage>} />
         <Route path="team" element={<LazyPage><TeamManagement /></LazyPage>} />

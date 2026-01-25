@@ -117,8 +117,29 @@ export const reportsApi = {
     api.get('/reports/cash-flow/', { params }),
   vacancy: () => api.get('/reports/vacancy/'),
   rentRoll: () => api.get('/reports/rent-roll/'),
-  landlordStatement: (params: { landlord_id: number }) =>
+  landlordStatement: (params: { landlord_id: number; start_date?: string; end_date?: string }) =>
     api.get('/reports/landlord-statement/', { params }),
+  // New reports
+  agedAnalysis: (params?: { as_of_date?: string; tenant_id?: number; property_id?: number; landlord_id?: number }) =>
+    api.get('/reports/aged-analysis/', { params }),
+  tenantAccount: (params: { tenant_id: number; start_date?: string; end_date?: string }) =>
+    api.get('/reports/tenant-account/', { params }),
+  depositSummary: (params?: { tenant_id?: number; property_id?: number }) =>
+    api.get('/reports/deposit-summary/', { params }),
+  commission: (params?: { start_date?: string; end_date?: string; landlord_id?: number }) =>
+    api.get('/reports/commission/', { params }),
+  commissionAnalysis: (params?: { start_date?: string; end_date?: string }) =>
+    api.get('/reports/commission-analysis/', { params }),
+  leaseCharges: (params?: { property_id?: number; landlord_id?: number; start_date?: string; end_date?: string }) =>
+    api.get('/reports/lease-charges/', { params }),
+  receiptListing: (params?: { start_date?: string; end_date?: string; bank_account_id?: number; income_type?: string; payment_method?: string; export?: string }) =>
+    api.get('/reports/receipts/', { params }),
+  incomeItemAnalysis: (params?: { start_date?: string; end_date?: string; income_type?: string; bank_account_id?: number }) =>
+    api.get('/reports/income-item-analysis/', { params }),
+  incomeExpenditure: (params: { landlord_id?: number; property_id?: number; start_date?: string; end_date?: string }) =>
+    api.get('/reports/income-expenditure/', { params }),
+  charts: (params: { chart_type: string; tenant_id?: number; property_id?: number; months?: number; start_date?: string; end_date?: string }) =>
+    api.get('/reports/charts/', { params }),
 }
 
 // Masterfile API
@@ -181,6 +202,49 @@ export const invoiceApi = {
     api.post('/billing/invoices/generate_monthly/', data),
   overdue: () => api.get('/billing/invoices/overdue/'),
   summary: () => api.get('/billing/invoices/summary/'),
+  // New billing management actions
+  uniformCharge: (data: {
+    property_id: number;
+    invoice_type?: string;
+    amount: number;
+    description?: string;
+    due_date?: string;
+    period_start?: string;
+    period_end?: string
+  }) => api.post('/billing/invoices/uniform_charge/', data),
+  deleteBilling: (data: {
+    property_id?: number;
+    lease_id?: number;
+    year: number;
+    month: number;
+    invoice_type?: string
+  }) => api.post('/billing/invoices/delete_billing/', data),
+  sendInvoices: (data: {
+    tenant_ids?: number[];
+    property_ids?: number[];
+    invoice_ids?: number[];
+    send_all?: boolean;
+    subject?: string;
+    message?: string
+  }) => api.post('/billing/invoices/send_invoices/', data),
+}
+
+// Bulk Mailing API
+export const mailingApi = {
+  sendBulkEmail: (data: {
+    tenant_ids?: number[];
+    property_ids?: number[];
+    account_type?: 'rental' | 'levy' | 'both';
+    send_all?: boolean;
+    subject: string;
+    message: string
+  }) => api.post('/billing/mailing/send_bulk_email/', data),
+  previewRecipients: (params?: {
+    tenant_ids?: number[];
+    property_ids?: number[];
+    account_type?: string;
+    send_all?: boolean
+  }) => api.get('/billing/mailing/preview_recipients/', { params }),
 }
 
 export const receiptApi = {
@@ -191,6 +255,16 @@ export const receiptApi = {
   batchProcess: (receipts: object[]) =>
     api.post('/billing/receipts/batch_process/', { receipts }),
   summary: () => api.get('/billing/receipts/summary/'),
+}
+
+export const expenseApi = {
+  list: (params?: object) => api.get('/billing/expenses/', { params }),
+  get: (id: number) => api.get(`/billing/expenses/${id}/`),
+  create: (data: object) => api.post('/billing/expenses/', data),
+  update: (id: number, data: object) => api.patch(`/billing/expenses/${id}/`, data),
+  delete: (id: number) => api.delete(`/billing/expenses/${id}/`),
+  approve: (id: number) => api.post(`/billing/expenses/${id}/approve/`),
+  pay: (id: number) => api.post(`/billing/expenses/${id}/pay/`),
 }
 
 // Accounting API
@@ -221,6 +295,100 @@ export const glApi = {
 
 export const auditApi = {
   list: (params?: object) => api.get('/accounting/audit-trail/', { params }),
+}
+
+// Bank Account API
+export const bankAccountApi = {
+  list: (params?: object) => api.get('/accounting/bank-accounts/', { params }),
+  get: (id: number) => api.get(`/accounting/bank-accounts/${id}/`),
+  create: (data: object) => api.post('/accounting/bank-accounts/', data),
+  update: (id: number, data: object) => api.patch(`/accounting/bank-accounts/${id}/`, data),
+  delete: (id: number) => api.delete(`/accounting/bank-accounts/${id}/`),
+  byCurrency: () => api.get('/accounting/bank-accounts/by_currency/'),
+  summary: () => api.get('/accounting/bank-accounts/summary/'),
+  setDefault: (id: number) => api.post(`/accounting/bank-accounts/${id}/set_default/`),
+  seedDefaults: () => api.post('/accounting/bank-accounts/seed_defaults/'),
+}
+
+// Bank Transaction API
+export const bankTransactionApi = {
+  list: (params?: object) => api.get('/accounting/bank-transactions/', { params }),
+  get: (id: number) => api.get(`/accounting/bank-transactions/${id}/`),
+  create: (data: object) => api.post('/accounting/bank-transactions/', data),
+  uploadStatement: (file: File, bankAccountId: number, fileFormat: string = 'csv') => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('bank_account', bankAccountId.toString())
+    formData.append('file_format', fileFormat)
+    return api.post('/accounting/bank-transactions/upload_statement/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  reconcile: (id: number, data: { receipt_id?: number; journal_id?: number }) =>
+    api.post(`/accounting/bank-transactions/${id}/reconcile/`, data),
+  unreconciled: (params?: { bank_account?: number }) =>
+    api.get('/accounting/bank-transactions/unreconciled/', { params }),
+  autoMatch: (bankAccountId: number) =>
+    api.post('/accounting/bank-transactions/auto_match/', { bank_account: bankAccountId }),
+}
+
+// Bank Reconciliation API
+export const bankReconciliationApi = {
+  list: (params?: object) => api.get('/accounting/bank-reconciliations/', { params }),
+  get: (id: number) => api.get(`/accounting/bank-reconciliations/${id}/`),
+  create: (data: object) => api.post('/accounting/bank-reconciliations/', data),
+  complete: (id: number) => api.post(`/accounting/bank-reconciliations/${id}/complete/`),
+  exportExcel: (id: number) => api.get(`/accounting/bank-reconciliations/${id}/export_excel/`, {
+    responseType: 'blob'
+  }),
+  summary: () => api.get('/accounting/bank-reconciliations/summary/'),
+}
+
+// Expense Category API
+export const expenseCategoryApi = {
+  list: (params?: object) => api.get('/accounting/expense-categories/', { params }),
+  get: (id: number) => api.get(`/accounting/expense-categories/${id}/`),
+  create: (data: object) => api.post('/accounting/expense-categories/', data),
+  update: (id: number, data: object) => api.patch(`/accounting/expense-categories/${id}/`, data),
+  delete: (id: number) => api.delete(`/accounting/expense-categories/${id}/`),
+  seedDefaults: () => api.post('/accounting/expense-categories/seed_defaults/'),
+}
+
+// Journal Reallocation API
+export const reallocationApi = {
+  list: (params?: object) => api.get('/accounting/reallocations/', { params }),
+  get: (id: number) => api.get(`/accounting/reallocations/${id}/`),
+  create: (data: { original_entry_id: number; to_account_id: number; amount: number; reason: string }) =>
+    api.post('/accounting/reallocations/', data),
+  byAccount: (params?: { from_account?: number; to_account?: number }) =>
+    api.get('/accounting/reallocations/by_account/', { params }),
+}
+
+// Income Type API
+export const incomeTypeApi = {
+  list: (params?: object) => api.get('/accounting/income-types/', { params }),
+  get: (id: number) => api.get(`/accounting/income-types/${id}/`),
+  create: (data: object) => api.post('/accounting/income-types/', data),
+  update: (id: number, data: object) => api.patch(`/accounting/income-types/${id}/`, data),
+  delete: (id: number) => api.delete(`/accounting/income-types/${id}/`),
+  forInvoicing: () => api.get('/accounting/income-types/for_invoicing/'),
+  seedDefaults: () => api.post('/accounting/income-types/seed_defaults/'),
+}
+
+// Tenant Portal API (for tenant portal users)
+export const tenantPortalApi = {
+  profile: () => api.get('/accounts/tenant-portal/profile/'),
+  dashboard: () => api.get('/accounts/tenant-portal/dashboard/'),
+  invoices: (params?: { status?: string; start_date?: string; end_date?: string }) =>
+    api.get('/accounts/tenant-portal/invoices/', { params }),
+  receipts: (params?: { start_date?: string; end_date?: string }) =>
+    api.get('/accounts/tenant-portal/receipts/', { params }),
+  statement: (params?: { start_date?: string; end_date?: string }) =>
+    api.get('/accounts/tenant-portal/statement/', { params }),
+  lease: () => api.get('/accounts/tenant-portal/lease/'),
+  notifyPayment: (data: { amount: number; payment_method: string; reference?: string; notes?: string; payment_date?: string }) =>
+    api.post('/accounts/tenant-portal/notify_payment/', data),
+  paymentHistory: () => api.get('/accounts/tenant-portal/payment_history/'),
 }
 
 // AI API

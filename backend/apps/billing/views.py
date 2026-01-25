@@ -7,15 +7,21 @@ from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
+from django.core.mail import send_mass_mail, send_mail
+from django.conf import settings
 from datetime import date
 from calendar import monthrange
+import logging
 from .models import Invoice, Receipt, Expense
 from .serializers import (
     InvoiceSerializer, InvoiceCreateSerializer,
     ReceiptSerializer, ReceiptCreateSerializer,
     ExpenseSerializer, BulkInvoiceSerializer, BulkReceiptSerializer
 )
-from apps.masterfile.models import LeaseAgreement
+from apps.masterfile.models import LeaseAgreement, Property, RentalTenant
+from apps.accounting.models import AuditTrail
+
+logger = logging.getLogger(__name__)
 
 
 class InvoiceViewSet(viewsets.ModelViewSet):
@@ -158,6 +164,443 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             'total_paid': total_paid,
             'outstanding': outstanding,
             'by_status': list(by_status)
+        })
+
+    @action(detail=False, methods=['post'])
+    @transaction.atomic
+    def uniform_charge(self, request):
+        """
+        Apply uniform charge to all leases under a property.
+        Useful for setting the same levy amount for all units in a residential association.
+        """
+        property_id = request.data.get('property_id')
+        invoice_type = request.data.get('invoice_type', 'levy')
+        amount = request.data.get('amount')
+        description = request.data.get('description', '')
+        due_date = request.data.get('due_date')
+        period_start = request.data.get('period_start')
+        period_end = request.data.get('period_end')
+
+        if not property_id or not amount:
+            return Response(
+                {'error': 'property_id and amount are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            property_obj = Property.objects.get(id=property_id)
+        except Property.DoesNotExist:
+            return Response({'error': 'Property not found'}, status=404)
+
+        amount = Decimal(str(amount))
+
+        # Get all active leases for this property
+        leases = LeaseAgreement.objects.filter(
+            unit__property=property_obj,
+            status='active'
+        ).select_related('tenant', 'unit')
+
+        if not leases.exists():
+            return Response({'error': 'No active leases found for this property'}, status=400)
+
+        created_invoices = []
+        errors = []
+
+        for lease in leases:
+            try:
+                # Check for duplicate
+                existing = Invoice.objects.filter(
+                    lease=lease,
+                    invoice_type=invoice_type,
+                    period_start=period_start,
+                    period_end=period_end
+                ).exists()
+
+                if existing:
+                    errors.append(f'Invoice already exists for lease {lease.lease_number}')
+                    continue
+
+                invoice = Invoice.objects.create(
+                    tenant=lease.tenant,
+                    lease=lease,
+                    unit=lease.unit,
+                    property=property_obj,
+                    invoice_type=invoice_type,
+                    date=timezone.now().date(),
+                    due_date=due_date or (timezone.now().date() + timezone.timedelta(days=15)),
+                    period_start=period_start,
+                    period_end=period_end,
+                    amount=amount,
+                    vat_amount=Decimal('0'),
+                    currency=lease.currency,
+                    description=description or f'{invoice_type.title()} charge for {lease.unit}',
+                    created_by=request.user
+                )
+                created_invoices.append(invoice)
+            except Exception as e:
+                errors.append(f'Error creating invoice for {lease.lease_number}: {str(e)}')
+
+        # Audit trail
+        AuditTrail.objects.create(
+            action='uniform_charge_applied',
+            model_name='Invoice',
+            record_id=property_id,
+            changes={
+                'property': property_obj.name,
+                'invoice_type': invoice_type,
+                'amount': str(amount),
+                'invoices_created': len(created_invoices)
+            },
+            user=request.user
+        )
+
+        return Response({
+            'message': f'Uniform charge applied successfully',
+            'property': property_obj.name,
+            'created': len(created_invoices),
+            'invoices': InvoiceSerializer(created_invoices, many=True).data,
+            'errors': errors
+        })
+
+    @action(detail=False, methods=['post'])
+    @transaction.atomic
+    def delete_billing(self, request):
+        """
+        Delete billing for a specific month.
+        Can delete by property (for all leases) or by specific lease_id.
+        Only deletes DRAFT invoices that haven't been posted to ledger.
+        """
+        property_id = request.data.get('property_id')
+        lease_id = request.data.get('lease_id')
+        year = request.data.get('year')
+        month = request.data.get('month')
+        invoice_type = request.data.get('invoice_type')  # Optional filter
+
+        if not year or not month:
+            return Response(
+                {'error': 'year and month are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not property_id and not lease_id:
+            return Response(
+                {'error': 'property_id or lease_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Build date range for the month
+        _, last_day = monthrange(int(year), int(month))
+        period_start = date(int(year), int(month), 1)
+        period_end = date(int(year), int(month), last_day)
+
+        # Build queryset
+        invoices = Invoice.objects.filter(
+            status='draft',  # Only delete draft invoices
+            journal__isnull=True,  # Not posted to ledger
+            period_start__gte=period_start,
+            period_end__lte=period_end
+        )
+
+        if property_id:
+            invoices = invoices.filter(unit__property_id=property_id)
+        if lease_id:
+            invoices = invoices.filter(lease_id=lease_id)
+        if invoice_type:
+            invoices = invoices.filter(invoice_type=invoice_type)
+
+        count = invoices.count()
+        invoice_numbers = list(invoices.values_list('invoice_number', flat=True))
+
+        if count == 0:
+            return Response({
+                'message': 'No draft invoices found for the specified criteria',
+                'deleted': 0
+            })
+
+        # Delete the invoices
+        invoices.delete()
+
+        # Audit trail
+        AuditTrail.objects.create(
+            action='billing_deleted',
+            model_name='Invoice',
+            record_id=property_id or lease_id,
+            changes={
+                'property_id': property_id,
+                'lease_id': lease_id,
+                'year': year,
+                'month': month,
+                'deleted_count': count,
+                'invoice_numbers': invoice_numbers
+            },
+            user=request.user
+        )
+
+        return Response({
+            'message': f'Successfully deleted {count} invoice(s)',
+            'deleted': count,
+            'invoice_numbers': invoice_numbers
+        })
+
+    @action(detail=False, methods=['post'])
+    def send_invoices(self, request):
+        """
+        Send invoice emails to tenants.
+        Can send to all tenants, specific properties, or specific tenants.
+        """
+        tenant_ids = request.data.get('tenant_ids', [])
+        property_ids = request.data.get('property_ids', [])
+        invoice_ids = request.data.get('invoice_ids', [])
+        send_all = request.data.get('send_all', False)
+        subject_template = request.data.get('subject', 'Invoice from {company_name}')
+        message_template = request.data.get('message', '')
+
+        # Build queryset
+        invoices = Invoice.objects.filter(
+            status__in=['draft', 'sent'],
+            balance__gt=0
+        ).select_related('tenant', 'unit', 'unit__property')
+
+        if invoice_ids:
+            invoices = invoices.filter(id__in=invoice_ids)
+        elif tenant_ids:
+            invoices = invoices.filter(tenant_id__in=tenant_ids)
+        elif property_ids:
+            invoices = invoices.filter(unit__property_id__in=property_ids)
+        elif not send_all:
+            return Response(
+                {'error': 'Specify tenant_ids, property_ids, invoice_ids, or set send_all=true'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get tenant info
+        tenant = getattr(request, 'tenant', None)
+        company_name = tenant.name if tenant else 'Property Management'
+        site_url = getattr(settings, 'SITE_URL', 'https://parameter.co.zw')
+
+        sent = []
+        failed = []
+
+        for invoice in invoices:
+            if not invoice.tenant.email:
+                failed.append({
+                    'invoice': invoice.invoice_number,
+                    'error': 'No email address'
+                })
+                continue
+
+            try:
+                subject = subject_template.format(
+                    company_name=company_name,
+                    invoice_number=invoice.invoice_number
+                )
+
+                default_message = f"""
+Dear {invoice.tenant.name},
+
+Please find your invoice details below:
+
+Invoice Number: {invoice.invoice_number}
+Amount Due: {invoice.currency} {invoice.balance:,.2f}
+Due Date: {invoice.due_date}
+Description: {invoice.description}
+
+Property: {invoice.unit.property.name if invoice.unit else 'N/A'}
+Unit: {invoice.unit.unit_number if invoice.unit else 'N/A'}
+
+Please ensure payment is made by the due date to avoid any late fees.
+
+Thank you for your prompt attention.
+
+Best regards,
+{company_name}
+"""
+                message = message_template or default_message
+
+                send_mail(
+                    subject=subject,
+                    message=message,
+                    from_email=f'{company_name} <{settings.DEFAULT_FROM_EMAIL}>',
+                    recipient_list=[invoice.tenant.email],
+                    fail_silently=False
+                )
+
+                # Update status
+                if invoice.status == 'draft':
+                    invoice.status = 'sent'
+                    invoice.save()
+
+                sent.append({
+                    'invoice': invoice.invoice_number,
+                    'email': invoice.tenant.email
+                })
+
+            except Exception as e:
+                logger.error(f'Failed to send invoice {invoice.invoice_number}: {e}')
+                failed.append({
+                    'invoice': invoice.invoice_number,
+                    'error': str(e)
+                })
+
+        return Response({
+            'message': f'Sent {len(sent)} invoice(s)',
+            'sent': sent,
+            'failed': failed
+        })
+
+
+class BulkMailingViewSet(viewsets.ViewSet):
+    """
+    Bulk mailing functionality for tenants.
+    Send emails to all tenants or selected groups.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['post'])
+    def send_bulk_email(self, request):
+        """
+        Send bulk email to tenants.
+        Options:
+        - send_all: Send to all active tenants
+        - tenant_ids: Send to specific tenants
+        - property_ids: Send to tenants of specific properties
+        - account_type: Filter by rental/levy account type
+        """
+        tenant_ids = request.data.get('tenant_ids', [])
+        property_ids = request.data.get('property_ids', [])
+        account_type = request.data.get('account_type')  # 'rental', 'levy', 'both'
+        send_all = request.data.get('send_all', False)
+
+        subject = request.data.get('subject')
+        message = request.data.get('message')
+
+        if not subject or not message:
+            return Response(
+                {'error': 'subject and message are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Build recipient queryset
+        tenants = RentalTenant.objects.filter(
+            is_active=True,
+            email__isnull=False
+        ).exclude(email='')
+
+        if tenant_ids:
+            tenants = tenants.filter(id__in=tenant_ids)
+        elif property_ids:
+            # Get tenants with active leases in specified properties
+            lease_tenant_ids = LeaseAgreement.objects.filter(
+                unit__property_id__in=property_ids,
+                status='active'
+            ).values_list('tenant_id', flat=True)
+            tenants = tenants.filter(id__in=lease_tenant_ids)
+        elif not send_all:
+            return Response(
+                {'error': 'Specify tenant_ids, property_ids, or set send_all=true'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if account_type:
+            tenants = tenants.filter(account_type=account_type)
+
+        # Get company info
+        tenant_org = getattr(request, 'tenant', None)
+        company_name = tenant_org.name if tenant_org else 'Property Management'
+
+        sent = []
+        failed = []
+
+        for recipient in tenants:
+            try:
+                personalized_message = message.format(
+                    tenant_name=recipient.name,
+                    company_name=company_name
+                )
+
+                send_mail(
+                    subject=subject,
+                    message=personalized_message,
+                    from_email=f'{company_name} <{settings.DEFAULT_FROM_EMAIL}>',
+                    recipient_list=[recipient.email],
+                    fail_silently=False
+                )
+
+                sent.append({
+                    'tenant_id': recipient.id,
+                    'name': recipient.name,
+                    'email': recipient.email
+                })
+
+            except Exception as e:
+                logger.error(f'Failed to send email to {recipient.email}: {e}')
+                failed.append({
+                    'tenant_id': recipient.id,
+                    'name': recipient.name,
+                    'email': recipient.email,
+                    'error': str(e)
+                })
+
+        # Audit trail
+        AuditTrail.objects.create(
+            action='bulk_email_sent',
+            model_name='RentalTenant',
+            record_id=0,
+            changes={
+                'subject': subject,
+                'recipients_count': len(sent),
+                'failed_count': len(failed)
+            },
+            user=request.user
+        )
+
+        return Response({
+            'message': f'Email sent to {len(sent)} recipient(s)',
+            'sent_count': len(sent),
+            'failed_count': len(failed),
+            'sent': sent,
+            'failed': failed
+        })
+
+    @action(detail=False, methods=['get'])
+    def preview_recipients(self, request):
+        """Preview list of recipients before sending bulk email."""
+        tenant_ids = request.query_params.getlist('tenant_ids')
+        property_ids = request.query_params.getlist('property_ids')
+        account_type = request.query_params.get('account_type')
+        send_all = request.query_params.get('send_all', 'false').lower() == 'true'
+
+        tenants = RentalTenant.objects.filter(
+            is_active=True,
+            email__isnull=False
+        ).exclude(email='')
+
+        if tenant_ids:
+            tenants = tenants.filter(id__in=tenant_ids)
+        elif property_ids:
+            lease_tenant_ids = LeaseAgreement.objects.filter(
+                unit__property_id__in=property_ids,
+                status='active'
+            ).values_list('tenant_id', flat=True)
+            tenants = tenants.filter(id__in=lease_tenant_ids)
+        elif not send_all:
+            tenants = tenants.none()
+
+        if account_type:
+            tenants = tenants.filter(account_type=account_type)
+
+        return Response({
+            'count': tenants.count(),
+            'recipients': [
+                {
+                    'id': t.id,
+                    'code': t.code,
+                    'name': t.name,
+                    'email': t.email,
+                    'account_type': t.account_type
+                }
+                for t in tenants[:100]  # Limit preview to 100
+            ]
         })
 
 
