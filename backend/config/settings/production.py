@@ -38,7 +38,7 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 ]
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
-    default='https://parameter.co.zw,https://www.parameter.co.zw,https://parameter-frontend.onrender.com',
+    default='https://parameter.co.zw,https://www.parameter.co.zw,https://parameter-dmj8.onrender.com',
     cast=Csv()
 )
 CORS_ALLOW_CREDENTIALS = True
@@ -66,7 +66,7 @@ CORS_ALLOW_HEADERS = [
 # CSRF trusted origins for production (supports wildcard subdomains)
 CSRF_TRUSTED_ORIGINS = config(
     'CSRF_TRUSTED_ORIGINS',
-    default='https://*.parameter.co.zw,https://parameter.co.zw,https://www.parameter.co.zw,https://*.onrender.com,https://parameter-frontend.onrender.com',
+    default='https://*.parameter.co.zw,https://parameter.co.zw,https://www.parameter.co.zw,https://*.onrender.com,https://parameter-dmj8.onrender.com',
     cast=Csv()
 )
 
