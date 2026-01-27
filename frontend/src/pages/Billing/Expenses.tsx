@@ -262,7 +262,7 @@ export default function Expenses() {
         title="Expenses"
         subtitle={`${stats.total} total expenses`}
         icon={Receipt}
-        action={
+        actions={
           <Button onClick={() => setShowModal(true)}>
             <Plus className="h-4 w-4 mr-2" />
             New Expense
