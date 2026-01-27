@@ -4,6 +4,7 @@ Creates a demo tenant with realistic real estate data.
 """
 from decimal import Decimal
 from django.core.management.base import BaseCommand
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from datetime import date, timedelta
@@ -62,11 +63,24 @@ class Command(BaseCommand):
         )
 
         if created:
+            # Get domain suffix from settings
+            domain_suffix = getattr(settings, 'TENANT_DOMAIN_SUFFIX', 'localhost')
+
+            # Create primary domain with proper suffix
             Domain.objects.create(
-                domain=f'{options["tenant"]}.localhost',
+                domain=f'{options["tenant"]}.{domain_suffix}',
                 tenant=tenant,
                 is_primary=True
             )
+
+            # Also add localhost domain for development if in production
+            if domain_suffix != 'localhost':
+                Domain.objects.create(
+                    domain=f'{options["tenant"]}.localhost',
+                    tenant=tenant,
+                    is_primary=False
+                )
+
             self.stdout.write(f'Created tenant: {tenant.name}')
         else:
             self.stdout.write(f'Using existing tenant: {tenant.name}')

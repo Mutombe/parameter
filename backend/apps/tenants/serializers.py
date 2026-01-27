@@ -39,6 +39,8 @@ class ClientCreateSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
+        from django.conf import settings
+
         subdomain = validated_data.pop('subdomain')
         schema_name = subdomain.lower().replace(' ', '_').replace('-', '_')
 
@@ -47,12 +49,23 @@ class ClientCreateSerializer(serializers.ModelSerializer):
             **validated_data
         )
 
-        # Create primary domain
+        # Get domain suffix from settings
+        domain_suffix = getattr(settings, 'TENANT_DOMAIN_SUFFIX', 'localhost')
+
+        # Create primary domain with proper suffix
         Domain.objects.create(
-            domain=f'{subdomain}.localhost',
+            domain=f'{subdomain}.{domain_suffix}',
             tenant=client,
             is_primary=True
         )
+
+        # Also add localhost domain for development if in production
+        if domain_suffix != 'localhost':
+            Domain.objects.create(
+                domain=f'{subdomain}.localhost',
+                tenant=client,
+                is_primary=False
+            )
 
         return client
 

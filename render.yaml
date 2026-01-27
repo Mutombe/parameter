@@ -28,6 +28,8 @@ services:
         value: "False"
       - key: ALLOWED_HOSTS
         value: ".onrender.com,.parameter.co.zw"
+      - key: TENANT_DOMAIN_SUFFIX
+        value: "parameter.co.zw"
       - key: CORS_ALLOWED_ORIGINS
         sync: false
       - key: CSRF_TRUSTED_ORIGINS
@@ -55,7 +57,11 @@ services:
     staticPublishPath: "./dist"
     envVars:
       - key: VITE_API_URL
-        sync: false
+        value: "https://parameter-backend.onrender.com"
+    headers:
+      - path: /*
+        name: Access-Control-Allow-Origin
+        value: "*"
     routes:
       - type: rewrite
         source: /*

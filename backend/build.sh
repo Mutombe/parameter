@@ -47,4 +47,7 @@ python manage.py createcachetable || true
 echo "Setting up public tenant and domains..."
 python manage.py setup_public_tenant --domain parameter-backend.onrender.com || true
 
+echo "Syncing production domains for all tenants..."
+python manage.py sync_production_domains --domain-suffix parameter.co.zw || true
+
 echo "Build completed successfully!"
