@@ -227,7 +227,7 @@ export default function Expenses() {
         <PageHeader
           title="Expenses"
           subtitle="Manage expenses and payouts"
-          icon={<Receipt className="h-6 w-6" />}
+          icon={Receipt}
         />
         <SkeletonExpenses />
       </div>
@@ -240,10 +240,10 @@ export default function Expenses() {
         <PageHeader
           title="Expenses"
           subtitle="Manage expenses and payouts"
-          icon={<Receipt className="h-6 w-6" />}
+          icon={Receipt}
         />
         <EmptyState
-          icon={<XCircle className="h-12 w-12 text-rose-400" />}
+          icon={XCircle}
           title="Failed to load expenses"
           description="There was an error loading your expenses."
           action={
@@ -261,7 +261,7 @@ export default function Expenses() {
       <PageHeader
         title="Expenses"
         subtitle={`${stats.total} total expenses`}
-        icon={<Receipt className="h-6 w-6" />}
+        icon={Receipt}
         action={
           <Button onClick={() => setShowModal(true)}>
             <Plus className="h-4 w-4 mr-2" />
@@ -370,7 +370,7 @@ export default function Expenses() {
       {/* Expenses List */}
       {expenses.length === 0 ? (
         <EmptyState
-          icon={<Receipt className="h-12 w-12 text-gray-400" />}
+          icon={Receipt}
           title="No expenses found"
           description="Create your first expense to start tracking payouts."
           action={
