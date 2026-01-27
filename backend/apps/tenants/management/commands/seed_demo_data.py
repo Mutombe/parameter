@@ -148,24 +148,40 @@ class Command(BaseCommand):
         self._seed_transactions(leases, admin_user)
 
     def _seed_chart_of_accounts(self):
-        """Seed default chart of accounts."""
+        """
+        Seed default chart of accounts.
+        Account codes aligned with SYSTEM OVERVIEW automatic accounting flow:
+        - Activity 1: Invoice → Dr 1200 Tenant A/c, Cr 2200 Unpaid Rent
+        - Activity 2: Receipt → Dr 1000/1100 Cash/Bank, Cr 1200 Tenant A/c
+        - Activity 3: Revenue → Dr 2200 Unpaid Rent, Cr 4000 Rent Income
+        - Activity 4: Commission → Dr 5100 COS, Cr 2100 Commission Payable, Cr 2110 VAT
+        - Activity 5: Expense → Dr 5xxx Expense, Cr 1000/1100 Cash/Bank
+        """
         defaults = [
+            # Assets (1xxx)
             ('1000', 'Cash', 'asset', 'cash', True),
             ('1100', 'Bank - USD', 'asset', 'cash', True),
             ('1110', 'Bank - ZiG', 'asset', 'cash', True),
-            ('1200', 'Accounts Receivable', 'asset', 'accounts_receivable', True),
+            ('1200', 'Accounts Receivable (Tenant A/c)', 'asset', 'accounts_receivable', True),
             ('1300', 'Prepaid Expenses', 'asset', 'prepaid', True),
+            # Liabilities (2xxx)
             ('2000', 'Accounts Payable', 'liability', 'accounts_payable', True),
-            ('2100', 'VAT Payable', 'liability', 'vat_payable', True),
-            ('2200', 'Tenant Deposits', 'liability', 'tenant_deposits', True),
+            ('2100', 'Commission Payable', 'liability', 'accounts_payable', True),
+            ('2110', 'VAT Payable', 'liability', 'vat_payable', True),
+            ('2200', 'Unpaid Rent (Deferred Revenue)', 'liability', 'tenant_deposits', True),
+            ('2300', 'Tenant Deposits', 'liability', 'tenant_deposits', True),
+            # Equity (3xxx)
             ('3000', 'Retained Earnings', 'equity', 'retained_earnings', True),
             ('3100', 'Capital', 'equity', 'capital', True),
+            # Revenue (4xxx)
             ('4000', 'Rental Income', 'revenue', 'rental_income', True),
             ('4100', 'Commission Income', 'revenue', 'commission_income', True),
             ('4200', 'Other Income', 'revenue', 'other_income', True),
+            # Expenses (5xxx)
             ('5000', 'Operating Expenses', 'expense', 'operating_expense', True),
-            ('5100', 'Maintenance & Repairs', 'expense', 'maintenance', True),
-            ('5200', 'Utilities', 'expense', 'utilities', True),
+            ('5100', 'Cost of Sales - Commission', 'expense', 'operating_expense', True),
+            ('5200', 'Maintenance & Repairs', 'expense', 'maintenance', True),
+            ('5300', 'Utilities', 'expense', 'utilities', True),
         ]
 
         for code, name, acc_type, subtype, is_system in defaults:

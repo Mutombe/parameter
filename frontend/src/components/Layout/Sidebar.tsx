@@ -75,6 +75,7 @@ const navigation: NavSection[] = [
     items: [
       { name: 'Invoices', href: '/dashboard/invoices', icon: Receipt },
       { name: 'Receipts', href: '/dashboard/receipts', icon: CreditCard },
+      { name: 'Expenses', href: '/dashboard/expenses', icon: Wallet },
     ],
   },
   {
@@ -84,7 +85,7 @@ const navigation: NavSection[] = [
       { name: 'Journals', href: '/dashboard/journals', icon: FileSpreadsheet },
       { name: 'Bank Accounts', href: '/dashboard/bank-accounts', icon: Landmark },
       { name: 'Income Types', href: '/dashboard/income-types', icon: DollarSign },
-      { name: 'Expense Categories', href: '/dashboard/expense-categories', icon: Wallet },
+      { name: 'Expense Categories', href: '/dashboard/expense-categories', icon: GitCompare },
     ],
   },
   {

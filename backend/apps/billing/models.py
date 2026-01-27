@@ -139,16 +139,30 @@ class Invoice(models.Model):
     def post_to_ledger(self, user=None):
         """
         Post invoice to General Ledger.
-        Activity 1: Debt Recognition
-        Dr: Accounts Receivable (1200)
-        Cr: Rental Income (4000)
+        Activity 1: Debt Recognition (as per SYSTEM OVERVIEW)
+        Dr: Tenant A/c - Accounts Receivable (1200)
+        Cr: Unpaid Rent - Deferred Revenue (2200)
+
+        Note: Revenue is NOT recognized here. Revenue recognition happens
+        when payment is received (Activity 3 in Receipt.post_to_ledger_with_commission).
+        This implements proper accrual accounting with deferred revenue.
         """
         if self.journal:
             return self.journal
 
+        # Get or create Unpaid Rent account (deferred revenue)
+        unpaid_rent_account, created = ChartOfAccount.objects.get_or_create(
+            code='2200',
+            defaults={
+                'name': 'Unpaid Rent (Deferred Revenue)',
+                'account_type': 'liability',
+                'account_subtype': 'tenant_deposits',
+                'is_system': True
+            }
+        )
+
         # Get accounts
-        ar_account = ChartOfAccount.objects.get(code='1200')  # Accounts Receivable
-        income_account = ChartOfAccount.objects.get(code='4000')  # Rental Income
+        ar_account = ChartOfAccount.objects.get(code='1200')  # Accounts Receivable (Tenant A/c)
 
         # Create journal
         journal = Journal.objects.create(
@@ -161,6 +175,7 @@ class Invoice(models.Model):
         )
 
         # Create entries
+        # Dr: Tenant A/c (Accounts Receivable)
         JournalEntry.objects.create(
             journal=journal,
             account=ar_account,
@@ -170,10 +185,11 @@ class Invoice(models.Model):
             source_id=self.id
         )
 
+        # Cr: Unpaid Rent (Deferred Revenue) - NOT income yet
         JournalEntry.objects.create(
             journal=journal,
-            account=income_account,
-            description=f'Rental income - {self.unit}',
+            account=unpaid_rent_account,
+            description=f'Deferred rental revenue - {self.unit}',
             credit_amount=self.total_amount,
             source_type='invoice',
             source_id=self.id
@@ -325,6 +341,201 @@ class Receipt(models.Model):
             source_type='receipt',
             source_id=self.id
         )
+
+        # Post the journal
+        journal.post(user)
+
+        self.journal = journal
+        self.save()
+
+        # Update invoice if linked
+        if self.invoice:
+            self.invoice.amount_paid += self.amount
+            if self.invoice.amount_paid >= self.invoice.total_amount:
+                self.invoice.status = Invoice.Status.PAID
+            else:
+                self.invoice.status = Invoice.Status.PARTIAL
+            self.invoice.save()
+
+        return journal
+
+    @transaction.atomic
+    def post_to_ledger_with_commission(self, user=None):
+        """
+        Post receipt to General Ledger with full commission processing.
+        Implements SYSTEM OVERVIEW Activities 2, 3, and 4:
+
+        Activity 2: Payment Receipt
+            Dr: Cash/Bank (1000/1100)
+            Cr: Tenant A/c - Accounts Receivable (1200)
+
+        Activity 3: Revenue Recognition
+            Dr: Unpaid Rent - Deferred Revenue (2200)
+            Cr: Rent Income (4000)
+
+        Activity 4: Commission Calculation (based on Income Type settings)
+            Dr: COS Commission (5100) - gross commission amount
+            Cr: Commission Payable (2100) - net commission (85%)
+            Cr: VAT Payable (2110) - VAT on commission (15%)
+
+        Example from SYSTEM OVERVIEW:
+        - Receipt amount: $1000
+        - Commission rate: 10% = $100
+        - VAT rate: 15% on commission
+        - COS Commission: $100 (debit)
+        - Commission Payable: $87 (credit - net of VAT)
+        - VAT Payable: $13 (credit - 15% of $87 = ~$13)
+        """
+        if self.journal:
+            return self.journal
+
+        # Get or create required accounts
+        def get_or_create_account(code, name, account_type, account_subtype):
+            account, created = ChartOfAccount.objects.get_or_create(
+                code=code,
+                defaults={
+                    'name': name,
+                    'account_type': account_type,
+                    'account_subtype': account_subtype,
+                    'is_system': True
+                }
+            )
+            return account
+
+        # Activity 2 accounts
+        if self.payment_method == self.PaymentMethod.CASH:
+            cash_account = ChartOfAccount.objects.get(code='1000')  # Cash
+        else:
+            # Use bank account based on currency
+            code = '1100' if self.currency == 'USD' else '1110'
+            cash_account = ChartOfAccount.objects.get(code=code)
+
+        ar_account = ChartOfAccount.objects.get(code='1200')  # Accounts Receivable
+
+        # Activity 3 accounts (Revenue Recognition)
+        unpaid_rent_account = get_or_create_account(
+            '2200', 'Unpaid Rent (Deferred Revenue)', 'liability', 'tenant_deposits'
+        )
+        rent_income_account = ChartOfAccount.objects.get(code='4000')  # Rent Income
+
+        # Activity 4 accounts (Commission)
+        cos_commission_account = get_or_create_account(
+            '5100', 'Cost of Sales - Commission', 'expense', 'operating_expense'
+        )
+        commission_payable_account = get_or_create_account(
+            '2100', 'Commission Payable', 'liability', 'accounts_payable'
+        )
+        vat_payable_account = get_or_create_account(
+            '2110', 'VAT Payable', 'liability', 'vat_payable'
+        )
+
+        # Get commission settings from income type or use defaults
+        commission_rate = Decimal('0.10')  # 10% default
+        vat_rate = Decimal('0.15')  # 15% VAT on commission
+
+        if self.income_type:
+            if self.income_type.is_commissionable:
+                commission_rate = self.income_type.default_commission_rate / Decimal('100')
+            else:
+                commission_rate = Decimal('0')
+            if self.income_type.is_vatable:
+                vat_rate = self.income_type.vat_rate / Decimal('100')
+
+        # Calculate commission amounts
+        gross_commission = self.amount * commission_rate
+        # VAT is calculated on the net commission: Net + VAT = Gross
+        # So: Net = Gross / (1 + VAT_rate)
+        net_commission = gross_commission / (Decimal('1') + vat_rate)
+        vat_on_commission = gross_commission - net_commission
+
+        # Round to 2 decimal places
+        gross_commission = gross_commission.quantize(Decimal('0.01'))
+        net_commission = net_commission.quantize(Decimal('0.01'))
+        vat_on_commission = vat_on_commission.quantize(Decimal('0.01'))
+
+        # Create journal
+        journal = Journal.objects.create(
+            journal_type=Journal.JournalType.RECEIPTS,
+            date=self.date,
+            description=f'Receipt {self.receipt_number} - {self.tenant.name} (with commission)',
+            reference=self.receipt_number,
+            currency=self.currency,
+            created_by=user
+        )
+
+        # ===== Activity 2: Payment Receipt =====
+        # Dr Cash/Bank
+        JournalEntry.objects.create(
+            journal=journal,
+            account=cash_account,
+            description=f'Payment received - {self.tenant.name}',
+            debit_amount=self.amount,
+            source_type='receipt',
+            source_id=self.id
+        )
+
+        # Cr Tenant A/c (Accounts Receivable)
+        JournalEntry.objects.create(
+            journal=journal,
+            account=ar_account,
+            description=f'Receipt against AR - {self.tenant.name}',
+            credit_amount=self.amount,
+            source_type='receipt',
+            source_id=self.id
+        )
+
+        # ===== Activity 3: Revenue Recognition =====
+        # Dr Unpaid Rent (clear the deferred revenue)
+        JournalEntry.objects.create(
+            journal=journal,
+            account=unpaid_rent_account,
+            description=f'Revenue recognition - {self.tenant.name}',
+            debit_amount=self.amount,
+            source_type='receipt',
+            source_id=self.id
+        )
+
+        # Cr Rent Income (recognize revenue)
+        JournalEntry.objects.create(
+            journal=journal,
+            account=rent_income_account,
+            description=f'Rental income recognized - {self.tenant.name}',
+            credit_amount=self.amount,
+            source_type='receipt',
+            source_id=self.id
+        )
+
+        # ===== Activity 4: Commission Calculation =====
+        if gross_commission > Decimal('0'):
+            # Dr COS Commission (expense for gross commission amount)
+            JournalEntry.objects.create(
+                journal=journal,
+                account=cos_commission_account,
+                description=f'Commission expense - {self.tenant.name}',
+                debit_amount=gross_commission,
+                source_type='receipt',
+                source_id=self.id
+            )
+
+            # Cr Commission Payable (net commission owed to agent/landlord)
+            JournalEntry.objects.create(
+                journal=journal,
+                account=commission_payable_account,
+                description=f'Commission payable - {self.tenant.name}',
+                credit_amount=net_commission,
+                source_type='receipt',
+                source_id=self.id
+            )
+
+            # Cr VAT Payable (VAT on commission)
+            JournalEntry.objects.create(
+                journal=journal,
+                account=vat_payable_account,
+                description=f'VAT on commission - {self.tenant.name}',
+                credit_amount=vat_on_commission,
+                source_type='receipt',
+                source_id=self.id
+            )
 
         # Post the journal
         journal.post(user)

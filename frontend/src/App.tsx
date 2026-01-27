@@ -19,6 +19,7 @@ const Tenants = lazy(() => import('./pages/Masterfile/Tenants'))
 const Leases = lazy(() => import('./pages/Masterfile/Leases'))
 const Invoices = lazy(() => import('./pages/Billing/Invoices'))
 const Receipts = lazy(() => import('./pages/Billing/Receipts'))
+const Expenses = lazy(() => import('./pages/Billing/Expenses'))
 const ChartOfAccounts = lazy(() => import('./pages/Accounting/ChartOfAccounts'))
 const Journals = lazy(() => import('./pages/Accounting/Journals'))
 const BankAccounts = lazy(() => import('./pages/Accounting/BankAccounts'))
@@ -92,6 +93,7 @@ export default function App() {
         <Route path="leases" element={<LazyPage><Leases /></LazyPage>} />
         <Route path="invoices" element={<LazyPage><Invoices /></LazyPage>} />
         <Route path="receipts" element={<LazyPage><Receipts /></LazyPage>} />
+        <Route path="expenses" element={<LazyPage><Expenses /></LazyPage>} />
         <Route path="chart-of-accounts" element={<LazyPage><ChartOfAccounts /></LazyPage>} />
         <Route path="journals" element={<LazyPage><Journals /></LazyPage>} />
         <Route path="bank-accounts" element={<LazyPage><BankAccounts /></LazyPage>} />
