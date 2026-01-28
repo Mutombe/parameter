@@ -79,6 +79,69 @@ class PropertyViewSet(viewsets.ModelViewSet):
             'overall_vacancy_rate': (vacant_units / total_units * 100) if total_units else 0
         })
 
+    @action(detail=True, methods=['get'])
+    def preview_units(self, request, pk=None):
+        """Preview what units would be generated from the unit_definition."""
+        property_obj = self.get_object()
+
+        if not property_obj.unit_definition:
+            return Response(
+                {'error': 'No unit definition set for this property'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        valid_units = property_obj.get_valid_units()
+        existing_units = list(property_obj.units.values_list('unit_number', flat=True))
+
+        # Determine which units would be created vs already exist
+        to_create = [u for u in valid_units if u not in existing_units]
+        already_exist = [u for u in valid_units if u in existing_units]
+
+        return Response({
+            'unit_definition': property_obj.unit_definition,
+            'total_defined': len(valid_units),
+            'valid_units': valid_units[:100],  # Limit preview to 100
+            'to_create': to_create[:100],
+            'already_exist': already_exist,
+            'create_count': len(to_create),
+            'existing_count': len(already_exist),
+        })
+
+    @action(detail=True, methods=['post'])
+    def generate_units(self, request, pk=None):
+        """Generate Unit records from the unit_definition."""
+        property_obj = self.get_object()
+
+        if not property_obj.unit_definition:
+            return Response(
+                {'error': 'No unit definition set for this property'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get optional parameters from request
+        default_rent = request.data.get('default_rent', 0)
+        currency = request.data.get('currency', 'USD')
+        unit_type = request.data.get('unit_type', 'residential')
+
+        try:
+            from decimal import Decimal
+            default_rent = Decimal(str(default_rent))
+        except (ValueError, TypeError):
+            default_rent = Decimal('0')
+
+        # Generate units
+        created_units = property_obj.generate_units_from_definition(
+            default_rent=default_rent,
+            currency=currency,
+            unit_type=unit_type
+        )
+
+        return Response({
+            'message': f'Successfully created {len(created_units)} units',
+            'created_count': len(created_units),
+            'units': UnitSerializer(created_units, many=True).data
+        }, status=status.HTTP_201_CREATED)
+
 
 class UnitViewSet(viewsets.ModelViewSet):
     """CRUD for Units."""

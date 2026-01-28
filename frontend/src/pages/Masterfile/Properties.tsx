@@ -18,6 +18,9 @@ import {
   TrendingUp,
   TrendingDown,
   X,
+  Wand2,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react'
 import { propertyApi, landlordApi } from '../../services/api'
 import { formatPercent, cn, useDebounce } from '../../lib/utils'
@@ -38,6 +41,8 @@ interface Property {
   city: string
   total_units: number
   unit_count: number
+  unit_definition?: string
+  defined_unit_count?: number
   vacancy_rate: number
   created_at: string
 }
@@ -92,6 +97,13 @@ export default function Properties() {
     address: '',
     city: 'Harare',
     total_units: 1,
+    unit_definition: '',
+  })
+  const [showGenerateModal, setShowGenerateModal] = useState(false)
+  const [generateForm, setGenerateForm] = useState({
+    default_rent: '0',
+    currency: 'USD',
+    unit_type: 'apartment',
   })
 
   // Reset page when search/filter changes
@@ -120,7 +132,7 @@ export default function Properties() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: { landlord: number; name: string; property_type: string; address: string; city: string; total_units: number }) =>
+    mutationFn: (data: { landlord: number; name: string; property_type: string; address: string; city: string; total_units: number; unit_definition: string }) =>
       editingId ? propertyApi.update(editingId, data) : propertyApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['properties'] })
@@ -147,6 +159,33 @@ export default function Properties() {
     onError: () => toast.error('Failed to delete property'),
   })
 
+  // Preview units query (only fetch when generate modal is open)
+  const { data: previewData, isLoading: previewLoading, refetch: refetchPreview } = useQuery({
+    queryKey: ['preview-units', selectedProperty?.id],
+    queryFn: () => selectedProperty ? propertyApi.previewUnits(selectedProperty.id).then(r => r.data) : null,
+    enabled: showGenerateModal && !!selectedProperty?.id && !!selectedProperty?.unit_definition,
+  })
+
+  // Generate units mutation
+  const generateUnitsMutation = useMutation({
+    mutationFn: (data: { propertyId: number; default_rent: string; currency: string; unit_type: string }) =>
+      propertyApi.generateUnits(data.propertyId, {
+        default_rent: data.default_rent,
+        currency: data.currency,
+        unit_type: data.unit_type,
+      }),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['properties'] })
+      toast.success(`Created ${response.data.created_count} units successfully`)
+      setShowGenerateModal(false)
+      setShowDetailsModal(false)
+    },
+    onError: (error: any) => {
+      const message = error?.response?.data?.error || 'Failed to generate units'
+      toast.error(message)
+    },
+  })
+
   const resetForm = () => {
     setShowForm(false)
     setEditingId(null)
@@ -157,6 +196,7 @@ export default function Properties() {
       address: '',
       city: 'Harare',
       total_units: 1,
+      unit_definition: '',
     })
   }
 
@@ -169,8 +209,17 @@ export default function Properties() {
       address: property.address,
       city: property.city,
       total_units: property.total_units,
+      unit_definition: property.unit_definition || '',
     })
     setShowForm(true)
+  }
+
+  const handleGenerateUnits = () => {
+    if (!selectedProperty) return
+    generateUnitsMutation.mutate({
+      propertyId: selectedProperty.id,
+      ...generateForm,
+    })
   }
 
   const handleDelete = (property: Property) => {
@@ -549,6 +598,30 @@ export default function Properties() {
                         </div>
                       </div>
 
+                      {/* Unit Definition Section */}
+                      {selectedProperty.unit_definition && (
+                        <div className="mt-6 p-4 bg-primary-50 rounded-xl border border-primary-100">
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="text-sm font-medium text-primary-700">Unit Definition</span>
+                            <span className="text-xs bg-primary-100 text-primary-700 px-2 py-0.5 rounded-full">
+                              {selectedProperty.defined_unit_count || 0} units defined
+                            </span>
+                          </div>
+                          <code className="text-sm text-gray-700 font-mono bg-white px-2 py-1 rounded">
+                            {selectedProperty.unit_definition}
+                          </code>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-3 w-full gap-2"
+                            onClick={() => setShowGenerateModal(true)}
+                          >
+                            <Wand2 className="w-4 h-4" />
+                            Generate Units from Definition
+                          </Button>
+                        </div>
+                      )}
+
                       {/* Occupancy Section */}
                       <div className="mt-6 p-4 bg-gray-50 rounded-xl">
                         <div className="flex justify-between items-center mb-3">
@@ -574,7 +647,7 @@ export default function Properties() {
                         <div className="mt-4 grid grid-cols-3 gap-4 text-center">
                           <div>
                             <p className="text-2xl font-bold text-gray-900">{selectedProperty.unit_count || 0}</p>
-                            <p className="text-xs text-gray-500">Total Units</p>
+                            <p className="text-xs text-gray-500">Created Units</p>
                           </div>
                           <div>
                             <p className="text-2xl font-bold text-emerald-600">{occupiedUnits}</p>
@@ -681,6 +754,19 @@ export default function Properties() {
             onChange={(e) => setForm({ ...form, city: e.target.value })}
           />
 
+          <div>
+            <Input
+              label="Unit Definition"
+              placeholder="e.g., 1-17 or A1-A20; B1-B15"
+              value={form.unit_definition}
+              onChange={(e) => setForm({ ...form, unit_definition: e.target.value })}
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Define unit ranges using formats like "1-17" (numeric) or "A1-A20; B1-B15" (alphanumeric).
+              Units can be auto-generated after property creation.
+            </p>
+          </div>
+
           <div className="flex gap-3 pt-4">
             <Button type="button" variant="outline" className="flex-1" onClick={resetForm}>
               Cancel
@@ -706,6 +792,137 @@ export default function Properties() {
         variant="danger"
         loading={deleteMutation.isPending}
       />
+
+      {/* Generate Units Modal */}
+      <Modal
+        open={showGenerateModal}
+        onClose={() => setShowGenerateModal(false)}
+        title="Generate Units"
+        icon={Wand2}
+      >
+        <div className="space-y-4">
+          {/* Preview Section */}
+          {previewLoading ? (
+            <div className="p-4 bg-gray-50 rounded-xl animate-pulse">
+              <div className="h-4 w-32 bg-gray-200 rounded mb-2" />
+              <div className="h-20 bg-gray-200 rounded" />
+            </div>
+          ) : previewData ? (
+            <div className="p-4 bg-gray-50 rounded-xl">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-medium text-gray-700">Unit Preview</span>
+                <span className="text-xs text-gray-500">
+                  Definition: <code className="bg-white px-1 rounded">{previewData.unit_definition}</code>
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="text-center p-3 bg-white rounded-lg">
+                  <p className="text-2xl font-bold text-primary-600">{previewData.create_count}</p>
+                  <p className="text-xs text-gray-500">Units to Create</p>
+                </div>
+                <div className="text-center p-3 bg-white rounded-lg">
+                  <p className="text-2xl font-bold text-gray-400">{previewData.existing_count}</p>
+                  <p className="text-xs text-gray-500">Already Exist</p>
+                </div>
+              </div>
+
+              {previewData.create_count > 0 ? (
+                <div className="flex items-center gap-2 text-sm text-emerald-600">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Ready to generate {previewData.create_count} new units</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-amber-600">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>All {previewData.total_defined} units already exist</span>
+                </div>
+              )}
+
+              {previewData.to_create.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-xs text-gray-500 mb-1">Units to be created:</p>
+                  <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                    {previewData.to_create.slice(0, 30).map((unit: string) => (
+                      <span key={unit} className="text-xs bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded">
+                        {unit}
+                      </span>
+                    ))}
+                    {previewData.to_create.length > 30 && (
+                      <span className="text-xs text-gray-400">+{previewData.to_create.length - 30} more</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-4 bg-amber-50 rounded-xl border border-amber-100">
+              <div className="flex items-center gap-2 text-amber-700">
+                <AlertCircle className="w-4 h-4" />
+                <span className="text-sm">No unit definition set for this property</span>
+              </div>
+            </div>
+          )}
+
+          {/* Configuration */}
+          {previewData && previewData.create_count > 0 && (
+            <>
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Default Unit Settings</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Default Rent"
+                    type="number"
+                    placeholder="0"
+                    value={generateForm.default_rent}
+                    onChange={(e) => setGenerateForm({ ...generateForm, default_rent: e.target.value })}
+                  />
+                  <Select
+                    label="Currency"
+                    value={generateForm.currency}
+                    onChange={(e) => setGenerateForm({ ...generateForm, currency: e.target.value })}
+                  >
+                    <option value="USD">USD</option>
+                    <option value="ZWL">ZWL</option>
+                    <option value="ZAR">ZAR</option>
+                  </Select>
+                </div>
+                <Select
+                  label="Unit Type"
+                  value={generateForm.unit_type}
+                  onChange={(e) => setGenerateForm({ ...generateForm, unit_type: e.target.value })}
+                  className="mt-3"
+                >
+                  <option value="apartment">Apartment</option>
+                  <option value="office">Office</option>
+                  <option value="shop">Shop</option>
+                  <option value="warehouse">Warehouse</option>
+                  <option value="parking">Parking Bay</option>
+                  <option value="storage">Storage Unit</option>
+                </Select>
+              </div>
+            </>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setShowGenerateModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={!previewData || previewData.create_count === 0 || generateUnitsMutation.isPending}
+              onClick={handleGenerateUnits}
+            >
+              {generateUnitsMutation.isPending ? 'Generating...' : `Generate ${previewData?.create_count || 0} Units`}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

@@ -159,6 +159,8 @@ export const propertyApi = {
   update: (id: number, data: object) => api.patch(`/masterfile/properties/${id}/`, data),
   delete: (id: number) => api.delete(`/masterfile/properties/${id}/`),
   stats: () => api.get('/masterfile/properties/stats/'),
+  previewUnits: (id: number) => api.get(`/masterfile/properties/${id}/preview_units/`),
+  generateUnits: (id: number, data: object) => api.post(`/masterfile/properties/${id}/generate_units/`, data),
 }
 
 export const unitApi = {

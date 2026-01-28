@@ -111,6 +111,13 @@ class Property(models.Model):
     suburb = models.CharField(max_length=100, blank=True)
     country = models.CharField(max_length=100, default='Zimbabwe')
 
+    # Unit Definition - defines the valid unit range
+    # Examples: "1-17" or "A1-A20; B1-B15; C1-C15" or "101-110; 201-210"
+    unit_definition = models.CharField(
+        max_length=500, blank=True,
+        help_text='Define unit range: "1-17" or "A1-A20; B1-B15" etc.'
+    )
+
     # Details
     year_built = models.PositiveIntegerField(null=True, blank=True)
     total_units = models.PositiveIntegerField(default=1)
@@ -158,6 +165,96 @@ class Property(models.Model):
     @property
     def occupancy_rate(self):
         return Decimal('100') - self.vacancy_rate
+
+    @staticmethod
+    def parse_unit_definition(definition: str) -> list:
+        """
+        Parse unit definition string into list of valid unit numbers.
+
+        Examples:
+        - "1-17" → ['1', '2', '3', ..., '17']
+        - "A1-A20; B1-B15" → ['A1', 'A2', ..., 'A20', 'B1', ..., 'B15']
+        - "101-110; 201-210" → ['101', ..., '110', '201', ..., '210']
+        """
+        import re
+
+        if not definition or not definition.strip():
+            return []
+
+        units = []
+        # Split by semicolon for multiple ranges
+        ranges = [r.strip() for r in definition.split(';') if r.strip()]
+
+        for range_def in ranges:
+            # Match patterns like "1-17", "A1-A20", "101-110"
+            match = re.match(r'^([A-Za-z]*)(\d+)-([A-Za-z]*)(\d+)$', range_def.strip())
+
+            if match:
+                prefix1, start, prefix2, end = match.groups()
+                prefix = prefix1 or prefix2  # Use whichever prefix exists
+
+                start_num = int(start)
+                end_num = int(end)
+
+                # Generate all units in range
+                for i in range(start_num, end_num + 1):
+                    if prefix:
+                        units.append(f'{prefix}{i}')
+                    else:
+                        units.append(str(i))
+            else:
+                # Single unit or invalid format - add as-is if not empty
+                if range_def.strip():
+                    units.append(range_def.strip())
+
+        return units
+
+    def get_valid_units(self) -> list:
+        """Get list of valid unit numbers from definition."""
+        return self.parse_unit_definition(self.unit_definition)
+
+    def get_defined_unit_count(self) -> int:
+        """Get count of units defined in the range."""
+        return len(self.get_valid_units())
+
+    def is_valid_unit_number(self, unit_number: str) -> bool:
+        """Check if a unit number is within the defined range."""
+        if not self.unit_definition:
+            return True  # No definition = any unit is valid
+        valid_units = self.get_valid_units()
+        return unit_number in valid_units
+
+    def generate_units_from_definition(self, default_rent=Decimal('0'), currency='USD', unit_type='apartment'):
+        """
+        Generate Unit records from the unit definition.
+        Only creates units that don't already exist.
+        Returns list of created Unit objects.
+        """
+        valid_units = self.get_valid_units()
+        created_units = []
+
+        for unit_number in valid_units:
+            # Check if unit already exists
+            if self.units.filter(unit_number=unit_number).exists():
+                continue
+
+            try:
+                unit = Unit.objects.create(
+                    property=self,
+                    unit_number=unit_number,
+                    rental_amount=default_rent,
+                    currency=currency,
+                    unit_type=unit_type,
+                )
+                created_units.append(unit)
+            except Exception:
+                pass  # Skip units that fail to create
+
+        # Update total_units count
+        self.total_units = self.units.count()
+        self.save(update_fields=['total_units'])
+
+        return created_units
 
 
 class Unit(models.Model):

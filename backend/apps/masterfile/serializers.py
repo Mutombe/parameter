@@ -50,6 +50,8 @@ class PropertySerializer(serializers.ModelSerializer):
     landlord_name = serializers.CharField(source='landlord.name', read_only=True)
     units = UnitSerializer(many=True, read_only=True)
     unit_count = serializers.SerializerMethodField()
+    defined_unit_count = serializers.SerializerMethodField()
+    valid_units = serializers.SerializerMethodField()
     vacancy_rate = serializers.ReadOnlyField()
     occupancy_rate = serializers.ReadOnlyField()
 
@@ -57,6 +59,7 @@ class PropertySerializer(serializers.ModelSerializer):
         model = Property
         fields = [
             'id', 'landlord', 'landlord_name', 'code', 'name', 'property_type',
+            'unit_definition', 'defined_unit_count', 'valid_units',
             'address', 'city', 'suburb', 'country', 'year_built', 'total_units',
             'total_floors', 'parking_spaces', 'amenities', 'image', 'is_active',
             'notes', 'units', 'unit_count', 'vacancy_rate', 'occupancy_rate',
@@ -67,22 +70,35 @@ class PropertySerializer(serializers.ModelSerializer):
     def get_unit_count(self, obj):
         return obj.units.count()
 
+    def get_defined_unit_count(self, obj):
+        return obj.get_defined_unit_count()
+
+    def get_valid_units(self, obj):
+        # Return first 50 units to avoid huge responses
+        units = obj.get_valid_units()
+        return units[:50] if len(units) > 50 else units
+
 
 class PropertyListSerializer(serializers.ModelSerializer):
     """Lighter serializer for list views."""
     landlord_name = serializers.CharField(source='landlord.name', read_only=True)
     unit_count = serializers.SerializerMethodField()
+    defined_unit_count = serializers.SerializerMethodField()
     vacancy_rate = serializers.ReadOnlyField()
 
     class Meta:
         model = Property
         fields = [
             'id', 'landlord', 'landlord_name', 'code', 'name', 'property_type',
+            'unit_definition', 'defined_unit_count',
             'city', 'total_units', 'unit_count', 'vacancy_rate', 'is_active'
         ]
 
     def get_unit_count(self, obj):
         return obj.units.count()
+
+    def get_defined_unit_count(self, obj):
+        return obj.get_defined_unit_count()
 
 
 class RentalTenantSerializer(serializers.ModelSerializer):
