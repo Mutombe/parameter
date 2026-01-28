@@ -218,8 +218,17 @@ export default function Tenants() {
             <h2 className="text-lg font-semibold mb-4">Add New Tenant</h2>
             <form onSubmit={(e) => {
               e.preventDefault();
-              const submitData = { ...form, unit: form.unit || null };
-              createMutation.mutate(submitData);
+              const submitData: Record<string, any> = {
+                name: form.name,
+                tenant_type: form.tenant_type,
+                account_type: form.account_type,
+                email: form.email,
+                phone: form.phone,
+                id_type: form.id_type,
+                id_number: form.id_number,
+                unit: form.unit || null,
+              };
+              createMutation.mutate(submitData as typeof form);
             }} className="space-y-4">
               <div>
                 <label className="label">Name</label>
