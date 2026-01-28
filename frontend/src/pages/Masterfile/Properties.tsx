@@ -134,6 +134,20 @@ export default function Properties() {
   const totalCount = propertiesData?.count || properties.length
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
+  // Debug logging
+  console.log('Properties Debug:', {
+    propertiesData,
+    propertiesType: typeof propertiesData,
+    isArray: Array.isArray(propertiesData),
+    hasResults: !!propertiesData?.results,
+    results: propertiesData?.results,
+    properties,
+    propertiesLength: properties.length,
+    totalCount,
+    isLoading,
+    error
+  })
+
   const { data: landlords } = useQuery({
     queryKey: ['landlords-select'],
     queryFn: () => landlordApi.list().then(r => r.data.results || r.data),
