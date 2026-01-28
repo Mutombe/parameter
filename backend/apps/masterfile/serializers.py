@@ -105,7 +105,7 @@ class RentalTenantSerializer(serializers.ModelSerializer):
     active_leases = serializers.SerializerMethodField()
     has_active_lease = serializers.SerializerMethodField()
     lease_count = serializers.SerializerMethodField()
-    unit_name = serializers.CharField(source='unit.__str__', read_only=True)
+    unit_name = serializers.SerializerMethodField()
 
     class Meta:
         model = RentalTenant
@@ -118,6 +118,10 @@ class RentalTenantSerializer(serializers.ModelSerializer):
             'has_active_lease', 'lease_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['code', 'created_at', 'updated_at']
+
+    def get_unit_name(self, obj):
+        """Return unit name or None if no unit assigned."""
+        return str(obj.unit) if obj.unit else None
 
     def get_active_leases(self, obj):
         leases = obj.leases.filter(status='active')
