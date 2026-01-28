@@ -44,6 +44,9 @@ with connection.cursor() as cursor:
 echo "Creating cache table..."
 python manage.py createcachetable || true
 
+echo "Fixing tenant schemas (adding missing columns)..."
+python manage.py fix_schemas || true
+
 echo "Setting up public tenant and domains..."
 python manage.py setup_public_tenant --domain parameter-backend.onrender.com || true
 
