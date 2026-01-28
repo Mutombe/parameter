@@ -141,14 +141,38 @@ class RentalTenantSerializer(serializers.ModelSerializer):
 
 
 class LeaseAgreementSerializer(serializers.ModelSerializer):
+    """
+    Lease serializer with auto-unit creation support.
+
+    When creating a lease, you can either:
+    1. Pass an existing unit ID in the 'unit' field
+    2. Pass 'property' and 'unit_number' to auto-create the unit
+
+    If unit_number matches an existing unit in the property, it uses that unit.
+    Otherwise, a new unit is created automatically.
+    """
     tenant_name = serializers.CharField(source='tenant.name', read_only=True)
-    unit_display = serializers.CharField(source='unit.__str__', read_only=True)
-    property_name = serializers.CharField(source='unit.property.name', read_only=True)
+    unit_display = serializers.SerializerMethodField()
+    property_name = serializers.SerializerMethodField()
+
+    # Optional fields for auto-creating units
+    property = serializers.PrimaryKeyRelatedField(
+        queryset=Property.objects.all(),
+        required=False,
+        write_only=True,
+        help_text="Property ID (used with unit_number to auto-create unit)"
+    )
+    unit_number = serializers.CharField(
+        required=False,
+        write_only=True,
+        help_text="Unit number (used with property to auto-create unit)"
+    )
 
     class Meta:
         model = LeaseAgreement
         fields = [
             'id', 'tenant', 'tenant_name', 'unit', 'unit_display', 'property_name',
+            'property', 'unit_number',  # For auto-creating units
             'lease_number', 'status', 'start_date', 'end_date', 'monthly_rent',
             'currency', 'deposit_amount', 'deposit_paid', 'billing_day',
             'grace_period_days', 'annual_escalation_rate', 'terms_and_conditions',
@@ -156,6 +180,85 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
             'created_by', 'created_at', 'updated_at'
         ]
         read_only_fields = ['lease_number', 'created_at', 'updated_at']
+        extra_kwargs = {
+            'unit': {'required': False}  # Not required if property/unit_number provided
+        }
+
+    def get_unit_display(self, obj):
+        """Return unit display string or None if no unit."""
+        return str(obj.unit) if obj.unit else None
+
+    def get_property_name(self, obj):
+        """Return property name or None if no unit."""
+        return obj.unit.property.name if obj.unit else None
+
+    def validate(self, data):
+        """Validate that either unit or (property + unit_number) is provided."""
+        unit = data.get('unit')
+        prop = data.get('property')
+        unit_number = data.get('unit_number')
+
+        # Creating a new lease
+        if not self.instance:
+            if not unit and not (prop and unit_number):
+                raise serializers.ValidationError(
+                    "Either 'unit' or both 'property' and 'unit_number' must be provided."
+                )
+
+        # Validate unit_number is in property's valid units if unit_definition exists
+        if prop and unit_number:
+            valid_units = prop.get_valid_units()
+            if valid_units and unit_number not in valid_units:
+                raise serializers.ValidationError({
+                    'unit_number': f"Invalid unit number. Valid units for this property: {', '.join(valid_units[:10])}{'...' if len(valid_units) > 10 else ''}"
+                })
+
+        return data
+
+    def create(self, validated_data):
+        """Create lease, auto-creating unit if needed."""
+        prop = validated_data.pop('property', None)
+        unit_number = validated_data.pop('unit_number', None)
+
+        # If property and unit_number provided, find or create the unit
+        if prop and unit_number:
+            unit, created = Unit.objects.get_or_create(
+                property=prop,
+                unit_number=unit_number,
+                defaults={
+                    'rental_amount': validated_data.get('monthly_rent', 0),
+                    'currency': validated_data.get('currency', 'USD'),
+                    'is_occupied': True,
+                }
+            )
+            validated_data['unit'] = unit
+
+            # Update unit occupancy if existing unit
+            if not created:
+                unit.is_occupied = True
+                unit.save(update_fields=['is_occupied'])
+
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        """Update lease, handling property/unit_number if provided."""
+        prop = validated_data.pop('property', None)
+        unit_number = validated_data.pop('unit_number', None)
+
+        # If property and unit_number provided, find or create the unit
+        if prop and unit_number:
+            unit, created = Unit.objects.get_or_create(
+                property=prop,
+                unit_number=unit_number,
+                defaults={
+                    'rental_amount': validated_data.get('monthly_rent', instance.monthly_rent),
+                    'currency': validated_data.get('currency', instance.currency),
+                    'is_occupied': True,
+                }
+            )
+            validated_data['unit'] = unit
+
+        return super().update(instance, validated_data)
 
 
 class LeaseActivateSerializer(serializers.Serializer):

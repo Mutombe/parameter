@@ -24,6 +24,10 @@ python-decouple==3.8
 python-dotenv==1.2.1
 pillow==12.1.0
 
+# Data import (CSV/Excel)
+pandas==2.2.3
+openpyxl==3.1.5
+
 # Required dependencies
 anyio==4.12.1
 asgiref==3.11.0

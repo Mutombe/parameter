@@ -17,6 +17,7 @@ urlpatterns = [
     path('api/ai/', include('apps.ai_service.urls')),
     path('api/notifications/', include('apps.notifications.urls')),
     path('api/search/', include('apps.search.urls')),  # Unified search API
+    path('api/imports/', include('apps.imports.urls')),  # Data import from CSV/Excel
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 ]

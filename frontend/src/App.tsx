@@ -29,6 +29,7 @@ const Reports = lazy(() => import('./pages/Reports/Reports'))
 const AuditTrail = lazy(() => import('./pages/Admin/AuditTrail'))
 const TeamManagement = lazy(() => import('./pages/Admin/TeamManagement'))
 const SuperAdminDashboard = lazy(() => import('./pages/Admin/SuperAdminDashboard'))
+const DataImport = lazy(() => import('./pages/Admin/DataImport'))
 const DocumentScanner = lazy(() => import('./pages/AI/DocumentScanner'))
 const Profile = lazy(() => import('./pages/Profile'))
 const Settings = lazy(() => import('./pages/Settings'))
@@ -103,6 +104,7 @@ export default function App() {
         <Route path="audit-trail" element={<LazyPage><AuditTrail /></LazyPage>} />
         <Route path="team" element={<LazyPage><TeamManagement /></LazyPage>} />
         <Route path="super-admin" element={<LazyPage fallback={<SkeletonDashboard />}><SuperAdminDashboard /></LazyPage>} />
+        <Route path="data-import" element={<LazyPage><DataImport /></LazyPage>} />
         <Route path="document-scanner" element={<LazyPage><DocumentScanner /></LazyPage>} />
         <Route path="profile" element={<LazyPage fallback={<ProfileSkeleton />}><Profile /></LazyPage>} />
         <Route path="settings" element={<LazyPage fallback={<SettingsSkeleton />}><Settings /></LazyPage>} />

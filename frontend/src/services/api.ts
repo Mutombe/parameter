@@ -564,4 +564,32 @@ export const searchApi = {
     api.get('/search/suggestions/', { params: { q } }),
 }
 
+// Data Import API - CSV/Excel imports for bulk data
+export const importsApi = {
+  // List import jobs
+  list: (params?: object) => api.get('/imports/jobs/', { params }),
+  // Get specific import job
+  get: (id: number) => api.get(`/imports/jobs/${id}/`),
+  // Upload file for validation
+  upload: (file: File, importType?: string) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (importType) {
+      formData.append('import_type', importType)
+    }
+    return api.post('/imports/jobs/upload/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  // Confirm and process validated import
+  confirm: (id: number) => api.post(`/imports/jobs/${id}/confirm/`),
+  // Cancel an import job
+  cancel: (id: number) => api.post(`/imports/jobs/${id}/cancel/`),
+  // Get available templates
+  templates: () => api.get('/imports/jobs/templates/'),
+  // Download template file
+  downloadTemplate: (templateType: string) =>
+    api.get(`/imports/jobs/templates/${templateType}/`, { responseType: 'blob' }),
+}
+
 export default api

@@ -24,6 +24,7 @@ import {
   DollarSign,
   Wallet,
   GitCompare,
+  Upload,
 } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useAuthStore } from '../../stores/authStore'
@@ -104,6 +105,7 @@ const navigation: NavSection[] = [
     title: 'Administration',
     items: [
       { name: 'Team', href: '/dashboard/team', icon: TbUserSquareRounded },
+      { name: 'Data Import', href: '/dashboard/data-import', icon: Upload },
       { name: 'Audit Trail', href: '/dashboard/audit-trail', icon: SiFsecure },
     ],
   },
