@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Search, Users, Phone, Mail, Trash2, Loader2, Eye, X, FileText, Receipt, Building2, Calendar, DollarSign, AlertCircle, Home } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { tenantApi, unitApi } from '../../services/api'
+import { tenantApi, unitApi, propertyApi } from '../../services/api'
 import { useDebounce, formatCurrency } from '../../lib/utils'
 import { Pagination, EmptyState, Modal } from '../../components/ui'
 import toast from 'react-hot-toast'
@@ -50,16 +50,33 @@ export default function Tenants() {
     phone: '',
     id_type: 'national_id',
     id_number: '',
+    property: '' as string | number,
     unit: '' as string | number,
   })
 
-  // Fetch available units (unoccupied)
-  const { data: unitsData } = useQuery({
-    queryKey: ['available-units'],
-    queryFn: () => unitApi.list({ is_occupied: false }).then(r => r.data),
+  // Fetch properties for selection
+  const { data: propertiesData } = useQuery({
+    queryKey: ['properties-for-tenant'],
+    queryFn: () => propertyApi.list().then(r => r.data),
     enabled: showForm,
   })
+  const properties = propertiesData?.results || propertiesData || []
+
+  // Fetch available units for selected property (unoccupied)
+  const { data: unitsData } = useQuery({
+    queryKey: ['available-units', form.property],
+    queryFn: () => unitApi.list({
+      property: form.property,
+      is_occupied: false
+    }).then(r => r.data),
+    enabled: showForm && !!form.property,
+  })
   const availableUnits = unitsData?.results || unitsData || []
+
+  // Reset unit when property changes
+  const handlePropertyChange = (propertyId: string | number) => {
+    setForm({ ...form, property: propertyId, unit: '' })
+  }
 
   // Reset to page 1 when search or filters change
   const handleSearchChange = (value: string) => {
@@ -232,27 +249,60 @@ export default function Tenants() {
                 </div>
               </div>
 
-              {/* Unit Allocation */}
-              <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Home className="w-4 h-4 text-blue-600" />
-                  <label className="label text-blue-800 mb-0">Allocate Unit (Optional)</label>
+              {/* Property & Unit Allocation */}
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Building2 className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-800">Unit Allocation</span>
                 </div>
-                <select
-                  value={form.unit}
-                  onChange={(e) => setForm({ ...form, unit: e.target.value ? parseInt(e.target.value) : '' })}
-                  className="input"
-                >
-                  <option value="">-- Select Unit --</option>
-                  {availableUnits.map((unit: any) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.property_name} - Unit {unit.unit_number} ({unit.currency} {unit.rental_amount}/mo)
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-blue-600 mt-1">
-                  {availableUnits.length} unit(s) available for allocation
-                </p>
+
+                {/* Property Selection */}
+                <div>
+                  <label className="label text-blue-700">Select Property *</label>
+                  <select
+                    value={form.property}
+                    onChange={(e) => handlePropertyChange(e.target.value ? parseInt(e.target.value) : '')}
+                    className="input"
+                    required
+                  >
+                    <option value="">-- Select Property --</option>
+                    {properties.map((property: any) => (
+                      <option key={property.id} value={property.id}>
+                        {property.name} ({property.city})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Unit Selection - Only shown after property is selected */}
+                {form.property && (
+                  <div>
+                    <label className="label text-blue-700">Select Unit *</label>
+                    <select
+                      value={form.unit}
+                      onChange={(e) => setForm({ ...form, unit: e.target.value ? parseInt(e.target.value) : '' })}
+                      className="input"
+                      required
+                    >
+                      <option value="">-- Select Unit --</option>
+                      {availableUnits.map((unit: any) => (
+                        <option key={unit.id} value={unit.id}>
+                          Unit {unit.unit_number} - {unit.unit_type} ({unit.currency} {unit.rental_amount}/mo)
+                        </option>
+                      ))}
+                    </select>
+                    {availableUnits.length === 0 && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        No available units in this property. All units are occupied.
+                      </p>
+                    )}
+                    {availableUnits.length > 0 && (
+                      <p className="text-xs text-blue-600 mt-1">
+                        {availableUnits.length} unit(s) available
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
