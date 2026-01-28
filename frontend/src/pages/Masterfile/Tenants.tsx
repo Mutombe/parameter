@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Users, Phone, Mail, Trash2, Loader2, Eye, X, FileText, Receipt, Building2, Calendar, DollarSign, AlertCircle } from 'lucide-react'
+import { Plus, Search, Users, Phone, Mail, Trash2, Loader2, Eye, X, FileText, Receipt, Building2, Calendar, DollarSign, AlertCircle, Home } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { tenantApi } from '../../services/api'
+import { tenantApi, unitApi } from '../../services/api'
 import { useDebounce, formatCurrency } from '../../lib/utils'
 import { Pagination, EmptyState, Modal } from '../../components/ui'
 import toast from 'react-hot-toast'
@@ -45,11 +45,21 @@ export default function Tenants() {
   const [form, setForm] = useState({
     name: '',
     tenant_type: 'individual',
+    account_type: 'rental',
     email: '',
     phone: '',
     id_type: 'national_id',
     id_number: '',
+    unit: '' as string | number,
   })
+
+  // Fetch available units (unoccupied)
+  const { data: unitsData } = useQuery({
+    queryKey: ['available-units'],
+    queryFn: () => unitApi.list({ is_occupied: false }).then(r => r.data),
+    enabled: showForm,
+  })
+  const availableUnits = unitsData?.results || unitsData || []
 
   // Reset to page 1 when search or filters change
   const handleSearchChange = (value: string) => {
@@ -189,7 +199,11 @@ export default function Tenants() {
             className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 p-6"
           >
             <h2 className="text-lg font-semibold mb-4">Add New Tenant</h2>
-            <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(form); }} className="space-y-4">
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const submitData = { ...form, unit: form.unit || null };
+              createMutation.mutate(submitData);
+            }} className="space-y-4">
               <div>
                 <label className="label">Name</label>
                 <input
@@ -202,12 +216,46 @@ export default function Tenants() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="label">Type</label>
+                  <label className="label">Tenant Type</label>
                   <select value={form.tenant_type} onChange={(e) => setForm({ ...form, tenant_type: e.target.value })} className="input">
                     <option value="individual">Individual</option>
                     <option value="company">Company</option>
                   </select>
                 </div>
+                <div>
+                  <label className="label">Account Type</label>
+                  <select value={form.account_type} onChange={(e) => setForm({ ...form, account_type: e.target.value })} className="input">
+                    <option value="rental">Rental Tenant</option>
+                    <option value="levy">Levy Account Holder</option>
+                    <option value="both">Both (Rental & Levy)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Unit Allocation */}
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Home className="w-4 h-4 text-blue-600" />
+                  <label className="label text-blue-800 mb-0">Allocate Unit (Optional)</label>
+                </div>
+                <select
+                  value={form.unit}
+                  onChange={(e) => setForm({ ...form, unit: e.target.value ? parseInt(e.target.value) : '' })}
+                  className="input"
+                >
+                  <option value="">-- Select Unit --</option>
+                  {availableUnits.map((unit: any) => (
+                    <option key={unit.id} value={unit.id}>
+                      {unit.property_name} - Unit {unit.unit_number} ({unit.currency} {unit.rental_amount}/mo)
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-blue-600 mt-1">
+                  {availableUnits.length} unit(s) available for allocation
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="label">ID Type</label>
                   <select value={form.id_type} onChange={(e) => setForm({ ...form, id_type: e.target.value })} className="input">
@@ -216,10 +264,10 @@ export default function Tenants() {
                     <option value="company_reg">Company Reg</option>
                   </select>
                 </div>
-              </div>
-              <div>
-                <label className="label">ID Number</label>
-                <input type="text" value={form.id_number} onChange={(e) => setForm({ ...form, id_number: e.target.value })} className="input" required />
+                <div>
+                  <label className="label">ID Number</label>
+                  <input type="text" value={form.id_number} onChange={(e) => setForm({ ...form, id_number: e.target.value })} className="input" required />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -335,6 +383,14 @@ export default function Tenants() {
                   <Phone className="w-4 h-4" /> {tenant.phone}
                 </div>
               </div>
+              {/* Allocated Unit */}
+              {tenant.unit_name && (
+                <div className="mt-3 flex items-center gap-2 text-sm bg-blue-50 text-blue-700 px-2 py-1.5 rounded-lg">
+                  <Home className="w-4 h-4" />
+                  <span>{tenant.unit_name}</span>
+                </div>
+              )}
+
               <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
                 {tenant.has_active_lease ? (
                   <p className="text-sm text-green-600">

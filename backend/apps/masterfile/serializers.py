@@ -89,12 +89,14 @@ class RentalTenantSerializer(serializers.ModelSerializer):
     active_leases = serializers.SerializerMethodField()
     has_active_lease = serializers.SerializerMethodField()
     lease_count = serializers.SerializerMethodField()
+    unit_name = serializers.CharField(source='unit.__str__', read_only=True)
 
     class Meta:
         model = RentalTenant
         fields = [
-            'id', 'code', 'name', 'tenant_type', 'email', 'phone', 'alt_phone',
-            'id_type', 'id_number', 'emergency_contact_name', 'emergency_contact_phone',
+            'id', 'code', 'name', 'tenant_type', 'account_type', 'unit', 'unit_name',
+            'email', 'phone', 'alt_phone', 'id_type', 'id_number',
+            'emergency_contact_name', 'emergency_contact_phone',
             'emergency_contact_relation', 'employer_name', 'employer_address',
             'occupation', 'portal_user', 'is_active', 'notes', 'active_leases',
             'has_active_lease', 'lease_count', 'created_at', 'updated_at'

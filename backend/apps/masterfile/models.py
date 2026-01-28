@@ -253,6 +253,13 @@ class RentalTenant(models.Model):
         help_text='Rental tenant or levy account holder'
     )
 
+    # Direct unit allocation (optional - can also be assigned via lease)
+    unit = models.ForeignKey(
+        'Unit', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='assigned_tenants',
+        help_text='Unit allocated to this tenant'
+    )
+
     # Contact
     email = models.EmailField()
     phone = models.CharField(max_length=20)
@@ -365,7 +372,10 @@ class LeaseAgreement(models.Model):
     # Financial Terms
     monthly_rent = models.DecimalField(max_digits=18, decimal_places=2)
     currency = models.CharField(max_length=3, default='USD')
-    deposit_amount = models.DecimalField(max_digits=18, decimal_places=2)
+    deposit_amount = models.DecimalField(
+        max_digits=18, decimal_places=2, null=True, blank=True,
+        help_text='Optional deposit amount'
+    )
     deposit_paid = models.BooleanField(default=False)
 
     # Billing
