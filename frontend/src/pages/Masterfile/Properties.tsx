@@ -112,14 +112,22 @@ export default function Properties() {
     setCurrentPage(1)
   }
 
-  const { data: propertiesData, isLoading } = useQuery({
+  const { data: propertiesData, isLoading, error } = useQuery({
     queryKey: ['properties', debouncedSearch, currentPage],
     queryFn: () => propertyApi.list({
       search: debouncedSearch,
       page: currentPage,
       page_size: PAGE_SIZE
-    }).then(r => r.data),
+    }).then(r => {
+      console.log('Properties API response:', r.data)
+      return r.data
+    }),
   })
+
+  // Log error if any
+  if (error) {
+    console.error('Properties fetch error:', error)
+  }
 
   // Handle both paginated and non-paginated responses
   const properties = propertiesData?.results || propertiesData || []

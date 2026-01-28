@@ -70,6 +70,12 @@ api.interceptors.request.use((config) => {
     config.headers['X-Tenant-Subdomain'] = subdomain
   }
 
+  // Debug logging (can be removed in production)
+  console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`, {
+    tenant: subdomain,
+    baseURL: config.baseURL
+  })
+
   return config
 })
 
