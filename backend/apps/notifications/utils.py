@@ -21,8 +21,7 @@ BORDER = '#e2e8f0'         # slate-200
 
 
 def _get_logo_url():
-    site = getattr(settings, 'SITE_URL', 'https://parameter.co.zw')
-    return f"{site.rstrip('/')}/logo.png"
+    return 'https://parameter.sgp1.cdn.digitaloceanspaces.com/logo.png'
 
 
 def _get_company_name():

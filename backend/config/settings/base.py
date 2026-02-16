@@ -36,6 +36,7 @@ SHARED_APPS = [
     'drf_spectacular',
     'django_q',  # Database-based task queue
     'channels',  # WebSocket support
+    'storages',  # django-storages for S3/DO Spaces
     'apps.accounts',  # User model must be in shared apps
 ]
 
@@ -169,6 +170,26 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# DigitalOcean Spaces (S3-compatible) media storage
+# When configured, all media uploads (lease documents, etc.) are stored in DO Spaces
+AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='')
+AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='')
+AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME', default='')
+AWS_S3_ENDPOINT_URL = config('AWS_S3_ENDPOINT_URL', default='')
+AWS_S3_CUSTOM_DOMAIN = config('AWS_S3_CUSTOM_DOMAIN', default='')
+AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='sgp1')
+AWS_S3_OBJECT_PARAMETERS = {
+    'CacheControl': 'max-age=86400',
+}
+AWS_DEFAULT_ACL = 'public-read'
+AWS_LOCATION = 'media'
+AWS_QUERYSTRING_AUTH = False  # Use public URLs (no signed URLs)
+
+# Only use S3 storage if credentials are configured
+if AWS_ACCESS_KEY_ID and AWS_STORAGE_BUCKET_NAME:
+    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_LOCATION}/' if AWS_S3_CUSTOM_DOMAIN else f'{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/{AWS_LOCATION}/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

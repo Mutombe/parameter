@@ -23,6 +23,10 @@ daphne==4.1.2
 gunicorn==23.0.0
 whitenoise==6.11.0
 
+# Cloud Storage (DigitalOcean Spaces / S3-compatible)
+django-storages[s3]==1.14.4
+boto3==1.38.34
+
 # Utils
 python-decouple==3.8
 python-dotenv==1.2.1
