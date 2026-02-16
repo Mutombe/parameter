@@ -353,24 +353,19 @@ def apply_late_penalties_all_tenants():
 def _apply_late_penalties():
     """Apply late penalties for overdue invoices in the current tenant schema."""
     from apps.billing.models import Invoice, LatePenaltyConfig, LatePenaltyExclusion
-    from apps.notifications.models import Notification
     from apps.accounts.models import User
 
     today = timezone.now().date()
     penalties_created = 0
 
     # Get all overdue invoices (exclude penalty invoices themselves)
-    overdue_invoices = Invoice.objects.filter(
+    overdue_invoices = list(Invoice.objects.filter(
         status='overdue',
         balance__gt=0
     ).exclude(
         invoice_type='penalty'
-    ).select_related('tenant', 'unit', 'property')
+    ).select_related('tenant', 'unit', 'property'))
 
-    admin_users = User.objects.filter(
-        role__in=[User.Role.ADMIN, User.Role.ACCOUNTANT],
-        is_active=True, notifications_enabled=True
-    )
     system_user = User.objects.filter(role=User.Role.ADMIN).first()
 
     for invoice in overdue_invoices:
@@ -385,7 +380,7 @@ def _apply_late_penalties():
             if active_exclusion:
                 continue
 
-            # Find applicable config: tenant override > property default > any enabled
+            # Find applicable config: tenant override > property default > system default
             config = LatePenaltyConfig.objects.filter(
                 tenant=invoice.tenant, is_enabled=True
             ).first()
@@ -413,81 +408,35 @@ def _apply_late_penalties():
             if penalty_amount <= 0:
                 continue
 
-            # Atomic check+create to prevent duplicate penalties from concurrent runs
-            with transaction.atomic():
-                # Lock the original invoice to serialize penalty creation
-                Invoice.objects.select_for_update().get(id=invoice.id)
+            # Check existing penalty count (prevent duplicates)
+            existing_penalty_count = Invoice.objects.filter(
+                invoice_type='penalty',
+                tenant=invoice.tenant,
+                description__contains=invoice.invoice_number
+            ).count()
 
-                # Re-check penalty count inside the lock
-                existing_penalty_count = Invoice.objects.filter(
-                    invoice_type='penalty',
-                    tenant=invoice.tenant,
-                    description__contains=invoice.invoice_number
-                ).count()
+            if config.max_penalties_per_invoice > 0 and existing_penalty_count >= config.max_penalties_per_invoice:
+                continue
 
-                if config.max_penalties_per_invoice > 0 and existing_penalty_count >= config.max_penalties_per_invoice:
-                    continue
+            # Create penalty invoice
+            penalty_invoice = Invoice(
+                tenant=invoice.tenant,
+                unit=invoice.unit,
+                property=invoice.property,
+                invoice_type='penalty',
+                status='sent',
+                date=today,
+                due_date=today,
+                amount=penalty_amount,
+                vat_amount=Decimal('0'),
+                currency=config.currency or invoice.currency,
+                description=f'Late payment penalty for {invoice.invoice_number} ({config.get_penalty_type_display()})',
+                created_by=system_user
+            )
+            penalty_invoice.save()
+            penalties_created += 1
 
-                penalty_invoice = Invoice.objects.create(
-                    tenant=invoice.tenant,
-                    unit=invoice.unit,
-                    property=invoice.property,
-                    invoice_type='penalty',
-                    status='sent',
-                    date=today,
-                    due_date=today,
-                    amount=penalty_amount,
-                    vat_amount=Decimal('0'),
-                    currency=config.currency or invoice.currency,
-                    description=f'Late payment penalty for {invoice.invoice_number} ({config.get_penalty_type_display()})',
-                    created_by=system_user
-                )
-                penalties_created += 1
-
-                # Audit trail for penalty creation
-                from apps.accounting.models import AuditTrail
-                AuditTrail.objects.create(
-                    action='late_penalty_applied',
-                    model_name='Invoice',
-                    record_id=penalty_invoice.id,
-                    changes={
-                        'penalty_invoice_number': penalty_invoice.invoice_number,
-                        'original_invoice_number': invoice.invoice_number,
-                        'tenant_name': invoice.tenant.name,
-                        'penalty_amount': str(penalty_amount),
-                        'penalty_type': config.penalty_type,
-                    },
-                    user=system_user
-                )
-
-            # Notify admins
-            from apps.notifications.utils import push_notification_to_user
-            for admin_user in admin_users:
-                try:
-                    notif = Notification.objects.create(
-                        user=admin_user,
-                        notification_type='late_penalty',
-                        priority='medium',
-                        title=f'Late Penalty Applied: {penalty_invoice.invoice_number}',
-                        message=f'A penalty of {config.currency} {penalty_amount:,.2f} was applied to {invoice.tenant.name} for overdue invoice {invoice.invoice_number}.',
-                        data={
-                            'penalty_invoice_id': penalty_invoice.id,
-                            'original_invoice_id': invoice.id,
-                            'original_invoice_number': invoice.invoice_number,
-                            'tenant_name': invoice.tenant.name,
-                            'penalty_amount': str(penalty_amount),
-                        }
-                    )
-                    try:
-                        push_notification_to_user(admin_user.id, {
-                            'id': notif.id, 'title': notif.title,
-                            'message': notif.message, 'notification_type': notif.notification_type,
-                            'created_at': notif.created_at.isoformat(),
-                        })
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
+            logger.info(f"Applied penalty {penalty_invoice.invoice_number} ({penalty_amount}) for {invoice.invoice_number}")
 
         except Exception as e:
             logger.error(f"Failed to apply penalty for invoice {invoice.invoice_number}: {e}")

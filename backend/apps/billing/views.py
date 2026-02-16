@@ -806,10 +806,20 @@ class LatePenaltyConfigViewSet(viewsets.ModelViewSet):
         """Manually trigger late penalty processing for overdue invoices."""
         from .tasks import _apply_late_penalties
         try:
+            # First mark overdue invoices (sent/partial with past due dates)
+            today = timezone.now().date()
+            marked = Invoice.objects.filter(
+                due_date__lt=today,
+                status__in=['sent', 'partial'],
+                balance__gt=0
+            ).exclude(invoice_type='penalty').update(status='overdue')
+
             count = _apply_late_penalties()
             return Response({
-                'message': f'Applied {count} late {"penalty" if count == 1 else "penalties"}',
+                'message': f'Applied {count} late {"penalty" if count == 1 else "penalties"}'
+                           + (f' ({marked} invoices marked overdue)' if marked else ''),
                 'penalties_created': count,
+                'invoices_marked_overdue': marked,
             })
         except Exception as e:
             logger.error(f"Failed to apply penalties: {e}")
