@@ -5,6 +5,7 @@ import { Eye, EyeOff, Loader2, Building2, Shield, BarChart3, AlertTriangle } fro
 import { AxiosError } from 'axios'
 import { useAuthStore } from '../stores/authStore'
 import { authApi } from '../services/api'
+import { useThemeEffect } from '../hooks/useThemeEffect'
 import toast from 'react-hot-toast'
 import { SiFsecure } from "react-icons/si";
 import { PiBuildingApartmentLight } from "react-icons/pi";
@@ -20,6 +21,7 @@ const features = [
 ]
 
 export default function Login() {
+  useThemeEffect()
   const navigate = useNavigate()
   const location = useLocation()
   const { setUser } = useAuthStore()
@@ -91,8 +93,8 @@ export default function Login() {
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary-600 via-primary-700 to-primary-900 p-12 flex-col justify-between relative overflow-hidden">
         {/* Background Pattern */}
         <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 left-20 w-72 h-72 bg-white rounded-full blur-3xl" />
-          <div className="absolute bottom-20 right-20 w-96 h-96 bg-white rounded-full blur-3xl" />
+          <div className="absolute top-20 left-20 w-72 h-72 rounded-full blur-3xl" style={{ backgroundColor: '#ffffff' }} />
+          <div className="absolute bottom-20 right-20 w-96 h-96 rounded-full blur-3xl" style={{ backgroundColor: '#ffffff' }} />
         </div>
 
         {/* Content */}
@@ -149,7 +151,7 @@ export default function Login() {
       </div>
 
       {/* Right Panel - Login Form */}
-      <div className="flex-1 flex items-center justify-center p-4 sm:p-8 bg-gray-50">
+      <div className="flex-1 flex items-center justify-center p-4 sm:p-8 bg-gray-50 dark:bg-slate-900">
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -160,7 +162,7 @@ export default function Login() {
             <img
               src="/logo.png"
               alt="Parameter"
-              className="w-14 h-14 rounded-xl mx-auto mb-3 object-contain"
+              className="w-14 h-14 rounded-xl mx-auto mb-3 object-contain dark:brightness-0 dark:invert"
             />
             <h1 className="text-xl font-bold text-gray-900">Parameter</h1>
             <p className="text-gray-500 text-sm">Real Estate Accounting</p>
@@ -180,7 +182,7 @@ export default function Login() {
           )}
 
           {/* Login Card */}
-          <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/50 p-8 border border-gray-100">
+          <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/50 dark:shadow-black/30 p-8 border border-gray-100 dark:bg-slate-800 dark:border-slate-700">
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-gray-900">Welcome back</h2>
               <p className="text-gray-500 mt-1">Enter your credentials to access your account</p>
@@ -195,7 +197,7 @@ export default function Login() {
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                  className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                   placeholder="you@company.com"
                   required
                 />
@@ -210,7 +212,7 @@ export default function Login() {
                     type={showPassword ? 'text' : 'password'}
                     value={form.password}
                     onChange={(e) => setForm({ ...form, password: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all pr-12"
+                    className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all pr-12 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                     placeholder="••••••••"
                     required
                   />

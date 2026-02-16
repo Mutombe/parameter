@@ -503,13 +503,13 @@ export default function SuperAdminDashboard() {
                       placeholder="Search companies..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent w-64"
+                      className="pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent w-64 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                     />
                   </div>
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="px-4 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                   >
                     <option value="all">All Status</option>
                     <option value="active">Active</option>
@@ -803,7 +803,7 @@ export default function SuperAdminDashboard() {
                     type="text"
                     value={inviteForm.company_name}
                     onChange={(e) => setInviteForm({ ...inviteForm, company_name: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                     required
                     placeholder="Acme Real Estate"
                   />
@@ -814,7 +814,7 @@ export default function SuperAdminDashboard() {
                     type="email"
                     value={inviteForm.email}
                     onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                     required
                     placeholder="admin@company.com"
                   />
@@ -825,7 +825,7 @@ export default function SuperAdminDashboard() {
                     type="text"
                     value={inviteForm.first_name}
                     onChange={(e) => setInviteForm({ ...inviteForm, first_name: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                     placeholder="John"
                   />
                 </div>
@@ -835,7 +835,7 @@ export default function SuperAdminDashboard() {
                     type="text"
                     value={inviteForm.last_name}
                     onChange={(e) => setInviteForm({ ...inviteForm, last_name: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                     placeholder="Doe"
                   />
                 </div>
@@ -844,7 +844,7 @@ export default function SuperAdminDashboard() {
                   <select
                     value={inviteForm.invitation_type}
                     onChange={(e) => setInviteForm({ ...inviteForm, invitation_type: e.target.value as 'full' | 'demo' })}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                   >
                     <option value="full">Full Account</option>
                     <option value="demo">Demo Account (2 hours)</option>
@@ -855,7 +855,7 @@ export default function SuperAdminDashboard() {
                   <select
                     value={inviteForm.subscription_plan}
                     onChange={(e) => setInviteForm({ ...inviteForm, subscription_plan: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                   >
                     <option value="free">Free Trial</option>
                     <option value="basic">Basic</option>
@@ -868,7 +868,7 @@ export default function SuperAdminDashboard() {
                   <textarea
                     value={inviteForm.message}
                     onChange={(e) => setInviteForm({ ...inviteForm, message: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                     rows={3}
                     placeholder="Welcome to Parameter! We're excited to have you on board..."
                   />

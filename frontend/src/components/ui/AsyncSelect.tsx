@@ -92,9 +92,9 @@ export function AsyncSelect({
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
         className={cn(
-          'w-full flex items-center justify-between px-3 py-2.5 text-left text-sm bg-white border rounded-xl transition-all',
-          isOpen ? 'border-primary-500 ring-2 ring-primary-100' : 'border-gray-200 hover:border-gray-300',
-          disabled && 'opacity-50 cursor-not-allowed bg-gray-50',
+          'w-full flex items-center justify-between px-3 py-2.5 text-left text-sm bg-white border rounded-xl transition-all dark:bg-slate-900 dark:text-slate-200',
+          isOpen ? 'border-primary-500 ring-2 ring-primary-100' : 'border-gray-200 hover:border-gray-300 dark:border-slate-600 dark:hover:border-slate-500',
+          disabled && 'opacity-50 cursor-not-allowed bg-gray-50 dark:bg-slate-800',
           error && 'border-red-300 focus:ring-red-100'
         )}
       >
@@ -120,7 +120,7 @@ export function AsyncSelect({
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden animate-slide-up">
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg dark:shadow-black/30 overflow-hidden animate-slide-up">
           {/* Search input */}
           {searchable && (
             <div className="p-2 border-b border-gray-100">
@@ -132,7 +132,7 @@ export function AsyncSelect({
                   placeholder="Search..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                  className="w-full pl-9 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:bg-slate-900 dark:border-slate-600 dark:text-slate-200 dark:placeholder:text-slate-500"
                 />
                 {searchTerm && (
                   <button

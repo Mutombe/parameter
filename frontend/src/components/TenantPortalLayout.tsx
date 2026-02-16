@@ -18,6 +18,7 @@ import {
 import { useAuthStore } from '../stores/authStore'
 import { authApi } from '../services/api'
 import { cn } from '../lib/utils'
+import { useThemeEffect } from '../hooks/useThemeEffect'
 import toast from 'react-hot-toast'
 
 const navItems = [
@@ -33,6 +34,8 @@ export default function TenantPortalLayout() {
   const navigate = useNavigate()
   const { user, logout, impersonation, stopImpersonation } = useAuthStore()
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  useThemeEffect()
 
   const isImpersonating = !!impersonation
 
@@ -79,7 +82,7 @@ export default function TenantPortalLayout() {
               cn(
                 'flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all',
                 isActive
-                  ? 'bg-primary-50 text-primary-700 shadow-sm'
+                  ? 'bg-primary-50 text-primary-700 shadow-sm dark:bg-primary-900/20 dark:text-primary-400'
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
               )
             }

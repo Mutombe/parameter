@@ -564,7 +564,7 @@ export default function LatePenalties() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Property (optional)</label>
               <select value={configForm.property} onChange={(e) => setConfigForm({ ...configForm, property: e.target.value })}
-                className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500">
+                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600">
                 <option value="">All Properties</option>
                 {(properties || []).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
@@ -572,7 +572,7 @@ export default function LatePenalties() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Tenant Override (optional)</label>
               <select value={configForm.tenant} onChange={(e) => setConfigForm({ ...configForm, tenant: e.target.value })}
-                className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500">
+                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600">
                 <option value="">All Tenants</option>
                 {(tenants || []).map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
@@ -582,7 +582,7 @@ export default function LatePenalties() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Penalty Type</label>
             <select value={configForm.penalty_type} onChange={(e) => setConfigForm({ ...configForm, penalty_type: e.target.value })}
-              className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500">
+              className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600">
               <option value="percentage">Percentage of Invoice</option>
               <option value="flat_fee">Flat Fee</option>
               <option value="both">Percentage + Flat Fee</option>
@@ -601,7 +601,7 @@ export default function LatePenalties() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
               <select value={configForm.currency} onChange={(e) => setConfigForm({ ...configForm, currency: e.target.value })}
-                className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500">
+                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600">
                 <option value="USD">USD</option>
                 <option value="ZiG">ZiG</option>
               </select>
@@ -640,7 +640,7 @@ export default function LatePenalties() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Tenant</label>
             <select value={exclusionForm.tenant} onChange={(e) => setExclusionForm({ ...exclusionForm, tenant: e.target.value })}
-              required className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500">
+              required className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600">
               <option value="">Select tenant</option>
               {(tenants || []).map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>

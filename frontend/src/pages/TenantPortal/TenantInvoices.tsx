@@ -160,7 +160,7 @@ export default function TenantInvoices() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white"
+          className="px-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
         >
           <option value="">All Statuses</option>
           <option value="pending">Pending</option>

@@ -9,6 +9,7 @@ import DemoExpiryBanner from '../DemoExpiryBanner'
 import ErrorBoundary from '../ErrorBoundary'
 import { useUIStore } from '../../stores/uiStore'
 import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket'
+import { useThemeEffect } from '../../hooks/useThemeEffect'
 
 const MOBILE_BREAKPOINT = 1024 // lg breakpoint
 
@@ -25,6 +26,9 @@ export default function Layout() {
 
   // Establish WebSocket connection for real-time notifications
   useNotificationWebSocket()
+
+  // Apply dark/light theme class to <html>
+  useThemeEffect()
 
   // Detect mobile/desktop and handle resize
   useEffect(() => {

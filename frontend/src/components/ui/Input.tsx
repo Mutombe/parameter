@@ -28,10 +28,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           <input
             ref={ref}
             className={cn(
-              'w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm transition-all duration-200',
+              'w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 transition-all duration-200',
               'placeholder:text-gray-400',
               'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent',
               'disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed',
+              'dark:bg-slate-900 dark:border-slate-600 dark:text-slate-200 dark:placeholder:text-slate-500 dark:disabled:bg-slate-800',
               error && 'border-red-300 focus:ring-red-500',
               Icon && iconPosition === 'left' && 'pl-10',
               Icon && iconPosition === 'right' && 'pr-10',
@@ -71,10 +72,11 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
         <textarea
           ref={ref}
           className={cn(
-            'w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm transition-all duration-200',
+            'w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 transition-all duration-200',
             'placeholder:text-gray-400 resize-none',
             'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent',
             'disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed',
+            'dark:bg-slate-900 dark:border-slate-600 dark:text-slate-200 dark:placeholder:text-slate-500 dark:disabled:bg-slate-800',
             error && 'border-red-300 focus:ring-red-500',
             className
           )}
@@ -111,9 +113,10 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
         <select
           ref={ref}
           className={cn(
-            'w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm transition-all duration-200',
+            'w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 transition-all duration-200',
             'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent',
             'disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed',
+            'dark:bg-slate-900 dark:border-slate-600 dark:text-slate-200 dark:disabled:bg-slate-800',
             error && 'border-red-300 focus:ring-red-500',
             className
           )}

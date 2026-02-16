@@ -261,7 +261,7 @@ export default function Settings() {
                     <select
                       value={settings.default_currency}
                       onChange={(e) => setSettings({ ...settings, default_currency: e.target.value })}
-                      className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      className="w-full px-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                     >
                       <option value="USD">USD - US Dollar</option>
                       <option value="ZiG">ZiG - Zimbabwe Gold</option>
@@ -272,7 +272,7 @@ export default function Settings() {
                     <select
                       value={settings.secondary_currency}
                       onChange={(e) => setSettings({ ...settings, secondary_currency: e.target.value })}
-                      className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      className="w-full px-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                     >
                       <option value="ZiG">ZiG - Zimbabwe Gold</option>
                       <option value="USD">USD - US Dollar</option>
@@ -400,7 +400,7 @@ export default function Settings() {
                               type="time"
                               value={notifPrefs?.digest_time || '08:00'}
                               onChange={(e) => handleDigestTimeChange(e.target.value)}
-                              className="px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                             />
                           </div>
                         )}
@@ -446,7 +446,7 @@ export default function Settings() {
                     <select
                       value={settings.paper_size}
                       onChange={(e) => setSettings({ ...settings, paper_size: e.target.value })}
-                      className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      className="w-full px-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                     >
                       <option value="A4">A4</option>
                       <option value="Letter">Letter</option>
@@ -481,7 +481,7 @@ export default function Settings() {
                     <select
                       value={settings.session_timeout}
                       onChange={(e) => setSettings({ ...settings, session_timeout: e.target.value })}
-                      className="w-full md:w-1/3 px-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      className="w-full md:w-1/3 px-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                     >
                       <option value="15">15 minutes</option>
                       <option value="30">30 minutes</option>

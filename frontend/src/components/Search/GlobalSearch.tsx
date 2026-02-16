@@ -183,7 +183,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed top-[20%] left-1/2 -translate-x-1/2 w-full max-w-xl bg-white rounded-2xl shadow-2xl z-50 overflow-hidden"
+            className="fixed top-[20%] left-1/2 -translate-x-1/2 w-full max-w-xl bg-white rounded-2xl shadow-2xl dark:shadow-black/30 z-50 overflow-hidden"
           >
             {/* Search Input */}
             <div className="flex items-center gap-3 px-4 border-b border-gray-100">
@@ -194,7 +194,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); setActiveIndex(0); }}
                 placeholder="Search properties, tenants, landlords..."
-                className="flex-1 py-4 text-base outline-none placeholder:text-gray-400"
+                className="flex-1 py-4 text-base outline-none bg-transparent placeholder:text-gray-400 dark:text-slate-200 dark:placeholder:text-slate-500"
               />
               {query && (
                 <button

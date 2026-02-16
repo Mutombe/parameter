@@ -5,8 +5,10 @@ import {
   Building2, Users, FileText, BarChart3, Shield, Zap,
   CheckCircle, ArrowRight, Phone, Mail, ChevronRight,
   Globe, DollarSign, PieChart, Clock, BookOpen, Lock,
-  Menu, X
+  Menu, X, Sun, Moon, Monitor
 } from 'lucide-react'
+import { useUIStore } from '../stores/uiStore'
+import { useThemeEffect } from '../hooks/useThemeEffect'
 import PrivacyPolicyModal from '../components/PrivacyPolicyModal'
 import { SiFsecure } from "react-icons/si";
 import { PiUsersFour } from "react-icons/pi";
@@ -103,6 +105,8 @@ const plans = [
 ]
 
 export default function Landing() {
+  const { theme, setTheme } = useUIStore()
+  useThemeEffect()
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [contactForm, setContactForm] = useState({
@@ -136,7 +140,7 @@ const generateEmailLink = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between">
             <Link to="/" className="flex items-center gap-2 sm:gap-3">
-              <img src="/logo.png" alt="Parameter" className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-contain" />
+              <img src="/logo.png" alt="Parameter" className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-contain dark:brightness-0 dark:invert" />
               <span className="font-bold text-lg sm:text-xl text-gray-900">Parameter</span>
             </Link>
             <div className="hidden md:flex items-center gap-8">
@@ -147,6 +151,13 @@ const generateEmailLink = () => {
               <a href="#contact" className="text-gray-600 hover:text-gray-900 transition-colors">Contact</a>
             </div>
             <div className="flex items-center gap-2 sm:gap-4">
+              <button
+                onClick={() => setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light')}
+                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+                title={`Theme: ${theme}`}
+              >
+                {theme === 'dark' ? <Moon className="w-5 h-5" /> : theme === 'light' ? <Sun className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
+              </button>
               <Link to="/login" className="hidden sm:block text-gray-600 hover:text-gray-900 font-medium transition-colors">
                 Sign In
               </Link>
@@ -213,6 +224,13 @@ const generateEmailLink = () => {
                   Contact
                 </a>
                 <div className="pt-3 border-t border-gray-100 space-y-2">
+                  <button
+                    onClick={() => setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light')}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-colors"
+                  >
+                    {theme === 'dark' ? <Moon className="w-5 h-5" /> : theme === 'light' ? <Sun className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
+                    Theme: {theme.charAt(0).toUpperCase() + theme.slice(1)}
+                  </button>
                   <Link
                     to="/login"
                     onClick={() => setMobileMenuOpen(false)}
@@ -658,7 +676,7 @@ const generateEmailLink = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 mb-8 sm:mb-12">
             <div className="col-span-2 md:col-span-1">
               <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-                <img src="/logo.png" alt="Parameter" className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl object-contain" />
+                <img src="/logo.png" alt="Parameter" className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl object-contain dark:brightness-0 dark:invert" />
                 <span className="font-bold text-lg sm:text-xl text-white">Parameter</span>
               </div>
               <p className="text-xs sm:text-sm leading-relaxed">

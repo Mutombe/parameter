@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { tenantsApi } from '../services/api'
 import { cn } from '../lib/utils'
+import { useThemeEffect } from '../hooks/useThemeEffect'
 import toast from 'react-hot-toast'
 import { PiUsersFour } from "react-icons/pi";
 import { PiBuildingApartmentLight } from "react-icons/pi";
@@ -27,6 +28,7 @@ const steps = [
 ]
 
 export default function Register() {
+  useThemeEffect()
   const [currentStep, setCurrentStep] = useState(1)
   const [subdomainStatus, setSubdomainStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
 
@@ -201,7 +203,7 @@ export default function Register() {
         </div>
 
         {/* Form Card */}
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-xl dark:shadow-black/30 border border-gray-200 overflow-hidden">
           <AnimatePresence mode="wait">
             {/* Step 1: Company Info */}
             {currentStep === 1 && (
@@ -223,7 +225,7 @@ export default function Register() {
                       type="text"
                       value={formData.company_name}
                       onChange={(e) => updateForm('company_name', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                       placeholder="Acme Real Estate"
                     />
                   </div>
@@ -237,7 +239,7 @@ export default function Register() {
       type="text"
       value={formData.subdomain}
       onChange={(e) => updateForm('subdomain', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-      className="w-full px-4 py-3 border border-gray-200 rounded-xl sm:rounded-l-xl sm:rounded-r-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl sm:rounded-l-xl sm:rounded-r-none text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
       placeholder="acme"
     />
     <span className="px-4 py-2 sm:py-3 bg-gray-50 border border-t-0 sm:border-t sm:border-l-0 border-gray-200 rounded-b-xl sm:rounded-b-none sm:rounded-r-xl text-gray-500 text-sm flex items-center justify-center sm:justify-start whitespace-nowrap">
@@ -272,7 +274,7 @@ export default function Register() {
                       type="email"
                       value={formData.company_email}
                       onChange={(e) => updateForm('company_email', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                       placeholder="info@acme.com"
                     />
                   </div>
@@ -286,7 +288,7 @@ export default function Register() {
                         type="tel"
                         value={formData.company_phone}
                         onChange={(e) => updateForm('company_phone', e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                         placeholder="+263 77 123 4567"
                       />
                     </div>
@@ -297,7 +299,7 @@ export default function Register() {
                       <select
                         value={formData.default_currency}
                         onChange={(e) => updateForm('default_currency', e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                       >
                         <option value="USD">USD - US Dollar</option>
                         <option value="ZiG">ZiG - Zimbabwe Gold</option>
@@ -381,7 +383,7 @@ export default function Register() {
                         type="text"
                         value={formData.admin_first_name}
                         onChange={(e) => updateForm('admin_first_name', e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                         placeholder="John"
                       />
                     </div>
@@ -393,7 +395,7 @@ export default function Register() {
                         type="text"
                         value={formData.admin_last_name}
                         onChange={(e) => updateForm('admin_last_name', e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                         placeholder="Doe"
                       />
                     </div>
@@ -407,7 +409,7 @@ export default function Register() {
                       type="email"
                       value={formData.admin_email}
                       onChange={(e) => updateForm('admin_email', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                       placeholder="john@acme.com"
                     />
                   </div>
@@ -420,7 +422,7 @@ export default function Register() {
                       type="password"
                       value={formData.admin_password}
                       onChange={(e) => updateForm('admin_password', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                       placeholder="Create a strong password"
                     />
                   </div>
@@ -433,7 +435,7 @@ export default function Register() {
                       type="password"
                       value={formData.admin_confirm_password}
                       onChange={(e) => updateForm('admin_confirm_password', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                       placeholder="Confirm your password"
                     />
                     {formData.admin_confirm_password && formData.admin_password !== formData.admin_confirm_password && (

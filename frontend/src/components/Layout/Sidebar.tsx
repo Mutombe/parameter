@@ -164,7 +164,7 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
           <img
             src="/logo.png"
             alt="Parameter"
-            className="w-10 h-10 rounded-xl flex-shrink-0 object-contain"
+            className="w-10 h-10 rounded-xl flex-shrink-0 object-contain dark:brightness-0 dark:invert"
           />
           <AnimatePresence>
             {isExpanded && (
@@ -230,7 +230,7 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
                     className={cn(
                       'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative',
                       isActive
-                        ? 'bg-primary-50 text-primary-700'
+                        ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-400'
                         : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                     )}
                   >
@@ -261,7 +261,7 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
                     className={cn(
                       'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative',
                       isActive
-                        ? 'bg-primary-50 text-primary-700'
+                        ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-400'
                         : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                     )}
                   >

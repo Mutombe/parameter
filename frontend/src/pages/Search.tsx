@@ -336,7 +336,7 @@ export default function Search() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search for properties, tenants, invoices, units, leases..."
-              className="w-full pl-12 pr-12 py-4 text-lg border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+              className="w-full pl-12 pr-12 py-4 text-lg bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
               autoFocus
             />
             {query && (

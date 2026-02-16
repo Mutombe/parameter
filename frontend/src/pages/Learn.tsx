@@ -5,8 +5,10 @@ import {
   Building2, Users, FileText, BarChart3, DollarSign, Receipt,
   BookOpen, ChevronRight, Search, Home, Settings, UserPlus,
   PieChart, Calculator, FileCheck, Bell, Shield, Zap,
-  ArrowLeft, Menu, X, Phone, Mail
+  ArrowLeft, Menu, X, Phone, Mail, Sun, Moon, Monitor
 } from 'lucide-react'
+import { useUIStore } from '../stores/uiStore'
+import { useThemeEffect } from '../hooks/useThemeEffect'
 import PrivacyPolicyModal from '../components/PrivacyPolicyModal'
 import { SiFsecure } from "react-icons/si";
 import { PiUsersFour } from "react-icons/pi";
@@ -891,6 +893,8 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
 }
 
 export default function Learn() {
+  const { theme, setTheme } = useUIStore()
+  useThemeEffect()
   const [activeSection, setActiveSection] = useState('getting-started')
   const [activeSubsection, setActiveSubsection] = useState('overview')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -906,28 +910,37 @@ export default function Learn() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
               <Link to="/" className="flex items-center gap-2">
-                <img src="/logo.png" alt="Parameter" className="w-8 h-8 rounded-lg object-contain" />
+                <img src="/logo.png" alt="Parameter" className="w-8 h-8 rounded-lg object-contain dark:brightness-0 dark:invert" />
                 <span className="font-bold text-lg text-gray-900">Parameter</span>
               </Link>
               <span className="text-gray-300">|</span>
               <span className="text-gray-600 font-medium">Documentation</span>
             </div>
-            <div className="hidden md:flex items-center gap-6">
-              <Link to="/" className="text-gray-600 hover:text-gray-900 transition-colors">Home</Link>
-              <Link to="/login" className="text-gray-600 hover:text-gray-900 transition-colors">Sign In</Link>
-              <Link
-                to="/signup"
-                className="px-4 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors"
+            <div className="flex items-center gap-2 md:gap-6">
+              <div className="hidden md:flex items-center gap-6">
+                <Link to="/" className="text-gray-600 hover:text-gray-900 transition-colors">Home</Link>
+                <Link to="/login" className="text-gray-600 hover:text-gray-900 transition-colors">Sign In</Link>
+                <Link
+                  to="/signup"
+                  className="px-4 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors"
+                >
+                  Get Started
+                </Link>
+              </div>
+              <button
+                onClick={() => setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light')}
+                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+                title={`Theme: ${theme}`}
               >
-                Get Started
-              </Link>
+                {theme === 'dark' ? <Moon className="w-5 h-5" /> : theme === 'light' ? <Sun className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
+              </button>
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden p-2 text-gray-600 hover:text-gray-900"
+              >
+                {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              </button>
             </div>
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 text-gray-600 hover:text-gray-900"
-            >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
           </div>
         </div>
       </header>
@@ -1051,7 +1064,7 @@ export default function Learn() {
           <div className="grid md:grid-cols-4 gap-8 mb-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <img src="/logo.png" alt="Parameter" className="w-8 h-8 rounded-lg object-contain" />
+                <img src="/logo.png" alt="Parameter" className="w-8 h-8 rounded-lg object-contain dark:brightness-0 dark:invert" />
                 <span className="font-bold text-lg text-white">Parameter</span>
               </div>
               <p className="text-sm">Real estate accounting platform for Zimbabwe.</p>

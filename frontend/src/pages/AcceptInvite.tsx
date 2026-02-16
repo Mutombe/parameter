@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { Eye, EyeOff, CheckCircle, XCircle, Loader2, UserPlus } from 'lucide-react'
 import { invitationsApi } from '../services/api'
 import { getErrorMessage } from '../lib/utils'
+import { useThemeEffect } from '../hooks/useThemeEffect'
 import toast from 'react-hot-toast'
 import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
@@ -16,6 +17,7 @@ interface InvitationData {
 }
 
 export default function AcceptInvite() {
+  useThemeEffect()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token')
@@ -110,7 +112,7 @@ export default function AcceptInvite() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center"
+          className="bg-white rounded-2xl shadow-xl dark:shadow-black/30 p-8 max-w-md w-full text-center"
         >
           <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <XCircle className="w-8 h-8 text-red-600" />
@@ -134,7 +136,7 @@ export default function AcceptInvite() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full"
+        className="bg-white rounded-2xl shadow-xl dark:shadow-black/30 p-8 max-w-md w-full"
       >
         {/* Header */}
         <div className="text-center mb-8">
@@ -176,7 +178,7 @@ export default function AcceptInvite() {
                 type="text"
                 value={formData.first_name}
                 onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                 placeholder="John"
                 required
               />
@@ -189,7 +191,7 @@ export default function AcceptInvite() {
                 type="text"
                 value={formData.last_name}
                 onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                 placeholder="Doe"
                 required
               />
@@ -205,7 +207,7 @@ export default function AcceptInvite() {
                 type={showPassword ? 'text' : 'password'}
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent pr-10"
+                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent pr-10 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                 placeholder="Create a password"
                 required
                 minLength={8}
@@ -229,7 +231,7 @@ export default function AcceptInvite() {
                 type={showConfirmPassword ? 'text' : 'password'}
                 value={formData.confirm_password}
                 onChange={(e) => setFormData({ ...formData, confirm_password: e.target.value })}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent pr-10"
+                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent pr-10 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                 placeholder="Confirm your password"
                 required
                 minLength={8}

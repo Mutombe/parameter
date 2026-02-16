@@ -317,14 +317,14 @@ export default function Journals() {
             placeholder="Search by journal number or description..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white focus:border-transparent transition-all"
+            className="w-full pl-10 pr-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
           />
         </div>
 
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition-all"
+          className="px-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
         >
           <option value="">All Statuses</option>
           <option value="draft">Draft</option>
@@ -640,7 +640,7 @@ export default function Journals() {
                         <select
                           value={entry.account}
                           onChange={(e) => updateEntry(index, 'account', Number(e.target.value))}
-                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                           required
                         >
                           <option value={0}>Select account...</option>
@@ -657,7 +657,7 @@ export default function Journals() {
                           value={entry.description}
                           onChange={(e) => updateEntry(index, 'description', e.target.value)}
                           placeholder="Line description"
-                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                         />
                       </td>
                       <td className="px-4 py-2">
@@ -673,7 +673,7 @@ export default function Journals() {
                             }
                           }}
                           placeholder="0.00"
-                          className="w-full px-3 py-2 text-sm text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 tabular-nums"
+                          className="w-full px-3 py-2 text-sm text-right bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 tabular-nums dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                         />
                       </td>
                       <td className="px-4 py-2">
@@ -689,7 +689,7 @@ export default function Journals() {
                             }
                           }}
                           placeholder="0.00"
-                          className="w-full px-3 py-2 text-sm text-right border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 tabular-nums"
+                          className="w-full px-3 py-2 text-sm text-right bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 tabular-nums dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                         />
                       </td>
                       <td className="px-4 py-2">

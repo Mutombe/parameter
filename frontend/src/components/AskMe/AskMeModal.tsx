@@ -235,7 +235,7 @@ export default function AskMeModal({ open, onClose }: AskMeModalProps) {
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
                   placeholder="Ask about vacancies, revenue, tenants..."
-                  className="flex-1 px-4 py-3 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                  className="flex-1 px-4 py-3 text-sm bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                 />
                 <button
                   type="submit"

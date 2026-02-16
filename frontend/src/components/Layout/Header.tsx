@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Search, LogOut, Settings, ChevronDown, Sparkles, HelpCircle, BookOpen, FileText, Loader2, Menu } from 'lucide-react'
+import { Bell, Search, LogOut, Settings, ChevronDown, Sparkles, HelpCircle, BookOpen, FileText, Loader2, Menu, Sun, Moon, Monitor } from 'lucide-react'
 import { useAuthStore } from '../../stores/authStore'
 import { useUIStore } from '../../stores/uiStore'
 import { authApi } from '../../services/api'
@@ -16,7 +16,7 @@ export default function Header() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuthStore()
-  const { toggleAskMe, toggleMobileSidebar, isMobile } = useUIStore()
+  const { toggleAskMe, toggleMobileSidebar, isMobile, theme, setTheme } = useUIStore()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -150,6 +150,21 @@ export default function Header() {
           <span className="hidden md:inline font-medium">AI Assistant</span>
         </button>
 
+        {/* Theme Toggle */}
+        <button
+          onClick={() => setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light')}
+          className="p-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+          title={`Theme: ${theme}`}
+        >
+          {theme === 'dark' ? (
+            <Moon className="w-5 h-5" />
+          ) : theme === 'light' ? (
+            <Sun className="w-5 h-5" />
+          ) : (
+            <Monitor className="w-5 h-5" />
+          )}
+        </button>
+
         {/* Help - hidden on mobile */}
         <div className="relative hidden md:block">
           <button
@@ -171,7 +186,7 @@ export default function Header() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -10, scale: 0.95 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden z-20"
+                  className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-lg dark:shadow-black/30 border border-gray-200 overflow-hidden z-20"
                 >
                   <div className="p-4 border-b border-gray-100">
                     <h3 className="font-semibold text-gray-900">Help & Resources</h3>
@@ -319,7 +334,7 @@ export default function Header() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -10, scale: 0.95 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden z-20"
+                  className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-lg dark:shadow-black/30 border border-gray-200 overflow-hidden z-20"
                 >
                   <div className="p-4 border-b border-gray-100">
                     <div className="flex items-center gap-3">
