@@ -458,6 +458,8 @@ export const penaltyApi = {
   deleteConfig: (id: number) => api.delete(`/billing/penalty-configs/${id}/`),
   forProperty: (propertyId: number) => api.get('/billing/penalty-configs/for_property/', { params: { property_id: propertyId } }),
   penaltyInvoices: (params?: object) => api.get('/billing/penalty-configs/penalty_invoices/', { params }),
+  applyNow: () => api.post('/billing/penalty-configs/apply_now/'),
+  overdueSummary: () => api.get('/billing/penalty-configs/overdue_summary/'),
   // Exclusions
   listExclusions: (params?: object) => api.get('/billing/penalty-exclusions/', { params }),
   createExclusion: (data: object) => api.post('/billing/penalty-exclusions/', data),

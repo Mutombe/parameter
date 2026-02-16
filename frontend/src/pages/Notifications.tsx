@@ -279,10 +279,10 @@ export default function Notifications() {
                         </p>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           {notif.priority === 'high' && (
-                            <Badge variant="destructive" className="text-[10px]">High</Badge>
+                            <Badge variant="danger" className="text-[10px]">High</Badge>
                           )}
                           {notif.priority === 'urgent' && (
-                            <Badge variant="destructive" className="text-[10px]">Urgent</Badge>
+                            <Badge variant="danger" className="text-[10px]">Urgent</Badge>
                           )}
                           {!notif.is_read && (
                             <div className="w-2 h-2 rounded-full bg-primary-500" />

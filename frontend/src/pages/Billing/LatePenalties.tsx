@@ -10,15 +10,19 @@ import {
   ShieldOff,
   Receipt,
   Percent,
-  DollarSign,
+  Play,
   X,
   Settings,
   FileText,
+  Clock,
+  DollarSign,
+  TrendingUp,
+  Ban,
 } from 'lucide-react'
 import { penaltyApi, propertyApi, tenantApi } from '../../services/api'
-import { PageHeader, Button, Input, Modal, Badge, EmptyState, ConfirmDialog, Pagination } from '../../components/ui'
+import { PageHeader, Button, Input, Modal, Badge, EmptyState, ConfirmDialog } from '../../components/ui'
 import toast from 'react-hot-toast'
-import { cn } from '../../lib/utils'
+import { cn, formatCurrency } from '../../lib/utils'
 
 interface PenaltyConfig {
   id: number
@@ -91,6 +95,11 @@ export default function LatePenalties() {
     enabled: activeTab === 'invoices',
   })
 
+  const { data: overdueSummary } = useQuery({
+    queryKey: ['overdue-summary'],
+    queryFn: () => penaltyApi.overdueSummary().then(r => r.data),
+  })
+
   const { data: properties } = useQuery({
     queryKey: ['properties-select'],
     queryFn: () => propertyApi.list({ page_size: 100 }).then(r => r.data.results || r.data),
@@ -113,7 +122,7 @@ export default function LatePenalties() {
       resetConfigForm()
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.detail || 'Failed to save configuration')
+      toast.error(err?.response?.data?.detail || err?.response?.data?.error || 'Failed to save configuration')
     },
   })
 
@@ -121,6 +130,7 @@ export default function LatePenalties() {
     mutationFn: (data: any) => penaltyApi.createExclusion(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['penalty-exclusions'] })
+      queryClient.invalidateQueries({ queryKey: ['overdue-summary'] })
       toast.success('Exclusion added')
       setShowExclusionModal(false)
       setExclusionForm({ tenant: '', reason: '', excluded_until: '' })
@@ -138,6 +148,7 @@ export default function LatePenalties() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['penalty-configs'] })
       queryClient.invalidateQueries({ queryKey: ['penalty-exclusions'] })
+      queryClient.invalidateQueries({ queryKey: ['overdue-summary'] })
       toast.success('Deleted successfully')
       setShowDeleteDialog(false)
       setDeleteTarget(null)
@@ -145,9 +156,27 @@ export default function LatePenalties() {
     onError: () => toast.error('Failed to delete'),
   })
 
+  const applyMutation = useMutation({
+    mutationFn: () => penaltyApi.applyNow(),
+    onSuccess: (res) => {
+      const count = res.data.penalties_created || 0
+      queryClient.invalidateQueries({ queryKey: ['penalty-invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['overdue-summary'] })
+      if (count > 0) {
+        toast.success(`Applied ${count} late ${count === 1 ? 'penalty' : 'penalties'}`)
+        setActiveTab('invoices')
+      } else {
+        toast.success('No overdue invoices eligible for penalties')
+      }
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error || 'Failed to apply penalties')
+    },
+  })
+
   const configs = configsData?.results || configsData || []
   const exclusions = exclusionsData?.results || exclusionsData || []
-  const penaltyInvoices = penaltyInvoicesData || []
+  const penaltyInvoices = penaltyInvoicesData?.results || penaltyInvoicesData || []
 
   const resetConfigForm = () => {
     setShowConfigModal(false)
@@ -213,6 +242,9 @@ export default function LatePenalties() {
     { key: 'invoices' as ActiveTab, label: 'Penalty Invoices', count: penaltyInvoices.length },
   ]
 
+  const hasConfigs = configs.length > 0
+  const overdueCount = overdueSummary?.eligible_for_penalty || 0
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -221,6 +253,17 @@ export default function LatePenalties() {
         icon={AlertTriangle}
         actions={
           <div className="flex gap-2">
+            {hasConfigs && (
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => applyMutation.mutate()}
+                disabled={applyMutation.isPending}
+              >
+                <Play className="w-4 h-4" />
+                {applyMutation.isPending ? 'Applying...' : 'Apply Penalties Now'}
+              </Button>
+            )}
             {activeTab === 'configs' && (
               <Button onClick={() => setShowConfigModal(true)} className="gap-2">
                 <Plus className="w-4 h-4" />
@@ -236,6 +279,77 @@ export default function LatePenalties() {
           </div>
         }
       />
+
+      {/* Overdue Summary Cards */}
+      {overdueSummary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-xl border border-gray-200 p-4"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-50 rounded-lg">
+                <Clock className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Overdue Invoices</p>
+                <p className="text-xl font-bold text-gray-900">{overdueSummary.total_overdue}</p>
+              </div>
+            </div>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="bg-white rounded-xl border border-gray-200 p-4"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-50 rounded-lg">
+                <TrendingUp className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Eligible for Penalty</p>
+                <p className="text-xl font-bold text-gray-900">{overdueSummary.eligible_for_penalty}</p>
+              </div>
+            </div>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white rounded-xl border border-gray-200 p-4"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-50 rounded-lg">
+                <Ban className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Excluded</p>
+                <p className="text-xl font-bold text-gray-900">{overdueSummary.excluded}</p>
+              </div>
+            </div>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="bg-white rounded-xl border border-gray-200 p-4"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-50 rounded-lg">
+                <DollarSign className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Total Overdue</p>
+                <p className="text-xl font-bold text-gray-900">
+                  {formatCurrency(parseFloat(overdueSummary.total_overdue_amount || '0'))}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
@@ -273,7 +387,7 @@ export default function LatePenalties() {
             <EmptyState
               icon={Settings}
               title="No penalty rules configured"
-              description="Create a penalty rule to automatically charge late fees on overdue invoices."
+              description="Create a penalty rule to automatically charge late fees on overdue invoices. Once configured, use 'Apply Penalties Now' to process overdue invoices."
               action={<Button onClick={() => setShowConfigModal(true)}><Plus className="w-4 h-4 mr-2" />Add Rule</Button>}
             />
           ) : (
@@ -301,7 +415,7 @@ export default function LatePenalties() {
                             ? `Property: ${config.property_name}`
                             : 'System Default'}
                       </h3>
-                      <Badge variant={config.is_enabled ? 'default' : 'secondary'}>
+                      <Badge variant={config.is_enabled ? 'success' : 'secondary'}>
                         {config.is_enabled ? 'Active' : 'Disabled'}
                       </Badge>
                     </div>
@@ -368,7 +482,7 @@ export default function LatePenalties() {
                       {exc.excluded_by_name && ` | By ${exc.excluded_by_name}`}
                     </p>
                   </div>
-                  <Badge variant={exc.is_active ? 'default' : 'secondary'}>
+                  <Badge variant={exc.is_active ? 'success' : 'secondary'}>
                     {exc.is_active ? 'Active' : 'Expired'}
                   </Badge>
                   <button onClick={() => { setDeleteTarget({ type: 'exclusion', id: exc.id }); setShowDeleteDialog(true) }}
@@ -395,7 +509,20 @@ export default function LatePenalties() {
             <EmptyState
               icon={Receipt}
               title="No penalty invoices"
-              description="Auto-generated penalty invoices will appear here."
+              description={hasConfigs
+                ? "Click 'Apply Penalties Now' to process overdue invoices and generate penalty invoices."
+                : "Create penalty rules first, then apply them to generate penalty invoices."
+              }
+              action={hasConfigs ? (
+                <Button onClick={() => applyMutation.mutate()} disabled={applyMutation.isPending}>
+                  <Play className="w-4 h-4 mr-2" />
+                  {applyMutation.isPending ? 'Applying...' : 'Apply Penalties Now'}
+                </Button>
+              ) : (
+                <Button onClick={() => { setActiveTab('configs'); setShowConfigModal(true) }}>
+                  <Plus className="w-4 h-4 mr-2" />Add Rule First
+                </Button>
+              )}
             />
           ) : (
             penaltyInvoices.map((inv: any, idx: number) => (
@@ -416,7 +543,7 @@ export default function LatePenalties() {
                   </div>
                   <div className="text-right">
                     <p className="font-semibold text-gray-900">{inv.currency} {parseFloat(inv.total_amount).toLocaleString()}</p>
-                    <Badge variant={inv.status === 'paid' ? 'default' : 'destructive'}>{inv.status}</Badge>
+                    <Badge variant={inv.status === 'paid' ? 'success' : 'danger'}>{inv.status}</Badge>
                   </div>
                 </div>
               </motion.div>
@@ -482,12 +609,12 @@ export default function LatePenalties() {
           </div>
 
           <div className="grid grid-cols-3 gap-4">
-            <Input label="Grace Period (days)" type="number" min="0" value={configForm.grace_period_days}
+            <Input label="Grace Period (days)" type="number" min="0" value={String(configForm.grace_period_days)}
               onChange={(e) => setConfigForm({ ...configForm, grace_period_days: parseInt(e.target.value) || 0 })} />
             <Input label="Max Penalty Amount" type="number" step="0.01" placeholder="No cap"
               value={configForm.max_penalty_amount}
               onChange={(e) => setConfigForm({ ...configForm, max_penalty_amount: e.target.value })} />
-            <Input label="Max Penalties/Invoice" type="number" min="0" value={configForm.max_penalties_per_invoice}
+            <Input label="Max Penalties/Invoice" type="number" min="0" value={String(configForm.max_penalties_per_invoice)}
               onChange={(e) => setConfigForm({ ...configForm, max_penalties_per_invoice: parseInt(e.target.value) || 0 })} />
           </div>
 

@@ -801,6 +801,43 @@ class LatePenaltyConfigViewSet(viewsets.ModelViewSet):
 
         return Response(InvoiceSerializer(invoices[:100], many=True).data)
 
+    @action(detail=False, methods=['post'])
+    def apply_now(self, request):
+        """Manually trigger late penalty processing for overdue invoices."""
+        from .tasks import _apply_late_penalties
+        try:
+            count = _apply_late_penalties()
+            return Response({
+                'message': f'Applied {count} late {"penalty" if count == 1 else "penalties"}',
+                'penalties_created': count,
+            })
+        except Exception as e:
+            logger.error(f"Failed to apply penalties: {e}")
+            return Response(
+                {'error': f'Failed to apply penalties: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get'])
+    def overdue_summary(self, request):
+        """Get summary of overdue invoices eligible for penalties."""
+        overdue = Invoice.objects.filter(
+            status='overdue', balance__gt=0
+        ).exclude(invoice_type='penalty')
+
+        excluded_tenant_ids = LatePenaltyExclusion.objects.filter(
+            Q(excluded_until__isnull=True) | Q(excluded_until__gte=timezone.now().date())
+        ).values_list('tenant_id', flat=True)
+
+        eligible = overdue.exclude(tenant_id__in=excluded_tenant_ids)
+
+        return Response({
+            'total_overdue': overdue.count(),
+            'excluded': overdue.filter(tenant_id__in=excluded_tenant_ids).count(),
+            'eligible_for_penalty': eligible.count(),
+            'total_overdue_amount': str(overdue.aggregate(total=Sum('balance'))['total'] or 0),
+        })
+
 
 class LatePenaltyExclusionViewSet(viewsets.ModelViewSet):
     """CRUD for late penalty exclusions."""
