@@ -226,7 +226,7 @@ export default function TeamManagement() {
                       <tr key={i} className="animate-pulse">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-400 to-primary-500 flex items-center justify-center text-white/50 font-medium text-sm">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-500 flex items-center justify-center text-white/50 font-medium text-sm">
                               --
                             </div>
                             <div className="space-y-2">
@@ -276,7 +276,7 @@ export default function TeamManagement() {
                     <tr key={user.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white font-medium text-sm">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white font-medium text-sm">
                             {user.first_name?.[0]}{user.last_name?.[0]}
                           </div>
                           <div>
@@ -350,7 +350,7 @@ export default function TeamManagement() {
                       <tr key={i} className="animate-pulse">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400">
+                            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-400">
                               <Mail className="w-5 h-5" />
                             </div>
                             <div className="space-y-2">
@@ -411,7 +411,7 @@ export default function TeamManagement() {
                       <tr key={invite.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-gray-500">
+                            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
                               <Mail className="w-5 h-5" />
                             </div>
                             <div>

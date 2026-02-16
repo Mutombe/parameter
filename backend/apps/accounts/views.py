@@ -73,9 +73,13 @@ class AuthViewSet(viewsets.ViewSet):
             user = serializer.validated_data['user']
             login(request, user)
 
-            # Update last activity
+            # Update last activity and backfill tenant_schema if empty
             user.last_activity = timezone.now()
-            user.save(update_fields=['last_activity'])
+            update_fields = ['last_activity']
+            if not user.tenant_schema and connection.schema_name and connection.schema_name != 'public':
+                user.tenant_schema = connection.schema_name
+                update_fields.append('tenant_schema')
+            user.save(update_fields=update_fields)
 
             # Log activity
             UserActivity.objects.create(
@@ -242,7 +246,7 @@ class AuthViewSet(viewsets.ViewSet):
 
 
 class UserViewSet(viewsets.ModelViewSet):
-    """CRUD for users (Admin only)."""
+    """CRUD for users (Admin only). Scoped to current tenant."""
     queryset = User.objects.all()
     permission_classes = [IsAdminUser]
 
@@ -253,6 +257,12 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        # Scope to current tenant
+        schema = connection.schema_name
+        if schema and schema != 'public':
+            queryset = queryset.filter(
+                Q(tenant_schema=schema) | Q(tenant_schema='')
+            )
         role = self.request.query_params.get('role')
         if role:
             queryset = queryset.filter(role=role)
@@ -290,11 +300,16 @@ class UserActivityViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class UserInvitationViewSet(viewsets.ModelViewSet):
-    """Manage user invitations."""
+    """Manage user invitations. Scoped to current tenant."""
     serializer_class = UserInvitationSerializer
     permission_classes = [CanInviteUsers]
 
     def get_queryset(self):
+        schema = connection.schema_name
+        if schema and schema != 'public':
+            return UserInvitation.objects.filter(
+                Q(invited_by__tenant_schema=schema) | Q(tenant_schema=schema)
+            )
         return UserInvitation.objects.all()
 
     def get_serializer_class(self):
@@ -325,7 +340,7 @@ class UserInvitationViewSet(viewsets.ModelViewSet):
 
         data = serializer.validated_data
 
-        # Create invitation
+        # Create invitation with tenant scoping
         invitation = UserInvitation.objects.create(
             email=data['email'],
             first_name=data.get('first_name', ''),
@@ -333,6 +348,7 @@ class UserInvitationViewSet(viewsets.ModelViewSet):
             role=data['role'],
             token=UserInvitation.generate_token(),
             invited_by=request.user,
+            tenant_schema=connection.schema_name or '',
             expires_at=timezone.now() + timedelta(days=7)
         )
 
@@ -345,9 +361,9 @@ class UserInvitationViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_201_CREATED)
 
     def _send_invitation_email(self, invitation, request):
-        """Send the invitation email."""
-        from django.core.mail import send_mail
+        """Send the branded invitation email."""
         from django.conf import settings
+        from apps.notifications.utils import send_email
 
         # Get tenant info if available
         tenant = getattr(request, 'tenant', None)
@@ -355,49 +371,38 @@ class UserInvitationViewSet(viewsets.ModelViewSet):
 
         # Get site URL - prefer production URL
         site_url = getattr(settings, 'SITE_URL', 'https://parameter.co.zw')
-
-        # Warn if still using localhost in production
-        if 'localhost' in site_url:
-            logger.warning(f"SITE_URL is set to localhost ({site_url}). Set SITE_URL env var for production.")
-            # Use production URL as fallback
-            if not settings.DEBUG:
-                site_url = 'https://parameter.co.zw'
+        if 'localhost' in site_url and not settings.DEBUG:
+            site_url = 'https://parameter.co.zw'
 
         invite_url = f"{site_url}/accept-invite?token={invitation.token}"
 
-        # Get inviter details
         inviter_name = invitation.invited_by.get_full_name() if invitation.invited_by else 'Admin'
         inviter_email = invitation.invited_by.email if invitation.invited_by else ''
 
-        subject = f"You're invited to join {company_name} on Parameter"
-
-        message = f"""
-Hello{' ' + invitation.first_name if invitation.first_name else ''},
+        try:
+            send_email(
+                invitation.email,
+                f"You're Invited to Join {company_name}",
+                f"""Dear{' ' + invitation.first_name if invitation.first_name else ''},
 
 You've been invited to join {company_name} on Parameter.co.zw - Real Estate Accounting Platform.
 
-Role: {invitation.get_role_display()}
-Invited by: {inviter_name} ({inviter_email})
+=== INVITATION DETAILS ===
 
-Click the link below to accept your invitation and create your account:
+- Role: {invitation.get_role_display()}
+- Invited By: {inviter_name} ({inviter_email})
+- Expires: 7 days from now
+
+To accept your invitation, click the link below:
 {invite_url}
-
-This invitation expires in 7 days.
 
 If you did not expect this invitation, you can safely ignore this email.
 
 Best regards,
 {company_name}
 Powered by Parameter.co.zw
-"""
-
-        try:
-            send_mail(
-                subject=subject,
-                message=message,
-                from_email=f"{company_name} <{settings.DEFAULT_FROM_EMAIL}>",
-                recipient_list=[invitation.email],
-                fail_silently=False
+""",
+                company_name=company_name
             )
             logger.info(f"User invitation email sent to {invitation.email} with URL: {invite_url}")
         except Exception as e:
@@ -489,13 +494,14 @@ class AcceptInvitationView(APIView):
 
         invitation = UserInvitation.objects.get(token=token)
 
-        # Create user
+        # Create user with tenant scoping from invitation
         user = User.objects.create_user(
             email=invitation.email,
             password=data['password'],
             first_name=data.get('first_name') or invitation.first_name,
             last_name=data.get('last_name') or invitation.last_name,
-            role=invitation.role
+            role=invitation.role,
+            tenant_schema=invitation.tenant_schema or connection.schema_name or ''
         )
 
         # Update invitation

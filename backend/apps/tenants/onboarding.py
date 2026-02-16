@@ -183,7 +183,8 @@ class OnboardingService:
                 is_staff=True,
                 preferred_currency=client.default_currency,
                 is_demo_user=is_demo,
-                account_status=User.AccountStatus.ACTIVE
+                account_status=User.AccountStatus.ACTIVE,
+                tenant_schema=client.schema_name,
             )
 
             logger.info(f"Created admin user: {user.email} for {client.name} {'[DEMO]' if is_demo else ''}")

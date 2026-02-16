@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -13,6 +14,7 @@ import {
   Search,
   Loader2,
   Clock,
+  ExternalLink,
 } from 'lucide-react'
 import { notificationsApi } from '../services/api'
 import { PageHeader, Button, Badge, Pagination, EmptyState } from '../components/ui'
@@ -77,7 +79,60 @@ const typeFilterOptions = [
 
 type TabFilter = 'all' | 'unread' | 'read'
 
+// Map entity_type from masterfile notifications to route paths
+const entityRouteMap: Record<string, string> = {
+  landlord: '/dashboard/landlords',
+  property: '/dashboard/properties',
+  unit: '/dashboard/units',
+  tenant: '/dashboard/tenants',
+  lease: '/dashboard/leases',
+}
+
+/**
+ * Determine the navigation path for a notification based on its type and data payload.
+ * Returns null if no navigation is applicable.
+ */
+function getNotificationRoute(notif: any): string | null {
+  const data = notif.data || {}
+  const type = notif.notification_type
+
+  // Masterfile notifications: entity_type + entity_id
+  if (type?.startsWith('masterfile_') && data.entity_type && data.entity_id) {
+    const basePath = entityRouteMap[data.entity_type]
+    if (basePath) return `${basePath}/${data.entity_id}`
+  }
+
+  // Invoice-related notifications
+  if (['invoice_created', 'invoice_overdue', 'invoice_reminder', 'rental_due'].includes(type) && data.invoice_id) {
+    return `/dashboard/invoices/${data.invoice_id}`
+  }
+
+  // Payment received
+  if (type === 'payment_received' && data.receipt_id) {
+    return `/dashboard/receipts/${data.receipt_id}`
+  }
+
+  // Late penalty — navigate to invoice if available, otherwise to tenant
+  if (type === 'late_penalty') {
+    if (data.invoice_id) return `/dashboard/invoices/${data.invoice_id}`
+    if (data.tenant_id) return `/dashboard/tenants/${data.tenant_id}`
+  }
+
+  // Lease notifications
+  if (['lease_expiring', 'lease_activated', 'lease_terminated'].includes(type) && data.lease_id) {
+    return `/dashboard/leases/${data.lease_id}`
+  }
+
+  // User / team notifications
+  if (['user_invited', 'user_joined'].includes(type)) {
+    return '/dashboard/settings'
+  }
+
+  return null
+}
+
 export default function Notifications() {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<TabFilter>('all')
   const [typeFilter, setTypeFilter] = useState('')
@@ -253,6 +308,8 @@ export default function Notifications() {
                   transition={{ delay: index * 0.02 }}
                   onClick={() => {
                     if (!notif.is_read) markReadMutation.mutate(notif.id)
+                    const route = getNotificationRoute(notif)
+                    if (route) navigate(route)
                   }}
                   className={cn(
                     'bg-white rounded-xl border p-4 hover:shadow-sm transition-all cursor-pointer group',
@@ -299,6 +356,12 @@ export default function Notifications() {
                         <span className="text-xs text-gray-300">
                           {notif.notification_type?.replace(/_/g, ' ')}
                         </span>
+                        {getNotificationRoute(notif) && (
+                          <span className="text-xs text-primary-500 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                            <ExternalLink className="w-3 h-3" />
+                            View
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

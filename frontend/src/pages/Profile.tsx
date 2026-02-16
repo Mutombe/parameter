@@ -174,16 +174,16 @@ export default function Profile() {
                   <img
                     src={avatarPreview}
                     alt="Preview"
-                    className="w-24 h-24 rounded-2xl object-cover shadow-lg ring-2 ring-primary-500 ring-offset-2"
+                    className="w-24 h-24 rounded-full object-cover shadow-lg ring-2 ring-primary-500 ring-offset-2"
                   />
                 ) : user?.avatar ? (
                   <img
                     src={getMediaUrl(user.avatar) || ''}
                     alt={user.first_name}
-                    className="w-24 h-24 rounded-2xl object-cover shadow-lg"
+                    className="w-24 h-24 rounded-full object-cover shadow-lg"
                   />
                 ) : (
-                  <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white text-3xl font-bold shadow-lg">
+                  <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white text-3xl font-bold shadow-lg">
                     {user?.first_name?.[0]}{user?.last_name?.[0]}
                   </div>
                 )}

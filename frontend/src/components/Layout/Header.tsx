@@ -73,7 +73,7 @@ export default function Header() {
       return (
         <div className={cn(
           sizeClasses,
-          "rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white transition-opacity",
+          "rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white transition-opacity",
           textSize,
           signingOut && "opacity-50"
         )}>
@@ -86,7 +86,7 @@ export default function Header() {
       <div className={cn("relative", sizeClasses)}>
         {/* Skeleton while loading */}
         {!avatarLoaded && (
-          <div className={cn(sizeClasses, "absolute inset-0 rounded-xl bg-gray-200 animate-pulse")} />
+          <div className={cn(sizeClasses, "absolute inset-0 rounded-full bg-gray-200 animate-pulse")} />
         )}
         <img
           src={avatarUrl}
@@ -95,7 +95,7 @@ export default function Header() {
           onError={() => setAvatarError(true)}
           className={cn(
             sizeClasses,
-            "rounded-xl object-cover transition-opacity",
+            "rounded-full object-cover transition-opacity",
             !avatarLoaded && "opacity-0",
             avatarLoaded && "opacity-100",
             signingOut && "opacity-50"

@@ -56,6 +56,12 @@ class User(AbstractUser):
         help_text='Current account status'
     )
 
+    # Tenant membership (schema_name of the tenant this user belongs to)
+    tenant_schema = models.CharField(
+        max_length=63, blank=True, default='',
+        help_text='Schema name of the tenant this user belongs to'
+    )
+
     # Profile fields
     phone = models.CharField(max_length=20, blank=True)
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
@@ -131,6 +137,12 @@ class UserInvitation(models.Model):
         max_length=20,
         choices=User.Role.choices,
         default=User.Role.CLERK
+    )
+
+    # Tenant membership
+    tenant_schema = models.CharField(
+        max_length=63, blank=True, default='',
+        help_text='Schema name of the tenant this invitation belongs to'
     )
 
     # Invitation metadata

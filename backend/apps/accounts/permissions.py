@@ -66,6 +66,7 @@ def get_allowed_invite_roles(user):
             User.Role.ADMIN,
             User.Role.ACCOUNTANT,
             User.Role.CLERK,
+            User.Role.TENANT_PORTAL,
         ],
         User.Role.ACCOUNTANT: [
             User.Role.ACCOUNTANT,
