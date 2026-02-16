@@ -101,6 +101,36 @@ def generate_monthly_invoices_for_tenant(tenant):
                 invoices_created += 1
                 logger.info(f"Created invoice {invoice.invoice_number} for {lease.tenant.name}")
 
+                # Email tenant about the new invoice
+                try:
+                    from apps.notifications.utils import send_tenant_email
+                    unit_name = lease.unit.unit_number if lease.unit else 'N/A'
+                    send_tenant_email(
+                        lease.tenant,
+                        f'New Invoice - {invoice.invoice_number}',
+                        f"""Dear {lease.tenant.name},
+
+A new rent invoice has been generated for your account.
+
+Invoice Details:
+- Invoice Number: {invoice.invoice_number}
+- Period: {period_start.strftime("%B %Y")}
+- Unit: {unit_name}
+- Amount Due: {invoice.currency} {invoice.amount:,.2f}
+- Due Date: {invoice.due_date}
+
+Please ensure payment is made by the due date to avoid late fees.
+
+Thank you for your prompt attention.
+
+Best regards,
+Property Management
+Powered by Parameter.co.zw
+"""
+                    )
+                except Exception:
+                    pass
+
     return invoices_created
 
 
@@ -164,6 +194,36 @@ def mark_overdue_invoices_for_tenant():
             )
         except Exception:
             pass
+
+    # Email tenants about overdue invoices
+    if newly_overdue:
+        from apps.notifications.utils import send_tenant_email
+        for invoice in newly_overdue:
+            try:
+                send_tenant_email(
+                    invoice.tenant,
+                    f'Invoice {invoice.invoice_number} is Now Overdue',
+                    f"""Dear {invoice.tenant.name},
+
+This is to inform you that your invoice {invoice.invoice_number} is now overdue.
+
+Invoice Details:
+- Invoice Number: {invoice.invoice_number}
+- Amount Due: {invoice.currency} {invoice.balance:,.2f}
+- Due Date: {invoice.due_date}
+- Unit: {invoice.unit.unit_number if invoice.unit else 'N/A'}
+
+Please settle this invoice immediately to avoid late payment penalties.
+
+If you have already made this payment, please disregard this notice and contact us with your proof of payment.
+
+Best regards,
+Property Management
+Powered by Parameter.co.zw
+"""
+                )
+            except Exception:
+                pass
 
     # Create notifications for admins/accountants
     if newly_overdue:
@@ -289,12 +349,40 @@ def _send_rental_due_reminders():
         balance__gt=0
     ).select_related('tenant', 'unit')
 
+    # Email tenants about upcoming due invoices
+    from apps.notifications.utils import send_tenant_email, push_notification_to_user
+    for invoice in upcoming_invoices:
+        try:
+            send_tenant_email(
+                invoice.tenant,
+                f'Payment Reminder - Invoice {invoice.invoice_number} Due in 3 Days',
+                f"""Dear {invoice.tenant.name},
+
+This is a friendly reminder that your invoice is due in 3 days.
+
+Invoice Details:
+- Invoice Number: {invoice.invoice_number}
+- Amount Due: {invoice.currency} {invoice.balance:,.2f}
+- Due Date: {invoice.due_date}
+- Unit: {invoice.unit.unit_number if invoice.unit else 'N/A'}
+
+Please ensure timely payment to avoid late fees.
+
+Thank you.
+
+Best regards,
+Property Management
+Powered by Parameter.co.zw
+"""
+            )
+        except Exception:
+            pass
+
     admin_users = User.objects.filter(
         role__in=[User.Role.ADMIN, User.Role.ACCOUNTANT],
         is_active=True, notifications_enabled=True
     )
 
-    from apps.notifications.utils import push_notification_to_user
     count = 0
     for invoice in upcoming_invoices:
         for admin_user in admin_users:
@@ -437,6 +525,35 @@ def _apply_late_penalties():
             penalties_created += 1
 
             logger.info(f"Applied penalty {penalty_invoice.invoice_number} ({penalty_amount}) for {invoice.invoice_number}")
+
+            # Email tenant about the penalty
+            try:
+                from apps.notifications.utils import send_tenant_email
+                send_tenant_email(
+                    invoice.tenant,
+                    f'Late Payment Penalty Applied - {penalty_invoice.invoice_number}',
+                    f"""Dear {invoice.tenant.name},
+
+A late payment penalty has been applied to your account for overdue invoice {invoice.invoice_number}.
+
+Penalty Details:
+- Penalty Invoice: {penalty_invoice.invoice_number}
+- Original Invoice: {invoice.invoice_number}
+- Penalty Amount: {penalty_invoice.currency} {penalty_amount:,.2f}
+- Outstanding Balance: {invoice.currency} {invoice.balance:,.2f}
+- Penalty Type: {config.get_penalty_type_display()}
+
+Please settle your outstanding balance as soon as possible to avoid further penalties.
+
+If you believe this is an error or need to discuss payment arrangements, please contact your property management office.
+
+Best regards,
+Property Management
+Powered by Parameter.co.zw
+"""
+                )
+            except Exception:
+                pass
 
         except Exception as e:
             logger.error(f"Failed to apply penalty for invoice {invoice.invoice_number}: {e}")

@@ -93,3 +93,33 @@ def auto_post_receipt(sender, instance, created, **kwargs):
                 logger.info(f"Fallback: Posted receipt {instance.receipt_number} without commission")
             except Exception as e2:
                 logger.error(f"Fallback also failed for receipt {instance.receipt_number}: {e2}")
+
+    # Email tenant payment confirmation
+    if created and instance.tenant:
+        try:
+            from apps.notifications.utils import send_tenant_email
+            invoice_ref = f" for invoice {instance.invoice.invoice_number}" if instance.invoice else ""
+            send_tenant_email(
+                instance.tenant,
+                f'Payment Received - {instance.receipt_number}',
+                f"""Dear {instance.tenant.name},
+
+We confirm receipt of your payment. Thank you!
+
+Payment Details:
+- Receipt Number: {instance.receipt_number}
+- Amount: {instance.currency} {instance.amount:,.2f}
+- Date: {instance.date}
+- Payment Method: {instance.get_payment_method_display()}
+- Reference: {instance.reference or 'N/A'}
+{f'- Applied To: Invoice {instance.invoice.invoice_number}' if instance.invoice else ''}
+
+This is an automated confirmation. Please retain this for your records.
+
+Best regards,
+Property Management
+Powered by Parameter.co.zw
+"""
+            )
+        except Exception:
+            pass

@@ -337,6 +337,33 @@ class LeaseAgreementViewSet(viewsets.ModelViewSet):
 
         lease.activate()
 
+        # Email tenant about lease activation
+        try:
+            from apps.notifications.utils import send_tenant_email
+            send_tenant_email(
+                lease.tenant,
+                f'Lease Activated - {lease.lease_number}',
+                f"""Dear {lease.tenant.name},
+
+Your lease agreement has been activated.
+
+Lease Details:
+- Lease Number: {lease.lease_number}
+- Unit: {lease.unit.unit_number}
+- Start Date: {lease.start_date}
+- End Date: {lease.end_date}
+- Monthly Rent: {lease.currency} {lease.monthly_rent:,.2f}
+
+Welcome to your new home! If you have any questions, please contact your property management office.
+
+Best regards,
+Property Management
+Powered by Parameter.co.zw
+"""
+            )
+        except Exception:
+            pass
+
         return Response(LeaseAgreementSerializer(lease).data)
 
     @action(detail=True, methods=['post'])
@@ -353,6 +380,31 @@ class LeaseAgreementViewSet(viewsets.ModelViewSet):
             )
 
         lease.terminate(serializer.validated_data['reason'])
+
+        # Email tenant about lease termination
+        try:
+            from apps.notifications.utils import send_tenant_email
+            send_tenant_email(
+                lease.tenant,
+                f'Lease Terminated - {lease.lease_number}',
+                f"""Dear {lease.tenant.name},
+
+Your lease agreement has been terminated.
+
+Lease Details:
+- Lease Number: {lease.lease_number}
+- Unit: {lease.unit.unit_number}
+- Termination Reason: {serializer.validated_data['reason']}
+
+Please contact your property management office for any outstanding matters or questions regarding your move-out process.
+
+Best regards,
+Property Management
+Powered by Parameter.co.zw
+"""
+            )
+        except Exception:
+            pass
 
         return Response(LeaseAgreementSerializer(lease).data)
 

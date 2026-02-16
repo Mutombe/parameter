@@ -63,6 +63,32 @@ def check_expiring_leases_for_tenant():
             # Import here to avoid circular imports
             from apps.notifications.models import Notification
 
+            # Email the tenant about lease expiry
+            try:
+                from apps.notifications.utils import send_tenant_email
+                send_tenant_email(
+                    lease.tenant,
+                    f'Your Lease Expires in {days} Days',
+                    f"""Dear {lease.tenant.name},
+
+This is a reminder that your lease agreement is expiring soon.
+
+Lease Details:
+- Unit: {lease.unit.unit_number}
+- Lease Number: {lease.lease_number}
+- Expiry Date: {lease.end_date}
+- Days Remaining: {days}
+
+Please contact your property management office to discuss renewal options or make arrangements for move-out.
+
+Best regards,
+Property Management
+Powered by Parameter.co.zw
+"""
+                )
+            except Exception:
+                pass
+
             for admin in admin_users:
                 Notification.objects.get_or_create(
                     user=admin,
