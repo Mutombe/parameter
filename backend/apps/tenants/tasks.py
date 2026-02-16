@@ -238,6 +238,44 @@ def check_expired_demos():
     from .models import Client
 
     now = timezone.now()
+
+    # Send 30-minute warning to demos about to expire
+    try:
+        expiring_soon = Client.objects.filter(
+            is_demo=True,
+            demo_expires_at__gt=now,
+            demo_expires_at__lte=now + timezone.timedelta(minutes=30),
+            account_status='active'
+        )
+        for client in expiring_soon:
+            try:
+                send_mail(
+                    subject=f"Your Demo Expires in 30 Minutes - {client.name}",
+                    message=f"""Hello,
+
+Your demo account for "{client.name}" on Parameter.co.zw will expire in approximately 30 minutes.
+
+After expiry, you won't be able to log in, but your data will be preserved.
+
+To continue using Parameter with all your data intact, please contact our team to activate your account:
+- Email: support@parameter.co.zw
+- Website: https://parameter.co.zw
+
+Don't lose your work - upgrade now!
+
+Best regards,
+The Parameter Team
+""",
+                    from_email=f"Parameter <{settings.DEFAULT_FROM_EMAIL}>",
+                    recipient_list=[client.email],
+                    fail_silently=True
+                )
+                logger.info(f"Demo expiry warning sent to {client.email}")
+            except Exception:
+                pass
+    except Exception as e:
+        logger.error(f"Failed to send demo expiry warnings: {e}")
+
     expired_demos = Client.objects.filter(
         is_demo=True,
         demo_expires_at__lte=now,
@@ -251,6 +289,33 @@ def check_expired_demos():
 
     if updated_count > 0:
         logger.info(f"Marked {updated_count} demo accounts as expired")
+
+        # Notify system admin about expired demos
+        try:
+            admin_email = getattr(settings, 'ADMIN_EMAIL', None) or settings.DEFAULT_FROM_EMAIL
+            expired_names = list(Client.objects.filter(
+                is_demo=True,
+                demo_expires_at__lte=now,
+                account_status='demo_expired'
+            ).values_list('name', flat=True)[:10])
+
+            send_mail(
+                subject=f"[Parameter Admin] {updated_count} Demo Account(s) Expired",
+                message=f"""{updated_count} demo account(s) have expired and been deactivated.
+
+Expired companies: {', '.join(expired_names)}
+
+These companies may be potential leads for conversion to paid accounts.
+
+Best regards,
+Parameter System
+""",
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[admin_email],
+                fail_silently=True
+            )
+        except Exception:
+            pass
 
     return {'expired': updated_count}
 

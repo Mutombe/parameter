@@ -44,6 +44,54 @@ def generate_monthly_invoices_all_tenants():
             })
 
     logger.info(f"Monthly invoice generation complete: {results}")
+
+    # Email staff summary of bulk invoice generation
+    if results['total_invoices'] > 0 or results['failed']:
+        try:
+            from apps.notifications.utils import send_staff_email
+            success_lines = '\n'.join(
+                f"  - {s['tenant']}: {s['invoices_created']} invoices"
+                for s in results['success'] if s['invoices_created'] > 0
+            )
+            failed_lines = '\n'.join(
+                f"  - {f['tenant']}: {f['error']}"
+                for f in results['failed']
+            ) if results['failed'] else '  None'
+
+            send_staff_email(
+                f'Monthly Billing Complete: {results["total_invoices"]} Invoices Generated',
+                f"""Monthly invoice generation has completed.
+
+Summary:
+- Total Invoices Created: {results['total_invoices']}
+- Companies Processed: {len(results['success'])}
+- Failures: {len(results['failed'])}
+
+Successful:
+{success_lines or '  None'}
+
+Failed:
+{failed_lines}
+
+Best regards,
+Parameter System
+"""
+            )
+        except Exception:
+            pass
+
+    # System alert if there were failures
+    if results['failed']:
+        try:
+            from apps.notifications.tasks import send_system_alert_email
+            failed_lines = '\n'.join(f"  - {f['tenant']}: {f['error']}" for f in results['failed'])
+            send_system_alert_email(
+                f'Invoice Generation Failures: {len(results["failed"])} companies failed',
+                f"""Monthly invoice generation had failures:\n\n{failed_lines}\n\nPlease investigate."""
+            )
+        except Exception:
+            pass
+
     return results
 
 
@@ -153,6 +201,26 @@ def mark_overdue_invoices_all_tenants():
             logger.error(f"Failed to mark overdue for {tenant.name}: {e}")
 
     logger.info(f"Marked {total_marked} invoices as overdue across all tenants")
+
+    # Email staff summary
+    if total_marked > 0:
+        try:
+            from apps.notifications.utils import send_staff_email
+            send_staff_email(
+                f'Daily Overdue Report: {total_marked} Invoices Marked Overdue',
+                f"""The daily overdue check has completed.
+
+{total_marked} invoice(s) have been marked as overdue across all companies.
+
+Tenants have been notified by email. Please review the overdue invoices in the billing dashboard.
+
+Best regards,
+Parameter System
+"""
+            )
+        except Exception:
+            pass
+
     return {'total_marked': total_marked}
 
 
@@ -435,6 +503,26 @@ def apply_late_penalties_all_tenants():
             logger.error(f"Failed to apply penalties for {tenant.name}: {e}")
 
     logger.info(f"Applied {total_penalties} late penalties across all tenants")
+
+    # Email staff summary
+    if total_penalties > 0:
+        try:
+            from apps.notifications.utils import send_staff_email
+            send_staff_email(
+                f'Late Penalties Applied: {total_penalties} Penalty Invoice(s) Created',
+                f"""The daily late penalty processing has completed.
+
+{total_penalties} penalty invoice(s) have been created across all companies.
+
+Affected tenants have been notified by email. Please review the penalty invoices in the Late Penalties dashboard.
+
+Best regards,
+Parameter System
+"""
+            )
+        except Exception:
+            pass
+
     return {'total_penalties': total_penalties}
 
 

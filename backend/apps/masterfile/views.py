@@ -364,6 +364,56 @@ Powered by Parameter.co.zw
         except Exception:
             pass
 
+        # Email staff about lease activation
+        try:
+            from apps.notifications.utils import send_staff_email
+            send_staff_email(
+                f'Lease Activated: {lease.tenant.name} - {lease.unit.unit_number}',
+                f"""A lease has been activated.
+
+Lease Details:
+- Lease Number: {lease.lease_number}
+- Tenant: {lease.tenant.name}
+- Unit: {lease.unit.unit_number}
+- Property: {lease.unit.property.name if lease.unit.property else 'N/A'}
+- Monthly Rent: {lease.currency} {lease.monthly_rent:,.2f}
+- Period: {lease.start_date} to {lease.end_date}
+- Activated By: {request.user.get_full_name() or request.user.email}
+
+Best regards,
+Parameter System
+"""
+            )
+        except Exception:
+            pass
+
+        # Email landlord about new tenant
+        try:
+            from apps.notifications.utils import send_landlord_email
+            landlord = lease.unit.property.landlord if lease.unit.property else None
+            if landlord:
+                send_landlord_email(
+                    landlord,
+                    f'New Tenant Moved In - {lease.unit.unit_number}',
+                    f"""Dear {landlord.name},
+
+A new tenant has moved into your property.
+
+Details:
+- Property: {lease.unit.property.name}
+- Unit: {lease.unit.unit_number}
+- Tenant: {lease.tenant.name}
+- Monthly Rent: {lease.currency} {lease.monthly_rent:,.2f}
+- Lease Period: {lease.start_date} to {lease.end_date}
+
+Best regards,
+Property Management
+Powered by Parameter.co.zw
+"""
+                )
+        except Exception:
+            pass
+
         return Response(LeaseAgreementSerializer(lease).data)
 
     @action(detail=True, methods=['post'])
@@ -403,6 +453,58 @@ Property Management
 Powered by Parameter.co.zw
 """
             )
+        except Exception:
+            pass
+
+        # Email staff about lease termination
+        try:
+            from apps.notifications.utils import send_staff_email
+            send_staff_email(
+                f'Lease Terminated: {lease.tenant.name} - {lease.unit.unit_number}',
+                f"""A lease has been terminated.
+
+Lease Details:
+- Lease Number: {lease.lease_number}
+- Tenant: {lease.tenant.name}
+- Unit: {lease.unit.unit_number}
+- Property: {lease.unit.property.name if lease.unit.property else 'N/A'}
+- Reason: {serializer.validated_data['reason']}
+- Terminated By: {request.user.get_full_name() or request.user.email}
+
+The unit is now vacant.
+
+Best regards,
+Parameter System
+"""
+            )
+        except Exception:
+            pass
+
+        # Email landlord about vacancy
+        try:
+            from apps.notifications.utils import send_landlord_email
+            landlord = lease.unit.property.landlord if lease.unit.property else None
+            if landlord:
+                send_landlord_email(
+                    landlord,
+                    f'Unit Vacated - {lease.unit.unit_number}',
+                    f"""Dear {landlord.name},
+
+A tenant has vacated a unit in your property.
+
+Details:
+- Property: {lease.unit.property.name}
+- Unit: {lease.unit.unit_number}
+- Former Tenant: {lease.tenant.name}
+- Termination Reason: {serializer.validated_data['reason']}
+
+The unit is now vacant and available for re-letting.
+
+Best regards,
+Property Management
+Powered by Parameter.co.zw
+"""
+                )
         except Exception:
             pass
 

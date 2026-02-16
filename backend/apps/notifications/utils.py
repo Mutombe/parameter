@@ -72,34 +72,66 @@ def _do_send_email(subject, message, recipient_list):
             recipient_list=recipient_list,
             fail_silently=False,
         )
-        logger.info(f"Tenant email sent to {recipient_list}: {subject}")
+        logger.info(f"Email sent to {recipient_list}: {subject}")
     except Exception as e:
-        logger.error(f"Failed to send tenant email to {recipient_list}: {e}")
+        logger.error(f"Failed to send email to {recipient_list}: {e}")
+
+
+def _send_threaded(subject, message, recipient_list, blocking=False):
+    """Send email, optionally in a daemon thread."""
+    full_subject = f"[Parameter] {subject}"
+    if blocking:
+        _do_send_email(full_subject, message, recipient_list)
+    else:
+        t = threading.Thread(
+            target=_do_send_email,
+            args=(full_subject, message, recipient_list),
+            daemon=True,
+        )
+        t.start()
 
 
 def send_tenant_email(tenant, subject, message, blocking=False):
     """
     Send an email to a RentalTenant.
     Uses a daemon thread by default to prevent blocking the caller.
-
-    Args:
-        tenant: RentalTenant instance (must have .email and .name)
-        subject: Email subject line
-        message: Plain-text email body
-        blocking: If True, send synchronously instead of in a thread
     """
     if not tenant or not getattr(tenant, 'email', None):
         logger.debug(f"No email for tenant {getattr(tenant, 'name', '?')}, skipping")
         return
+    _send_threaded(subject, message, [tenant.email], blocking)
 
-    full_subject = f"[Parameter] {subject}"
 
-    if blocking:
-        _do_send_email(full_subject, message, [tenant.email])
-    else:
-        t = threading.Thread(
-            target=_do_send_email,
-            args=(full_subject, message, [tenant.email]),
-            daemon=True,
-        )
-        t.start()
+def send_landlord_email(landlord, subject, message, blocking=False):
+    """Send an email to a Landlord."""
+    if not landlord or not getattr(landlord, 'email', None):
+        logger.debug(f"No email for landlord {getattr(landlord, 'name', '?')}, skipping")
+        return
+    _send_threaded(subject, message, [landlord.email], blocking)
+
+
+def send_staff_email(subject, message, roles=None, blocking=False):
+    """
+    Send an email to all active staff members (Admin/Accountant by default).
+    Uses daemon threads to prevent blocking.
+    """
+    try:
+        from apps.accounts.models import User
+        if roles is None:
+            roles = [User.Role.ADMIN, User.Role.ACCOUNTANT]
+        staff = User.objects.filter(
+            role__in=roles, is_active=True, notifications_enabled=True
+        ).values_list('email', flat=True)
+        emails = [e for e in staff if e]
+        if not emails:
+            return
+        _send_threaded(subject, message, emails, blocking)
+    except Exception as e:
+        logger.error(f"Failed to send staff email: {e}")
+
+
+def send_email(recipient_email, subject, message, blocking=False):
+    """Send an email to any single email address."""
+    if not recipient_email:
+        return
+    _send_threaded(subject, message, [recipient_email], blocking)

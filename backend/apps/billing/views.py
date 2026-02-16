@@ -743,6 +743,30 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         expense.approved_at = timezone.now()
         expense.save()
 
+        # Email staff about expense approval
+        try:
+            from apps.notifications.utils import send_staff_email
+            send_staff_email(
+                f'Expense Approved: {expense.currency} {expense.amount:,.2f} - {expense.expense_number}',
+                f"""An expense has been approved.
+
+Expense Details:
+- Expense Number: {expense.expense_number}
+- Type: {expense.get_expense_type_display()}
+- Payee: {expense.payee_name}
+- Amount: {expense.currency} {expense.amount:,.2f}
+- Description: {expense.description}
+- Approved By: {request.user.get_full_name() or request.user.email}
+
+This expense is now ready for payment.
+
+Best regards,
+Parameter System
+"""
+            )
+        except Exception:
+            pass
+
         return Response(ExpenseSerializer(expense).data)
 
     @action(detail=True, methods=['post'])
@@ -758,6 +782,61 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
         try:
             journal = expense.post_to_ledger(request.user)
+
+            # Email staff about expense payment
+            try:
+                from apps.notifications.utils import send_staff_email
+                send_staff_email(
+                    f'Expense Paid: {expense.currency} {expense.amount:,.2f} - {expense.expense_number}',
+                    f"""An expense has been paid and posted to the ledger.
+
+Expense Details:
+- Expense Number: {expense.expense_number}
+- Type: {expense.get_expense_type_display()}
+- Payee: {expense.payee_name}
+- Amount: {expense.currency} {expense.amount:,.2f}
+- Journal: {journal.journal_number}
+- Paid By: {request.user.get_full_name() or request.user.email}
+
+Best regards,
+Parameter System
+"""
+                )
+            except Exception:
+                pass
+
+            # Email landlord if expense is on their property (maintenance/utility)
+            if expense.expense_type in ('maintenance', 'utility') and expense.payee_type == 'landlord' and expense.payee_id:
+                try:
+                    from apps.notifications.utils import send_landlord_email
+                    from apps.masterfile.models import Landlord
+                    landlord = Landlord.objects.filter(id=expense.payee_id).first()
+                    if landlord:
+                        send_landlord_email(
+                            landlord,
+                            f'Expense on Your Property: {expense.currency} {expense.amount:,.2f}',
+                            f"""Dear {landlord.name},
+
+An expense has been incurred on your property.
+
+Expense Details:
+- Expense Number: {expense.expense_number}
+- Type: {expense.get_expense_type_display()}
+- Amount: {expense.currency} {expense.amount:,.2f}
+- Description: {expense.description}
+- Date: {expense.date}
+- Reference: {expense.reference or 'N/A'}
+
+This amount may be deducted from your rental income as per your management agreement.
+
+Best regards,
+Property Management
+Powered by Parameter.co.zw
+"""
+                        )
+                except Exception:
+                    pass
+
             return Response({
                 'message': 'Expense paid successfully',
                 'expense': ExpenseSerializer(expense).data,

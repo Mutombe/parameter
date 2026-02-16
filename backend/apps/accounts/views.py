@@ -916,6 +916,58 @@ class TenantPortalViewSet(viewsets.ViewSet):
             }
         )
 
+        # Email confirmation to tenant
+        try:
+            from apps.notifications.utils import send_tenant_email
+            send_tenant_email(
+                tenant,
+                'Payment Notification Received',
+                f"""Dear {tenant.name},
+
+We have received your payment notification. Our team will process it shortly.
+
+Payment Details You Submitted:
+- Amount: {amount}
+- Payment Method: {payment_method}
+- Reference: {reference or 'N/A'}
+- Payment Date: {payment_date}
+{f'- Notes: {notes}' if notes else ''}
+
+You will receive a receipt once your payment has been verified and processed.
+
+Thank you.
+
+Best regards,
+Property Management
+Powered by Parameter.co.zw
+"""
+            )
+        except Exception:
+            pass
+
+        # Email staff about the payment notification
+        try:
+            from apps.notifications.utils import send_staff_email
+            send_staff_email(
+                f'Payment Notification from {tenant.name}: {amount}',
+                f"""A tenant has submitted a payment notification via the portal.
+
+Tenant: {tenant.name}
+Amount: {amount}
+Payment Method: {payment_method}
+Reference: {reference or 'N/A'}
+Payment Date: {payment_date}
+{f'Notes: {notes}' if notes else ''}
+
+Please verify and process this payment.
+
+Best regards,
+Parameter System
+"""
+            )
+        except Exception:
+            pass
+
         return Response({
             'message': 'Payment notification submitted successfully. Our team will process it shortly.',
             'notification': {

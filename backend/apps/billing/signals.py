@@ -98,7 +98,6 @@ def auto_post_receipt(sender, instance, created, **kwargs):
     if created and instance.tenant:
         try:
             from apps.notifications.utils import send_tenant_email
-            invoice_ref = f" for invoice {instance.invoice.invoice_number}" if instance.invoice else ""
             send_tenant_email(
                 instance.tenant,
                 f'Payment Received - {instance.receipt_number}',
@@ -119,6 +118,30 @@ This is an automated confirmation. Please retain this for your records.
 Best regards,
 Property Management
 Powered by Parameter.co.zw
+"""
+            )
+        except Exception:
+            pass
+
+    # Email staff about payment received
+    if created and instance.tenant:
+        try:
+            from apps.notifications.utils import send_staff_email
+            send_staff_email(
+                f'Payment Received: {instance.currency} {instance.amount:,.2f} from {instance.tenant.name}',
+                f"""A payment has been received and recorded.
+
+Receipt Details:
+- Receipt Number: {instance.receipt_number}
+- Tenant: {instance.tenant.name}
+- Amount: {instance.currency} {instance.amount:,.2f}
+- Payment Method: {instance.get_payment_method_display()}
+- Reference: {instance.reference or 'N/A'}
+- Date: {instance.date}
+{f'- Invoice: {instance.invoice.invoice_number}' if instance.invoice else '- Invoice: Unallocated'}
+
+Best regards,
+Parameter System
 """
             )
         except Exception:

@@ -142,6 +142,28 @@ def create_masterfile_notification(entity_type, entity_id, entity_name, change_t
         except Exception as e:
             logger.error(f"Failed to create notification: {e}")
 
+    # Send email for important masterfile events
+    if change_type == 'created' and entity_type in ('tenant', 'landlord'):
+        try:
+            from apps.notifications.utils import send_staff_email
+            changed_by = user.get_full_name() or user.email if user else 'System'
+            send_staff_email(
+                f'New {entity_type.title()} Created: {entity_name}',
+                f"""A new {entity_type} has been added to the system.
+
+Details:
+- Name: {entity_name}
+- Created By: {changed_by}
+
+Please review in the masterfile section.
+
+Best regards,
+Parameter System
+"""
+            )
+        except Exception:
+            pass
+
     # Log the change
     try:
         MasterfileChangeLog.objects.create(

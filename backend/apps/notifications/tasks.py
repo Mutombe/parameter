@@ -245,3 +245,22 @@ def broadcast_notification(notification_type, title, message, data=None, roles=N
             logger.error(f"Failed to create broadcast notification for {user.email}: {e}")
 
     return {'notifications_created': notifications_created}
+
+
+def send_system_alert_email(subject, message):
+    """
+    Send an alert email to system administrators.
+    Used for failed tasks, system errors, and critical alerts.
+    """
+    try:
+        admin_email = getattr(settings, 'ADMIN_EMAIL', None) or settings.DEFAULT_FROM_EMAIL
+        send_mail(
+            subject=f"[Parameter System Alert] {subject}",
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[admin_email],
+            fail_silently=True,
+        )
+        logger.info(f"System alert email sent: {subject}")
+    except Exception as e:
+        logger.error(f"Failed to send system alert: {e}")
