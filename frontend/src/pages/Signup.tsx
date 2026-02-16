@@ -1,14 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useMutation } from '@tanstack/react-query'
 import {
   Eye, EyeOff, CheckCircle, XCircle, Loader2, Building2,
-  User, ChevronRight, ChevronLeft, Clock, Sparkles, AlertCircle
+  User, ChevronRight, ChevronLeft, Clock, Sparkles, AlertCircle, RefreshCw
 } from 'lucide-react'
 import { tenantInvitationsApi, demoApi, tenantsApi } from '../services/api'
 import { cn, getErrorMessage } from '../lib/utils'
 import { useThemeEffect } from '../hooks/useThemeEffect'
+import { useAuthStore } from '../stores/authStore'
 import toast from 'react-hot-toast'
 import { PiUsersFour } from "react-icons/pi";
 import { RiClaudeFill } from "react-icons/ri";
@@ -24,16 +25,27 @@ interface InvitationData {
   expires_at: string
 }
 
+interface DemoProgress {
+  stage: 'submitting' | 'processing' | 'polling' | 'logging-in' | 'done' | 'error'
+  message: string
+  requestId?: string
+  error?: string
+}
+
 const steps = [
   { id: 1, title: 'Company Setup', icon: Building2 },
   { id: 2, title: 'Admin Account', icon: User },
 ]
+
+const POLL_INTERVAL = 3000
+const MAX_POLL_ATTEMPTS = 120 // 6 minutes max
 
 export default function Signup() {
   useThemeEffect()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token')
+  const setUser = useAuthStore((s) => s.setUser)
 
   // State
   const [mode, setMode] = useState<'invited' | 'demo' | 'loading'>('loading')
@@ -42,6 +54,9 @@ export default function Signup() {
   const [currentStep, setCurrentStep] = useState(1)
   const [showPassword, setShowPassword] = useState(false)
   const [subdomainStatus, setSubdomainStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
+  const [demoProgress, setDemoProgress] = useState<DemoProgress | null>(null)
+
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [formData, setFormData] = useState({
     // Company Info
@@ -59,6 +74,13 @@ export default function Signup() {
     admin_last_name: '',
     admin_phone: '',
   })
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearTimeout(pollRef.current)
+    }
+  }, [])
 
   // Check for invitation token
   useEffect(() => {
@@ -130,17 +152,191 @@ export default function Signup() {
     },
   })
 
-  // Demo signup mutation
-  const demoSignupMutation = useMutation({
-    mutationFn: (data: any) => demoApi.signup(data),
-    onSuccess: (response) => {
-      toast.success('Demo account created! Your demo expires in 2 hours.')
-      window.location.href = response.data.login_url || '/login'
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Demo signup failed')
-    },
-  })
+  // --- Demo signup async flow ---
+  const pollForCompletion = useCallback(async (requestId: string, attempt: number = 0) => {
+    if (attempt >= MAX_POLL_ATTEMPTS) {
+      setDemoProgress({
+        stage: 'error',
+        message: 'Account creation is taking longer than expected.',
+        requestId,
+        error: 'Timeout waiting for account creation. Please try again.',
+      })
+      return
+    }
+
+    try {
+      const statusRes = await demoApi.checkStatus(requestId)
+      const data = statusRes.data
+
+      if (data.status === 'completed') {
+        // Set tenant context in sessionStorage
+        const subdomain = data.subdomain
+        if (subdomain) {
+          sessionStorage.setItem('tenant_subdomain', subdomain)
+        }
+
+        setDemoProgress({
+          stage: 'logging-in',
+          message: 'Logging you in...',
+          requestId,
+        })
+
+        // Auto-login using the token
+        if (data.auto_login_token && subdomain) {
+          try {
+            const loginRes = await demoApi.autoLogin(data.auto_login_token, subdomain)
+            setUser(loginRes.data.user)
+
+            setDemoProgress({
+              stage: 'done',
+              message: 'Welcome to your demo!',
+              requestId,
+            })
+
+            toast.success('Demo account created! Your demo expires in 2 hours.')
+            navigate('/dashboard')
+            return
+          } catch {
+            // Auto-login failed, fall back to login page with context
+            toast.success('Demo account created! Please log in with your credentials.')
+            navigate('/login')
+            return
+          }
+        }
+
+        // No auto-login token available, redirect to login
+        toast.success('Demo account created! Please log in with your credentials.')
+        navigate('/login')
+        return
+      }
+
+      if (data.status === 'failed') {
+        setDemoProgress({
+          stage: 'error',
+          message: data.message || 'Account creation failed.',
+          requestId,
+          error: data.error || 'An unexpected error occurred.',
+        })
+        return
+      }
+
+      // Still processing or pending — update message and poll again
+      const messages = [
+        'Creating your demo company...',
+        'Setting up your account...',
+        'Configuring sample data...',
+        'Almost ready...',
+      ]
+      const messageIndex = Math.min(Math.floor(attempt / 5), messages.length - 1)
+
+      setDemoProgress({
+        stage: 'polling',
+        message: messages[messageIndex],
+        requestId,
+      })
+
+      pollRef.current = setTimeout(() => pollForCompletion(requestId, attempt + 1), POLL_INTERVAL)
+    } catch {
+      // Network error during polling — retry
+      if (attempt < MAX_POLL_ATTEMPTS) {
+        pollRef.current = setTimeout(() => pollForCompletion(requestId, attempt + 1), POLL_INTERVAL)
+      } else {
+        setDemoProgress({
+          stage: 'error',
+          message: 'Lost connection while creating your account.',
+          requestId,
+          error: 'Network error. Please check your connection and try again.',
+        })
+      }
+    }
+  }, [navigate, setUser])
+
+  const startDemoSignup = useCallback(async () => {
+    setDemoProgress({
+      stage: 'submitting',
+      message: 'Submitting your request...',
+    })
+
+    try {
+      // Step 1: Submit signup request
+      const signupRes = await demoApi.signup({
+        company_name: formData.company_name,
+        subdomain: formData.subdomain,
+        company_email: formData.company_email,
+        company_phone: formData.company_phone,
+        admin_email: formData.admin_email,
+        admin_password: formData.admin_password,
+        admin_password_confirm: formData.admin_password_confirm,
+        admin_first_name: formData.admin_first_name,
+        admin_last_name: formData.admin_last_name,
+        admin_phone: formData.admin_phone,
+        default_currency: formData.default_currency,
+      })
+
+      const requestId = signupRes.data.request_id
+
+      setDemoProgress({
+        stage: 'processing',
+        message: 'Creating your demo company...',
+        requestId,
+      })
+
+      // Step 2: Trigger processing
+      await demoApi.process(requestId)
+
+      // Step 3: Start polling for completion
+      setDemoProgress({
+        stage: 'polling',
+        message: 'Creating your demo company...',
+        requestId,
+      })
+
+      pollForCompletion(requestId)
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.error
+        || err.response?.data?.errors
+          ? Object.values(err.response?.data?.errors || {}).flat().join(', ')
+          : 'Demo signup failed. Please try again.'
+      setDemoProgress({
+        stage: 'error',
+        message: 'Signup failed',
+        error: typeof errorMsg === 'string' ? errorMsg : 'Demo signup failed. Please try again.',
+      })
+    }
+  }, [formData, pollForCompletion])
+
+  const handleRetry = useCallback(() => {
+    if (pollRef.current) clearTimeout(pollRef.current)
+
+    const requestId = demoProgress?.requestId
+    if (requestId) {
+      // Retry from processing step
+      setDemoProgress({
+        stage: 'processing',
+        message: 'Retrying account creation...',
+        requestId,
+      })
+
+      demoApi.process(requestId).then(() => {
+        setDemoProgress({
+          stage: 'polling',
+          message: 'Creating your demo company...',
+          requestId,
+        })
+        pollForCompletion(requestId)
+      }).catch(() => {
+        setDemoProgress({
+          stage: 'error',
+          message: 'Retry failed',
+          requestId,
+          error: 'Could not restart account creation. Please try again.',
+        })
+      })
+    } else {
+      // Start from scratch
+      setDemoProgress(null)
+    }
+  }, [demoProgress, pollForCompletion])
 
   const updateForm = (field: string, value: string) => {
     setFormData({ ...formData, [field]: value })
@@ -204,24 +400,12 @@ export default function Signup() {
         default_currency: formData.default_currency,
       })
     } else {
-      demoSignupMutation.mutate({
-        company_name: formData.company_name,
-        subdomain: formData.subdomain,
-        company_email: formData.company_email,
-        company_phone: formData.company_phone,
-        admin_email: formData.admin_email,
-        admin_password: formData.admin_password,
-        admin_password_confirm: formData.admin_password_confirm,
-        admin_first_name: formData.admin_first_name,
-        admin_last_name: formData.admin_last_name,
-        admin_phone: formData.admin_phone,
-        default_currency: formData.default_currency,
-      })
+      startDemoSignup()
     }
   }
 
   const isLoading = mode === 'loading'
-  const isPending = acceptInvitationMutation.isPending || demoSignupMutation.isPending
+  const isPending = acceptInvitationMutation.isPending || demoProgress !== null
   const isDemo = mode === 'demo' || invitation?.invitation_type === 'demo'
 
   if (isLoading) {
@@ -234,6 +418,108 @@ export default function Signup() {
         >
           <Loader2 className="w-12 h-12 text-primary-600 animate-spin mx-auto mb-4" />
           <p className="text-gray-600">Validating invitation...</p>
+        </motion.div>
+      </div>
+    )
+  }
+
+  // Demo progress screen
+  if (demoProgress) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md"
+        >
+          {/* Logo */}
+          <div className="text-center mb-8">
+            <a href="/" className="inline-flex items-center gap-2 px-4 py-2 bg-white rounded-xl shadow-sm border border-gray-200">
+              <img
+                src="/logo.png"
+                alt="Parameter"
+                className="w-8 h-8 rounded-lg object-contain dark:brightness-0 dark:invert"
+              />
+              <span className="font-bold text-xl text-gray-900">Parameter</span>
+            </a>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-xl dark:shadow-black/30 border border-gray-200 p-8">
+            {demoProgress.stage === 'error' ? (
+              <div className="text-center">
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <XCircle className="w-8 h-8 text-red-600" />
+                </div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-2">
+                  Something went wrong
+                </h2>
+                <p className="text-sm text-gray-600 mb-1">{demoProgress.message}</p>
+                {demoProgress.error && (
+                  <p className="text-sm text-red-600 mb-6">{demoProgress.error}</p>
+                )}
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={handleRetry}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-primary-500 text-white text-sm font-medium rounded-xl hover:bg-primary-600 transition-colors"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    Try Again
+                  </button>
+                  <button
+                    onClick={() => { if (pollRef.current) clearTimeout(pollRef.current); setDemoProgress(null) }}
+                    className="px-5 py-2.5 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-100 transition-colors"
+                  >
+                    Start Over
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center">
+                <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Loader2 className="w-8 h-8 text-primary-600 animate-spin" />
+                </div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-2">
+                  Setting up your demo
+                </h2>
+                <p className="text-gray-600 font-medium mb-1">
+                  {formData.company_name}
+                </p>
+                <motion.p
+                  key={demoProgress.message}
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-sm text-gray-500"
+                >
+                  {demoProgress.message}
+                </motion.p>
+
+                {/* Progress dots */}
+                <div className="flex justify-center gap-2 mt-6">
+                  {['submitting', 'processing', 'polling', 'logging-in'].map((stage, i) => {
+                    const stages = ['submitting', 'processing', 'polling', 'logging-in']
+                    const currentIndex = stages.indexOf(demoProgress.stage)
+                    const isComplete = i < currentIndex
+                    const isCurrent = i === currentIndex
+                    return (
+                      <div
+                        key={stage}
+                        className={cn(
+                          'w-2.5 h-2.5 rounded-full transition-colors',
+                          isComplete && 'bg-primary-500',
+                          isCurrent && 'bg-primary-400 animate-pulse',
+                          !isComplete && !isCurrent && 'bg-gray-200'
+                        )}
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <p className="mt-6 text-center text-sm text-gray-500">
+            This usually takes 1-2 minutes. Please don't close this page.
+          </p>
         </motion.div>
       </div>
     )

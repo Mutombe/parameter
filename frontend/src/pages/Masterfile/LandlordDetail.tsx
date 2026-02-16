@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -36,7 +37,8 @@ import {
 } from 'recharts'
 import { landlordApi, reportsApi } from '../../services/api'
 import { formatCurrency, formatPercent, cn } from '../../lib/utils'
-import { Button } from '../../components/ui'
+import { Modal, Button, Input, Select, Textarea } from '../../components/ui'
+import { showToast, parseApiError } from '../../lib/toast'
 import { TbUserSquareRounded } from 'react-icons/tb'
 
 // Animation variants matching Dashboard
@@ -164,7 +166,19 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
 export default function LandlordDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const landlordId = Number(id)
+
+  // Edit modal state
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editForm, setEditForm] = useState({
+    name: '',
+    landlord_type: 'individual',
+    email: '',
+    phone: '',
+    address: '',
+    commission_rate: '10.00',
+  })
 
   // 1. Landlord profile
   const { data: landlord, isLoading: loadingProfile } = useQuery({
@@ -214,6 +228,38 @@ export default function LandlordDetail() {
     queryFn: () => reportsApi.leaseCharges({ landlord_id: landlordId }).then((r) => r.data),
     enabled: !!landlordId,
   })
+
+  // Edit mutation
+  const editMutation = useMutation({
+    mutationFn: (data: typeof editForm) => landlordApi.update(landlordId, data),
+    onSuccess: () => {
+      showToast.success('Landlord updated successfully')
+      setShowEditModal(false)
+      queryClient.invalidateQueries({ queryKey: ['landlord', landlordId] })
+      queryClient.invalidateQueries({ queryKey: ['landlords'] })
+    },
+    onError: (error) => {
+      showToast.error(parseApiError(error, 'Failed to update landlord'))
+    },
+  })
+
+  const openEditModal = () => {
+    if (!landlord) return
+    setEditForm({
+      name: landlord.name || '',
+      landlord_type: landlord.landlord_type || 'individual',
+      email: landlord.email || '',
+      phone: landlord.phone || '',
+      address: landlord.address || '',
+      commission_rate: landlord.commission_rate || '10.00',
+    })
+    setShowEditModal(true)
+  }
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    editMutation.mutate(editForm)
+  }
 
   const typeConfig =
     landlordTypeConfig[(landlord?.landlord_type as keyof typeof landlordTypeConfig) || 'individual']
@@ -359,7 +405,7 @@ export default function LandlordDetail() {
         </div>
         <Button
           variant="outline"
-          onClick={() => navigate('/dashboard/landlords', { state: { edit: landlordId } })}
+          onClick={openEditModal}
           className="gap-2"
         >
           <Edit2 className="w-4 h-4" />
@@ -957,6 +1003,83 @@ export default function LandlordDetail() {
           )}
         </div>
       </motion.div>
+
+      {/* Edit Landlord Modal */}
+      <Modal
+        open={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        title="Edit Landlord"
+        icon={Edit2}
+      >
+        <form onSubmit={handleEditSubmit} className="space-y-5">
+          <Input
+            label="Full Name"
+            placeholder="John Doe or Company Ltd"
+            value={editForm.name}
+            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+            required
+          />
+
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Type"
+              value={editForm.landlord_type}
+              onChange={(e) => setEditForm({ ...editForm, landlord_type: e.target.value })}
+            >
+              <option value="individual">Individual</option>
+              <option value="company">Company</option>
+              <option value="trust">Trust</option>
+            </Select>
+
+            <Input
+              type="number"
+              label="Commission Rate (%)"
+              placeholder="10.00"
+              step="0.01"
+              min="0"
+              max="100"
+              value={editForm.commission_rate}
+              onChange={(e) => setEditForm({ ...editForm, commission_rate: e.target.value })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              type="email"
+              label="Email Address"
+              placeholder="email@example.com"
+              value={editForm.email}
+              onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+              required
+            />
+
+            <Input
+              label="Phone Number"
+              placeholder="+263 77 123 4567"
+              value={editForm.phone}
+              onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+              required
+            />
+          </div>
+
+          <Textarea
+            label="Address"
+            placeholder="Physical address..."
+            value={editForm.address}
+            onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+            rows={2}
+          />
+
+          <div className="flex gap-3 pt-4">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowEditModal(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" className="flex-1" disabled={editMutation.isPending}>
+              {editMutation.isPending ? 'Saving...' : 'Update Landlord'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

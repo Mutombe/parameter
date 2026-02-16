@@ -47,17 +47,22 @@ export function formatDistanceToNow(date: string | Date): string {
 }
 
 // Get full URL for media files (avatars, documents, etc.)
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
 export function getMediaUrl(path: string | null | undefined): string | null {
   if (!path) return null
-  // If already absolute URL, return as is
+  // If already absolute URL (S3/DO Spaces), return as is
   if (path.startsWith('http://') || path.startsWith('https://')) {
+    console.debug('[getMediaUrl] Absolute URL, returning as-is:', path)
     return path
   }
-  // Remove leading slash if present and prepend base URL
+  // For relative paths, prepend API base URL
+  // If VITE_API_URL is not set, use current origin as fallback (works in production)
+  const baseUrl = API_BASE_URL || window.location.origin
   const cleanPath = path.startsWith('/') ? path : `/${path}`
-  return `${API_BASE_URL}${cleanPath}`
+  const fullUrl = `${baseUrl}${cleanPath}`
+  console.debug('[getMediaUrl] Built URL:', { path, baseUrl, fullUrl, VITE_API_URL: import.meta.env.VITE_API_URL })
+  return fullUrl
 }
 
 // Extract error message from Axios errors or unknown errors

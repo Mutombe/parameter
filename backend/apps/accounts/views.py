@@ -236,6 +236,60 @@ Parameter Team
         except PasswordResetToken.DoesNotExist:
             return Response({'valid': False, 'error': 'Invalid reset link.'})
 
+    @method_decorator(csrf_exempt)
+    @action(detail=False, methods=['post'])
+    def auto_login(self, request):
+        """Auto-login using a signed token (for demo account redirect)."""
+        from django.core import signing
+
+        token = request.data.get('token')
+        if not token:
+            return Response({'error': 'Token required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            data = signing.loads(token, max_age=300)  # 5 min expiry
+        except signing.BadSignature:
+            return Response({'error': 'Invalid or expired token'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if data.get('purpose') != 'demo_auto_login':
+            return Response({'error': 'Invalid token purpose'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email=data['email']).first()
+        if not user:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        login(request, user)
+
+        # Update last activity
+        user.last_activity = timezone.now()
+        user.save(update_fields=['last_activity'])
+
+        UserActivity.objects.create(
+            user=user,
+            action='auto_login_demo',
+            ip_address=self.get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')
+        )
+
+        csrf_token = get_token(request)
+
+        response_data = {
+            'message': 'Login successful',
+            'user': UserSerializer(user, context={'request': request}).data
+        }
+
+        # Add demo warning if applicable
+        tenant = getattr(request, 'tenant', None)
+        if tenant and tenant.is_demo:
+            response_data['demo_warning'] = True
+            response_data['demo_expires_at'] = tenant.demo_expires_at.isoformat() if tenant.demo_expires_at else None
+            response_data['demo_time_remaining'] = tenant.demo_time_remaining
+
+        response = Response(response_data)
+        response.set_cookie('csrftoken', csrf_token, samesite='Lax')
+
+        return response
+
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def upload_avatar(self, request):
         """Upload user avatar."""
@@ -266,10 +320,36 @@ Parameter Team
 
         # Delete old avatar if exists
         if user.avatar:
+            logger.info(f"[Avatar Upload] Deleting old avatar for user {user.id}: {user.avatar.name}")
             user.avatar.delete(save=False)
 
         user.avatar = avatar
         user.save()
+
+        # Debug: log avatar storage details
+        from django.conf import settings as django_settings
+        storage_backend = getattr(django_settings, 'DEFAULT_FILE_STORAGE', 'django.core.files.storage.FileSystemStorage')
+        logger.info(f"[Avatar Upload] User {user.id} avatar saved: {user.avatar.name}")
+        logger.info(f"[Avatar Upload] Storage backend: {storage_backend}")
+        logger.info(f"[Avatar Upload] MEDIA_URL: {django_settings.MEDIA_URL}")
+
+        # Get the avatar URL
+        avatar_url = None
+        if user.avatar:
+            try:
+                raw_url = user.avatar.url
+                logger.info(f"[Avatar Upload] Raw avatar URL from storage: {raw_url}")
+
+                # If storage returns absolute URL (S3/DO Spaces), use it directly
+                if raw_url.startswith('http://') or raw_url.startswith('https://'):
+                    avatar_url = raw_url
+                    logger.info(f"[Avatar Upload] Using absolute S3/CDN URL: {avatar_url}")
+                else:
+                    # Local storage - build absolute URI from request
+                    avatar_url = request.build_absolute_uri(raw_url)
+                    logger.info(f"[Avatar Upload] Built absolute URI: {avatar_url} (host: {request.get_host()})")
+            except Exception as e:
+                logger.error(f"[Avatar Upload] Failed to get avatar URL: {e}")
 
         UserActivity.objects.create(
             user=user,
@@ -279,7 +359,7 @@ Parameter Team
 
         return Response({
             'message': 'Avatar uploaded successfully',
-            'avatar_url': request.build_absolute_uri(user.avatar.url) if user.avatar else None
+            'avatar_url': avatar_url
         })
 
     @action(detail=False, methods=['delete'], permission_classes=[IsAuthenticated])

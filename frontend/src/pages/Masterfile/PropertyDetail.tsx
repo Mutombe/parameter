@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -24,9 +25,10 @@ import {
   Pie,
   Cell,
 } from 'recharts'
-import { propertyApi, unitApi, reportsApi } from '../../services/api'
+import { propertyApi, landlordApi, unitApi, reportsApi } from '../../services/api'
 import { formatCurrency, formatPercent, cn } from '../../lib/utils'
-import { Button } from '../../components/ui'
+import { Modal, Button, Input, Select } from '../../components/ui'
+import { showToast, parseApiError } from '../../lib/toast'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
 import { TbUserSquareRounded } from 'react-icons/tb'
 
@@ -136,7 +138,20 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
 export default function PropertyDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const propertyId = Number(id)
+
+  // Edit modal state
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editForm, setEditForm] = useState({
+    landlord: '',
+    name: '',
+    property_type: 'residential',
+    address: '',
+    city: 'Harare',
+    total_units: 1,
+    unit_definition: '',
+  })
 
   // 1. Property profile
   const { data: property, isLoading: loadingProfile } = useQuery({
@@ -179,6 +194,50 @@ export default function PropertyDetail() {
     queryFn: () => reportsApi.depositSummary({ property_id: propertyId }).then((r) => r.data),
     enabled: !!propertyId,
   })
+
+  // Landlords list for edit modal dropdown
+  const { data: landlords } = useQuery({
+    queryKey: ['landlords-select'],
+    queryFn: () => landlordApi.list().then(r => r.data.results || r.data),
+    enabled: showEditModal,
+  })
+
+  // Edit mutation
+  const editMutation = useMutation({
+    mutationFn: (data: { landlord: number; name: string; property_type: string; address: string; city: string; total_units: number; unit_definition: string }) =>
+      propertyApi.update(propertyId, data),
+    onSuccess: () => {
+      showToast.success('Property updated successfully')
+      setShowEditModal(false)
+      queryClient.invalidateQueries({ queryKey: ['property', propertyId] })
+      queryClient.invalidateQueries({ queryKey: ['properties'] })
+    },
+    onError: (error) => {
+      showToast.error(parseApiError(error, 'Failed to update property'))
+    },
+  })
+
+  const openEditModal = () => {
+    if (!property) return
+    setEditForm({
+      landlord: String(property.landlord),
+      name: property.name,
+      property_type: property.property_type,
+      address: property.address || '',
+      city: property.city || 'Harare',
+      total_units: property.total_units || 1,
+      unit_definition: property.unit_definition || '',
+    })
+    setShowEditModal(true)
+  }
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    editMutation.mutate({
+      ...editForm,
+      landlord: parseInt(editForm.landlord, 10),
+    })
+  }
 
   const typeConfig = propertyTypeConfig[property?.property_type || 'residential'] || propertyTypeConfig.residential
 
@@ -303,7 +362,7 @@ export default function PropertyDetail() {
         </div>
         <Button
           variant="outline"
-          onClick={() => navigate('/dashboard/properties', { state: { edit: propertyId } })}
+          onClick={openEditModal}
           className="gap-2"
         >
           <Edit2 className="w-4 h-4" />
@@ -667,6 +726,94 @@ export default function PropertyDetail() {
           )}
         </div>
       </motion.div>
+
+      {/* Edit Property Modal */}
+      <Modal
+        open={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        title="Edit Property"
+        icon={Edit2}
+      >
+        <form onSubmit={handleEditSubmit} className="space-y-5">
+          <Select
+            label="Landlord"
+            value={editForm.landlord}
+            onChange={(e) => setEditForm({ ...editForm, landlord: e.target.value })}
+            required
+          >
+            <option value="">Select a landlord</option>
+            {landlords?.map((l: any) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </Select>
+
+          <Input
+            label="Property Name"
+            placeholder="e.g., Sunrise Apartments"
+            value={editForm.name}
+            onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+            required
+          />
+
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Property Type"
+              value={editForm.property_type}
+              onChange={(e) => setEditForm({ ...editForm, property_type: e.target.value })}
+            >
+              <option value="residential">Residential</option>
+              <option value="commercial">Commercial</option>
+              <option value="industrial">Industrial</option>
+              <option value="mixed">Mixed Use</option>
+            </Select>
+
+            <Input
+              type="number"
+              label="Total Units"
+              placeholder="1"
+              min="1"
+              value={editForm.total_units}
+              onChange={(e) => setEditForm({ ...editForm, total_units: parseInt(e.target.value) || 1 })}
+            />
+          </div>
+
+          <Input
+            label="Address"
+            placeholder="123 Main Street"
+            value={editForm.address}
+            onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+            required
+          />
+
+          <Input
+            label="City"
+            placeholder="Harare"
+            value={editForm.city}
+            onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
+          />
+
+          <div>
+            <Input
+              label="Unit Definition"
+              placeholder="e.g., 1-17 or A1-A20; B1-B15"
+              value={editForm.unit_definition}
+              onChange={(e) => setEditForm({ ...editForm, unit_definition: e.target.value })}
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Define unit ranges using formats like "1-17" (numeric) or "A1-A20; B1-B15" (alphanumeric).
+            </p>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowEditModal(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" className="flex-1" disabled={editMutation.isPending}>
+              {editMutation.isPending ? 'Saving...' : 'Update Property'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

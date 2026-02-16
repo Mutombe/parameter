@@ -592,6 +592,13 @@ export const demoApi = {
     admin_phone?: string;
     default_currency?: string;
   }) => api.post('/tenants/demo-signup/', data),
+  process: (requestId: string) => api.post(`/tenants/process-demo-signup/${requestId}/`),
+  checkStatus: (requestId: string) => api.get(`/tenants/demo-signup-status/${requestId}/`),
+  autoLogin: (token: string, subdomain: string) => {
+    return api.post('/accounts/auth/auto_login/', { token }, {
+      headers: { 'X-Tenant-Subdomain': subdomain }
+    })
+  },
 }
 
 // Users API

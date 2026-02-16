@@ -67,6 +67,7 @@ export default function Header() {
     const sizeClasses = size === 'sm' ? 'w-9 h-9' : 'w-12 h-12'
     const textSize = size === 'sm' ? 'text-sm' : 'text-base font-semibold'
     const avatarUrl = user?.avatar ? getMediaUrl(user.avatar) : null
+    console.debug('[Avatar Header]', { raw: user?.avatar, resolved: avatarUrl, avatarError, avatarLoaded })
 
     // Show initials if no avatar or avatar failed to load
     if (!avatarUrl || avatarError) {
@@ -91,8 +92,8 @@ export default function Header() {
         <img
           src={avatarUrl}
           alt={user?.first_name || 'User'}
-          onLoad={() => setAvatarLoaded(true)}
-          onError={() => setAvatarError(true)}
+          onLoad={() => { console.debug('[Avatar Header] Image loaded successfully:', avatarUrl); setAvatarLoaded(true) }}
+          onError={(e) => { console.debug('[Avatar Header] Image FAILED to load:', avatarUrl, (e.target as HTMLImageElement).src); setAvatarError(true) }}
           className={cn(
             "rounded-full object-cover transition-opacity aspect-square",
             sizeClasses,

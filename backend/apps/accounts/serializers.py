@@ -25,28 +25,46 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_avatar(self, obj):
         if obj.avatar:
+            import logging
             from django.conf import settings
-            request = self.context.get('request')
+            logger = logging.getLogger('apps.accounts')
 
-            # Try to build absolute URI from request
-            if request:
-                try:
-                    absolute_url = request.build_absolute_uri(obj.avatar.url)
-                    # Check if it's a valid URL (not just filename)
-                    if absolute_url.startswith('http'):
-                        return absolute_url
-                except Exception:
-                    pass
+            try:
+                avatar_url = obj.avatar.url
+            except Exception as e:
+                logger.error(f"[Avatar] Failed to get avatar URL for user {obj.id}: {e}")
+                return None
 
-            # Fallback: construct URL using SITE_URL or backend URL
-            avatar_url = obj.avatar.url
-            if avatar_url.startswith('/'):
-                # Use backend URL for media files
-                backend_url = getattr(settings, 'BACKEND_URL', None) or getattr(settings, 'SITE_URL', '')
-                # For production, use the backend domain
-                if hasattr(settings, 'RENDER') or not settings.DEBUG:
-                    backend_url = 'https://parameter-backend.onrender.com'
-                return f"{backend_url}{avatar_url}"
+            logger.info(f"[Avatar] Raw avatar URL for user {obj.id}: {avatar_url}")
+            logger.info(f"[Avatar] DEFAULT_FILE_STORAGE: {getattr(settings, 'DEFAULT_FILE_STORAGE', 'django default')}")
+            logger.info(f"[Avatar] MEDIA_URL: {settings.MEDIA_URL}")
+
+            # If storage returns an absolute URL (S3/DO Spaces), use it directly
+            if avatar_url.startswith('http://') or avatar_url.startswith('https://'):
+                logger.info(f"[Avatar] Using absolute S3/CDN URL: {avatar_url}")
+                return avatar_url
+
+            # Local storage: avatar_url is relative like /media/avatars/file.jpg
+            # Build URL using BACKEND_URL setting (set this in production env)
+            backend_url = getattr(settings, 'BACKEND_URL', '')
+            if not backend_url:
+                # Try to build from request
+                request = self.context.get('request')
+                if request:
+                    try:
+                        built_url = request.build_absolute_uri(avatar_url)
+                        logger.info(f"[Avatar] Built from request: {built_url} (host: {request.get_host()})")
+                        return built_url
+                    except Exception as e:
+                        logger.warning(f"[Avatar] build_absolute_uri failed: {e}")
+
+            if backend_url:
+                final_url = f"{backend_url.rstrip('/')}{avatar_url}"
+                logger.info(f"[Avatar] Built from BACKEND_URL: {final_url}")
+                return final_url
+
+            # Last resort fallback
+            logger.warning(f"[Avatar] No BACKEND_URL set and no request context. Returning relative: {avatar_url}")
             return avatar_url
         return None
 

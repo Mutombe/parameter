@@ -57,14 +57,24 @@ export default function Profile() {
   })
 
   const uploadAvatarMutation = useMutation({
-    mutationFn: (file: File) => authApi.uploadAvatar(file),
-    onSuccess: async () => {
+    mutationFn: (file: File) => {
+      console.debug('[Avatar Upload] Uploading file:', file.name, 'type:', file.type, 'size:', file.size)
+      return authApi.uploadAvatar(file)
+    },
+    onSuccess: async (uploadResponse) => {
+      console.debug('[Avatar Upload] Upload response:', uploadResponse.data)
+      console.debug('[Avatar Upload] avatar_url from server:', uploadResponse.data.avatar_url)
       // Refresh user data
       const response = await authApi.me()
+      console.debug('[Avatar Upload] User data after refresh:', {
+        avatar: response.data.avatar,
+        mediaUrl: getMediaUrl(response.data.avatar),
+      })
       setUser(response.data)
       toast.success('Avatar uploaded successfully')
     },
-    onError: () => {
+    onError: (error: any) => {
+      console.debug('[Avatar Upload] Upload error:', error.response?.data || error.message)
       toast.error('Failed to upload avatar')
     }
   })
@@ -178,8 +188,13 @@ export default function Profile() {
                   />
                 ) : user?.avatar ? (
                   <img
-                    src={getMediaUrl(user.avatar) || ''}
+                    src={(() => {
+                      const url = getMediaUrl(user.avatar)
+                      console.debug('[Avatar Display] Profile page avatar:', { raw: user.avatar, resolved: url })
+                      return url || ''
+                    })()}
                     alt={user.first_name}
+                    onError={(e) => console.debug('[Avatar Display] Profile img failed to load:', (e.target as HTMLImageElement).src)}
                     className="w-24 h-24 rounded-full object-cover shadow-lg"
                   />
                 ) : (

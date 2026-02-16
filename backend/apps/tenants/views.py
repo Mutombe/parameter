@@ -1127,6 +1127,14 @@ def _process_demo_signup_background(request_id: str):
 
         logger.info(f"[BG] Demo tenant created: {signup_data['company_name']}")
 
+        # Generate auto-login token
+        from django.core import signing
+        auto_login_token = signing.dumps({
+            'email': signup_data['admin_email'],
+            'subdomain': signup_data['subdomain'],
+            'purpose': 'demo_auto_login'
+        })
+
         # Update status
         domain_suffix = getattr(django_settings, 'TENANT_DOMAIN_SUFFIX', 'parameter.co.zw')
         login_url = f"https://{signup_data['subdomain']}.{domain_suffix}"
@@ -1136,6 +1144,7 @@ def _process_demo_signup_background(request_id: str):
         signup_data = setting.value
         signup_data['status'] = 'completed'
         signup_data['login_url'] = login_url
+        signup_data['auto_login_token'] = auto_login_token
         signup_data['admin_password'] = '[REDACTED]'
         setting.value = signup_data
         setting.save()
@@ -1286,11 +1295,14 @@ class DemoSignupStatusView(APIView):
         }
 
         if status_val == 'completed':
-            domain_suffix = getattr(settings, 'TENANT_DOMAIN_SUFFIX', 'parameter.co.zw')
+            from django.conf import settings as django_settings
+            domain_suffix = getattr(django_settings, 'TENANT_DOMAIN_SUFFIX', 'parameter.co.zw')
             response_data.update({
                 'login_url': signup_data.get('login_url', f"https://{signup_data.get('subdomain', '')}.{domain_suffix}"),
                 'admin_email': signup_data.get('admin_email', ''),
-                'message': 'Your demo account is ready! Check your email for login details.'
+                'auto_login_token': signup_data.get('auto_login_token', ''),
+                'subdomain': signup_data.get('subdomain', ''),
+                'message': 'Your demo account is ready!'
             })
         elif status_val == 'failed':
             response_data.update({

@@ -124,3 +124,6 @@ EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.smtp.
 
 # Site URL for invitation links (production default)
 SITE_URL = config('SITE_URL', default='https://parameter.co.zw')
+
+# Backend URL for building absolute media URLs when request context is unavailable
+BACKEND_URL = config('BACKEND_URL', default='')
