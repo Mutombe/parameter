@@ -155,7 +155,25 @@ export default function Notifications() {
 
   const markReadMutation = useMutation({
     mutationFn: (id: number) => notificationsApi.markRead(id),
-    onSuccess: () => {
+    onMutate: async (id) => {
+      // Optimistically update the notification as read in cache
+      await queryClient.cancelQueries({ queryKey: ['notifications'] })
+      queryClient.setQueriesData({ queryKey: ['notifications', 'list'] }, (old: any) => {
+        if (!old) return old
+        const results = old.results || old
+        const updated = Array.isArray(results)
+          ? results.map((n: any) => n.id === id ? { ...n, is_read: true } : n)
+          : results
+        return old.results ? { ...old, results: updated } : updated
+      })
+      queryClient.setQueriesData({ queryKey: ['notifications', 'recent'] }, (old: any) => {
+        if (!old) return old
+        if (Array.isArray(old)) return old.map((n: any) => n.id === id ? { ...n, is_read: true } : n)
+        if (old.notifications) return { ...old, notifications: old.notifications.map((n: any) => n.id === id ? { ...n, is_read: true } : n) }
+        return old
+      })
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] })
     },
   })

@@ -5,17 +5,15 @@ import {
   Bell,
   CheckCheck,
   Trash2,
-  Building2,
-  Users,
   FileText,
   AlertTriangle,
   Calendar,
   Settings,
+  Clock,
 } from 'lucide-react'
 import { notificationsApi } from '../../services/api'
 import { formatDistanceToNow } from '../../lib/utils'
 import toast from 'react-hot-toast'
-import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
 import { PiBuildingApartmentLight } from "react-icons/pi";
 
@@ -28,22 +26,68 @@ const notificationIcons: Record<string, any> = {
   masterfile_created: PiBuildingApartmentLight,
   masterfile_updated: PiBuildingApartmentLight,
   masterfile_deleted: PiBuildingApartmentLight,
+  invoice_created: FileText,
   invoice_overdue: AlertTriangle,
-  lease_expiring: Calendar,
+  invoice_reminder: Clock,
   payment_received: FileText,
+  lease_expiring: Calendar,
+  lease_activated: Calendar,
+  lease_terminated: Calendar,
+  rental_due: Clock,
+  late_penalty: AlertTriangle,
   user_invited: TbUserSquareRounded,
-  system: Settings,
+  user_joined: TbUserSquareRounded,
+  system_alert: Settings,
 }
 
 const notificationColors: Record<string, string> = {
   masterfile_created: 'bg-emerald-100 text-emerald-600',
   masterfile_updated: 'bg-blue-100 text-blue-600',
   masterfile_deleted: 'bg-rose-100 text-rose-600',
+  invoice_created: 'bg-blue-100 text-blue-600',
   invoice_overdue: 'bg-amber-100 text-amber-600',
-  lease_expiring: 'bg-purple-100 text-purple-600',
+  invoice_reminder: 'bg-orange-100 text-orange-600',
   payment_received: 'bg-emerald-100 text-emerald-600',
+  lease_expiring: 'bg-purple-100 text-purple-600',
+  lease_activated: 'bg-emerald-100 text-emerald-600',
+  lease_terminated: 'bg-rose-100 text-rose-600',
+  rental_due: 'bg-orange-100 text-orange-600',
+  late_penalty: 'bg-red-100 text-red-600',
   user_invited: 'bg-cyan-100 text-cyan-600',
-  system: 'bg-gray-100 text-gray-600',
+  user_joined: 'bg-cyan-100 text-cyan-600',
+  system_alert: 'bg-gray-100 text-gray-600',
+}
+
+// Navigation route mapping for notification types
+const entityRouteMap: Record<string, string> = {
+  landlord: '/dashboard/landlords',
+  property: '/dashboard/properties',
+  unit: '/dashboard/units',
+  tenant: '/dashboard/tenants',
+  lease: '/dashboard/leases',
+}
+
+function getNotificationRoute(notif: any): string | null {
+  const data = notif.data || {}
+  const type = notif.notification_type
+
+  if (type?.startsWith('masterfile_') && data.entity_type && data.entity_id) {
+    const basePath = entityRouteMap[data.entity_type]
+    if (basePath) return `${basePath}/${data.entity_id}`
+  }
+  if (['invoice_created', 'invoice_overdue', 'invoice_reminder', 'rental_due'].includes(type) && data.invoice_id) {
+    return `/dashboard/invoices/${data.invoice_id}`
+  }
+  if (type === 'payment_received' && data.receipt_id) return `/dashboard/receipts/${data.receipt_id}`
+  if (type === 'late_penalty') {
+    if (data.invoice_id) return `/dashboard/invoices/${data.invoice_id}`
+    if (data.tenant_id) return `/dashboard/tenants/${data.tenant_id}`
+  }
+  if (['lease_expiring', 'lease_activated', 'lease_terminated'].includes(type) && data.lease_id) {
+    return `/dashboard/leases/${data.lease_id}`
+  }
+  if (['user_invited', 'user_joined'].includes(type)) return '/dashboard/settings'
+  return null
 }
 
 export default function NotificationsPanel({ open, onClose }: NotificationsPanelProps) {
@@ -64,7 +108,25 @@ export default function NotificationsPanel({ open, onClose }: NotificationsPanel
 
   const markReadMutation = useMutation({
     mutationFn: (id: number) => notificationsApi.markRead(id),
-    onSuccess: () => {
+    onMutate: async (id) => {
+      // Optimistically mark as read in all notification caches
+      await queryClient.cancelQueries({ queryKey: ['notifications'] })
+      queryClient.setQueriesData({ queryKey: ['notifications', 'recent'] }, (old: any) => {
+        if (!old) return old
+        if (Array.isArray(old)) return old.map((n: any) => n.id === id ? { ...n, is_read: true } : n)
+        if (old.notifications) return { ...old, notifications: old.notifications.map((n: any) => n.id === id ? { ...n, is_read: true } : n) }
+        return old
+      })
+      queryClient.setQueriesData({ queryKey: ['notifications', 'list'] }, (old: any) => {
+        if (!old) return old
+        const results = old.results || old
+        const updated = Array.isArray(results)
+          ? results.map((n: any) => n.id === id ? { ...n, is_read: true } : n)
+          : results
+        return old.results ? { ...old, results: updated } : updated
+      })
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] })
     },
   })
@@ -95,8 +157,9 @@ export default function NotificationsPanel({ open, onClose }: NotificationsPanel
     if (!notification.is_read) {
       markReadMutation.mutate(notification.id)
     }
-    // Could navigate to related entity based on notification type
     onClose()
+    const route = getNotificationRoute(notification)
+    if (route) navigate(route)
   }
 
   const getIcon = (type: string) => {
