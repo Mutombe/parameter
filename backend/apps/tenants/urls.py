@@ -8,7 +8,7 @@ from .views import (
     CompanyOnboardingView, SubdomainCheckView, SubscriptionPlansView,
     TenantInvitationViewSet, AcceptTenantInvitationView, DemoSignupView,
     DemoSignupStatusView, ProcessDemoSignupView,
-    SeedDemoDataView, CreateDemoTenantView
+    SeedDemoDataView, CreateDemoTenantView, TenantDebugView
 )
 
 router = DefaultRouter()
@@ -31,6 +31,8 @@ urlpatterns = [
     path('process-demo-signup/<str:request_id>/', ProcessDemoSignupView.as_view(), name='process-demo-signup'),
     path('seed-demo-data/', SeedDemoDataView.as_view(), name='seed-demo-data'),
     path('create-demo-tenant/', CreateDemoTenantView.as_view(), name='create-demo-tenant'),
+    # Debug/diagnostic (temporary - remove after fixing production issue)
+    path('debug-info/', TenantDebugView.as_view(), name='tenant-debug-info'),
     # Super Admin Dashboard (Admin only)
     path('dashboard/', SuperAdminDashboardView.as_view(), name='super-admin-dashboard'),
     path('dashboard/<int:tenant_id>/', TenantDetailStatsView.as_view(), name='tenant-detail-stats'),

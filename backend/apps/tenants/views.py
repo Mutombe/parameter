@@ -539,12 +539,86 @@ class SubdomainCheckView(APIView):
             return Response(result)
         except Exception as e:
             import logging
-            logging.getLogger(__name__).error(f"Subdomain check error: {e}")
+            import traceback
+            logging.getLogger(__name__).error(f"Subdomain check error: {e}\n{traceback.format_exc()}")
             return Response({
                 'valid': True,
                 'available': True,
-                'error': None
+                'error': None,
+                'debug_error': str(e)
             })
+
+
+class TenantDebugView(APIView):
+    """Diagnostic endpoint for debugging tenant/schema issues in production."""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        import traceback
+        info = {
+            'request_host': request.META.get('HTTP_HOST', ''),
+            'request_tenant': str(getattr(request, 'tenant', None)),
+            'request_tenant_schema': getattr(getattr(request, 'tenant', None), 'schema_name', None),
+            'x_tenant_subdomain': request.META.get('HTTP_X_TENANT_SUBDOMAIN', ''),
+        }
+
+        # Check current search_path
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SHOW search_path")
+                info['search_path'] = cursor.fetchone()[0]
+        except Exception as e:
+            info['search_path_error'] = str(e)
+
+        # Check if public.tenants_client table exists and is queryable
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM public.tenants_client")
+                info['tenant_count'] = cursor.fetchone()[0]
+        except Exception as e:
+            info['tenant_query_error'] = str(e)
+            info['tenant_query_traceback'] = traceback.format_exc()
+
+        # Check if public schema has the tenants_client table at all
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = 'public' AND table_name LIKE 'tenants_%'"
+                )
+                info['public_tenant_tables'] = [row[0] for row in cursor.fetchall()]
+        except Exception as e:
+            info['table_check_error'] = str(e)
+
+        # Check domains
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT id, domain, is_primary FROM public.tenants_domain LIMIT 10")
+                info['domains'] = [
+                    {'id': row[0], 'domain': row[1], 'is_primary': row[2]}
+                    for row in cursor.fetchall()
+                ]
+        except Exception as e:
+            info['domain_query_error'] = str(e)
+
+        # Test subdomain check
+        test_subdomain = request.query_params.get('test', '')
+        if test_subdomain:
+            schema_name = test_subdomain.lower().strip().replace('-', '_').replace(' ', '_')
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT EXISTS(SELECT 1 FROM public.tenants_client WHERE schema_name = %s)",
+                        [schema_name]
+                    )
+                    info['test_subdomain'] = test_subdomain
+                    info['test_schema_name'] = schema_name
+                    info['test_exists'] = cursor.fetchone()[0]
+            except Exception as e:
+                info['test_error'] = str(e)
+                info['test_traceback'] = traceback.format_exc()
+
+        return Response(info)
 
 
 class SubscriptionPlansView(APIView):

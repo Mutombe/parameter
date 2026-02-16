@@ -87,6 +87,8 @@ class SubdomainHeaderMiddleware(MiddlewareMixin):
         """Set tenant from X-Tenant-Subdomain header if present. Uses in-process cache."""
         # Check for the custom subdomain header
         subdomain = request.META.get('HTTP_X_TENANT_SUBDOMAIN')
+        original_host = request.META.get('HTTP_HOST', '')
+        logger.debug(f"SubdomainHeaderMiddleware: host={original_host}, subdomain_header={subdomain}")
 
         if subdomain:
             subdomain = subdomain.lower().strip()
@@ -132,8 +134,13 @@ class SubdomainHeaderMiddleware(MiddlewareMixin):
                     primary_domain = public_tenant.domains.filter(is_primary=True).first()
                     if primary_domain:
                         request.META['HTTP_HOST'] = primary_domain.domain
-                except Exception:
-                    pass  # Let TenantMainMiddleware handle it
+                        logger.debug(f"SubdomainHeaderMiddleware: set public tenant, host -> {primary_domain.domain}")
+                    else:
+                        logger.warning(f"SubdomainHeaderMiddleware: public tenant has no primary domain")
+                except Exception as e:
+                    logger.warning(f"SubdomainHeaderMiddleware: error finding primary domain: {e}")
+            else:
+                logger.warning(f"SubdomainHeaderMiddleware: no public tenant found, host={original_host}")
 
 
 class TenantContextMiddleware(MiddlewareMixin):
