@@ -1,0 +1,254 @@
+import { useState } from 'react'
+import { motion } from 'framer-motion'
+import { useQuery } from '@tanstack/react-query'
+import { FileText, Download, Printer } from 'lucide-react'
+import { tenantPortalApi } from '../../services/api'
+import { formatCurrency, formatDate, cn } from '../../lib/utils'
+import { Button } from '../../components/ui'
+import { generatePrintableTable } from '../../lib/print'
+
+export default function TenantInvoices() {
+  const [statusFilter, setStatusFilter] = useState('')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['tenant-invoices', statusFilter],
+    queryFn: () => {
+      const params: any = {}
+      if (statusFilter) params.status = statusFilter
+      return tenantPortalApi.invoices(params).then(r => r.data)
+    },
+  })
+
+  const invoices = data?.invoices || data?.results || []
+
+  const handlePrintAll = () => {
+    generatePrintableTable(
+      invoices.map((inv: any) => ({
+        invoice_number: inv.invoice_number,
+        date: formatDate(inv.date),
+        due_date: formatDate(inv.due_date),
+        amount: formatCurrency(inv.total_amount || 0),
+        balance: formatCurrency(inv.balance || 0),
+        status: inv.status,
+      })),
+      [
+        { key: 'invoice_number', label: 'Invoice #' },
+        { key: 'date', label: 'Date' },
+        { key: 'due_date', label: 'Due Date' },
+        { key: 'amount', label: 'Amount', align: 'right' },
+        { key: 'balance', label: 'Balance', align: 'right' },
+        { key: 'status', label: 'Status' },
+      ],
+      { title: 'My Invoices', subtitle: `${invoices.length} invoices • Generated ${new Date().toLocaleDateString()}` }
+    )
+  }
+
+  const handlePrintSingle = (inv: any) => {
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Invoice ${inv.invoice_number}</title>
+        <style>
+          @page { size: A4; margin: 1.5cm; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px; color: #1a1a1a; }
+          .header { text-align: center; margin-bottom: 40px; padding-bottom: 20px; border-bottom: 2px solid #e5e7eb; }
+          .header h1 { font-size: 28px; margin: 0; }
+          .header p { color: #6b7280; margin: 5px 0 0; }
+          .details { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px; }
+          .detail-group label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; margin-bottom: 4px; }
+          .detail-group p { font-size: 16px; font-weight: 600; margin: 0; }
+          .summary { background: #f9fafb; border-radius: 8px; padding: 20px; margin-top: 30px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+          .summary label { display: block; font-size: 11px; text-transform: uppercase; color: #6b7280; }
+          .summary .value { font-size: 20px; font-weight: 700; }
+          .status { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+          .status-paid { background: #d1fae5; color: #065f46; }
+          .status-overdue { background: #fee2e2; color: #991b1b; }
+          .status-pending, .status-posted { background: #fef3c7; color: #92400e; }
+          .status-draft { background: #f3f4f6; color: #374151; }
+          .footer { margin-top: 50px; padding-top: 20px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #9ca3af; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>INVOICE</h1>
+          <p>${inv.invoice_number}</p>
+        </div>
+        <div class="details">
+          <div class="detail-group">
+            <label>Invoice Date</label>
+            <p>${formatDate(inv.date)}</p>
+          </div>
+          <div class="detail-group">
+            <label>Due Date</label>
+            <p>${formatDate(inv.due_date)}</p>
+          </div>
+          <div class="detail-group">
+            <label>Status</label>
+            <p><span class="status status-${inv.status}">${inv.status}</span></p>
+          </div>
+          <div class="detail-group">
+            <label>Description</label>
+            <p>${inv.description || inv.invoice_type || '-'}</p>
+          </div>
+        </div>
+        <div class="summary">
+          <div>
+            <label>Amount</label>
+            <div class="value">${formatCurrency(inv.total_amount || 0)}</div>
+          </div>
+          <div>
+            <label>Paid</label>
+            <div class="value">${formatCurrency((inv.total_amount || 0) - (inv.balance || 0))}</div>
+          </div>
+          <div>
+            <label>Balance</label>
+            <div class="value" style="color: ${(inv.balance || 0) > 0 ? '#dc2626' : '#059669'}">${formatCurrency(inv.balance || 0)}</div>
+          </div>
+        </div>
+        <div class="footer">Generated by Parameter Real Estate Accounting System &bull; ${new Date().toLocaleDateString()}</div>
+      </body>
+      </html>
+    `)
+
+    printWindow.document.close()
+    printWindow.onload = () => {
+      printWindow.focus()
+      printWindow.print()
+      printWindow.close()
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">My Invoices</h1>
+          <p className="text-sm text-gray-500 mt-1">View all your billing invoices</p>
+        </div>
+        {invoices.length > 0 && (
+          <Button variant="outline" className="gap-2" onClick={handlePrintAll}>
+            <Printer className="w-4 h-4" />
+            Print All
+          </Button>
+        )}
+      </motion.div>
+
+      {/* Summary bar */}
+      {data && !isLoading && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4 grid grid-cols-3 gap-4">
+          <div className="text-center">
+            <p className="text-xs text-gray-500 uppercase tracking-wider">Total Invoiced</p>
+            <p className="text-lg font-bold text-gray-900">{formatCurrency(data.total_amount || 0)}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-xs text-gray-500 uppercase tracking-wider">Outstanding</p>
+            <p className="text-lg font-bold text-red-600">{formatCurrency(data.total_balance || 0)}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-xs text-gray-500 uppercase tracking-wider">Count</p>
+            <p className="text-lg font-bold text-gray-900">{data.count || invoices.length}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Filter */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center gap-4">
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="px-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white"
+        >
+          <option value="">All Statuses</option>
+          <option value="pending">Pending</option>
+          <option value="posted">Posted</option>
+          <option value="paid">Paid</option>
+          <option value="overdue">Overdue</option>
+        </select>
+        <div className="ml-auto text-sm text-gray-500">{invoices.length} invoices</div>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice #</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {isLoading ? (
+                [...Array(5)].map((_, i) => (
+                  <tr key={i} className="animate-pulse">
+                    <td className="px-6 py-4"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
+                    <td className="px-6 py-4"><div className="h-4 w-24 bg-gray-200 rounded" /></td>
+                    <td className="px-6 py-4"><div className="h-4 w-24 bg-gray-200 rounded" /></td>
+                    <td className="px-6 py-4 text-right"><div className="h-4 w-16 bg-gray-200 rounded ml-auto" /></td>
+                    <td className="px-6 py-4 text-right"><div className="h-4 w-16 bg-gray-200 rounded ml-auto" /></td>
+                    <td className="px-6 py-4"><div className="h-5 w-16 bg-gray-200 rounded-full" /></td>
+                    <td className="px-6 py-4"><div className="h-4 w-8 bg-gray-200 rounded ml-auto" /></td>
+                  </tr>
+                ))
+              ) : invoices.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center text-gray-400">
+                    <FileText className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+                    <p className="font-medium">No invoices found</p>
+                  </td>
+                </tr>
+              ) : invoices.map((inv: any, idx: number) => (
+                <motion.tr
+                  key={inv.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: idx * 0.02 }}
+                  className="hover:bg-gray-50 transition-colors group"
+                >
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{inv.invoice_number}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{formatDate(inv.date)}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{formatDate(inv.due_date)}</td>
+                  <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{formatCurrency(inv.total_amount || 0)}</td>
+                  <td className="px-6 py-4 text-sm font-medium text-right">
+                    <span className={(inv.balance || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>
+                      {formatCurrency(inv.balance || 0)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={cn(
+                      'inline-flex px-2.5 py-1 rounded-full text-xs font-medium',
+                      inv.status === 'paid' ? 'bg-emerald-50 text-emerald-700' :
+                      inv.status === 'overdue' ? 'bg-red-50 text-red-700' :
+                      inv.status === 'draft' ? 'bg-gray-100 text-gray-600' :
+                      'bg-amber-50 text-amber-700'
+                    )}>
+                      {inv.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button
+                      onClick={() => handlePrintSingle(inv)}
+                      className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                      title="Download Invoice"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                  </td>
+                </motion.tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}

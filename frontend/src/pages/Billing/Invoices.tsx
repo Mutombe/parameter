@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -140,6 +141,7 @@ function SkeletonInvoices() {
 
 export default function Invoices() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [statusFilter, setStatusFilter] = useState<string>('')
@@ -269,8 +271,7 @@ export default function Invoices() {
   }
 
   const handleViewDetails = (invoice: Invoice) => {
-    setSelectedInvoice(invoice)
-    setShowDetailModal(true)
+    navigate(`/dashboard/invoices/${invoice.id}`)
   }
 
   const handlePrint = (invoice: Invoice) => {

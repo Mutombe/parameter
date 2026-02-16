@@ -1,20 +1,19 @@
 """
-Celery tasks for automated billing operations.
+Background tasks for automated billing operations.
+Uses Django-Q2 for async task execution.
 Handles monthly invoice generation and overdue marking.
 """
 import logging
 from datetime import date, timedelta
 from decimal import Decimal
-from celery import shared_task
+from django.db import models, transaction
 from django.utils import timezone
-from django.db import transaction
 from django_tenants.utils import tenant_context, get_tenant_model
 
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True, max_retries=3)
-def generate_monthly_invoices_all_tenants(self):
+def generate_monthly_invoices_all_tenants():
     """
     Generate monthly rent invoices for all active tenants.
     Runs on the 1st of each month.
@@ -105,8 +104,7 @@ def generate_monthly_invoices_for_tenant(tenant):
     return invoices_created
 
 
-@shared_task(bind=True, max_retries=3)
-def mark_overdue_invoices_all_tenants(self):
+def mark_overdue_invoices_all_tenants():
     """
     Mark overdue invoices for all tenants.
     Runs daily at midnight.
@@ -129,22 +127,83 @@ def mark_overdue_invoices_all_tenants(self):
 
 
 def mark_overdue_invoices_for_tenant():
-    """Mark overdue invoices for a specific tenant."""
+    """Mark overdue invoices for a specific tenant and create notifications."""
     from apps.billing.models import Invoice
+    from apps.notifications.models import Notification
+    from apps.accounts.models import User
 
     today = timezone.now().date()
 
-    # Update invoices that are past due
+    # Find invoices that are about to become overdue
+    newly_overdue = list(Invoice.objects.filter(
+        due_date__lt=today,
+        status__in=['sent', 'partial']
+    ).select_related('tenant', 'unit'))
+
+    # Mark them overdue
     updated = Invoice.objects.filter(
         due_date__lt=today,
         status__in=['sent', 'partial']
     ).update(status='overdue')
 
+    # Audit trail for each overdue invoice
+    from apps.accounting.models import AuditTrail
+    for invoice in newly_overdue:
+        try:
+            AuditTrail.objects.create(
+                action='invoice_marked_overdue',
+                model_name='Invoice',
+                record_id=invoice.id,
+                changes={
+                    'invoice_number': invoice.invoice_number,
+                    'tenant_name': invoice.tenant.name,
+                    'due_date': str(invoice.due_date),
+                    'balance': str(invoice.balance),
+                },
+                user=None
+            )
+        except Exception:
+            pass
+
+    # Create notifications for admins/accountants
+    if newly_overdue:
+        admin_users = User.objects.filter(
+            role__in=[User.Role.ADMIN, User.Role.ACCOUNTANT],
+            is_active=True, notifications_enabled=True
+        )
+        from apps.notifications.utils import push_notification_to_user
+        for invoice in newly_overdue:
+            for admin_user in admin_users:
+                try:
+                    notif = Notification.objects.create(
+                        user=admin_user,
+                        notification_type='invoice_overdue',
+                        priority='high',
+                        title=f'Invoice {invoice.invoice_number} is Overdue',
+                        message=f'{invoice.tenant.name} has not paid {invoice.currency} {invoice.balance:,.2f} (due {invoice.due_date}).',
+                        data={
+                            'invoice_id': invoice.id,
+                            'invoice_number': invoice.invoice_number,
+                            'tenant_name': invoice.tenant.name,
+                            'amount': str(invoice.balance),
+                            'due_date': str(invoice.due_date),
+                        }
+                    )
+                    try:
+                        push_notification_to_user(admin_user.id, {
+                            'id': notif.id, 'title': notif.title,
+                            'message': notif.message, 'notification_type': notif.notification_type,
+                            'created_at': notif.created_at.isoformat(),
+                        })
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+
     return updated
 
 
-@shared_task(bind=True)
-def generate_invoices_for_tenant_task(self, tenant_id, month=None, year=None):
+def generate_invoices_for_tenant_task(tenant_id, month=None, year=None):
     """
     Task to generate invoices for a specific tenant (manual trigger).
     """
@@ -166,8 +225,7 @@ def generate_invoices_for_tenant_task(self, tenant_id, month=None, year=None):
         return {'success': False, 'error': str(e)}
 
 
-@shared_task(bind=True)
-def send_invoice_reminder(self, invoice_id):
+def send_invoice_reminder(invoice_id):
     """Send reminder for a specific invoice."""
     from apps.billing.models import Invoice
     from apps.notifications.tasks import create_notification
@@ -176,14 +234,262 @@ def send_invoice_reminder(self, invoice_id):
         invoice = Invoice.objects.select_related('tenant').get(id=invoice_id)
 
         # Create notification for tenant
-        create_notification.delay(
-            user_id=invoice.tenant.portal_user_id if invoice.tenant.portal_user else None,
-            notification_type='invoice_reminder',
-            title=f'Invoice {invoice.invoice_number} Reminder',
-            message=f'Your invoice for {invoice.amount} {invoice.currency} is due on {invoice.due_date}.',
-            data={'invoice_id': invoice.id, 'amount': str(invoice.amount)}
-        )
+        portal_user_id = invoice.tenant.portal_user_id if hasattr(invoice.tenant, 'portal_user') and invoice.tenant.portal_user else None
+        if portal_user_id:
+            from django_q.tasks import async_task
+            async_task(
+                'apps.notifications.tasks.create_notification',
+                portal_user_id,
+                'invoice_reminder',
+                f'Invoice {invoice.invoice_number} Reminder',
+                f'Your invoice for {invoice.amount} {invoice.currency} is due on {invoice.due_date}.',
+                {'invoice_id': invoice.id, 'amount': str(invoice.amount)}
+            )
 
         return {'success': True, 'invoice': invoice.invoice_number}
     except Invoice.DoesNotExist:
         return {'success': False, 'error': 'Invoice not found'}
+
+
+def send_rental_due_reminders_all_tenants():
+    """
+    Send reminders for invoices due in 3 days.
+    Runs daily.
+    """
+    TenantModel = get_tenant_model()
+    tenants = TenantModel.objects.filter(is_active=True).exclude(schema_name='public')
+
+    total_reminders = 0
+
+    for tenant in tenants:
+        try:
+            with tenant_context(tenant):
+                count = _send_rental_due_reminders()
+                total_reminders += count
+        except Exception as e:
+            logger.error(f"Failed to send due reminders for {tenant.name}: {e}")
+
+    logger.info(f"Sent {total_reminders} rental due reminders across all tenants")
+    return {'total_reminders': total_reminders}
+
+
+def _send_rental_due_reminders():
+    """Send reminders for invoices due in 3 days for current tenant schema."""
+    from apps.billing.models import Invoice
+    from apps.notifications.models import Notification
+    from apps.accounts.models import User
+
+    today = timezone.now().date()
+    due_in_3_days = today + timedelta(days=3)
+
+    # Find unpaid invoices due in 3 days
+    upcoming_invoices = Invoice.objects.filter(
+        due_date=due_in_3_days,
+        status__in=['sent', 'partial'],
+        balance__gt=0
+    ).select_related('tenant', 'unit')
+
+    admin_users = User.objects.filter(
+        role__in=[User.Role.ADMIN, User.Role.ACCOUNTANT],
+        is_active=True, notifications_enabled=True
+    )
+
+    from apps.notifications.utils import push_notification_to_user
+    count = 0
+    for invoice in upcoming_invoices:
+        for admin_user in admin_users:
+            try:
+                notif = Notification.objects.create(
+                    user=admin_user,
+                    notification_type='rental_due',
+                    priority='medium',
+                    title=f'Invoice {invoice.invoice_number} Due in 3 Days',
+                    message=f'{invoice.tenant.name} owes {invoice.currency} {invoice.balance:,.2f}, due on {invoice.due_date}.',
+                    data={
+                        'invoice_id': invoice.id,
+                        'invoice_number': invoice.invoice_number,
+                        'tenant_name': invoice.tenant.name,
+                        'amount': str(invoice.balance),
+                        'due_date': str(invoice.due_date),
+                    }
+                )
+                try:
+                    push_notification_to_user(admin_user.id, {
+                        'id': notif.id, 'title': notif.title,
+                        'message': notif.message, 'notification_type': notif.notification_type,
+                        'created_at': notif.created_at.isoformat(),
+                    })
+                except Exception:
+                    pass
+                count += 1
+            except Exception:
+                pass
+
+    return count
+
+
+def apply_late_penalties_all_tenants():
+    """
+    Apply late penalties to overdue invoices across all tenants.
+    Runs daily.
+    """
+    TenantModel = get_tenant_model()
+    tenants = TenantModel.objects.filter(is_active=True).exclude(schema_name='public')
+
+    total_penalties = 0
+
+    for tenant in tenants:
+        try:
+            with tenant_context(tenant):
+                count = _apply_late_penalties()
+                total_penalties += count
+        except Exception as e:
+            logger.error(f"Failed to apply penalties for {tenant.name}: {e}")
+
+    logger.info(f"Applied {total_penalties} late penalties across all tenants")
+    return {'total_penalties': total_penalties}
+
+
+def _apply_late_penalties():
+    """Apply late penalties for overdue invoices in the current tenant schema."""
+    from apps.billing.models import Invoice, LatePenaltyConfig, LatePenaltyExclusion
+    from apps.notifications.models import Notification
+    from apps.accounts.models import User
+
+    today = timezone.now().date()
+    penalties_created = 0
+
+    # Get all overdue invoices (exclude penalty invoices themselves)
+    overdue_invoices = Invoice.objects.filter(
+        status='overdue',
+        balance__gt=0
+    ).exclude(
+        invoice_type='penalty'
+    ).select_related('tenant', 'unit', 'property')
+
+    admin_users = User.objects.filter(
+        role__in=[User.Role.ADMIN, User.Role.ACCOUNTANT],
+        is_active=True, notifications_enabled=True
+    )
+    system_user = User.objects.filter(role=User.Role.ADMIN).first()
+
+    for invoice in overdue_invoices:
+        try:
+            # Check for exclusion
+            active_exclusion = LatePenaltyExclusion.objects.filter(
+                tenant=invoice.tenant
+            ).filter(
+                models.Q(excluded_until__isnull=True) | models.Q(excluded_until__gte=today)
+            ).exists()
+
+            if active_exclusion:
+                continue
+
+            # Find applicable config: tenant override > property default > any enabled
+            config = LatePenaltyConfig.objects.filter(
+                tenant=invoice.tenant, is_enabled=True
+            ).first()
+
+            if not config and invoice.property:
+                config = LatePenaltyConfig.objects.filter(
+                    property=invoice.property, tenant__isnull=True, is_enabled=True
+                ).first()
+
+            if not config:
+                config = LatePenaltyConfig.objects.filter(
+                    property__isnull=True, tenant__isnull=True, is_enabled=True
+                ).first()
+
+            if not config:
+                continue
+
+            # Check grace period
+            grace_deadline = invoice.due_date + timedelta(days=config.grace_period_days)
+            if today <= grace_deadline:
+                continue
+
+            # Calculate penalty
+            penalty_amount = config.calculate_penalty(invoice.balance)
+            if penalty_amount <= 0:
+                continue
+
+            # Atomic check+create to prevent duplicate penalties from concurrent runs
+            with transaction.atomic():
+                # Lock the original invoice to serialize penalty creation
+                Invoice.objects.select_for_update().get(id=invoice.id)
+
+                # Re-check penalty count inside the lock
+                existing_penalty_count = Invoice.objects.filter(
+                    invoice_type='penalty',
+                    tenant=invoice.tenant,
+                    description__contains=invoice.invoice_number
+                ).count()
+
+                if config.max_penalties_per_invoice > 0 and existing_penalty_count >= config.max_penalties_per_invoice:
+                    continue
+
+                penalty_invoice = Invoice.objects.create(
+                    tenant=invoice.tenant,
+                    unit=invoice.unit,
+                    property=invoice.property,
+                    invoice_type='penalty',
+                    status='sent',
+                    date=today,
+                    due_date=today,
+                    amount=penalty_amount,
+                    vat_amount=Decimal('0'),
+                    currency=config.currency or invoice.currency,
+                    description=f'Late payment penalty for {invoice.invoice_number} ({config.get_penalty_type_display()})',
+                    created_by=system_user
+                )
+                penalties_created += 1
+
+                # Audit trail for penalty creation
+                from apps.accounting.models import AuditTrail
+                AuditTrail.objects.create(
+                    action='late_penalty_applied',
+                    model_name='Invoice',
+                    record_id=penalty_invoice.id,
+                    changes={
+                        'penalty_invoice_number': penalty_invoice.invoice_number,
+                        'original_invoice_number': invoice.invoice_number,
+                        'tenant_name': invoice.tenant.name,
+                        'penalty_amount': str(penalty_amount),
+                        'penalty_type': config.penalty_type,
+                    },
+                    user=system_user
+                )
+
+            # Notify admins
+            from apps.notifications.utils import push_notification_to_user
+            for admin_user in admin_users:
+                try:
+                    notif = Notification.objects.create(
+                        user=admin_user,
+                        notification_type='late_penalty',
+                        priority='medium',
+                        title=f'Late Penalty Applied: {penalty_invoice.invoice_number}',
+                        message=f'A penalty of {config.currency} {penalty_amount:,.2f} was applied to {invoice.tenant.name} for overdue invoice {invoice.invoice_number}.',
+                        data={
+                            'penalty_invoice_id': penalty_invoice.id,
+                            'original_invoice_id': invoice.id,
+                            'original_invoice_number': invoice.invoice_number,
+                            'tenant_name': invoice.tenant.name,
+                            'penalty_amount': str(penalty_amount),
+                        }
+                    )
+                    try:
+                        push_notification_to_user(admin_user.id, {
+                            'id': notif.id, 'title': notif.title,
+                            'message': notif.message, 'notification_type': notif.notification_type,
+                            'created_at': notif.created_at.isoformat(),
+                        })
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+
+        except Exception as e:
+            logger.error(f"Failed to apply penalty for invoice {invoice.invoice_number}: {e}")
+
+    return penalties_created

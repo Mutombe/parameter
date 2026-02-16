@@ -1,18 +1,17 @@
 """
-Celery tasks for masterfile operations.
+Background tasks for masterfile operations.
+Uses Django-Q2 for async task execution.
 Handles lease expiry reminders and property maintenance alerts.
 """
 import logging
 from datetime import timedelta
-from celery import shared_task
 from django.utils import timezone
 from django_tenants.utils import tenant_context, get_tenant_model
 
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True, max_retries=3)
-def send_lease_expiry_reminders(self):
+def send_lease_expiry_reminders():
     """
     Send reminders for leases expiring within 30, 60, and 90 days.
     Runs daily at 8 AM.
@@ -85,8 +84,7 @@ def check_expiring_leases_for_tenant():
     return notifications_created
 
 
-@shared_task(bind=True)
-def update_unit_occupancy_status(self, unit_id):
+def update_unit_occupancy_status(unit_id):
     """Update unit occupancy status based on active leases."""
     from apps.masterfile.models import Unit, LeaseAgreement
 
@@ -105,11 +103,10 @@ def update_unit_occupancy_status(self, unit_id):
         return {'success': False, 'error': 'Unit not found'}
 
 
-@shared_task(bind=True)
-def calculate_property_statistics(self, property_id):
+def calculate_property_statistics(property_id):
     """Calculate and cache property statistics."""
     from apps.masterfile.models import Property
-    from django.db.models import Count, Sum
+    from django.db.models import Sum
 
     try:
         prop = Property.objects.get(id=property_id)

@@ -1,6 +1,6 @@
 """Serializers for billing module."""
 from rest_framework import serializers
-from .models import Invoice, Receipt, Expense
+from .models import Invoice, Receipt, Expense, LatePenaltyConfig, LatePenaltyExclusion
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
@@ -95,3 +95,32 @@ class BulkReceiptSerializer(serializers.Serializer):
     receipts = serializers.ListField(
         child=serializers.DictField()
     )
+
+
+class LatePenaltyConfigSerializer(serializers.ModelSerializer):
+    property_name = serializers.CharField(source='property.name', read_only=True, default=None)
+    tenant_name = serializers.CharField(source='tenant.name', read_only=True, default=None)
+
+    class Meta:
+        model = LatePenaltyConfig
+        fields = [
+            'id', 'property', 'property_name', 'tenant', 'tenant_name',
+            'penalty_type', 'percentage_rate', 'flat_fee', 'currency',
+            'grace_period_days', 'max_penalty_amount', 'max_penalties_per_invoice',
+            'is_enabled', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class LatePenaltyExclusionSerializer(serializers.ModelSerializer):
+    tenant_name = serializers.CharField(source='tenant.name', read_only=True)
+    excluded_by_name = serializers.CharField(source='excluded_by.email', read_only=True, default=None)
+    is_active = serializers.ReadOnlyField()
+
+    class Meta:
+        model = LatePenaltyExclusion
+        fields = [
+            'id', 'tenant', 'tenant_name', 'reason', 'excluded_by',
+            'excluded_by_name', 'excluded_until', 'is_active', 'created_at'
+        ]
+        read_only_fields = ['excluded_by', 'created_at']

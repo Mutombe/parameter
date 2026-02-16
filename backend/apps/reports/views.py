@@ -61,6 +61,44 @@ class DashboardStatsView(APIView):
             end_date__lte=thirty_days
         ).count()
 
+        # Revenue trend - last 6 months of invoiced vs collected
+        six_months_ago = (today - timedelta(days=180)).replace(day=1)
+
+        monthly_invoices = Invoice.objects.filter(
+            date__gte=six_months_ago
+        ).annotate(
+            month=TruncMonth('date')
+        ).values('month').annotate(
+            total=Coalesce(Sum('total_amount'), Decimal('0'))
+        ).order_by('month')
+
+        monthly_receipts = Receipt.objects.filter(
+            date__gte=six_months_ago
+        ).annotate(
+            month=TruncMonth('date')
+        ).values('month').annotate(
+            total=Coalesce(Sum('amount'), Decimal('0'))
+        ).order_by('month')
+
+        invoice_by_month = {r['month'].strftime('%b'): float(r['total']) for r in monthly_invoices}
+        receipt_by_month = {r['month'].strftime('%b'): float(r['total']) for r in monthly_receipts}
+
+        # Build ordered list of months
+        revenue_trend = []
+        current = six_months_ago
+        while current <= today:
+            label = current.strftime('%b')
+            revenue_trend.append({
+                'month': label,
+                'invoiced': invoice_by_month.get(label, 0),
+                'collected': receipt_by_month.get(label, 0),
+            })
+            # Advance to next month
+            if current.month == 12:
+                current = current.replace(year=current.year + 1, month=1)
+            else:
+                current = current.replace(month=current.month + 1)
+
         return Response({
             'properties': {
                 'total': total_properties,
@@ -87,7 +125,8 @@ class DashboardStatsView(APIView):
                 'landlords': Landlord.objects.count(),
                 'tenants': RentalTenant.objects.count(),
                 'active_leases': LeaseAgreement.objects.filter(status='active').count()
-            }
+            },
+            'revenue_trend': revenue_trend,
         })
 
 

@@ -49,6 +49,7 @@ def get_changed_fields(instance, old_instance):
 def create_masterfile_notification(entity_type, entity_id, entity_name, change_type, changes=None, user=None):
     """Create notification for masterfile changes."""
     from apps.notifications.models import Notification, MasterfileChangeLog
+    from apps.masterfile.models import PropertyManager
 
     # Get all admin and accountant users
     notify_users = User.objects.filter(
@@ -56,6 +57,36 @@ def create_masterfile_notification(entity_type, entity_id, entity_name, change_t
         is_active=True,
         notifications_enabled=True
     )
+
+    # Also notify property managers if entity is property-related
+    if entity_type in ('property', 'unit', 'tenant', 'lease'):
+        property_id = None
+        if entity_type == 'property':
+            property_id = entity_id
+        elif entity_type in ('unit', 'lease'):
+            try:
+                from apps.masterfile.models import Unit, LeaseAgreement
+                if entity_type == 'unit':
+                    unit = Unit.objects.filter(pk=entity_id).select_related('property').first()
+                    if unit:
+                        property_id = unit.property_id
+                elif entity_type == 'lease':
+                    lease = LeaseAgreement.objects.filter(pk=entity_id).select_related('unit__property').first()
+                    if lease and lease.unit:
+                        property_id = lease.unit.property_id
+            except Exception:
+                pass
+
+        if property_id:
+            manager_user_ids = PropertyManager.objects.filter(
+                property_id=property_id
+            ).values_list('user_id', flat=True)
+            manager_users = User.objects.filter(
+                id__in=manager_user_ids,
+                is_active=True,
+                notifications_enabled=True
+            )
+            notify_users = (notify_users | manager_users).distinct()
 
     # Exclude the user who made the change
     if user:
@@ -82,7 +113,7 @@ def create_masterfile_notification(entity_type, entity_id, entity_name, change_t
     # Create notification for each user
     for notify_user in notify_users:
         try:
-            Notification.objects.create(
+            notification = Notification.objects.create(
                 user=notify_user,
                 notification_type=notification_type_map.get(change_type, 'masterfile_updated'),
                 title=title_map.get(change_type, 'Masterfile Change'),
@@ -96,6 +127,18 @@ def create_masterfile_notification(entity_type, entity_id, entity_name, change_t
                     'changed_by': user.email if user else 'System'
                 }
             )
+            # Push via WebSocket
+            try:
+                from apps.notifications.utils import push_notification_to_user
+                push_notification_to_user(notify_user.id, {
+                    'id': notification.id,
+                    'title': notification.title,
+                    'message': notification.message,
+                    'notification_type': notification.notification_type,
+                    'created_at': notification.created_at.isoformat(),
+                })
+            except Exception:
+                pass  # WebSocket push is best-effort
         except Exception as e:
             logger.error(f"Failed to create notification: {e}")
 

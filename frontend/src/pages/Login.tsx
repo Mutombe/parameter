@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff, Loader2, Building2, Shield, BarChart3, AlertTriangle } from 'lucide-react'
+import { AxiosError } from 'axios'
 import { useAuthStore } from '../stores/authStore'
 import { authApi } from '../services/api'
 import toast from 'react-hot-toast'
@@ -38,7 +39,8 @@ export default function Login() {
 
     try {
       const response = await authApi.login(form)
-      setUser(response.data.user)
+      const loggedInUser = response.data.user
+      setUser(loggedInUser)
 
       // Show demo warning if applicable
       if (response.data.demo_warning) {
@@ -47,27 +49,33 @@ export default function Login() {
         toast.success('Welcome back!')
       }
 
-      navigate('/dashboard')
-    } catch (error: any) {
+      // Redirect tenant portal users to /portal
+      if (loggedInUser?.role === 'tenant_portal') {
+        navigate('/portal')
+      } else {
+        navigate('/dashboard')
+      }
+    } catch (error) {
+      const axiosErr = error as AxiosError<{ error?: string; demo_expired?: boolean }>
       // Handle different error cases with user-friendly messages
-      const errorData = error.response?.data
+      const errorData = axiosErr.response?.data
       let errorMessage = 'Login failed. Please try again.'
 
-      if (error.response?.status === 400) {
+      if (axiosErr.response?.status === 400) {
         // Validation errors
         errorMessage = errorData?.error || 'Invalid email or password'
-      } else if (error.response?.status === 403) {
+      } else if (axiosErr.response?.status === 403) {
         // Check for demo expiry
         if (errorData?.demo_expired) {
           errorMessage = 'Your demo has expired. Please contact our sales team to activate your account.'
         } else {
           errorMessage = errorData?.error || 'Access denied. Please check your credentials.'
         }
-      } else if (error.response?.status === 404) {
+      } else if (axiosErr.response?.status === 404) {
         errorMessage = 'Service unavailable. Please try again later.'
-      } else if (error.response?.status >= 500) {
+      } else if (axiosErr.response?.status && axiosErr.response.status >= 500) {
         errorMessage = 'Server error. Please try again later.'
-      } else if (!error.response) {
+      } else if (!axiosErr.response) {
         errorMessage = 'Network error. Please check your connection.'
       }
 

@@ -210,7 +210,7 @@ def validate_entity(entity_type, df):
                     try:
                         if isinstance(val, str):
                             pd.to_datetime(val)
-                    except:
+                    except (ValueError, TypeError):
                         row_errors.append({
                             'row': row_num,
                             'field': date_field,

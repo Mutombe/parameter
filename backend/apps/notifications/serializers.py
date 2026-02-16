@@ -46,8 +46,10 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
         fields = [
             'email_masterfile_changes', 'email_invoice_alerts',
             'email_payment_received', 'email_lease_alerts', 'email_system_alerts',
+            'email_rental_due', 'email_late_penalty',
             'push_masterfile_changes', 'push_invoice_alerts',
             'push_payment_received', 'push_lease_alerts', 'push_system_alerts',
+            'push_rental_due', 'push_late_penalty',
             'daily_digest', 'digest_time'
         ]
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -21,8 +21,11 @@ import {
   Wand2,
   CheckCircle2,
   AlertCircle,
+  UserPlus,
+  Shield,
+  Users,
 } from 'lucide-react'
-import { propertyApi, landlordApi } from '../../services/api'
+import { propertyApi, landlordApi, propertyManagerApi, usersApi } from '../../services/api'
 import { formatPercent, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, ConfirmDialog, Pagination } from '../../components/ui'
 import toast from 'react-hot-toast'
@@ -30,6 +33,13 @@ import { PiBuildingApartmentLight } from "react-icons/pi"
 import { TbUserSquareRounded } from "react-icons/tb"
 
 const PAGE_SIZE = 12
+
+interface PropertyManager {
+  id: number
+  user_id: number
+  name: string
+  is_primary?: boolean
+}
 
 interface Property {
   id: number
@@ -44,6 +54,8 @@ interface Property {
   unit_definition?: string
   defined_unit_count?: number
   vacancy_rate: number
+  primary_manager?: PropertyManager | null
+  managers_list?: PropertyManager[]
   created_at: string
 }
 
@@ -80,6 +92,7 @@ const propertyTypeConfig = {
 
 export default function Properties() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
@@ -118,35 +131,13 @@ export default function Properties() {
       search: debouncedSearch,
       page: currentPage,
       page_size: PAGE_SIZE
-    }).then(r => {
-      console.log('Properties API response:', r.data)
-      return r.data
-    }),
+    }).then(r => r.data),
   })
-
-  // Log error if any
-  if (error) {
-    console.error('Properties fetch error:', error)
-  }
 
   // Handle both paginated and non-paginated responses
   const properties = propertiesData?.results || propertiesData || []
   const totalCount = propertiesData?.count || properties.length
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
-
-  // Debug logging
-  console.log('Properties Debug:', {
-    propertiesData,
-    propertiesType: typeof propertiesData,
-    isArray: Array.isArray(propertiesData),
-    hasResults: !!propertiesData?.results,
-    results: propertiesData?.results,
-    properties,
-    propertiesLength: properties.length,
-    totalCount,
-    isLoading,
-    error
-  })
 
   const { data: landlords } = useQuery({
     queryKey: ['landlords-select'],
@@ -208,6 +199,58 @@ export default function Properties() {
     },
   })
 
+  // Manager assignment state
+  const [showManagerModal, setShowManagerModal] = useState(false)
+  const [selectedManagerUserId, setSelectedManagerUserId] = useState('')
+  const [managerIsPrimary, setManagerIsPrimary] = useState(false)
+
+  // Fetch staff users for manager assignment
+  const { data: staffUsers } = useQuery({
+    queryKey: ['staff-users'],
+    queryFn: () => usersApi.list().then(r => {
+      const users = r.data.results || r.data
+      return users.filter((u: any) => u.role !== 'tenant_portal' && u.is_active)
+    }),
+    enabled: showManagerModal,
+  })
+
+  // Fetch managers for selected property
+  const { data: propertyManagers, refetch: refetchManagers } = useQuery({
+    queryKey: ['property-managers', selectedProperty?.id],
+    queryFn: () => propertyManagerApi.list({ property: selectedProperty?.id }).then(r => r.data.results || r.data),
+    enabled: showManagerModal && !!selectedProperty?.id,
+  })
+
+  const assignManagerMutation = useMutation({
+    mutationFn: (data: { user: number; property: number; is_primary: boolean }) =>
+      propertyManagerApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['properties'] })
+      queryClient.invalidateQueries({ queryKey: ['property-managers'] })
+      toast.success('Manager assigned successfully')
+      setSelectedManagerUserId('')
+      setManagerIsPrimary(false)
+      refetchManagers()
+    },
+    onError: (error: any) => {
+      const message = error?.response?.data?.detail
+        || error?.response?.data?.non_field_errors?.[0]
+        || 'Failed to assign manager'
+      toast.error(Array.isArray(message) ? message[0] : message)
+    },
+  })
+
+  const removeManagerMutation = useMutation({
+    mutationFn: (id: number) => propertyManagerApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['properties'] })
+      queryClient.invalidateQueries({ queryKey: ['property-managers'] })
+      toast.success('Manager removed')
+      refetchManagers()
+    },
+    onError: () => toast.error('Failed to remove manager'),
+  })
+
   const resetForm = () => {
     setShowForm(false)
     setEditingId(null)
@@ -250,24 +293,18 @@ export default function Properties() {
   }
 
   const handleViewDetails = (property: Property) => {
-    setSelectedProperty(property)
-    setShowDetailsModal(true)
+    navigate(`/dashboard/properties/${property.id}`)
   }
 
   // Handle "view" query parameter from search navigation
   useEffect(() => {
     const viewId = searchParams.get('view')
-    if (viewId && properties.length > 0) {
-      const property = properties.find((p: Property) => String(p.id) === viewId)
-      if (property) {
-        setSelectedProperty(property)
-        setShowDetailsModal(true)
-        // Clear the view param from URL
-        searchParams.delete('view')
-        setSearchParams(searchParams, { replace: true })
-      }
+    if (viewId) {
+      searchParams.delete('view')
+      setSearchParams(searchParams, { replace: true })
+      navigate(`/dashboard/properties/${viewId}`, { replace: true })
     }
-  }, [searchParams, properties, setSearchParams])
+  }, [searchParams, setSearchParams, navigate])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -491,6 +528,14 @@ export default function Properties() {
                     <span className="truncate">{property.landlord_name}</span>
                   </div>
 
+                  {/* Manager */}
+                  {property.primary_manager && (
+                    <div className="hidden lg:flex items-center gap-1.5 text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
+                      <Shield className="w-3 h-3" />
+                      <span className="truncate max-w-[80px]">{property.primary_manager.name}</span>
+                    </div>
+                  )}
+
                   {/* Units */}
                   <div className="hidden lg:flex items-center gap-4 text-sm">
                     <div className="text-center min-w-[60px]">
@@ -680,6 +725,44 @@ export default function Properties() {
                             <p className="text-xs text-gray-500">Vacant</p>
                           </div>
                         </div>
+                      </div>
+
+                      {/* Managers Section */}
+                      <div className="mt-6 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="text-sm font-medium text-indigo-700 flex items-center gap-2">
+                            <Users className="w-4 h-4" />
+                            Property Managers
+                          </span>
+                          <button
+                            onClick={() => setShowManagerModal(true)}
+                            className="text-xs text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                          >
+                            <UserPlus className="w-3.5 h-3.5" />
+                            Manage
+                          </button>
+                        </div>
+                        {selectedProperty.managers_list && selectedProperty.managers_list.length > 0 ? (
+                          <div className="space-y-2">
+                            {selectedProperty.managers_list.map((mgr: PropertyManager) => (
+                              <div key={mgr.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center">
+                                    <span className="text-xs font-medium text-indigo-600">
+                                      {mgr.name.charAt(0).toUpperCase()}
+                                    </span>
+                                  </div>
+                                  <span className="text-sm text-gray-700">{mgr.name}</span>
+                                </div>
+                                {mgr.is_primary && (
+                                  <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">Primary</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-500">No managers assigned yet</p>
+                        )}
                       </div>
 
                       {/* Actions */}
@@ -941,6 +1024,120 @@ export default function Properties() {
               onClick={handleGenerateUnits}
             >
               {generateUnitsMutation.isPending ? 'Generating...' : `Generate ${previewData?.create_count || 0} Units`}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Manager Assignment Modal */}
+      <Modal
+        open={showManagerModal}
+        onClose={() => {
+          setShowManagerModal(false)
+          setSelectedManagerUserId('')
+          setManagerIsPrimary(false)
+        }}
+        title="Manage Property Managers"
+        icon={Users}
+      >
+        <div className="space-y-4">
+          {/* Current Managers */}
+          <div>
+            <h4 className="text-sm font-medium text-gray-700 mb-2">Current Managers</h4>
+            {propertyManagers && propertyManagers.length > 0 ? (
+              <div className="space-y-2">
+                {propertyManagers.map((mgr: any) => (
+                  <div key={mgr.id} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
+                        <span className="text-sm font-medium text-indigo-600">
+                          {(mgr.user_name || mgr.user_email || '?').charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{mgr.user_name || mgr.user_email}</p>
+                        {mgr.user_email && <p className="text-xs text-gray-500">{mgr.user_email}</p>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {mgr.is_primary && (
+                        <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">Primary</span>
+                      )}
+                      <button
+                        onClick={() => removeManagerMutation.mutate(mgr.id)}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Remove manager"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 py-2">No managers assigned</p>
+            )}
+          </div>
+
+          {/* Assign New Manager */}
+          <div className="border-t pt-4">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">Assign New Manager</h4>
+            <Select
+              label="Staff Member"
+              value={selectedManagerUserId}
+              onChange={(e) => setSelectedManagerUserId(e.target.value)}
+            >
+              <option value="">Select a staff member</option>
+              {staffUsers?.filter((u: any) => {
+                // Exclude already assigned managers
+                const assignedIds = propertyManagers?.map((m: any) => m.user) || []
+                return !assignedIds.includes(u.id)
+              }).map((u: any) => (
+                <option key={u.id} value={u.id}>
+                  {u.first_name} {u.last_name} ({u.email}) - {u.role}
+                </option>
+              ))}
+            </Select>
+
+            <label className="flex items-center gap-2 mt-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={managerIsPrimary}
+                onChange={(e) => setManagerIsPrimary(e.target.checked)}
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span className="text-sm text-gray-700">Set as primary manager</span>
+            </label>
+
+            <Button
+              className="w-full mt-3 gap-2"
+              disabled={!selectedManagerUserId || assignManagerMutation.isPending}
+              onClick={() => {
+                if (selectedProperty && selectedManagerUserId) {
+                  assignManagerMutation.mutate({
+                    user: parseInt(selectedManagerUserId, 10),
+                    property: selectedProperty.id,
+                    is_primary: managerIsPrimary,
+                  })
+                }
+              }}
+            >
+              <UserPlus className="w-4 h-4" />
+              {assignManagerMutation.isPending ? 'Assigning...' : 'Assign Manager'}
+            </Button>
+          </div>
+
+          <div className="flex pt-2">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                setShowManagerModal(false)
+                setSelectedManagerUserId('')
+                setManagerIsPrimary(false)
+              }}
+            >
+              Done
             </Button>
           </div>
         </div>

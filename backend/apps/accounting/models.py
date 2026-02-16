@@ -222,9 +222,19 @@ class Journal(models.Model):
 
         self.validate_balance()
 
-        # Update account balances
-        for entry in self.entries.all():
-            account = entry.account
+        # Update account balances — lock rows to prevent concurrent balance corruption
+        entries = list(self.entries.select_related('account').all())
+        account_ids = [e.account_id for e in entries]
+        # Lock all affected accounts in consistent order to prevent deadlocks
+        locked_accounts = {
+            a.id: a for a in ChartOfAccount.objects.select_for_update().filter(
+                id__in=account_ids
+            ).order_by('id')
+        }
+
+        gl_entries = []
+        for entry in entries:
+            account = locked_accounts[entry.account_id]
             if entry.debit_amount:
                 if account.normal_balance == 'debit':
                     account.current_balance += entry.debit_amount
@@ -235,12 +245,11 @@ class Journal(models.Model):
                     account.current_balance += entry.credit_amount
                 else:
                     account.current_balance -= entry.credit_amount
-            account.save()
+            account.save(update_fields=['current_balance', 'updated_at'])
 
-            # Create General Ledger entry
-            GeneralLedger.objects.create(
+            gl_entries.append(GeneralLedger(
                 journal_entry=entry,
-                account=entry.account,
+                account=account,
                 date=self.date,
                 description=entry.description or self.description,
                 debit_amount=entry.debit_amount,
@@ -248,7 +257,9 @@ class Journal(models.Model):
                 balance=account.current_balance,
                 currency=self.currency,
                 exchange_rate=self.exchange_rate
-            )
+            ))
+
+        GeneralLedger.objects.bulk_create(gl_entries)
 
         self.status = self.Status.POSTED
         self.posted_by = user or get_current_user()
@@ -344,6 +355,9 @@ class JournalEntry(models.Model):
         verbose_name = 'Journal Entry'
         verbose_name_plural = 'Journal Entries'
         ordering = ['id']
+        indexes = [
+            models.Index(fields=['source_type', 'source_id']),
+        ]
 
     def __str__(self):
         if self.debit_amount:
@@ -613,12 +627,13 @@ class BankTransaction(models.Model):
         self.reconciled_by = user
         self.save()
 
-        # Update bank account book balance
+        # Lock bank account row to prevent concurrent balance corruption
+        bank_acct = BankAccount.objects.select_for_update().get(id=self.bank_account_id)
         if self.transaction_type == self.TransactionType.CREDIT:
-            self.bank_account.book_balance += self.amount
+            bank_acct.book_balance += self.amount
         else:
-            self.bank_account.book_balance -= self.amount
-        self.bank_account.save()
+            bank_acct.book_balance -= self.amount
+        bank_acct.save(update_fields=['book_balance', 'updated_at'])
 
 
 class BankReconciliation(models.Model):

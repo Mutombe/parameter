@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -126,6 +127,7 @@ function SkeletonExpenses() {
 
 export default function Expenses() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [typeFilter, setTypeFilter] = useState<string>('')
@@ -399,7 +401,7 @@ export default function Expenses() {
                     config.borderColor,
                     expense._isOptimistic && "opacity-60"
                   )}
-                  onClick={() => setShowDetail(expense)}
+                  onClick={() => navigate(`/dashboard/expenses/${expense.id}`)}
                 >
                   <div className="flex items-center gap-4">
                     <div className={cn("p-3 rounded-xl", config.bgColor)}>

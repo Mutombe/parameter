@@ -1,21 +1,19 @@
 """
-Celery tasks for notification operations.
+Background tasks for notification operations.
+Uses Django-Q2 for async task execution.
 Handles email sending, cleanup, and notification creation.
 """
 import logging
 from datetime import timedelta
-from celery import shared_task
 from django.utils import timezone
 from django.core.mail import send_mail
 from django.conf import settings
-from django.template.loader import render_to_string
 from django_tenants.utils import tenant_context, get_tenant_model
 
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True)
-def create_notification(self, user_id, notification_type, title, message, data=None, send_email=True):
+def create_notification(user_id, notification_type, title, message, data=None, send_email_flag=True):
     """
     Create a notification for a user.
     Can be called from any task to create notifications.
@@ -34,9 +32,26 @@ def create_notification(self, user_id, notification_type, title, message, data=N
             data=data or {}
         )
 
+        # Push via WebSocket
+        try:
+            from apps.notifications.utils import push_notification_to_user
+            push_notification_to_user(user.id, {
+                'id': notification.id,
+                'title': notification.title,
+                'message': notification.message,
+                'notification_type': notification.notification_type,
+                'created_at': notification.created_at.isoformat(),
+            })
+        except Exception:
+            pass  # WebSocket push is best-effort
+
         # Send email if enabled
-        if send_email and user.notifications_enabled:
-            send_notification_email.delay(notification.id)
+        if send_email_flag and user.notifications_enabled:
+            from django_q.tasks import async_task
+            async_task(
+                'apps.notifications.tasks.send_notification_email',
+                notification.id
+            )
 
         return {'success': True, 'notification_id': notification.id}
     except User.DoesNotExist:
@@ -46,8 +61,7 @@ def create_notification(self, user_id, notification_type, title, message, data=N
         return {'success': False, 'error': str(e)}
 
 
-@shared_task(bind=True, max_retries=3)
-def send_notification_email(self, notification_id):
+def send_notification_email(notification_id):
     """Send email for a notification."""
     from apps.notifications.models import Notification
 
@@ -71,6 +85,8 @@ def send_notification_email(self, notification_id):
                 'lease_expiring': prefs.email_lease_alerts,
                 'lease_activated': prefs.email_lease_alerts,
                 'lease_terminated': prefs.email_lease_alerts,
+                'rental_due': prefs.email_rental_due,
+                'late_penalty': prefs.email_late_penalty,
                 'system_alert': prefs.email_system_alerts,
             }
 
@@ -79,7 +95,7 @@ def send_notification_email(self, notification_id):
 
         # Send email
         subject = f"[Parameter] {notification.title}"
-        message = f"{notification.message}\n\nData: {notification.data}"
+        message = notification.message
 
         try:
             send_mail(
@@ -97,14 +113,13 @@ def send_notification_email(self, notification_id):
             return {'success': True, 'email': notification.user.email}
         except Exception as e:
             logger.error(f"Email send failed: {e}")
-            raise self.retry(countdown=60, exc=e)
+            raise
 
     except Notification.DoesNotExist:
         return {'success': False, 'error': 'Notification not found'}
 
 
-@shared_task(bind=True)
-def cleanup_old_notifications(self):
+def cleanup_old_notifications():
     """
     Clean up old read notifications (older than 90 days).
     Runs weekly.
@@ -133,8 +148,7 @@ def cleanup_old_notifications(self):
     return {'total_deleted': total_deleted}
 
 
-@shared_task(bind=True)
-def send_daily_digest(self):
+def send_daily_digest():
     """
     Send daily digest of notifications to users who have it enabled.
     """
@@ -193,8 +207,7 @@ def send_daily_digest(self):
     return {'digests_sent': digests_sent}
 
 
-@shared_task(bind=True)
-def broadcast_notification(self, notification_type, title, message, data=None, roles=None):
+def broadcast_notification(notification_type, title, message, data=None, roles=None):
     """
     Broadcast a notification to all users or users with specific roles.
     """
@@ -210,13 +223,23 @@ def broadcast_notification(self, notification_type, title, message, data=None, r
 
     for user in query:
         try:
-            Notification.objects.create(
+            notif = Notification.objects.create(
                 user=user,
                 notification_type=notification_type,
                 title=title,
                 message=message,
                 data=data or {}
             )
+            # Push via WebSocket
+            try:
+                from apps.notifications.utils import push_notification_to_user
+                push_notification_to_user(user.id, {
+                    'id': notif.id, 'title': notif.title,
+                    'message': notif.message, 'notification_type': notif.notification_type,
+                    'created_at': notif.created_at.isoformat(),
+                })
+            except Exception:
+                pass
             notifications_created += 1
         except Exception as e:
             logger.error(f"Failed to create broadcast notification for {user.email}: {e}")

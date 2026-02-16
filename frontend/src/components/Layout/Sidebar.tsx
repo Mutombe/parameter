@@ -25,6 +25,8 @@ import {
   Wallet,
   GitCompare,
   Upload,
+  Bell,
+  AlertTriangle,
 } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useAuthStore } from '../../stores/authStore'
@@ -58,6 +60,7 @@ const navigation: NavSection[] = [
     title: 'Overview',
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+      { name: 'Notifications', href: '/dashboard/notifications', icon: Bell },
       { name: 'Search', href: '/dashboard/search', icon: Search },
     ],
   },
@@ -77,6 +80,7 @@ const navigation: NavSection[] = [
       { name: 'Invoices', href: '/dashboard/invoices', icon: Receipt },
       { name: 'Receipts', href: '/dashboard/receipts', icon: CreditCard },
       { name: 'Expenses', href: '/dashboard/expenses', icon: Wallet },
+      { name: 'Late Penalties', href: '/dashboard/late-penalties', icon: AlertTriangle },
     ],
   },
   {

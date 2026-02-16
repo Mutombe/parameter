@@ -7,7 +7,7 @@ import {
   User, ChevronRight, ChevronLeft, Clock, Sparkles, AlertCircle
 } from 'lucide-react'
 import { tenantInvitationsApi, demoApi, tenantsApi } from '../services/api'
-import { cn } from '../lib/utils'
+import { cn, getErrorMessage } from '../lib/utils'
 import toast from 'react-hot-toast'
 import { PiUsersFour } from "react-icons/pi";
 import { RiClaudeFill } from "react-icons/ri";
@@ -81,9 +81,8 @@ export default function Signup() {
         admin_last_name: response.data.last_name || '',
       }))
       setMode('invited')
-    } catch (err: any) {
-      const message = err.response?.data?.error || 'This invitation link is invalid or has expired.'
-      setError(message)
+    } catch (err) {
+      setError(getErrorMessage(err, 'This invitation link is invalid or has expired.'))
       setMode('demo')
     }
   }

@@ -12,11 +12,12 @@ from django.conf import settings
 from datetime import date
 from calendar import monthrange
 import logging
-from .models import Invoice, Receipt, Expense
+from .models import Invoice, Receipt, Expense, LatePenaltyConfig, LatePenaltyExclusion
 from .serializers import (
     InvoiceSerializer, InvoiceCreateSerializer,
     ReceiptSerializer, ReceiptCreateSerializer,
-    ExpenseSerializer, BulkInvoiceSerializer, BulkReceiptSerializer
+    ExpenseSerializer, BulkInvoiceSerializer, BulkReceiptSerializer,
+    LatePenaltyConfigSerializer, LatePenaltyExclusionSerializer
 )
 from apps.masterfile.models import LeaseAgreement, Property, RentalTenant
 from apps.accounting.models import AuditTrail
@@ -764,3 +765,50 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             })
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class LatePenaltyConfigViewSet(viewsets.ModelViewSet):
+    """CRUD for late penalty configurations."""
+    queryset = LatePenaltyConfig.objects.select_related('property', 'tenant').all()
+    serializer_class = LatePenaltyConfigSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['property', 'tenant', 'penalty_type', 'is_enabled']
+    ordering = ['-created_at']
+
+    @action(detail=False, methods=['get'])
+    def for_property(self, request):
+        """Get penalty config applicable to a property."""
+        property_id = request.query_params.get('property_id')
+        if not property_id:
+            return Response({'error': 'property_id required'}, status=400)
+
+        configs = self.get_queryset().filter(
+            Q(property_id=property_id) | Q(property__isnull=True, tenant__isnull=True),
+            is_enabled=True
+        )
+        return Response(LatePenaltyConfigSerializer(configs, many=True).data)
+
+    @action(detail=False, methods=['get'])
+    def penalty_invoices(self, request):
+        """Get all auto-generated penalty invoices."""
+        invoices = Invoice.objects.filter(
+            invoice_type='penalty'
+        ).select_related('tenant', 'unit', 'property').order_by('-created_at')
+
+        property_id = request.query_params.get('property_id')
+        if property_id:
+            invoices = invoices.filter(property_id=property_id)
+
+        return Response(InvoiceSerializer(invoices[:100], many=True).data)
+
+
+class LatePenaltyExclusionViewSet(viewsets.ModelViewSet):
+    """CRUD for late penalty exclusions."""
+    queryset = LatePenaltyExclusion.objects.select_related('tenant', 'excluded_by').all()
+    serializer_class = LatePenaltyExclusionSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['tenant']
+    ordering = ['-created_at']
+
+    def perform_create(self, serializer):
+        serializer.save(excluded_by=self.request.user)

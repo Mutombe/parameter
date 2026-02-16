@@ -32,6 +32,8 @@ class Invoice(models.Model):
         SPECIAL_LEVY = 'special_levy', 'Special Levy'
         RATES = 'rates', 'Rates'
         PARKING = 'parking', 'Parking'
+        # Penalty
+        PENALTY = 'penalty', 'Late Payment Penalty'
         # Other types
         UTILITY = 'utility', 'Utility'
         MAINTENANCE = 'maintenance', 'Maintenance'
@@ -106,6 +108,13 @@ class Invoice(models.Model):
         verbose_name = 'Invoice'
         verbose_name_plural = 'Invoices'
         ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(fields=['status', 'due_date']),
+            models.Index(fields=['lease', 'period_start']),
+            models.Index(fields=['tenant']),
+            models.Index(fields=['invoice_type']),
+            models.Index(fields=['date']),
+        ]
 
     def __str__(self):
         return f'{self.invoice_number} - {self.tenant.name}'
@@ -272,6 +281,11 @@ class Receipt(models.Model):
         verbose_name = 'Receipt'
         verbose_name_plural = 'Receipts'
         ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(fields=['tenant']),
+            models.Index(fields=['invoice']),
+            models.Index(fields=['date']),
+        ]
 
     def __str__(self):
         return f'{self.receipt_number} - {self.tenant.name}'
@@ -348,14 +362,33 @@ class Receipt(models.Model):
         self.journal = journal
         self.save()
 
-        # Update invoice if linked
+        # Update invoice if linked — lock the row to prevent concurrent payment races
         if self.invoice:
-            self.invoice.amount_paid += self.amount
-            if self.invoice.amount_paid >= self.invoice.total_amount:
-                self.invoice.status = Invoice.Status.PAID
+            invoice = Invoice.objects.select_for_update().get(id=self.invoice_id)
+            old_status = invoice.status
+            invoice.amount_paid += self.amount
+            if invoice.amount_paid >= invoice.total_amount:
+                invoice.status = Invoice.Status.PAID
             else:
-                self.invoice.status = Invoice.Status.PARTIAL
-            self.invoice.save()
+                invoice.status = Invoice.Status.PARTIAL
+            invoice.save()
+
+            # Audit trail for payment status change
+            if invoice.status != old_status:
+                AuditTrail.objects.create(
+                    action='invoice_payment_applied',
+                    model_name='Invoice',
+                    record_id=invoice.id,
+                    changes={
+                        'invoice_number': invoice.invoice_number,
+                        'receipt_number': self.receipt_number,
+                        'payment_amount': str(self.amount),
+                        'new_amount_paid': str(invoice.amount_paid),
+                        'old_status': old_status,
+                        'new_status': invoice.status,
+                    },
+                    user=user
+                )
 
         return journal
 
@@ -543,14 +576,33 @@ class Receipt(models.Model):
         self.journal = journal
         self.save()
 
-        # Update invoice if linked
+        # Update invoice if linked — lock the row to prevent concurrent payment races
         if self.invoice:
-            self.invoice.amount_paid += self.amount
-            if self.invoice.amount_paid >= self.invoice.total_amount:
-                self.invoice.status = Invoice.Status.PAID
+            invoice = Invoice.objects.select_for_update().get(id=self.invoice_id)
+            old_status = invoice.status
+            invoice.amount_paid += self.amount
+            if invoice.amount_paid >= invoice.total_amount:
+                invoice.status = Invoice.Status.PAID
             else:
-                self.invoice.status = Invoice.Status.PARTIAL
-            self.invoice.save()
+                invoice.status = Invoice.Status.PARTIAL
+            invoice.save()
+
+            # Audit trail for payment status change
+            if invoice.status != old_status:
+                AuditTrail.objects.create(
+                    action='invoice_payment_applied',
+                    model_name='Invoice',
+                    record_id=invoice.id,
+                    changes={
+                        'invoice_number': invoice.invoice_number,
+                        'receipt_number': self.receipt_number,
+                        'payment_amount': str(self.amount),
+                        'new_amount_paid': str(invoice.amount_paid),
+                        'old_status': old_status,
+                        'new_status': invoice.status,
+                    },
+                    user=user
+                )
 
         return journal
 
@@ -690,3 +742,117 @@ class Expense(models.Model):
         self.save()
 
         return journal
+
+
+class LatePenaltyConfig(models.Model):
+    """Configuration for automated late payment penalties."""
+
+    class PenaltyType(models.TextChoices):
+        PERCENTAGE = 'percentage', 'Percentage of Invoice'
+        FLAT_FEE = 'flat_fee', 'Flat Fee'
+        BOTH = 'both', 'Percentage + Flat Fee'
+
+    property = models.ForeignKey(
+        Property, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='penalty_configs',
+        help_text='Apply to all tenants in this property (null = system default)'
+    )
+    tenant = models.ForeignKey(
+        RentalTenant, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='penalty_configs',
+        help_text='Override for a specific tenant'
+    )
+
+    penalty_type = models.CharField(
+        max_length=20, choices=PenaltyType.choices, default=PenaltyType.PERCENTAGE
+    )
+    percentage_rate = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('5.00'),
+        help_text='Percentage of overdue amount'
+    )
+    flat_fee = models.DecimalField(
+        max_digits=18, decimal_places=2, default=Decimal('0.00')
+    )
+    currency = models.CharField(max_length=3, default='USD')
+
+    grace_period_days = models.PositiveIntegerField(
+        default=0,
+        help_text='Additional days after due date before penalty applies'
+    )
+    max_penalty_amount = models.DecimalField(
+        max_digits=18, decimal_places=2, null=True, blank=True,
+        help_text='Maximum penalty amount (null = no cap)'
+    )
+    max_penalties_per_invoice = models.PositiveIntegerField(
+        default=1,
+        help_text='0 = recurring monthly, 1 = one-time, N = max N penalties'
+    )
+
+    is_enabled = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Late Penalty Configuration'
+        verbose_name_plural = 'Late Penalty Configurations'
+        indexes = [
+            models.Index(fields=['tenant', 'is_enabled']),
+            models.Index(fields=['property', 'is_enabled']),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        target = self.tenant or self.property or 'System Default'
+        return f'Penalty Config: {self.penalty_type} for {target}'
+
+    def calculate_penalty(self, overdue_amount):
+        """Calculate the penalty amount for a given overdue amount."""
+        penalty = Decimal('0')
+
+        if self.penalty_type in ('percentage', 'both'):
+            penalty += overdue_amount * (self.percentage_rate / Decimal('100'))
+
+        if self.penalty_type in ('flat_fee', 'both'):
+            penalty += self.flat_fee
+
+        if self.max_penalty_amount and penalty > self.max_penalty_amount:
+            penalty = self.max_penalty_amount
+
+        return penalty.quantize(Decimal('0.01'))
+
+
+class LatePenaltyExclusion(models.Model):
+    """Exclude a tenant from late penalties."""
+
+    tenant = models.ForeignKey(
+        RentalTenant, on_delete=models.CASCADE, related_name='penalty_exclusions'
+    )
+    reason = models.TextField()
+    excluded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True
+    )
+    excluded_until = models.DateField(
+        null=True, blank=True,
+        help_text='Null = permanent exclusion'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Late Penalty Exclusion'
+        verbose_name_plural = 'Late Penalty Exclusions'
+        indexes = [
+            models.Index(fields=['tenant']),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Exclusion: {self.tenant.name}'
+
+    @property
+    def is_active(self):
+        if self.excluded_until is None:
+            return True
+        from django.utils import timezone
+        return self.excluded_until >= timezone.now().date()

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -64,6 +64,7 @@ const landlordTypeConfig = {
 
 export default function Landlords() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
@@ -106,17 +107,13 @@ export default function Landlords() {
   // Handle "view" query parameter from search navigation
   useEffect(() => {
     const viewId = searchParams.get('view')
-    if (viewId && landlords.length > 0) {
-      const landlord = landlords.find((l: Landlord) => String(l.id) === viewId)
-      if (landlord) {
-        setSelectedLandlord(landlord)
-        setShowDetailsModal(true)
-        // Clear the query param after opening modal
-        searchParams.delete('view')
-        setSearchParams(searchParams, { replace: true })
-      }
+    if (viewId) {
+      // Clear the query param and navigate to the detail page
+      searchParams.delete('view')
+      setSearchParams(searchParams, { replace: true })
+      navigate(`/dashboard/landlords/${viewId}`, { replace: true })
     }
-  }, [searchParams, landlords])
+  }, [searchParams])
 
   // Optimistic create/update mutation
   const createMutation = useMutation({
@@ -495,7 +492,7 @@ export default function Landlords() {
                   {!isOptimistic && !isUpdating ? (
                     <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                       <button
-                        onClick={() => handleViewDetails(landlord)}
+                        onClick={() => navigate(`/dashboard/landlords/${landlord.id}`)}
                         className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
                         title="View details"
                       >

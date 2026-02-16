@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Bell,
@@ -47,6 +48,7 @@ const notificationColors: Record<string, string> = {
 
 export default function NotificationsPanel({ open, onClose }: NotificationsPanelProps) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
 
   const { data: notifications, isLoading } = useQuery({
     queryKey: ['notifications', 'recent'],
@@ -205,7 +207,7 @@ export default function NotificationsPanel({ open, onClose }: NotificationsPanel
                 <button
                   onClick={() => {
                     onClose()
-                    // Navigate to full notifications page if exists
+                    navigate('/dashboard/notifications')
                   }}
                   className="w-full text-center text-sm text-primary-600 hover:text-primary-700 font-medium"
                 >

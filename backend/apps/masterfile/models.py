@@ -507,6 +507,12 @@ class LeaseAgreement(models.Model):
         verbose_name = 'Lease Agreement'
         verbose_name_plural = 'Lease Agreements'
         ordering = ['-start_date']
+        indexes = [
+            models.Index(fields=['status']),
+            models.Index(fields=['tenant', 'status']),
+            models.Index(fields=['unit', 'status']),
+            models.Index(fields=['start_date', 'end_date']),
+        ]
 
     def __str__(self):
         return f'{self.lease_number} - {self.tenant.name} @ {self.unit}'
@@ -583,3 +589,39 @@ class LeaseAgreement(models.Model):
         self.unit.is_occupied = False
         self.unit.save()
         self.save()
+
+
+class PropertyManager(models.Model):
+    """Assignment of a staff user as manager of a property."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='managed_properties',
+        limit_choices_to={'role__in': ['super_admin', 'admin', 'accountant', 'clerk']}
+    )
+    property = models.ForeignKey(
+        Property, on_delete=models.CASCADE, related_name='managers'
+    )
+    is_primary = models.BooleanField(default=False)
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    assigned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, related_name='manager_assignments'
+    )
+
+    class Meta:
+        verbose_name = 'Property Manager'
+        verbose_name_plural = 'Property Managers'
+        unique_together = ['user', 'property']
+        ordering = ['-is_primary', 'assigned_at']
+
+    def __str__(self):
+        return f'{self.user.get_full_name()} - {self.property.name}'
+
+    def save(self, *args, **kwargs):
+        # If setting as primary, unset other primaries for this property
+        if self.is_primary:
+            PropertyManager.objects.filter(
+                property=self.property, is_primary=True
+            ).exclude(pk=self.pk).update(is_primary=False)
+        super().save(*args, **kwargs)

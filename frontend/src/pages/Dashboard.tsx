@@ -128,6 +128,8 @@ export default function Dashboard() {
   const occupancyRate = stats?.properties?.occupancy_rate || 0
   const collectionRate = stats?.financial?.collection_rate || 0
 
+  const overdueInvoices = stats?.alerts?.overdue_invoices || 0
+
   const kpis = [
     {
       title: 'Total Properties',
@@ -161,6 +163,22 @@ export default function Dashboard() {
       icon: Receipt,
       color: 'orange' as const,
     },
+    {
+      title: 'Collection Rate',
+      value: formatPercent(collectionRate),
+      subtitle: collectionRate >= 85 ? 'On target' : 'Below target',
+      trend: { value: collectionRate >= 85 ? 3 : -8, label: 'vs last month' },
+      icon: PiggyBank,
+      color: (collectionRate >= 85 ? 'green' : 'red') as 'green' | 'red',
+    },
+    {
+      title: 'Overdue Invoices',
+      value: overdueInvoices,
+      subtitle: formatCurrency(stats?.alerts?.overdue_amount || 0),
+      trend: { value: overdueInvoices > 0 ? -overdueInvoices : 0, label: 'items' },
+      icon: AlertTriangle,
+      color: (overdueInvoices > 0 ? 'red' : 'cyan') as 'red' | 'cyan',
+    },
   ]
 
   const pieData = [
@@ -168,13 +186,9 @@ export default function Dashboard() {
     { name: 'Vacant', value: stats?.properties?.vacant || 0, color: '#f43f5e' },
   ]
 
-  const revenueData = [
-    { month: 'Sep', invoiced: 38000, collected: 35000 },
-    { month: 'Oct', invoiced: 45000, collected: 42000 },
-    { month: 'Nov', invoiced: 48000, collected: 45000 },
-    { month: 'Dec', invoiced: 52000, collected: 48000 },
-    { month: 'Jan', invoiced: stats?.monthly?.invoiced || 0, collected: stats?.monthly?.collected || 0 },
-  ]
+  const revenueData = stats?.revenue_trend?.length
+    ? stats.revenue_trend
+    : []
 
   const quickActions = [
     { label: 'New Invoice', href: '/dashboard/invoices', icon: Receipt, color: 'blue' },
@@ -211,7 +225,7 @@ export default function Dashboard() {
         variants={container}
         initial="hidden"
         animate="show"
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
       >
         {kpis.map((kpi) => (
           <StatCard key={kpi.title} {...kpi} isLoading={isLoading} />
@@ -244,47 +258,67 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="h-56 md:h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueData}>
-                <defs>
-                  <linearGradient id="invoicedGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="collectedGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v/1000}k`} />
-                <Tooltip
-                  formatter={(value: number) => formatCurrency(value)}
-                  contentStyle={{
-                    borderRadius: '12px',
-                    border: '1px solid #e2e8f0',
-                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="invoiced"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  fill="url(#invoicedGradient)"
-                  name="Invoiced"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="collected"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  fill="url(#collectedGradient)"
-                  name="Collected"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            {isLoading || !revenueData.length ? (
+              <div className="w-full h-full flex flex-col justify-end gap-2 px-4 pb-4">
+                <div className="flex items-end gap-3 h-full">
+                  {[40, 55, 65, 50, 70, 60, 75].map((h, i) => (
+                    <div key={i} className="flex-1 flex flex-col gap-1 justify-end h-full">
+                      <div
+                        className="w-full bg-gray-200 rounded-t animate-pulse"
+                        style={{ height: `${h}%` }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between">
+                  {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                    <div key={i} className="h-3 w-8 bg-gray-200 rounded animate-pulse" />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={revenueData}>
+                  <defs>
+                    <linearGradient id="invoicedGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="collectedGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v/1000}k`} />
+                  <Tooltip
+                    formatter={(value: number) => formatCurrency(value)}
+                    contentStyle={{
+                      borderRadius: '12px',
+                      border: '1px solid #e2e8f0',
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="invoiced"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    fill="url(#invoicedGradient)"
+                    name="Invoiced"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="collected"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    fill="url(#collectedGradient)"
+                    name="Collected"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </motion.div>
 
@@ -338,6 +372,88 @@ export default function Dashboard() {
                 )}
               </div>
             ))}
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Additional Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Invoiced vs Collected Bar Chart */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+          className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2"
+        >
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Monthly Invoiced vs Collected</h3>
+          <p className="text-sm text-gray-500 mb-6">Comparison of billed and received amounts</p>
+          <div className="h-64">
+            {isLoading || !revenueData.length ? (
+              <div className="w-full h-full flex items-end gap-3 px-4 pb-4">
+                {[50, 65, 40, 75, 55, 60].map((h, i) => (
+                  <div key={i} className="flex-1 flex gap-1 justify-end h-full items-end">
+                    <div className="w-1/2 bg-gray-200 rounded-t animate-pulse" style={{ height: `${h}%` }} />
+                    <div className="w-1/2 bg-gray-200 rounded-t animate-pulse" style={{ height: `${h * 0.7}%` }} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={revenueData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v/1000}k`} />
+                  <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
+                  <Bar dataKey="invoiced" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Invoiced" />
+                  <Bar dataKey="collected" fill="#10b981" radius={[4, 4, 0, 0]} name="Collected" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Expense Breakdown Pie Chart */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="bg-white rounded-xl border border-gray-200 p-6"
+        >
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Expense Breakdown</h3>
+          <p className="text-sm text-gray-500 mb-4">By category</p>
+          <div className="h-48 relative">
+            {isLoading ? (
+              <div className="w-full h-full flex items-center justify-center">
+                <div className="w-32 h-32 rounded-full bg-gray-200 animate-pulse" />
+              </div>
+            ) : (() => {
+              const expenseData = stats?.expense_breakdown || []
+              const COLORS = ['#f43f5e', '#f59e0b', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899']
+              return expenseData.length > 0 ? (
+                <>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={expenseData} innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="amount" nameKey="category">
+                        {expenseData.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                      </Pie>
+                      <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="flex flex-wrap justify-center gap-3 mt-2">
+                    {expenseData.slice(0, 4).map((e: any, i: number) => (
+                      <div key={e.category} className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                        <span className="text-xs text-gray-600">{e.category}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">
+                  No expense data
+                </div>
+              )
+            })()}
           </div>
         </motion.div>
       </div>

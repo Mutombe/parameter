@@ -1152,8 +1152,8 @@ def _process_demo_signup_background(request_id: str):
             signup_data['error'] = str(e)
             setting.value = signup_data
             setting.save()
-        except:
-            pass
+        except Exception:
+            logger.error(f"[BG] Failed to update signup status for {request_id}")
 
 
 class ProcessDemoSignupView(APIView):
@@ -1201,8 +1201,8 @@ class ProcessDemoSignupView(APIView):
                             signup_data['status'] = 'pending'
                             setting.value = signup_data
                             setting.save()
-                    except:
-                        pass
+                    except (ValueError, TypeError):
+                        pass  # Invalid datetime format in started_at
 
                 if signup_data.get('status') == 'processing':
                     return Response({

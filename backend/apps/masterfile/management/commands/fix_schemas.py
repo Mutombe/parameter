@@ -4,6 +4,7 @@ Run this after migrations have been faked but columns are missing.
 """
 from django.core.management.base import BaseCommand
 from django.db import connection
+from psycopg2 import sql
 from apps.tenants.models import Client
 
 
@@ -22,51 +23,60 @@ class Command(BaseCommand):
                 self.stdout.write(f"\nProcessing schema: {schema}")
 
                 try:
+                    # Use psycopg2 sql.Identifier for safe schema name interpolation
+                    schema_id = sql.Identifier(schema)
+
                     # Add unit_definition to masterfile_property if missing
-                    cursor.execute(f'''
-                        ALTER TABLE {schema}.masterfile_property
-                        ADD COLUMN IF NOT EXISTS unit_definition VARCHAR(500) DEFAULT ''
-                    ''')
-                    self.stdout.write(f"  - Added/verified unit_definition in masterfile_property")
+                    cursor.execute(
+                        sql.SQL('ALTER TABLE {}.masterfile_property ADD COLUMN IF NOT EXISTS unit_definition VARCHAR(500) DEFAULT %s').format(schema_id),
+                        ['']
+                    )
+                    self.stdout.write("  - Added/verified unit_definition in masterfile_property")
 
                     # Add unit_id to masterfile_rentaltenant if missing
-                    cursor.execute(f'''
-                        DO $$
-                        BEGIN
-                            IF NOT EXISTS (
-                                SELECT 1 FROM information_schema.columns
-                                WHERE table_schema = '{schema}'
-                                AND table_name = 'masterfile_rentaltenant'
-                                AND column_name = 'unit_id'
-                            ) THEN
-                                ALTER TABLE {schema}.masterfile_rentaltenant
-                                ADD COLUMN unit_id INTEGER;
-                            END IF;
-                        END $$;
-                    ''')
-                    self.stdout.write(f"  - Added/verified unit_id in masterfile_rentaltenant")
+                    cursor.execute(
+                        sql.SQL('''
+                            DO $$
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM information_schema.columns
+                                    WHERE table_schema = %s
+                                    AND table_name = 'masterfile_rentaltenant'
+                                    AND column_name = 'unit_id'
+                                ) THEN
+                                    ALTER TABLE {schema}.masterfile_rentaltenant
+                                    ADD COLUMN unit_id INTEGER;
+                                END IF;
+                            END $$;
+                        ''').format(schema=schema_id),
+                        [schema]
+                    )
+                    self.stdout.write("  - Added/verified unit_id in masterfile_rentaltenant")
 
                     # Add foreign key constraint if not exists
-                    cursor.execute(f'''
-                        DO $$
-                        BEGIN
-                            IF NOT EXISTS (
-                                SELECT 1 FROM information_schema.table_constraints
-                                WHERE constraint_schema = '{schema}'
-                                AND constraint_name = 'masterfile_rentaltenant_unit_id_fkey'
-                            ) THEN
-                                ALTER TABLE {schema}.masterfile_rentaltenant
-                                ADD CONSTRAINT masterfile_rentaltenant_unit_id_fkey
-                                FOREIGN KEY (unit_id)
-                                REFERENCES {schema}.masterfile_unit(id)
-                                ON DELETE SET NULL;
-                            END IF;
-                        EXCEPTION WHEN OTHERS THEN
-                            -- Constraint might already exist with different name
-                            NULL;
-                        END $$;
-                    ''')
-                    self.stdout.write(f"  - Added/verified foreign key constraint")
+                    cursor.execute(
+                        sql.SQL('''
+                            DO $$
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM information_schema.table_constraints
+                                    WHERE constraint_schema = %s
+                                    AND constraint_name = 'masterfile_rentaltenant_unit_id_fkey'
+                                ) THEN
+                                    ALTER TABLE {schema}.masterfile_rentaltenant
+                                    ADD CONSTRAINT masterfile_rentaltenant_unit_id_fkey
+                                    FOREIGN KEY (unit_id)
+                                    REFERENCES {schema}.masterfile_unit(id)
+                                    ON DELETE SET NULL;
+                                END IF;
+                            EXCEPTION WHEN OTHERS THEN
+                                -- Constraint might already exist with different name
+                                NULL;
+                            END $$;
+                        ''').format(schema=schema_id),
+                        [schema]
+                    )
+                    self.stdout.write("  - Added/verified foreign key constraint")
 
                     self.stdout.write(self.style.SUCCESS(f"  Schema {schema} fixed successfully"))
 

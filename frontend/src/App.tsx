@@ -13,13 +13,21 @@ const Signup = lazy(() => import('./pages/Signup'))
 const AcceptInvite = lazy(() => import('./pages/AcceptInvite'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Landlords = lazy(() => import('./pages/Masterfile/Landlords'))
+const LandlordDetail = lazy(() => import('./pages/Masterfile/LandlordDetail'))
 const Properties = lazy(() => import('./pages/Masterfile/Properties'))
+const PropertyDetail = lazy(() => import('./pages/Masterfile/PropertyDetail'))
 const Units = lazy(() => import('./pages/Masterfile/Units'))
+const UnitDetail = lazy(() => import('./pages/Masterfile/UnitDetail'))
 const Tenants = lazy(() => import('./pages/Masterfile/Tenants'))
+const TenantDetail = lazy(() => import('./pages/Masterfile/TenantDetail'))
 const Leases = lazy(() => import('./pages/Masterfile/Leases'))
+const LeaseDetail = lazy(() => import('./pages/Masterfile/LeaseDetail'))
 const Invoices = lazy(() => import('./pages/Billing/Invoices'))
+const InvoiceDetail = lazy(() => import('./pages/Billing/InvoiceDetail'))
 const Receipts = lazy(() => import('./pages/Billing/Receipts'))
+const ReceiptDetail = lazy(() => import('./pages/Billing/ReceiptDetail'))
 const Expenses = lazy(() => import('./pages/Billing/Expenses'))
+const ExpenseDetail = lazy(() => import('./pages/Billing/ExpenseDetail'))
 const ChartOfAccounts = lazy(() => import('./pages/Accounting/ChartOfAccounts'))
 const Journals = lazy(() => import('./pages/Accounting/Journals'))
 const BankAccounts = lazy(() => import('./pages/Accounting/BankAccounts'))
@@ -34,6 +42,17 @@ const DocumentScanner = lazy(() => import('./pages/AI/DocumentScanner'))
 const Profile = lazy(() => import('./pages/Profile'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Search = lazy(() => import('./pages/Search'))
+const Notifications = lazy(() => import('./pages/Notifications'))
+const LatePenalties = lazy(() => import('./pages/Billing/LatePenalties'))
+
+// Tenant Portal
+const TenantPortalLayout = lazy(() => import('./components/TenantPortalLayout'))
+const TenantDashboard = lazy(() => import('./pages/TenantPortal/TenantDashboard'))
+const TenantInvoices = lazy(() => import('./pages/TenantPortal/TenantInvoices'))
+const TenantReceipts = lazy(() => import('./pages/TenantPortal/TenantReceipts'))
+const TenantStatement = lazy(() => import('./pages/TenantPortal/TenantStatement'))
+const TenantLease = lazy(() => import('./pages/TenantPortal/TenantLease'))
+const TenantPaymentNotification = lazy(() => import('./pages/TenantPortal/TenantPaymentNotification'))
 
 // Wrapper component for lazy loaded pages with skeleton fallback
 function LazyPage({ children, fallback }: { children: ReactNode; fallback?: ReactNode }) {
@@ -66,6 +85,22 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function PortalRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, user, impersonation } = useAuthStore()
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  // Allow staff users when impersonating a tenant
+  const isStaff = user?.role && ['super_admin', 'admin', 'accountant', 'clerk'].includes(user.role)
+  if (user?.role !== 'tenant_portal' && !(isStaff && impersonation)) {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  return <>{children}</>
+}
+
 export default function App() {
   return (
     <Routes>
@@ -88,13 +123,21 @@ export default function App() {
       >
         <Route index element={<LazyPage fallback={<SkeletonDashboard />}><Dashboard /></LazyPage>} />
         <Route path="landlords" element={<LazyPage><Landlords /></LazyPage>} />
+        <Route path="landlords/:id" element={<LazyPage><LandlordDetail /></LazyPage>} />
         <Route path="properties" element={<LazyPage><Properties /></LazyPage>} />
+        <Route path="properties/:id" element={<LazyPage><PropertyDetail /></LazyPage>} />
         <Route path="units" element={<LazyPage><Units /></LazyPage>} />
+        <Route path="units/:id" element={<LazyPage><UnitDetail /></LazyPage>} />
         <Route path="tenants" element={<LazyPage><Tenants /></LazyPage>} />
+        <Route path="tenants/:id" element={<LazyPage><TenantDetail /></LazyPage>} />
         <Route path="leases" element={<LazyPage><Leases /></LazyPage>} />
+        <Route path="leases/:id" element={<LazyPage><LeaseDetail /></LazyPage>} />
         <Route path="invoices" element={<LazyPage><Invoices /></LazyPage>} />
+        <Route path="invoices/:id" element={<LazyPage><InvoiceDetail /></LazyPage>} />
         <Route path="receipts" element={<LazyPage><Receipts /></LazyPage>} />
+        <Route path="receipts/:id" element={<LazyPage><ReceiptDetail /></LazyPage>} />
         <Route path="expenses" element={<LazyPage><Expenses /></LazyPage>} />
+        <Route path="expenses/:id" element={<LazyPage><ExpenseDetail /></LazyPage>} />
         <Route path="chart-of-accounts" element={<LazyPage><ChartOfAccounts /></LazyPage>} />
         <Route path="journals" element={<LazyPage><Journals /></LazyPage>} />
         <Route path="bank-accounts" element={<LazyPage><BankAccounts /></LazyPage>} />
@@ -109,6 +152,27 @@ export default function App() {
         <Route path="profile" element={<LazyPage fallback={<ProfileSkeleton />}><Profile /></LazyPage>} />
         <Route path="settings" element={<LazyPage fallback={<SettingsSkeleton />}><Settings /></LazyPage>} />
         <Route path="search" element={<LazyPage><Search /></LazyPage>} />
+        <Route path="notifications" element={<LazyPage><Notifications /></LazyPage>} />
+        <Route path="late-penalties" element={<LazyPage><LatePenalties /></LazyPage>} />
+      </Route>
+
+      {/* Tenant Portal Routes */}
+      <Route
+        path="/portal"
+        element={
+          <PortalRoute>
+            <Suspense fallback={<PageSkeleton />}>
+              <TenantPortalLayout />
+            </Suspense>
+          </PortalRoute>
+        }
+      >
+        <Route index element={<LazyPage fallback={<SkeletonDashboard />}><TenantDashboard /></LazyPage>} />
+        <Route path="invoices" element={<LazyPage><TenantInvoices /></LazyPage>} />
+        <Route path="receipts" element={<LazyPage><TenantReceipts /></LazyPage>} />
+        <Route path="statement" element={<LazyPage><TenantStatement /></LazyPage>} />
+        <Route path="lease" element={<LazyPage><TenantLease /></LazyPage>} />
+        <Route path="notify-payment" element={<LazyPage><TenantPaymentNotification /></LazyPage>} />
       </Route>
     </Routes>
   )

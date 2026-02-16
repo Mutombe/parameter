@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Search, CreditCard, Plus, Send, Loader2, Eye, X, User, FileText } from 'lucide-react'
@@ -35,6 +36,7 @@ const methodLabels: Record<string, string> = {
 
 export default function Receipts() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [showForm, setShowForm] = useState(false)
@@ -161,8 +163,7 @@ export default function Receipts() {
   }
 
   const handleViewDetails = (receipt: Receipt) => {
-    setSelectedReceipt(receipt)
-    setShowDetailModal(true)
+    navigate(`/dashboard/receipts/${receipt.id}`)
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -285,6 +286,7 @@ export default function Receipts() {
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Reference</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">GL Posted</th>
+              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
@@ -305,6 +307,7 @@ export default function Receipts() {
                   <td className="px-6 py-4"><Skeleton className="h-4 w-28" /></td>
                   <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
                   <td className="px-6 py-4"><Skeleton className="h-8 w-16" /></td>
+                  <td className="px-6 py-4"><Skeleton className="h-8 w-8" /></td>
                 </tr>
               ))
             ) : !receipts.length ? (
@@ -377,6 +380,17 @@ export default function Receipts() {
                             <Send className="w-4 h-4" /> Post
                           </>
                         )}
+                      </button>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    {!receipt._isOptimistic && (
+                      <button
+                        onClick={() => handleViewDetails(receipt)}
+                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="View Details"
+                      >
+                        <Eye className="w-4 h-4" />
                       </button>
                     )}
                   </td>

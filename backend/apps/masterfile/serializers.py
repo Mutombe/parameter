@@ -1,6 +1,6 @@
 """Serializers for masterfile module."""
 from rest_framework import serializers
-from .models import Landlord, Property, Unit, RentalTenant, LeaseAgreement
+from .models import Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager
 
 
 class LandlordSerializer(serializers.ModelSerializer):
@@ -18,7 +18,8 @@ class LandlordSerializer(serializers.ModelSerializer):
         read_only_fields = ['code', 'created_at', 'updated_at']
 
     def get_property_count(self, obj):
-        return obj.properties.count()
+        # Use prefetched data to avoid new DB query losing schema context
+        return len(obj.properties.all())
 
 
 class UnitSerializer(serializers.ModelSerializer):
@@ -36,13 +37,37 @@ class UnitSerializer(serializers.ModelSerializer):
         read_only_fields = ['code', 'created_at', 'updated_at']
 
     def get_current_tenant(self, obj):
-        active_lease = obj.leases.filter(status='active').first()
+        # Use prefetched data - filter in Python to avoid schema context loss
+        active_lease = next((l for l in obj.leases.all() if l.status == 'active'), None)
         if active_lease:
             return {
                 'id': active_lease.tenant.id,
                 'name': active_lease.tenant.name,
                 'lease_end': active_lease.end_date
             }
+        return None
+
+
+class PropertyManagerSerializer(serializers.ModelSerializer):
+    user_name = serializers.SerializerMethodField()
+    user_email = serializers.CharField(source='user.email', read_only=True)
+    property_name = serializers.CharField(source='property.name', read_only=True)
+    assigned_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PropertyManager
+        fields = [
+            'id', 'user', 'user_name', 'user_email', 'property', 'property_name',
+            'is_primary', 'assigned_at', 'assigned_by', 'assigned_by_name'
+        ]
+        read_only_fields = ['assigned_at']
+
+    def get_user_name(self, obj):
+        return obj.user.get_full_name() or obj.user.email
+
+    def get_assigned_by_name(self, obj):
+        if obj.assigned_by:
+            return obj.assigned_by.get_full_name() or obj.assigned_by.email
         return None
 
 
@@ -54,6 +79,8 @@ class PropertySerializer(serializers.ModelSerializer):
     valid_units = serializers.SerializerMethodField()
     vacancy_rate = serializers.ReadOnlyField()
     occupancy_rate = serializers.ReadOnlyField()
+    primary_manager = serializers.SerializerMethodField()
+    managers_list = serializers.SerializerMethodField()
 
     class Meta:
         model = Property
@@ -63,12 +90,14 @@ class PropertySerializer(serializers.ModelSerializer):
             'address', 'city', 'suburb', 'country', 'year_built', 'total_units',
             'total_floors', 'parking_spaces', 'amenities', 'image', 'is_active',
             'notes', 'units', 'unit_count', 'vacancy_rate', 'occupancy_rate',
+            'primary_manager', 'managers_list',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['code', 'created_at', 'updated_at']
 
     def get_unit_count(self, obj):
-        return obj.units.count()
+        # Use prefetched data to avoid new DB query losing schema context
+        return len(obj.units.all())
 
     def get_defined_unit_count(self, obj):
         return obj.get_defined_unit_count()
@@ -78,6 +107,26 @@ class PropertySerializer(serializers.ModelSerializer):
         units = obj.get_valid_units()
         return units[:50] if len(units) > 50 else units
 
+    def get_primary_manager(self, obj):
+        # Use prefetched data - filter in Python to avoid schema context loss
+        pm = next((m for m in obj.managers.all() if m.is_primary), None)
+        if pm:
+            return {
+                'id': pm.id,
+                'user_id': pm.user.id,
+                'name': pm.user.get_full_name() or pm.user.email,
+            }
+        return None
+
+    def get_managers_list(self, obj):
+        # Use prefetched data (managers__user already prefetched in viewset)
+        return [{
+            'id': pm.id,
+            'user_id': pm.user.id,
+            'name': pm.user.get_full_name() or pm.user.email,
+            'is_primary': pm.is_primary,
+        } for pm in obj.managers.all()]
+
 
 class PropertyListSerializer(serializers.ModelSerializer):
     """Lighter serializer for list views."""
@@ -85,20 +134,32 @@ class PropertyListSerializer(serializers.ModelSerializer):
     unit_count = serializers.SerializerMethodField()
     defined_unit_count = serializers.SerializerMethodField()
     vacancy_rate = serializers.ReadOnlyField()
+    primary_manager = serializers.SerializerMethodField()
 
     class Meta:
         model = Property
         fields = [
             'id', 'landlord', 'landlord_name', 'code', 'name', 'property_type',
             'unit_definition', 'defined_unit_count',
-            'city', 'total_units', 'unit_count', 'vacancy_rate', 'is_active'
+            'city', 'total_units', 'unit_count', 'vacancy_rate', 'is_active',
+            'primary_manager'
         ]
 
     def get_unit_count(self, obj):
-        return obj.units.count()
+        return len(obj.units.all())
 
     def get_defined_unit_count(self, obj):
         return obj.get_defined_unit_count()
+
+    def get_primary_manager(self, obj):
+        pm = next((m for m in obj.managers.all() if m.is_primary), None)
+        if pm:
+            return {
+                'id': pm.id,
+                'user_id': pm.user.id,
+                'name': pm.user.get_full_name() or pm.user.email,
+            }
+        return None
 
 
 class RentalTenantSerializer(serializers.ModelSerializer):
@@ -124,7 +185,9 @@ class RentalTenantSerializer(serializers.ModelSerializer):
         return str(obj.unit) if obj.unit else None
 
     def get_active_leases(self, obj):
-        leases = obj.leases.filter(status='active')
+        # Use prefetched data - filter in Python to avoid new DB queries
+        # that lose django-tenants schema context
+        leases = [l for l in obj.leases.all() if l.status == 'active']
         return [{
             'id': l.id,
             'lease_number': l.lease_number,
@@ -134,10 +197,10 @@ class RentalTenantSerializer(serializers.ModelSerializer):
         } for l in leases]
 
     def get_has_active_lease(self, obj):
-        return obj.leases.filter(status='active').exists()
+        return any(l.status == 'active' for l in obj.leases.all())
 
     def get_lease_count(self, obj):
-        return obj.leases.count()
+        return len(obj.leases.all())
 
 
 class LeaseAgreementSerializer(serializers.ModelSerializer):

@@ -6,7 +6,9 @@ import Header from './Header'
 import AskMeButton from '../AskMe/AskMeButton'
 import AskMeModal from '../AskMe/AskMeModal'
 import DemoExpiryBanner from '../DemoExpiryBanner'
+import ErrorBoundary from '../ErrorBoundary'
 import { useUIStore } from '../../stores/uiStore'
+import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket'
 
 const MOBILE_BREAKPOINT = 1024 // lg breakpoint
 
@@ -20,6 +22,9 @@ export default function Layout() {
     setIsMobile,
     setMobileSidebarOpen
   } = useUIStore()
+
+  // Establish WebSocket connection for real-time notifications
+  useNotificationWebSocket()
 
   // Detect mobile/desktop and handle resize
   useEffect(() => {
@@ -81,16 +86,18 @@ export default function Layout() {
         <Header />
 
         <main className="flex-1 overflow-auto p-4 md:p-6">
-          <AnimatePresence mode="wait">
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              <Outlet />
-            </motion.div>
-          </AnimatePresence>
+          <ErrorBoundary>
+            <AnimatePresence mode="wait">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Outlet />
+              </motion.div>
+            </AnimatePresence>
+          </ErrorBoundary>
         </main>
       </div>
 

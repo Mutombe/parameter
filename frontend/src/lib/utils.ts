@@ -60,6 +60,21 @@ export function getMediaUrl(path: string | null | undefined): string | null {
   return `${API_BASE_URL}${cleanPath}`
 }
 
+// Extract error message from Axios errors or unknown errors
+export function getErrorMessage(error: unknown, fallback: string = 'An unexpected error occurred'): string {
+  if (error && typeof error === 'object') {
+    const axiosError = error as { response?: { data?: { error?: string; detail?: string; message?: string } } }
+    if (axiosError.response?.data) {
+      const data = axiosError.response.data
+      return data.error || data.detail || data.message || fallback
+    }
+    if ('message' in error && typeof (error as { message: unknown }).message === 'string') {
+      return (error as { message: string }).message
+    }
+  }
+  return fallback
+}
+
 // Debounce hook for search inputs
 export function useDebounce<T>(value: T, delay: number = 300): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value)

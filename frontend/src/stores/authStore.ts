@@ -25,14 +25,22 @@ interface User {
   tenant_info?: TenantInfo
 }
 
+interface ImpersonationInfo {
+  tenantId: number
+  tenantName: string
+}
+
 interface AuthState {
   user: User | null
   isAuthenticated: boolean
   isDemo: boolean
   demoExpiresAt: string | null
+  impersonation: ImpersonationInfo | null
   setUser: (user: User | null) => void
   logout: () => void
   updateDemoStatus: (expiresAt: string | null) => void
+  startImpersonation: (tenantId: number, tenantName: string) => void
+  stopImpersonation: () => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -42,13 +50,16 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isDemo: false,
       demoExpiresAt: null,
+      impersonation: null,
       setUser: (user) => {
         const isDemo = user?.is_demo_user || user?.tenant_info?.is_demo || false
         const demoExpiresAt = user?.tenant_info?.demo_expires_at || null
         set({ user, isAuthenticated: !!user, isDemo, demoExpiresAt })
       },
-      logout: () => set({ user: null, isAuthenticated: false, isDemo: false, demoExpiresAt: null }),
+      logout: () => set({ user: null, isAuthenticated: false, isDemo: false, demoExpiresAt: null, impersonation: null }),
       updateDemoStatus: (expiresAt) => set({ demoExpiresAt: expiresAt }),
+      startImpersonation: (tenantId, tenantName) => set({ impersonation: { tenantId, tenantName } }),
+      stopImpersonation: () => set({ impersonation: null }),
     }),
     {
       name: 'auth-storage',

@@ -70,11 +70,18 @@ api.interceptors.request.use((config) => {
     config.headers['X-Tenant-Subdomain'] = subdomain
   }
 
-  // Debug logging (can be removed in production)
-  console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`, {
-    tenant: subdomain,
-    baseURL: config.baseURL
-  })
+  // Staff impersonation: append tenant_id to tenant-portal API calls
+  if (config.url?.includes('/tenant-portal/')) {
+    try {
+      const authStorage = JSON.parse(localStorage.getItem('auth-storage') || '{}')
+      const impersonation = authStorage?.state?.impersonation
+      if (impersonation?.tenantId) {
+        config.params = { ...config.params, tenant_id: impersonation.tenantId }
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
 
   return config
 })
@@ -84,7 +91,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      window.location.href = '/login'
+      // Avoid redirect loops — don't redirect if already on login/public pages
+      const path = window.location.pathname
+      if (path !== '/login' && path !== '/' && !path.startsWith('/accept-invite') && !path.startsWith('/demo')) {
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   }
@@ -197,6 +208,13 @@ export const leaseApi = {
   terminate: (id: number, reason: string) =>
     api.post(`/masterfile/leases/${id}/terminate/`, { reason }),
   expiringSoon: () => api.get('/masterfile/leases/expiring_soon/'),
+  uploadDocument: (id: number, file: File) => {
+    const formData = new FormData()
+    formData.append('document', file)
+    return api.post(`/masterfile/leases/${id}/upload_document/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
 }
 
 // Billing API
@@ -428,6 +446,30 @@ export const aiApi = {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
+}
+
+// Penalty API
+export const penaltyApi = {
+  // Configs
+  listConfigs: (params?: object) => api.get('/billing/penalty-configs/', { params }),
+  getConfig: (id: number) => api.get(`/billing/penalty-configs/${id}/`),
+  createConfig: (data: object) => api.post('/billing/penalty-configs/', data),
+  updateConfig: (id: number, data: object) => api.patch(`/billing/penalty-configs/${id}/`, data),
+  deleteConfig: (id: number) => api.delete(`/billing/penalty-configs/${id}/`),
+  forProperty: (propertyId: number) => api.get('/billing/penalty-configs/for_property/', { params: { property_id: propertyId } }),
+  penaltyInvoices: (params?: object) => api.get('/billing/penalty-configs/penalty_invoices/', { params }),
+  // Exclusions
+  listExclusions: (params?: object) => api.get('/billing/penalty-exclusions/', { params }),
+  createExclusion: (data: object) => api.post('/billing/penalty-exclusions/', data),
+  deleteExclusion: (id: number) => api.delete(`/billing/penalty-exclusions/${id}/`),
+}
+
+// Property Manager API
+export const propertyManagerApi = {
+  list: (params?: object) => api.get('/masterfile/property-managers/', { params }),
+  create: (data: object) => api.post('/masterfile/property-managers/', data),
+  update: (id: number, data: object) => api.patch(`/masterfile/property-managers/${id}/`, data),
+  delete: (id: number) => api.delete(`/masterfile/property-managers/${id}/`),
 }
 
 // Notifications API

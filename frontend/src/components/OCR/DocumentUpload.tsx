@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { aiApi } from '../../services/api'
 import toast from 'react-hot-toast'
-import { cn } from '../../lib/utils'
+import { cn, getErrorMessage } from '../../lib/utils'
 import { RiClaudeFill } from "react-icons/ri";
 
 type DocumentType = 'lease' | 'invoice' | 'id'
@@ -118,8 +118,8 @@ export default function DocumentUpload({ type, onDataExtracted, className }: Doc
       setExtractedData(data)
       onDataExtracted?.(data)
       toast.success('Document processed successfully!')
-    } catch (err: any) {
-      const message = err.response?.data?.error || 'Failed to process document'
+    } catch (err) {
+      const message = getErrorMessage(err, 'Failed to process document')
       setError(message)
       toast.error(message)
     } finally {

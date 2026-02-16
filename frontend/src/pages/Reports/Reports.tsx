@@ -21,6 +21,19 @@ import {
   Banknote,
   ArrowRight,
 } from 'lucide-react'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from 'recharts'
 import { reportsApi } from '../../services/api'
 import { formatCurrency, formatPercent, cn } from '../../lib/utils'
 import { printElement } from '../../lib/print'
@@ -374,6 +387,25 @@ function IncomeStatementReport() {
       </div>
 
       <div className="p-6 space-y-6">
+        {/* Income vs Expense Chart */}
+        {data && (data?.revenue?.total > 0 || data?.expenses?.total > 0) && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="h-64 mb-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={[
+                ...(data?.revenue?.accounts || []).map((a: any) => ({ name: a.name, Revenue: a.balance, Expense: 0 })),
+                ...(data?.expenses?.accounts || []).map((a: any) => ({ name: a.name, Revenue: 0, Expense: a.balance })),
+              ].slice(0, 10)}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} angle={-20} textAnchor="end" height={60} />
+                <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v/1000}k`} />
+                <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
+                <Bar dataKey="Revenue" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Expense" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </motion.div>
+        )}
+
         {/* Revenue Section */}
         <div className="rounded-xl border border-emerald-200 overflow-hidden">
           <div className="px-5 py-4 bg-emerald-50 border-b border-emerald-200">
@@ -845,6 +877,24 @@ function VacancyReport() {
         </div>
       </div>
 
+      {/* Vacancy Chart */}
+      {!isLoading && data?.properties?.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 border-b border-gray-100">
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data.properties.slice(0, 8)} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                <XAxis type="number" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis dataKey="name" type="category" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} width={120} />
+                <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
+                <Bar dataKey="occupied" stackId="a" fill="#10b981" name="Occupied" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="vacant" stackId="a" fill="#f43f5e" name="Vacant" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </motion.div>
+      )}
+
       {isLoading ? (
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -962,6 +1012,31 @@ function RentRollReport() {
           </div>
         </div>
       </div>
+
+      {/* Rent Distribution Chart */}
+      {!isLoading && data?.leases?.length > 0 && (() => {
+        const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316']
+        const propertyRentMap: Record<string, number> = {}
+        data.leases.forEach((l: any) => {
+          propertyRentMap[l.property] = (propertyRentMap[l.property] || 0) + (l.monthly_rent || 0)
+        })
+        const pieData = Object.entries(propertyRentMap).map(([name, value]) => ({ name, value }))
+        return (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 border-b border-gray-100">
+            <p className="text-sm font-medium text-gray-500 mb-4">Rent Distribution by Property</p>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={pieData} innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value" label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`} labelLine={false} fontSize={11}>
+                    {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </motion.div>
+        )
+      })()}
 
       {isLoading ? (
         <div className="overflow-x-auto">

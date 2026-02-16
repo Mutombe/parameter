@@ -4,17 +4,17 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum, Count, Q
-from .models import Landlord, Property, Unit, RentalTenant, LeaseAgreement
+from .models import Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager
 from .serializers import (
     LandlordSerializer, PropertySerializer, PropertyListSerializer,
     UnitSerializer, RentalTenantSerializer, LeaseAgreementSerializer,
-    LeaseActivateSerializer, LeaseTerminateSerializer
+    LeaseActivateSerializer, LeaseTerminateSerializer, PropertyManagerSerializer
 )
 
 
 class LandlordViewSet(viewsets.ModelViewSet):
     """CRUD for Landlords."""
-    queryset = Landlord.objects.prefetch_related('properties').all()
+    queryset = Landlord.objects.prefetch_related('properties', 'properties__units').all()
     serializer_class = LandlordSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ['landlord_type', 'is_active', 'preferred_currency']
@@ -27,17 +27,18 @@ class LandlordViewSet(viewsets.ModelViewSet):
         """Get landlord statement summary."""
         landlord = self.get_object()
 
-        # Get all properties and units
-        properties = landlord.properties.all()
-        total_units = Unit.objects.filter(property__landlord=landlord).count()
-        occupied_units = Unit.objects.filter(
-            property__landlord=landlord, is_occupied=True
-        ).count()
+        # Use prefetched properties data, then collect units in Python
+        properties = list(landlord.properties.all())
+        all_units = []
+        for prop in properties:
+            all_units.extend(list(prop.units.all()))
+        total_units = len(all_units)
+        occupied_units = sum(1 for u in all_units if u.is_occupied)
 
         return Response({
             'landlord': LandlordSerializer(landlord).data,
             'summary': {
-                'total_properties': properties.count(),
+                'total_properties': len(properties),
                 'total_units': total_units,
                 'occupied_units': occupied_units,
                 'vacant_units': total_units - occupied_units,
@@ -48,7 +49,7 @@ class LandlordViewSet(viewsets.ModelViewSet):
 
 class PropertyViewSet(viewsets.ModelViewSet):
     """CRUD for Properties."""
-    queryset = Property.objects.select_related('landlord').prefetch_related('units').all()
+    queryset = Property.objects.select_related('landlord').prefetch_related('units', 'managers__user').all()
     permission_classes = [IsAuthenticated]
     filterset_fields = ['landlord', 'property_type', 'city', 'is_active']
     search_fields = ['code', 'name', 'address', 'city']
@@ -159,7 +160,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
 
 class UnitViewSet(viewsets.ModelViewSet):
     """CRUD for Units."""
-    queryset = Unit.objects.select_related('property', 'property__landlord').all()
+    queryset = Unit.objects.select_related('property', 'property__landlord').prefetch_related('leases', 'leases__tenant').all()
     serializer_class = UnitSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ['property', 'unit_type', 'is_occupied', 'is_active', 'currency']
@@ -191,7 +192,9 @@ class UnitViewSet(viewsets.ModelViewSet):
 
 class RentalTenantViewSet(viewsets.ModelViewSet):
     """CRUD for Rental Tenants."""
-    queryset = RentalTenant.objects.prefetch_related('leases', 'invoices').all()
+    queryset = RentalTenant.objects.select_related('unit', 'unit__property').prefetch_related(
+        'leases', 'leases__unit', 'leases__unit__property', 'invoices', 'receipts'
+    ).all()
     serializer_class = RentalTenantSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ['tenant_type', 'is_active']
@@ -220,21 +223,21 @@ class RentalTenantViewSet(viewsets.ModelViewSet):
         tenant = self.get_object()
 
         # Import here to avoid circular imports
-        from apps.billing.models import Invoice, Receipt
         from apps.billing.serializers import InvoiceSerializer, ReceiptSerializer
 
-        # Get all leases (not just active)
-        all_leases = tenant.leases.select_related('unit', 'unit__property').order_by('-start_date')
-        active_leases = all_leases.filter(status='active')
-        past_leases = all_leases.exclude(status='active')
+        # Use prefetched data - filter/sort in Python to avoid new DB queries
+        # that lose django-tenants schema context
+        all_leases = sorted(tenant.leases.all(), key=lambda l: l.start_date, reverse=True)
+        active_leases = [l for l in all_leases if l.status == 'active']
+        past_leases = [l for l in all_leases if l.status != 'active']
 
-        # Get billing summary
-        invoices = Invoice.objects.filter(tenant=tenant).order_by('-date')
-        receipts = Receipt.objects.filter(tenant=tenant).order_by('-date')
+        # Use prefetched invoices and receipts - aggregate in Python
+        all_invoices = sorted(tenant.invoices.all(), key=lambda i: i.date, reverse=True)
+        all_receipts = sorted(tenant.receipts.all(), key=lambda r: r.date, reverse=True)
 
-        total_invoiced = invoices.aggregate(Sum('amount'))['amount__sum'] or 0
-        total_paid = receipts.aggregate(Sum('amount'))['amount__sum'] or 0
-        overdue = invoices.filter(status='overdue').aggregate(Sum('amount'))['amount__sum'] or 0
+        total_invoiced = sum(inv.total_amount or 0 for inv in all_invoices)
+        total_paid = sum(r.amount or 0 for r in all_receipts)
+        overdue = sum(inv.total_amount or 0 for inv in all_invoices if inv.status == 'overdue')
 
         return Response({
             'tenant': RentalTenantSerializer(tenant).data,
@@ -242,7 +245,7 @@ class RentalTenantViewSet(viewsets.ModelViewSet):
                 'id': l.id,
                 'lease_number': l.lease_number,
                 'unit': str(l.unit),
-                'property': l.unit.property.name,
+                'property': l.unit.property.name if l.unit and l.unit.property else '-',
                 'monthly_rent': str(l.monthly_rent),
                 'currency': l.currency,
                 'start_date': l.start_date,
@@ -253,7 +256,7 @@ class RentalTenantViewSet(viewsets.ModelViewSet):
                 'id': l.id,
                 'lease_number': l.lease_number,
                 'unit': str(l.unit),
-                'property': l.unit.property.name,
+                'property': l.unit.property.name if l.unit and l.unit.property else '-',
                 'monthly_rent': str(l.monthly_rent),
                 'start_date': l.start_date,
                 'end_date': l.end_date,
@@ -265,11 +268,11 @@ class RentalTenantViewSet(viewsets.ModelViewSet):
                 'total_paid': total_paid,
                 'balance_due': total_invoiced - total_paid,
                 'overdue_amount': overdue,
-                'invoice_count': invoices.count(),
-                'receipt_count': receipts.count(),
+                'invoice_count': len(all_invoices),
+                'receipt_count': len(all_receipts),
             },
-            'recent_invoices': InvoiceSerializer(invoices[:5], many=True).data,
-            'recent_receipts': ReceiptSerializer(receipts[:5], many=True).data,
+            'recent_invoices': InvoiceSerializer(all_invoices[:5], many=True).data,
+            'recent_receipts': ReceiptSerializer(all_receipts[:5], many=True).data,
         })
 
     @action(detail=True, methods=['get'])
@@ -278,19 +281,19 @@ class RentalTenantViewSet(viewsets.ModelViewSet):
         tenant = self.get_object()
 
         # Import here to avoid circular imports
-        from apps.billing.models import Invoice, Receipt
         from apps.billing.serializers import InvoiceSerializer, ReceiptSerializer
 
-        invoices = Invoice.objects.filter(tenant=tenant).order_by('-date')
-        receipts = Receipt.objects.filter(tenant=tenant).order_by('-date')
+        # Use prefetched data - aggregate in Python to avoid schema context loss
+        all_invoices = sorted(tenant.invoices.all(), key=lambda i: i.date, reverse=True)
+        all_receipts = sorted(tenant.receipts.all(), key=lambda r: r.date, reverse=True)
 
-        total_invoiced = invoices.aggregate(Sum('amount'))['amount__sum'] or 0
-        total_paid = receipts.aggregate(Sum('amount'))['amount__sum'] or 0
+        total_invoiced = sum(inv.total_amount or 0 for inv in all_invoices)
+        total_paid = sum(r.amount or 0 for r in all_receipts)
 
         return Response({
             'tenant': RentalTenantSerializer(tenant).data,
-            'invoices': InvoiceSerializer(invoices, many=True).data,
-            'receipts': ReceiptSerializer(receipts, many=True).data,
+            'invoices': InvoiceSerializer(all_invoices, many=True).data,
+            'receipts': ReceiptSerializer(all_receipts, many=True).data,
             'summary': {
                 'total_invoiced': total_invoiced,
                 'total_paid': total_paid,
@@ -370,3 +373,18 @@ class LeaseAgreementViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(leases, many=True)
         return Response(serializer.data)
+
+
+class PropertyManagerViewSet(viewsets.ModelViewSet):
+    """CRUD for Property Manager assignments."""
+    queryset = PropertyManager.objects.select_related(
+        'user', 'property', 'assigned_by'
+    ).all()
+    serializer_class = PropertyManagerSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['property', 'user', 'is_primary']
+    search_fields = ['user__first_name', 'user__last_name', 'user__email', 'property__name']
+    ordering = ['-is_primary', 'assigned_at']
+
+    def perform_create(self, serializer):
+        serializer.save(assigned_by=self.request.user)

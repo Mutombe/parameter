@@ -1,4 +1,5 @@
 """Views for user accounts and authentication."""
+import logging
 from decimal import Decimal
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -6,23 +7,33 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.views import APIView
 from django.contrib.auth import login, logout
+from django.db import connection
 from django.db.models import Sum, Q
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.middleware.csrf import get_token
+from django_tenants.utils import schema_context
 from .models import User, UserActivity, UserInvitation
 from .serializers import (
     UserSerializer, UserCreateSerializer, LoginSerializer,
     ChangePasswordSerializer, UserActivitySerializer,
     UserInvitationSerializer, CreateInvitationSerializer, AcceptInvitationSerializer
 )
+from rest_framework.throttling import ScopedRateThrottle
 from .permissions import CanInviteUsers, CanManageUsers, get_allowed_invite_roles, IsTenantPortalUser, IsTenantPortalOrStaff
+
+logger = logging.getLogger(__name__)
+
+
+class LoginThrottle(ScopedRateThrottle):
+    scope = 'login'
 
 
 class AuthViewSet(viewsets.ViewSet):
     """Authentication endpoints."""
     permission_classes = [AllowAny]
+    throttle_classes = [LoginThrottle]
 
     @method_decorator(csrf_exempt)
     @action(detail=False, methods=['post'])
@@ -96,12 +107,9 @@ class AuthViewSet(viewsets.ViewSet):
             return response
 
         except Exception as e:
-            import traceback
-            print(f"Login error: {e}")
-            print(traceback.format_exc())
+            logger.exception(f"Login error: {e}")
             return Response({
                 'error': 'An unexpected error occurred. Please try again.',
-                'details': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
@@ -340,8 +348,6 @@ class UserInvitationViewSet(viewsets.ModelViewSet):
         """Send the invitation email."""
         from django.core.mail import send_mail
         from django.conf import settings
-        import logging
-        logger = logging.getLogger(__name__)
 
         # Get tenant info if available
         tenant = getattr(request, 'tenant', None)
@@ -519,16 +525,35 @@ class TenantPortalViewSet(viewsets.ViewSet):
     """
     permission_classes = [IsTenantPortalOrStaff]
 
+    def _get_schema(self):
+        """Get current tenant schema name for explicit schema context."""
+        return connection.schema_name
+
     def get_tenant(self, request):
         """Get the RentalTenant linked to the current user."""
         from apps.masterfile.models import RentalTenant
 
-        if request.user.role == User.Role.TENANT_PORTAL:
-            try:
-                return request.user.rental_tenant
-            except RentalTenant.DoesNotExist:
+        current_schema = self._get_schema()
+        with schema_context(current_schema):
+            # Staff impersonation: allow staff to view any tenant's portal
+            if request.user.role in [
+                User.Role.SUPER_ADMIN, User.Role.ADMIN,
+                User.Role.ACCOUNTANT, User.Role.CLERK,
+            ]:
+                tenant_id = request.query_params.get('tenant_id')
+                if tenant_id:
+                    try:
+                        return RentalTenant.objects.get(id=tenant_id)
+                    except RentalTenant.DoesNotExist:
+                        return None
                 return None
-        return None
+
+            if request.user.role == User.Role.TENANT_PORTAL:
+                try:
+                    return request.user.rental_tenant
+                except RentalTenant.DoesNotExist:
+                    return None
+            return None
 
     @action(detail=False, methods=['get'])
     def profile(self, request):
@@ -558,28 +583,31 @@ class TenantPortalViewSet(viewsets.ViewSet):
         from apps.billing.models import Invoice, Receipt
         from apps.masterfile.models import LeaseAgreement
 
-        # Get active lease
-        active_lease = LeaseAgreement.objects.filter(
-            tenant=tenant,
-            status='active'
-        ).first()
+        # Use explicit schema context to prevent ASGI schema context loss
+        current_schema = self._get_schema()
+        with schema_context(current_schema):
+            # Get active lease
+            active_lease = LeaseAgreement.objects.filter(
+                tenant=tenant,
+                status='active'
+            ).select_related('unit').first()
 
-        # Get invoice totals
-        invoices = Invoice.objects.filter(tenant=tenant)
-        total_invoiced = invoices.aggregate(total=Sum('total_amount'))['total'] or Decimal('0')
-        total_paid = invoices.aggregate(paid=Sum('amount_paid'))['paid'] or Decimal('0')
-        total_balance = total_invoiced - total_paid
+            # Get invoice totals
+            invoices = Invoice.objects.filter(tenant=tenant)
+            total_invoiced = invoices.aggregate(total=Sum('total_amount'))['total'] or Decimal('0')
+            total_paid = invoices.aggregate(paid=Sum('amount_paid'))['paid'] or Decimal('0')
+            total_balance = total_invoiced - total_paid
 
-        # Get overdue invoices
-        overdue = invoices.filter(
-            status='overdue'
-        ).aggregate(total=Sum('balance'))['total'] or Decimal('0')
+            # Get overdue invoices
+            overdue = invoices.filter(
+                status='overdue'
+            ).aggregate(total=Sum('balance'))['total'] or Decimal('0')
 
-        # Recent invoices
-        recent_invoices = invoices.order_by('-date')[:5]
+            # Recent invoices
+            recent_invoices = list(invoices.order_by('-date')[:5])
 
-        # Recent receipts
-        recent_receipts = Receipt.objects.filter(tenant=tenant).order_by('-date')[:5]
+            # Recent receipts
+            recent_receipts = list(Receipt.objects.filter(tenant=tenant).order_by('-date')[:5])
 
         return Response({
             'tenant': {
@@ -596,6 +624,7 @@ class TenantPortalViewSet(viewsets.ViewSet):
                 'currency': active_lease.currency if active_lease else None,
                 'start_date': active_lease.start_date if active_lease else None,
                 'end_date': active_lease.end_date if active_lease else None,
+                'payment_day': active_lease.billing_day if active_lease else None,
             } if active_lease else None,
             'account_summary': {
                 'total_invoiced': total_invoiced,
@@ -641,29 +670,35 @@ class TenantPortalViewSet(viewsets.ViewSet):
         from apps.billing.models import Invoice
         from apps.billing.serializers import InvoiceSerializer
 
-        invoices = Invoice.objects.filter(tenant=tenant)
+        current_schema = self._get_schema()
+        with schema_context(current_schema):
+            invoices = Invoice.objects.filter(tenant=tenant).select_related(
+                'tenant', 'unit', 'lease', 'unit__property', 'created_by', 'journal'
+            )
 
-        # Filter by status
-        status_filter = request.query_params.get('status')
-        if status_filter:
-            invoices = invoices.filter(status=status_filter)
+            # Filter by status
+            status_filter = request.query_params.get('status')
+            if status_filter:
+                invoices = invoices.filter(status=status_filter)
 
-        # Filter by date range
-        start_date = request.query_params.get('start_date')
-        end_date = request.query_params.get('end_date')
-        if start_date:
-            invoices = invoices.filter(date__gte=start_date)
-        if end_date:
-            invoices = invoices.filter(date__lte=end_date)
+            # Filter by date range
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date')
+            if start_date:
+                invoices = invoices.filter(date__gte=start_date)
+            if end_date:
+                invoices = invoices.filter(date__lte=end_date)
 
-        invoices = invoices.order_by('-date')
+            invoices = invoices.order_by('-date')
 
-        return Response({
-            'count': invoices.count(),
-            'total_amount': invoices.aggregate(total=Sum('total_amount'))['total'] or Decimal('0'),
-            'total_balance': invoices.aggregate(balance=Sum('balance'))['balance'] or Decimal('0'),
-            'invoices': InvoiceSerializer(invoices, many=True).data
-        })
+            result = {
+                'count': invoices.count(),
+                'total_amount': invoices.aggregate(total=Sum('total_amount'))['total'] or Decimal('0'),
+                'total_balance': invoices.aggregate(balance=Sum('balance'))['balance'] or Decimal('0'),
+                'invoices': InvoiceSerializer(invoices, many=True).data
+            }
+
+        return Response(result)
 
     @action(detail=False, methods=['get'])
     def receipts(self, request):
@@ -679,23 +714,29 @@ class TenantPortalViewSet(viewsets.ViewSet):
         from apps.billing.models import Receipt
         from apps.billing.serializers import ReceiptSerializer
 
-        receipts = Receipt.objects.filter(tenant=tenant)
+        current_schema = self._get_schema()
+        with schema_context(current_schema):
+            receipts = Receipt.objects.filter(tenant=tenant).select_related(
+                'tenant', 'invoice', 'invoice__unit', 'created_by', 'journal'
+            )
 
-        # Filter by date range
-        start_date = request.query_params.get('start_date')
-        end_date = request.query_params.get('end_date')
-        if start_date:
-            receipts = receipts.filter(date__gte=start_date)
-        if end_date:
-            receipts = receipts.filter(date__lte=end_date)
+            # Filter by date range
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date')
+            if start_date:
+                receipts = receipts.filter(date__gte=start_date)
+            if end_date:
+                receipts = receipts.filter(date__lte=end_date)
 
-        receipts = receipts.order_by('-date')
+            receipts = receipts.order_by('-date')
 
-        return Response({
-            'count': receipts.count(),
-            'total_paid': receipts.aggregate(total=Sum('amount'))['total'] or Decimal('0'),
-            'receipts': ReceiptSerializer(receipts, many=True).data
-        })
+            result = {
+                'count': receipts.count(),
+                'total_paid': receipts.aggregate(total=Sum('amount'))['total'] or Decimal('0'),
+                'receipts': ReceiptSerializer(receipts, many=True).data
+            }
+
+        return Response(result)
 
     @action(detail=False, methods=['get'])
     def statement(self, request):
@@ -710,43 +751,45 @@ class TenantPortalViewSet(viewsets.ViewSet):
 
         from apps.billing.models import Invoice, Receipt
 
-        # Get date range
-        start_date = request.query_params.get('start_date')
-        end_date = request.query_params.get('end_date', timezone.now().date())
+        current_schema = self._get_schema()
+        with schema_context(current_schema):
+            # Get date range
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date', timezone.now().date())
 
-        # Get all invoices and receipts
-        invoices = Invoice.objects.filter(tenant=tenant)
-        receipts = Receipt.objects.filter(tenant=tenant)
+            # Get all invoices and receipts
+            invoices = Invoice.objects.filter(tenant=tenant)
+            receipts = Receipt.objects.filter(tenant=tenant)
 
-        if start_date:
-            invoices = invoices.filter(date__gte=start_date)
-            receipts = receipts.filter(date__gte=start_date)
-        if end_date:
-            invoices = invoices.filter(date__lte=end_date)
-            receipts = receipts.filter(date__lte=end_date)
+            if start_date:
+                invoices = invoices.filter(date__gte=start_date)
+                receipts = receipts.filter(date__gte=start_date)
+            if end_date:
+                invoices = invoices.filter(date__lte=end_date)
+                receipts = receipts.filter(date__lte=end_date)
 
-        # Build statement entries
-        entries = []
+            # Build statement entries
+            entries = []
 
-        for inv in invoices:
-            entries.append({
-                'date': inv.date,
-                'type': 'invoice',
-                'reference': inv.invoice_number,
-                'description': f'{inv.get_invoice_type_display()} - {inv.description or ""}',
-                'debit': inv.total_amount,
-                'credit': Decimal('0'),
-            })
+            for inv in invoices:
+                entries.append({
+                    'date': inv.date,
+                    'type': 'invoice',
+                    'reference': inv.invoice_number,
+                    'description': f'{inv.get_invoice_type_display()} - {inv.description or ""}',
+                    'debit': inv.total_amount,
+                    'credit': Decimal('0'),
+                })
 
-        for rec in receipts:
-            entries.append({
-                'date': rec.date,
-                'type': 'receipt',
-                'reference': rec.receipt_number,
-                'description': f'Payment - {rec.get_payment_method_display()}',
-                'debit': Decimal('0'),
-                'credit': rec.amount,
-            })
+            for rec in receipts:
+                entries.append({
+                    'date': rec.date,
+                    'type': 'receipt',
+                    'reference': rec.receipt_number,
+                    'description': f'Payment - {rec.get_payment_method_display()}',
+                    'debit': Decimal('0'),
+                    'credit': rec.amount,
+                })
 
         # Sort by date
         entries.sort(key=lambda x: x['date'])
@@ -793,14 +836,41 @@ class TenantPortalViewSet(viewsets.ViewSet):
         from apps.masterfile.models import LeaseAgreement
         from apps.masterfile.serializers import LeaseAgreementSerializer
 
-        leases = LeaseAgreement.objects.filter(tenant=tenant).order_by('-start_date')
+        current_schema = self._get_schema()
+        with schema_context(current_schema):
+            leases = LeaseAgreement.objects.filter(tenant=tenant).select_related(
+                'tenant', 'unit', 'unit__property', 'created_by'
+            ).order_by('-start_date')
 
-        active_lease = leases.filter(status='active').first()
-        past_leases = leases.exclude(status__in=['active', 'draft'])
+            active_lease = leases.filter(status='active').first()
+            past_leases = list(leases.exclude(status__in=['active', 'draft']))
+
+        def lease_with_document(lease_data, lease_obj):
+            """Add document_url and payment_day to lease serializer data."""
+            if lease_obj and lease_obj.document:
+                lease_data['document_url'] = request.build_absolute_uri(lease_obj.document.url)
+            else:
+                lease_data['document_url'] = None
+            lease_data['payment_day'] = lease_obj.billing_day if lease_obj else None
+            return lease_data
+
+        active_data = None
+        if active_lease:
+            active_data = lease_with_document(
+                LeaseAgreementSerializer(active_lease).data,
+                active_lease
+            )
+
+        past_data = []
+        for pl in past_leases:
+            past_data.append(lease_with_document(
+                LeaseAgreementSerializer(pl).data,
+                pl
+            ))
 
         return Response({
-            'active_lease': LeaseAgreementSerializer(active_lease).data if active_lease else None,
-            'past_leases': LeaseAgreementSerializer(past_leases, many=True).data
+            'active_lease': active_data,
+            'past_leases': past_data
         })
 
     @action(detail=False, methods=['post'])
@@ -871,20 +941,22 @@ class TenantPortalViewSet(viewsets.ViewSet):
         from apps.billing.models import Receipt
         from django.db.models.functions import TruncMonth
 
-        # Get monthly payment totals for the last 12 months
-        receipts = Receipt.objects.filter(tenant=tenant)
+        current_schema = self._get_schema()
+        with schema_context(current_schema):
+            # Get monthly payment totals for the last 12 months
+            receipts = Receipt.objects.filter(tenant=tenant)
 
-        monthly_payments = receipts.annotate(
-            month=TruncMonth('date')
-        ).values('month').annotate(
-            total=Sum('amount')
-        ).order_by('month')
+            monthly_payments = list(receipts.annotate(
+                month=TruncMonth('date')
+            ).values('month').annotate(
+                total=Sum('amount')
+            ).order_by('month'))
 
-        # Payment method breakdown
-        method_breakdown = receipts.values('payment_method').annotate(
-            total=Sum('amount'),
-            count=Sum(1)
-        )
+            # Payment method breakdown
+            method_breakdown = list(receipts.values('payment_method').annotate(
+                total=Sum('amount'),
+                count=Sum(1)
+            ))
 
         return Response({
             'monthly_payments': [

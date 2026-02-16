@@ -1,0 +1,6 @@
+export { default as TenantDashboard } from './TenantDashboard'
+export { default as TenantInvoices } from './TenantInvoices'
+export { default as TenantReceipts } from './TenantReceipts'
+export { default as TenantStatement } from './TenantStatement'
+export { default as TenantLease } from './TenantLease'
+export { default as TenantPaymentNotification } from './TenantPaymentNotification'

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff, CheckCircle, XCircle, Loader2, UserPlus } from 'lucide-react'
 import { invitationsApi } from '../services/api'
+import { getErrorMessage } from '../lib/utils'
 import toast from 'react-hot-toast'
 import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
@@ -46,9 +47,8 @@ export default function AcceptInvite() {
         const response = await invitationsApi.validate(token)
         setInvitation(response.data)
         setLoading(false)
-      } catch (err: any) {
-        const message = err.response?.data?.error || 'This invitation link is invalid or has expired.'
-        setError(message)
+      } catch (err) {
+        setError(getErrorMessage(err, 'This invitation link is invalid or has expired.'))
         setLoading(false)
       }
     }
@@ -80,9 +80,8 @@ export default function AcceptInvite() {
       })
       toast.success('Account created successfully! Please log in.')
       navigate('/login')
-    } catch (err: any) {
-      const message = err.response?.data?.error || 'Failed to accept invitation'
-      toast.error(message)
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to accept invitation'))
     } finally {
       setSubmitting(false)
     }

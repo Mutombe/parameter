@@ -26,6 +26,10 @@ class Notification(models.Model):
         LEASE_ACTIVATED = 'lease_activated', 'Lease Activated'
         LEASE_TERMINATED = 'lease_terminated', 'Lease Terminated'
 
+        # Due Dates & Penalties
+        RENTAL_DUE = 'rental_due', 'Rental Due Reminder'
+        LATE_PENALTY = 'late_penalty', 'Late Payment Penalty'
+
         # System
         SYSTEM_ALERT = 'system_alert', 'System Alert'
         USER_INVITED = 'user_invited', 'User Invited'
@@ -102,12 +106,18 @@ class NotificationPreference(models.Model):
     email_lease_alerts = models.BooleanField(default=True)
     email_system_alerts = models.BooleanField(default=True)
 
+    # Due dates & penalties
+    email_rental_due = models.BooleanField(default=True)
+    email_late_penalty = models.BooleanField(default=True)
+
     # In-app notifications
     push_masterfile_changes = models.BooleanField(default=True)
     push_invoice_alerts = models.BooleanField(default=True)
     push_payment_received = models.BooleanField(default=True)
     push_lease_alerts = models.BooleanField(default=True)
     push_system_alerts = models.BooleanField(default=True)
+    push_rental_due = models.BooleanField(default=True)
+    push_late_penalty = models.BooleanField(default=True)
 
     # Daily digest
     daily_digest = models.BooleanField(default=False)

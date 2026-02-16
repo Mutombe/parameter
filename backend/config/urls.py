@@ -4,9 +4,22 @@ from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views.static import serve
+from django.http import JsonResponse
+from django.db import connection
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+
+def health_check(request):
+    """Health check endpoint for load balancers and monitoring."""
+    try:
+        connection.ensure_connection()
+        return JsonResponse({'status': 'healthy', 'database': 'ok'})
+    except Exception as e:
+        return JsonResponse({'status': 'unhealthy', 'database': str(e)}, status=503)
+
+
 urlpatterns = [
+    path('health/', health_check, name='health-check'),
     path('admin/', admin.site.urls),
     path('api/tenants/', include('apps.tenants.urls')),  # Super Admin dashboard & tenant management
     path('api/accounts/', include('apps.accounts.urls')),

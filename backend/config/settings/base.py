@@ -21,6 +21,7 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,.localhost'
 
 # Multi-tenancy: Shared apps (public schema)
 SHARED_APPS = [
+    'daphne',  # ASGI server - must be before django.contrib.staticfiles
     'django_tenants',
     'apps.tenants',
     'django.contrib.contenttypes',
@@ -34,6 +35,7 @@ SHARED_APPS = [
     'django_filters',
     'drf_spectacular',
     'django_q',  # Database-based task queue
+    'channels',  # WebSocket support
     'apps.accounts',  # User model must be in shared apps
 ]
 
@@ -72,7 +74,7 @@ def get_tenant_url(subdomain):
     return f"{TENANT_PROTOCOL}://{subdomain}.{TENANT_DOMAIN_SUFFIX}"
 
 MIDDLEWARE = [
-    'middleware.tenant_middleware.SimpleCorsMiddleware',  # Custom CORS - must be first
+    'corsheaders.middleware.CorsMiddleware',  # django-cors-headers - must be first
     'middleware.tenant_middleware.SubdomainHeaderMiddleware',  # Handle X-Tenant-Subdomain header
     'django_tenants.middleware.main.TenantMainMiddleware',
     'django.middleware.security.SecurityMiddleware',
@@ -106,6 +108,14 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
+
+# Channel Layers (WebSocket support)
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+    }
+}
 
 # Database - PostgreSQL with django-tenants
 # Add these at the top of your settings.py
@@ -123,10 +133,21 @@ DATABASES = {
         'HOST': tmpPostgres.hostname,
         'PORT': 5432,
         'OPTIONS': dict(parse_qsl(tmpPostgres.query)),
+        'CONN_MAX_AGE': 600,  # Reuse DB connections for 10 minutes
+        'CONN_HEALTH_CHECKS': True,  # Verify connection before reuse
     }
 }
 
 DATABASE_ROUTERS = ('django_tenants.routers.TenantSyncRouter',)
+
+# Cache (use database cache - no Redis needed, upgrade to Redis for high traffic)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'parameter-cache',
+        'TIMEOUT': 300,  # 5 minutes default
+    }
+}
 
 AUTH_USER_MODEL = 'accounts.User'
 
@@ -169,6 +190,15 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'EXCEPTION_HANDLER': 'config.exception_handler.custom_exception_handler',
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '30/minute',
+        'user': '120/minute',
+        'login': '5/minute',
+    },
 }
 
 # CORS settings
@@ -247,3 +277,37 @@ DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@parameter.co.
 
 # Site URL for invitation links
 SITE_URL = config('SITE_URL', default='http://localhost:5173')
+
+# Logging
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{asctime} {levelname} {name} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'apps': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}

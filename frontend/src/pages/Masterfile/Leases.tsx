@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -7,6 +8,7 @@ import {
   Search,
   Edit2,
   Trash2,
+  Eye,
   Calendar,
   DollarSign,
   User,
@@ -17,6 +19,8 @@ import {
   AlertTriangle,
   Play,
   Loader2,
+  Paperclip,
+  Upload,
 } from 'lucide-react'
 import { leaseApi, tenantApi, unitApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
@@ -39,6 +43,7 @@ interface Lease {
   payment_day: number
   status: 'draft' | 'active' | 'expired' | 'terminated'
   notes: string
+  document: string | null
   created_at: string
 }
 
@@ -112,6 +117,7 @@ function SkeletonTableRow() {
 
 export default function Leases() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [statusFilter, setStatusFilter] = useState<string>('')
@@ -120,6 +126,7 @@ export default function Leases() {
   const [showActivateDialog, setShowActivateDialog] = useState(false)
   const [selectedLease, setSelectedLease] = useState<Lease | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [documentFile, setDocumentFile] = useState<File | null>(null)
   const [form, setForm] = useState({
     tenant: '',
     unit: '',
@@ -165,10 +172,20 @@ export default function Leases() {
   const createMutation = useMutation({
     mutationFn: (data: any) =>
       editingId ? leaseApi.update(editingId, data) : leaseApi.create(data),
-    onSuccess: () => {
+    onSuccess: async (response) => {
+      const leaseId = response.data?.id || editingId
+      if (documentFile && leaseId) {
+        try {
+          await leaseApi.uploadDocument(leaseId, documentFile)
+          showToast.success(editingId ? 'Lease updated with document' : 'Lease created with document')
+        } catch {
+          showToast.warning('Lease saved but document upload failed')
+        }
+      } else {
+        showToast.success(editingId ? 'Lease updated successfully' : 'Lease created successfully')
+      }
       queryClient.invalidateQueries({ queryKey: ['leases'] })
       queryClient.invalidateQueries({ queryKey: ['units-all'] })
-      showToast.success(editingId ? 'Lease updated successfully' : 'Lease created successfully')
       resetForm()
     },
     onError: (error) => showToast.error(parseApiError(error, 'Failed to save lease')),
@@ -202,6 +219,7 @@ export default function Leases() {
   const resetForm = () => {
     setShowForm(false)
     setEditingId(null)
+    setDocumentFile(null)
     setForm({
       tenant: '',
       unit: '',
@@ -465,6 +483,7 @@ export default function Leases() {
                           <FileText className="w-5 h-5 text-blue-600" />
                         </div>
                         <span className="font-semibold text-gray-900">{lease.lease_number}</span>
+                        {lease.document && <Paperclip className="w-3.5 h-3.5 text-gray-400" />}
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -510,6 +529,13 @@ export default function Leases() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
+                          className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                          title="View details"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
                         {lease.status === 'draft' && (
                           <button
                             onClick={() => handleActivate(lease)}
@@ -551,7 +577,7 @@ export default function Leases() {
         icon={editingId ? Edit2 : Plus}
       >
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Tenant Select with Loading */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -609,7 +635,7 @@ export default function Leases() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Input
               type="number"
               label="Monthly Rent"
@@ -641,7 +667,7 @@ export default function Leases() {
             </Select>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Input
               type="date"
               label="Start Date"
@@ -667,6 +693,36 @@ export default function Leases() {
                 <option key={i + 1} value={i + 1}>Day {i + 1}</option>
               ))}
             </Select>
+          </div>
+
+          {/* Document Upload */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Lease Document
+            </label>
+            <div className="flex items-center gap-3">
+              <label className="flex-1 flex items-center gap-2 px-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
+                <Upload className="w-4 h-4 text-gray-400" />
+                <span className="text-gray-500 truncate">
+                  {documentFile ? documentFile.name : 'Choose PDF or Word document...'}
+                </span>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  className="hidden"
+                  onChange={(e) => setDocumentFile(e.target.files?.[0] || null)}
+                />
+              </label>
+              {documentFile && (
+                <button
+                  type="button"
+                  onClick={() => setDocumentFile(null)}
+                  className="p-2 text-gray-400 hover:text-red-500 rounded-lg transition-colors"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
 
           <Textarea
