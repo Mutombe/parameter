@@ -258,6 +258,8 @@ Parameter Team
         if not user:
             return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
+        # Set auth backend explicitly (required when not using authenticate())
+        user.backend = 'django.contrib.auth.backends.ModelBackend'
         login(request, user)
 
         # Update last activity

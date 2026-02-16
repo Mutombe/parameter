@@ -62,8 +62,26 @@ class SubdomainHeaderMiddleware(MiddlewareMixin):
     and this middleware sets the tenant on the request before
     TenantMainMiddleware processes it.
 
+    When NO subdomain header is present, falls back to the public tenant
+    so that public API endpoints (signup, health check, etc.) work correctly.
+
     MUST be placed BEFORE TenantMainMiddleware in MIDDLEWARE settings.
     """
+
+    def _get_public_tenant(self):
+        """Get the public tenant, using in-process cache."""
+        tenant = _tenant_cache.get('__public__')
+        if tenant is None:
+            try:
+                from django_tenants.utils import get_tenant_model
+                TenantModel = get_tenant_model()
+                tenant = TenantModel.objects.filter(schema_name='public').first()
+                _tenant_cache['__public__'] = tenant or False
+            except Exception as e:
+                logger.error(f"Error fetching public tenant: {e}")
+                _tenant_cache['__public__'] = False
+                return None
+        return tenant if tenant is not False else None
 
     def process_request(self, request):
         """Set tenant from X-Tenant-Subdomain header if present. Uses in-process cache."""
@@ -102,6 +120,20 @@ class SubdomainHeaderMiddleware(MiddlewareMixin):
 
             # Override HTTP_HOST so django-tenants can process it correctly
             request.META['HTTP_HOST'] = expected_host
+        else:
+            # No subdomain header — explicitly set public tenant so that
+            # TenantMainMiddleware can resolve it even if the request domain
+            # (e.g., parameter-backend.onrender.com) doesn't match any Domain record.
+            public_tenant = self._get_public_tenant()
+            if public_tenant:
+                request.tenant = public_tenant
+                # Find the primary domain for the public tenant
+                try:
+                    primary_domain = public_tenant.domains.filter(is_primary=True).first()
+                    if primary_domain:
+                        request.META['HTTP_HOST'] = primary_domain.domain
+                except Exception:
+                    pass  # Let TenantMainMiddleware handle it
 
 
 class TenantContextMiddleware(MiddlewareMixin):

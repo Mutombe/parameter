@@ -1118,8 +1118,8 @@ def _process_demo_signup_background(request_id: str):
             company_data,
             admin_data,
             {
-                'create_sample_coa': False,
-                'send_welcome_email': True,  # Send email when done
+                'create_sample_coa': True,
+                'send_welcome_email': True,
                 'is_demo': True,
                 'seed_demo_data': False
             }

@@ -112,12 +112,17 @@ export default function Signup() {
   }
 
   // Check subdomain availability
+  const [subdomainError, setSubdomainError] = useState<string | null>(null)
   const checkSubdomainMutation = useMutation({
     mutationFn: (subdomain: string) => tenantsApi.checkSubdomain(subdomain),
     onSuccess: (response) => {
+      console.debug('[Signup] Subdomain check response:', response.data)
+      setSubdomainError(null)
       setSubdomainStatus(response.data.available ? 'available' : 'taken')
     },
-    onError: () => {
+    onError: (error: any) => {
+      console.debug('[Signup] Subdomain check failed:', error.response?.status, error.message)
+      setSubdomainError('Could not check availability. Please try again.')
       setSubdomainStatus('idle')
     },
   })
@@ -698,6 +703,12 @@ export default function Signup() {
                       <p className="mt-1 text-sm text-rose-600 flex items-center gap-1">
                         <AlertCircle className="w-4 h-4" />
                         This subdomain is already taken
+                      </p>
+                    )}
+                    {subdomainError && subdomainStatus === 'idle' && formData.subdomain.length >= 3 && (
+                      <p className="mt-1 text-sm text-amber-600 flex items-center gap-1">
+                        <AlertCircle className="w-4 h-4" />
+                        {subdomainError}
                       </p>
                     )}
                   </div>
