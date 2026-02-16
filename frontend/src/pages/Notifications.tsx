@@ -156,8 +156,8 @@ export default function Notifications() {
   const markReadMutation = useMutation({
     mutationFn: (id: number) => notificationsApi.markRead(id),
     onMutate: async (id) => {
-      // Optimistically update the notification as read in cache
       await queryClient.cancelQueries({ queryKey: ['notifications'] })
+      // Optimistically mark as read in list cache
       queryClient.setQueriesData({ queryKey: ['notifications', 'list'] }, (old: any) => {
         if (!old) return old
         const results = old.results || old
@@ -166,11 +166,19 @@ export default function Notifications() {
           : results
         return old.results ? { ...old, results: updated } : updated
       })
+      // Optimistically mark as read in recent/dropdown cache
       queryClient.setQueriesData({ queryKey: ['notifications', 'recent'] }, (old: any) => {
         if (!old) return old
         if (Array.isArray(old)) return old.map((n: any) => n.id === id ? { ...n, is_read: true } : n)
         if (old.notifications) return { ...old, notifications: old.notifications.map((n: any) => n.id === id ? { ...n, is_read: true } : n) }
         return old
+      })
+      // Optimistically decrement unread count
+      queryClient.setQueryData(['notifications', 'unread-count'], (old: any) => {
+        if (!old) return old
+        const current = old.unread_count ?? old.count ?? 0
+        const newCount = Math.max(0, current - 1)
+        return { ...old, unread_count: newCount, count: newCount }
       })
     },
     onSettled: () => {
@@ -180,7 +188,30 @@ export default function Notifications() {
 
   const markAllReadMutation = useMutation({
     mutationFn: () => notificationsApi.markAllRead(),
-    onSuccess: () => {
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['notifications'] })
+      // Optimistically mark all as read in list cache
+      queryClient.setQueriesData({ queryKey: ['notifications', 'list'] }, (old: any) => {
+        if (!old) return old
+        const results = old.results || old
+        const updated = Array.isArray(results)
+          ? results.map((n: any) => ({ ...n, is_read: true }))
+          : results
+        return old.results ? { ...old, results: updated } : updated
+      })
+      queryClient.setQueriesData({ queryKey: ['notifications', 'recent'] }, (old: any) => {
+        if (!old) return old
+        if (Array.isArray(old)) return old.map((n: any) => ({ ...n, is_read: true }))
+        if (old.notifications) return { ...old, notifications: old.notifications.map((n: any) => ({ ...n, is_read: true })) }
+        return old
+      })
+      // Set unread count to 0
+      queryClient.setQueryData(['notifications', 'unread-count'], (old: any) => {
+        if (!old) return old
+        return { ...old, unread_count: 0, count: 0 }
+      })
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] })
       toast.success('All notifications marked as read')
     },
