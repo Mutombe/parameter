@@ -78,12 +78,12 @@ def build_html_email(subject, body_text, recipient_name=None, company_name=None,
 <!-- Email container -->
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:{WHITE};border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
 
-  <!-- Header with gradient -->
+  <!-- Header: white bg with blue logo -->
   <tr>
-    <td style="background:linear-gradient(135deg, {accent} 0%, {PRIMARY_DARK} 100%);padding:32px 40px;text-align:center;">
-      <img src="{logo_url}" alt="Parameter" width="48" height="48" style="display:block;margin:0 auto 16px;border-radius:12px;background:{WHITE};padding:8px;width:48px;height:48px;">
-      <h1 style="margin:0;color:{WHITE};font-size:22px;font-weight:700;letter-spacing:-0.3px;line-height:1.3;">{escape(subject)}</h1>
-      {f'<p style="margin:8px 0 0;color:rgba(255,255,255,0.85);font-size:13px;font-weight:500;">{escape(company)}</p>' if company else ''}
+    <td style="background-color:{WHITE};padding:32px 40px 24px;text-align:center;border-bottom:1px solid {BORDER};">
+      <img src="{logo_url}" alt="Parameter" width="52" height="52" style="display:block;margin:0 auto 16px;width:52px;height:52px;">
+      <h1 style="margin:0;color:{BLACK};font-size:21px;font-weight:700;letter-spacing:-0.3px;line-height:1.3;">{escape(subject)}</h1>
+      {f'<p style="margin:8px 0 0;color:{GRAY};font-size:13px;font-weight:500;">{escape(company)}</p>' if company else ''}
     </td>
   </tr>
 
