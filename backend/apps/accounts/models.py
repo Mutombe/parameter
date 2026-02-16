@@ -189,3 +189,45 @@ class UserInvitation(models.Model):
     def generate_token(cls):
         import secrets
         return secrets.token_urlsafe(32)
+
+
+class PasswordResetToken(models.Model):
+    """Token for password reset requests."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='password_reset_tokens')
+    token = models.CharField(max_length=100, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Reset token for {self.user.email}'
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone
+        return timezone.now() > self.expires_at
+
+    @property
+    def is_valid(self):
+        return not self.used and not self.is_expired
+
+    @classmethod
+    def generate_token(cls):
+        import secrets
+        return secrets.token_urlsafe(32)
+
+    @classmethod
+    def create_for_user(cls, user):
+        """Create a reset token, invalidating any existing ones."""
+        from django.utils import timezone
+        from datetime import timedelta
+        # Invalidate old tokens
+        cls.objects.filter(user=user, used=False).update(used=True)
+        return cls.objects.create(
+            user=user,
+            token=cls.generate_token(),
+            expires_at=timezone.now() + timedelta(hours=1),
+        )

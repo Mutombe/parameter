@@ -14,11 +14,12 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.middleware.csrf import get_token
 from django_tenants.utils import schema_context
-from .models import User, UserActivity, UserInvitation
+from .models import User, UserActivity, UserInvitation, PasswordResetToken
 from .serializers import (
     UserSerializer, UserCreateSerializer, LoginSerializer,
     ChangePasswordSerializer, UserActivitySerializer,
-    UserInvitationSerializer, CreateInvitationSerializer, AcceptInvitationSerializer
+    UserInvitationSerializer, CreateInvitationSerializer, AcceptInvitationSerializer,
+    RequestPasswordResetSerializer, ResetPasswordSerializer
 )
 from rest_framework.throttling import ScopedRateThrottle
 from .permissions import CanInviteUsers, CanManageUsers, get_allowed_invite_roles, IsTenantPortalUser, IsTenantPortalOrStaff
@@ -152,6 +153,88 @@ class AuthViewSet(viewsets.ViewSet):
         )
 
         return Response({'message': 'Password changed successfully'})
+
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    def request_password_reset(self, request):
+        """Send a password reset email."""
+        serializer = RequestPasswordResetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data['email']
+        # Always return success to prevent email enumeration
+        try:
+            user = User.objects.get(email=email)
+            token_obj = PasswordResetToken.create_for_user(user)
+
+            site_url = getattr(__import__('django.conf', fromlist=['settings']).settings, 'SITE_URL', 'http://localhost:5173')
+            reset_link = f"{site_url}/reset-password?token={token_obj.token}"
+
+            from apps.notifications.utils import send_email
+            send_email(
+                email,
+                'Reset Your Password',
+                f'''Dear {user.first_name or 'User'},
+
+You requested a password reset for your Parameter account.
+
+=== Password Reset ===
+
+Click the link below to set a new password:
+
+{reset_link}
+
+---
+
+This link will expire in 1 hour. If you did not request this reset, you can safely ignore this email.
+
+Best regards,
+Parameter Team
+''',
+            )
+            logger.info(f"Password reset email sent to {email}")
+        except User.DoesNotExist:
+            logger.info(f"Password reset requested for non-existent email: {email}")
+
+        return Response({'message': 'If an account exists with that email, a reset link has been sent.'})
+
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    def reset_password(self, request):
+        """Reset password using a valid token."""
+        serializer = ResetPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        token_obj = PasswordResetToken.objects.get(token=serializer.validated_data['token'])
+        user = token_obj.user
+
+        user.set_password(serializer.validated_data['new_password'])
+        user.save()
+
+        token_obj.used = True
+        token_obj.save()
+
+        UserActivity.objects.create(
+            user=user,
+            action='password_reset',
+            ip_address=self.get_client_ip(request),
+            details={'method': 'email_reset'}
+        )
+
+        logger.info(f"Password reset completed for {user.email}")
+        return Response({'message': 'Password has been reset successfully. You can now log in.'})
+
+    @action(detail=False, methods=['get'], permission_classes=[AllowAny])
+    def validate_reset_token(self, request):
+        """Check if a reset token is still valid."""
+        token = request.query_params.get('token')
+        if not token:
+            return Response({'valid': False, 'error': 'No token provided'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            token_obj = PasswordResetToken.objects.get(token=token)
+            if token_obj.is_valid:
+                return Response({'valid': True, 'email': token_obj.user.email})
+            return Response({'valid': False, 'error': 'This reset link has expired.'})
+        except PasswordResetToken.DoesNotExist:
+            return Response({'valid': False, 'error': 'Invalid reset link.'})
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def upload_avatar(self, request):

@@ -47,6 +47,8 @@ const sections = [
       { id: 'invoices', title: 'Creating Invoices' },
       { id: 'auto-billing', title: 'Automated Billing' },
       { id: 'receipts', title: 'Recording Payments' },
+      { id: 'expenses', title: 'Expense Management' },
+      { id: 'late-penalties', title: 'Late Penalties' },
       { id: 'statements', title: 'Tenant Statements' },
     ]
   },
@@ -72,12 +74,33 @@ const sections = [
     ]
   },
   {
+    id: 'data-import',
+    title: 'Data Import',
+    icon: Zap,
+    subsections: [
+      { id: 'import-overview', title: 'Import Overview' },
+      { id: 'import-formats', title: 'Supported Formats' },
+      { id: 'document-scanner', title: 'Document Scanner (AI)' },
+    ]
+  },
+  {
+    id: 'tenant-portal',
+    title: 'Tenant Portal',
+    icon: UserPlus,
+    subsections: [
+      { id: 'portal-overview', title: 'Portal Overview' },
+      { id: 'portal-invoices', title: 'Viewing Invoices' },
+      { id: 'portal-payments', title: 'Payment Notifications' },
+    ]
+  },
+  {
     id: 'admin',
     title: 'Administration',
     icon: Settings,
     subsections: [
       { id: 'team-management', title: 'Team Management' },
       { id: 'roles-permissions', title: 'Roles & Permissions' },
+      { id: 'notifications', title: 'Notifications & Email' },
       { id: 'settings', title: 'System Settings' },
     ]
   },
@@ -114,7 +137,15 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
             </li>
             <li className="flex items-start gap-2">
               <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
-              <span><strong>AI-Powered Features:</strong> Smart reconciliation, document OCR, and insights</span>
+              <span><strong>Bulk Data Import:</strong> Import from CSV, Excel, or scanned documents with AI-powered OCR</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
+              <span><strong>Tenant Self-Service Portal:</strong> Tenants view invoices, track payments, and notify management</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
+              <span><strong>Automated Notifications:</strong> Email alerts for invoices, overdue payments, late penalties, and more</span>
             </li>
           </ul>
         </div>
@@ -165,8 +196,9 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
               <h4 className="font-semibold text-gray-900">Add Your Data</h4>
             </div>
             <p className="text-gray-600 text-sm ml-11">
-              Start by adding landlords, then properties and units. Once your portfolio is set up, add tenants
-              and create lease agreements to begin billing.
+              Start by adding landlords, then properties and units. <strong>Import existing data from CSV, Excel files, or
+              scanned documents</strong> — or enter records manually. Once your portfolio is set up, add tenants and
+              create lease agreements to begin billing.
             </p>
           </div>
         </div>
@@ -552,6 +584,77 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
       </div>
     )
   },
+  expenses: {
+    title: 'Expense Management',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Track and manage all property-related expenses. Expenses are posted to the general ledger with proper
+          double-entry accounting.
+        </p>
+        <h4 className="font-semibold text-gray-900">Recording an Expense</h4>
+        <ol className="list-decimal list-inside space-y-2 text-gray-600 ml-4">
+          <li>Navigate to <strong>Billing → Expenses</strong></li>
+          <li>Click <strong>"Add Expense"</strong></li>
+          <li>Select the expense category (e.g., Repairs, Utilities, Insurance)</li>
+          <li>Enter the amount, date, and description</li>
+          <li>Optionally link to a property or unit</li>
+          <li>Save and post to the ledger</li>
+        </ol>
+        <div className="bg-gray-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Expense Categories</h4>
+          <p className="text-sm text-gray-600 mb-3">
+            Manage expense categories in <strong>Accounting → Expense Categories</strong>. Each category maps
+            to a GL account for accurate financial reporting.
+          </p>
+          <ul className="text-sm text-gray-600 space-y-1">
+            <li>• Repairs & Maintenance</li>
+            <li>• Utilities (Water, Electricity)</li>
+            <li>• Insurance Premiums</li>
+            <li>• Security Services</li>
+            <li>• Management Fees</li>
+          </ul>
+        </div>
+      </div>
+    )
+  },
+  'late-penalties': {
+    title: 'Late Penalties',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Automatically apply late payment penalties to overdue invoices. The system runs daily checks and
+          generates penalty invoices based on your configured rules.
+        </p>
+        <div className="bg-gray-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Penalty Types</h4>
+          <div className="space-y-3">
+            <div className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span className="text-sm text-gray-600"><strong>Fixed Amount:</strong> A flat fee added to the overdue invoice (e.g., $50)</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span className="text-sm text-gray-600"><strong>Percentage:</strong> A percentage of the outstanding balance (e.g., 5%)</span>
+            </div>
+          </div>
+        </div>
+        <h4 className="font-semibold text-gray-900">Configuration</h4>
+        <ol className="list-decimal list-inside space-y-2 text-gray-600 ml-4">
+          <li>Navigate to <strong>Billing → Late Penalties</strong></li>
+          <li>Configure penalty type, amount/rate, and grace period</li>
+          <li>Set whether penalties apply once or recur</li>
+          <li>Penalties run automatically — overdue invoices are checked daily</li>
+        </ol>
+        <div className="bg-amber-50 rounded-xl p-4">
+          <p className="text-sm text-amber-800">
+            <strong>Note:</strong> Tenants receive an email notification when a late penalty is applied. The penalty
+            creates a separate invoice linked to the original overdue invoice.
+          </p>
+        </div>
+      </div>
+    )
+  },
   statements: {
     title: 'Tenant Statements',
     content: (
@@ -886,6 +989,287 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
               <span><strong>Exchange Rates:</strong> Manage currency conversion rates</span>
             </li>
           </ul>
+        </div>
+      </div>
+    )
+  },
+  'import-overview': {
+    title: 'Import Overview',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Import your existing data into Parameter to get started quickly. Whether you're migrating from another
+          system or starting from spreadsheets, the import tool handles it all.
+        </p>
+        <div className="bg-primary-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">What You Can Import</h4>
+          <ul className="space-y-2 text-gray-600">
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
+              <span><strong>Landlords:</strong> Names, contact details, bank info, commission rates</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
+              <span><strong>Properties & Units:</strong> Property names, addresses, unit numbers, rent amounts</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
+              <span><strong>Tenants:</strong> Names, emails, phone numbers, ID numbers</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
+              <span><strong>Leases:</strong> Start/end dates, rent amounts, linked tenants and units</span>
+            </li>
+          </ul>
+        </div>
+        <h4 className="font-semibold text-gray-900">How to Import</h4>
+        <ol className="list-decimal list-inside space-y-2 text-gray-600 ml-4">
+          <li>Navigate to the Masterfile section (e.g., Landlords, Tenants)</li>
+          <li>Click the <strong>"Import"</strong> button</li>
+          <li>Upload your file (CSV, Excel, or scanned document)</li>
+          <li>Map columns to the correct fields</li>
+          <li>Review the preview and confirm the import</li>
+        </ol>
+        <div className="bg-amber-50 rounded-xl p-4">
+          <p className="text-sm text-amber-800">
+            <strong>Tip:</strong> Download a sample template first to see the expected format, then populate it with
+            your data before uploading.
+          </p>
+        </div>
+      </div>
+    )
+  },
+  'import-formats': {
+    title: 'Supported Formats',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Parameter accepts multiple file formats for data import to accommodate different workflows.
+        </p>
+        <div className="space-y-4">
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">CSV (.csv)</h4>
+            <p className="text-sm text-gray-600">
+              Comma-separated values — the simplest format. Export from any spreadsheet app. Ensure the first row
+              contains column headers.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Excel (.xlsx, .xls)</h4>
+            <p className="text-sm text-gray-600">
+              Microsoft Excel workbooks. Supports multiple sheets — the importer reads data from each sheet and
+              lets you select which one to import.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Scanned Documents (AI)</h4>
+            <p className="text-sm text-gray-600">
+              Upload photos or scanned PDFs of paper records. The AI-powered document scanner extracts structured
+              data from tables, invoices, and forms using OCR.
+            </p>
+          </div>
+        </div>
+        <div className="bg-gray-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Column Mapping</h4>
+          <p className="text-sm text-gray-600">
+            After uploading, you'll see a column mapping interface. Match your file's columns to Parameter fields.
+            The system auto-detects common column names (e.g., "Name", "Email", "Phone") and suggests mappings.
+          </p>
+        </div>
+      </div>
+    )
+  },
+  'document-scanner': {
+    title: 'Document Scanner (AI)',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          The AI-powered document scanner lets you import data from photos, scanned documents, and PDFs.
+          It uses optical character recognition (OCR) and AI to extract structured data.
+        </p>
+        <h4 className="font-semibold text-gray-900">How It Works</h4>
+        <ol className="list-decimal list-inside space-y-2 text-gray-600 ml-4">
+          <li>Click <strong>"Import"</strong> and select the <strong>Document Scanner</strong> tab</li>
+          <li>Upload an image or PDF of your document</li>
+          <li>The AI analyzes the document and extracts data into a structured table</li>
+          <li>Review and edit the extracted data</li>
+          <li>Confirm to import the records into the system</li>
+        </ol>
+        <div className="bg-primary-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Best Practices</h4>
+          <ul className="space-y-2 text-sm text-gray-600">
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span>Ensure documents are clear and well-lit for best OCR accuracy</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span>Tabular data (spreadsheet printouts, invoices) works best</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span>Always review extracted data before confirming the import</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    )
+  },
+  'portal-overview': {
+    title: 'Tenant Portal Overview',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          The Tenant Portal gives tenants self-service access to view their invoices, payment history,
+          and lease details. Tenants log in with their own credentials on a separate portal interface.
+        </p>
+        <div className="bg-primary-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Portal Features</h4>
+          <ul className="space-y-2 text-gray-600">
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
+              <span><strong>Dashboard:</strong> Overview of outstanding balance and recent activity</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
+              <span><strong>Invoices:</strong> View and download all invoices with status tracking</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
+              <span><strong>Payment Notifications:</strong> Notify management of payments made</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
+              <span><strong>Lease Details:</strong> View current lease terms and unit information</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
+              <span><strong>Profile:</strong> Update contact details and change password</span>
+            </li>
+          </ul>
+        </div>
+        <h4 className="font-semibold text-gray-900">Setting Up Tenant Access</h4>
+        <ol className="list-decimal list-inside space-y-2 text-gray-600 ml-4">
+          <li>Create a tenant record in <strong>Masterfile → Tenants</strong></li>
+          <li>Ensure the tenant has a valid email address</li>
+          <li>Invite them via <strong>Admin → Team</strong> with the <strong>Tenant Portal</strong> role</li>
+          <li>The tenant receives an email invitation to create their portal account</li>
+        </ol>
+      </div>
+    )
+  },
+  'portal-invoices': {
+    title: 'Viewing Invoices (Tenant)',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Tenants can view all their invoices in the portal, filter by status, and download individual invoices
+          for their records.
+        </p>
+        <div className="bg-gray-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Invoice Details Available</h4>
+          <ul className="space-y-2 text-sm text-gray-600">
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span>Invoice number, date, and due date</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span>Total amount and outstanding balance</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span>Payment status (Pending, Paid, Overdue)</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span>Print or download invoice as PDF</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    )
+  },
+  'portal-payments': {
+    title: 'Payment Notifications',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Tenants can notify property managers about payments they've made. This creates a record that
+          management can review and reconcile with actual bank deposits.
+        </p>
+        <h4 className="font-semibold text-gray-900">Submitting a Payment Notification</h4>
+        <ol className="list-decimal list-inside space-y-2 text-gray-600 ml-4">
+          <li>Go to <strong>Payment Notification</strong> in the tenant portal</li>
+          <li>Enter the payment amount and date</li>
+          <li>Select the payment method (Bank Transfer, Cash, etc.)</li>
+          <li>Add the bank reference number</li>
+          <li>Optionally add notes</li>
+          <li>Submit — both tenant and management receive email confirmation</li>
+        </ol>
+        <div className="bg-primary-50 rounded-xl p-4">
+          <p className="text-sm text-primary-800">
+            <strong>Note:</strong> Payment notifications do not automatically create receipts. An accountant or
+            admin must verify the payment and record a receipt in the system.
+          </p>
+        </div>
+      </div>
+    )
+  },
+  notifications: {
+    title: 'Notifications & Email',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Parameter sends automated email notifications for key events and provides in-app notifications
+          for real-time updates.
+        </p>
+        <div className="bg-gray-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Automated Email Notifications</h4>
+          <ul className="space-y-2 text-sm text-gray-600">
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>New Invoice:</strong> Sent to tenants when monthly invoices are generated</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Payment Reminders:</strong> Sent 3 days before an invoice is due</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Overdue Notices:</strong> Sent when an invoice passes its due date</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Late Penalties:</strong> Sent when a penalty is applied</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Payment Received:</strong> Confirmation sent to tenants when payment is recorded</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Team Invitations:</strong> Sent when a user is invited to join the team</span>
+            </li>
+          </ul>
+        </div>
+        <div className="bg-gray-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Admin Notifications</h4>
+          <p className="text-sm text-gray-600 mb-2">
+            Staff members (Admin and Accountant roles) receive summary emails for:
+          </p>
+          <ul className="text-sm text-gray-600 space-y-1">
+            <li>• Monthly billing completion reports</li>
+            <li>• Daily overdue invoice reports</li>
+            <li>• Late penalty application summaries</li>
+            <li>• Tenant payment notifications</li>
+          </ul>
+        </div>
+        <div className="bg-primary-50 rounded-xl p-4">
+          <p className="text-sm text-primary-800">
+            <strong>Preferences:</strong> Users can configure their notification preferences in <strong>Settings</strong> to
+            control which emails they receive and enable daily digest mode.
+          </p>
         </div>
       </div>
     )

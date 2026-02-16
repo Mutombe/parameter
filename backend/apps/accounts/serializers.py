@@ -1,7 +1,7 @@
 """Serializers for user accounts."""
 from rest_framework import serializers
 from django.contrib.auth import authenticate
-from .models import User, UserActivity, UserInvitation
+from .models import User, UserActivity, UserInvitation, PasswordResetToken
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -226,4 +226,30 @@ class AcceptInvitationSerializer(serializers.Serializer):
             invitation.save()
             raise serializers.ValidationError('This invitation has expired')
 
+        return value
+
+
+class RequestPasswordResetSerializer(serializers.Serializer):
+    """Serializer for requesting a password reset."""
+    email = serializers.EmailField()
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    """Serializer for resetting a password with a token."""
+    token = serializers.CharField()
+    new_password = serializers.CharField(min_length=8, write_only=True)
+    confirm_password = serializers.CharField(write_only=True)
+
+    def validate(self, data):
+        if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError({'confirm_password': 'Passwords do not match'})
+        return data
+
+    def validate_token(self, value):
+        try:
+            token_obj = PasswordResetToken.objects.get(token=value)
+        except PasswordResetToken.DoesNotExist:
+            raise serializers.ValidationError('Invalid or expired reset link')
+        if not token_obj.is_valid:
+            raise serializers.ValidationError('This reset link has expired. Please request a new one.')
         return value

@@ -11,6 +11,8 @@ const Login = lazy(() => import('./pages/Login'))
 const Register = lazy(() => import('./pages/Register'))
 const Signup = lazy(() => import('./pages/Signup'))
 const AcceptInvite = lazy(() => import('./pages/AcceptInvite'))
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
+const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Landlords = lazy(() => import('./pages/Masterfile/Landlords'))
 const LandlordDetail = lazy(() => import('./pages/Masterfile/LandlordDetail'))
@@ -111,6 +113,8 @@ export default function App() {
       <Route path="/register" element={<Suspense fallback={<PublicPageLoader />}><Register /></Suspense>} />
       <Route path="/signup" element={<Suspense fallback={<PublicPageLoader />}><Signup /></Suspense>} />
       <Route path="/accept-invite" element={<Suspense fallback={<PublicPageLoader />}><AcceptInvite /></Suspense>} />
+      <Route path="/forgot-password" element={<Suspense fallback={<PublicPageLoader />}><ForgotPassword /></Suspense>} />
+      <Route path="/reset-password" element={<Suspense fallback={<PublicPageLoader />}><ResetPassword /></Suspense>} />
 
       {/* Protected Routes */}
       <Route

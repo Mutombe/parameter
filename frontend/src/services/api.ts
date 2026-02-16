@@ -119,6 +119,12 @@ export const authApi = {
     })
   },
   removeAvatar: () => api.delete('/accounts/auth/remove_avatar/'),
+  requestPasswordReset: (email: string) =>
+    api.post('/accounts/auth/request_password_reset/', { email }),
+  validateResetToken: (token: string) =>
+    api.get('/accounts/auth/validate_reset_token/', { params: { token } }),
+  resetPassword: (data: { token: string; new_password: string; confirm_password: string }) =>
+    api.post('/accounts/auth/reset_password/', data),
 }
 
 // Dashboard/Reports API

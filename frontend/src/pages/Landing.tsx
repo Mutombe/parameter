@@ -35,22 +35,22 @@ const features = [
   {
     icon: FileText,
     title: 'Automated Billing',
-    description: 'Generate monthly invoices automatically with customizable billing cycles.'
+    description: 'Generate monthly invoices automatically with late penalties, payment reminders, and tenant self-service.'
   },
   {
     icon: TbChartInfographic,
     title: 'Financial Reports',
-    description: 'Trial balance, income statements, balance sheets, and cash flow reports.'
+    description: 'Trial balance, income statements, balance sheets, and cash flow reports with double-entry bookkeeping.'
+  },
+  {
+    icon: Zap,
+    title: 'Bulk Data Import',
+    description: 'Onboard instantly — import landlords, tenants, properties, and leases from CSV, Excel, or scanned documents.'
   },
   {
     icon: SiFsecure,
     title: 'Multi-Tenant Security',
-    description: 'Complete data isolation with schema-based multi-tenancy architecture.'
-  },
-  {
-    icon: Zap,
-    title: 'AI-Powered Insights',
-    description: 'Smart reconciliation, document OCR, and intelligent financial suggestions.'
+    description: 'Complete data isolation with schema-based multi-tenancy and role-based access control.'
   },
 ]
 
@@ -63,7 +63,7 @@ const onboardingSteps = [
   {
     step: 2,
     title: 'Set Up Your Portfolio',
-    description: 'Add your landlords, properties, and units. Import existing data or start fresh with our guided setup.'
+    description: 'Add your landlords, properties, and units. Import existing data from CSV, Excel, or scanned documents — or start fresh.'
   },
   {
     step: 3,
@@ -291,18 +291,18 @@ const generateEmailLink = () => {
               </div>
               <div className="flex items-center justify-center sm:justify-start gap-4 sm:gap-6 mt-6 sm:mt-8 pt-6 sm:pt-8 border-t border-gray-100">
                 <div className="text-center">
-                  <div className="text-xl sm:text-2xl font-bold text-gray-900">500+</div>
-                  <div className="text-xs sm:text-sm text-gray-500">Properties</div>
-                </div>
-                <div className="w-px h-10 sm:h-12 bg-gray-200" />
-                <div className="text-center">
-                  <div className="text-xl sm:text-2xl font-bold text-gray-900">$2M+</div>
-                  <div className="text-xs sm:text-sm text-gray-500">Collected</div>
-                </div>
-                <div className="w-px h-10 sm:h-12 bg-gray-200" />
-                <div className="text-center">
                   <div className="text-xl sm:text-2xl font-bold text-gray-900">99.9%</div>
                   <div className="text-xs sm:text-sm text-gray-500">Uptime</div>
+                </div>
+                <div className="w-px h-10 sm:h-12 bg-gray-200" />
+                <div className="text-center">
+                  <div className="text-xl sm:text-2xl font-bold text-gray-900">256-bit</div>
+                  <div className="text-xs sm:text-sm text-gray-500">Encryption</div>
+                </div>
+                <div className="w-px h-10 sm:h-12 bg-gray-200" />
+                <div className="text-center">
+                  <div className="text-xl sm:text-2xl font-bold text-gray-900">24/7</div>
+                  <div className="text-xs sm:text-sm text-gray-500">Support</div>
                 </div>
               </div>
             </motion.div>
