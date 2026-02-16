@@ -93,18 +93,23 @@ def send_notification_email(notification_id):
             if not pref_map.get(notification.notification_type, True):
                 return {'success': True, 'message': 'Email disabled by user preference'}
 
-        # Send email
+        # Send branded HTML email
         subject = f"[Parameter] {notification.title}"
         message = notification.message
 
         try:
-            send_mail(
+            from apps.notifications.utils import build_html_email
+            from django.core.mail import EmailMultiAlternatives
+
+            html_body, plain_text = build_html_email(notification.title, message)
+            msg = EmailMultiAlternatives(
                 subject=subject,
-                message=message,
+                body=plain_text,
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[notification.user.email],
-                fail_silently=False
+                to=[notification.user.email],
             )
+            msg.attach_alternative(html_body, 'text/html')
+            msg.send(fail_silently=False)
 
             notification.email_sent = True
             notification.email_sent_at = timezone.now()
@@ -180,23 +185,30 @@ def send_daily_digest():
                     ).order_by('-created_at')
 
                     if notifications.exists():
-                        # Send digest email
-                        subject = f"[Parameter] Your Daily Digest - {notifications.count()} notifications"
-                        message_lines = ["Your notifications from the last 24 hours:\n"]
+                        # Send branded digest email
+                        notif_count = notifications.count()
+                        subject = f"[Parameter] Your Daily Digest - {notif_count} notifications"
+                        message_lines = [f"You have {notif_count} unread notification(s) from the last 24 hours:\n"]
 
-                        for notif in notifications[:20]:  # Limit to 20
+                        for notif in notifications[:20]:
                             message_lines.append(f"- {notif.title}: {notif.message}")
 
                         message = "\n".join(message_lines)
 
                         try:
-                            send_mail(
-                                subject=subject,
-                                message=message,
-                                from_email=settings.DEFAULT_FROM_EMAIL,
-                                recipient_list=[user.email],
-                                fail_silently=False
+                            from apps.notifications.utils import build_html_email
+                            from django.core.mail import EmailMultiAlternatives
+
+                            html_body, plain_text = build_html_email(
+                                f'Daily Digest - {notif_count} Notifications', message
                             )
+                            msg = EmailMultiAlternatives(
+                                subject=subject, body=plain_text,
+                                from_email=settings.DEFAULT_FROM_EMAIL,
+                                to=[user.email],
+                            )
+                            msg.attach_alternative(html_body, 'text/html')
+                            msg.send(fail_silently=False)
                             digests_sent += 1
                         except Exception as e:
                             logger.error(f"Digest send failed for {user.email}: {e}")
