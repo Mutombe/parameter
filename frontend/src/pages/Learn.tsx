@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -1283,6 +1283,11 @@ export default function Learn() {
   const [activeSubsection, setActiveSubsection] = useState('overview')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [privacyOpen, setPrivacyOpen] = useState(false)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    contentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [activeSubsection])
 
   const currentContent = content[activeSubsection]
 
@@ -1385,7 +1390,7 @@ export default function Learn() {
           </aside>
 
           {/* Main Content */}
-          <main className="flex-1 min-w-0">
+          <main ref={contentRef} className="flex-1 min-w-0 scroll-mt-20">
             <motion.div
               key={activeSubsection}
               initial={{ opacity: 0, y: 10 }}
