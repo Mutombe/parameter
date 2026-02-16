@@ -24,8 +24,22 @@ class ChartOfAccountSerializer(serializers.ModelSerializer):
         read_only_fields = ['current_balance', 'created_at', 'updated_at']
 
     def get_children(self, obj):
-        children = obj.children.filter(is_active=True)
-        return ChartOfAccountSerializer(children, many=True).data
+        # Use prefetched children to avoid N+1 recursive queries
+        children = [c for c in obj.children.all() if c.is_active]
+        return ChartOfAccountListSerializer(children, many=True).data
+
+
+class ChartOfAccountListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for list views — no recursive children."""
+    normal_balance = serializers.ReadOnlyField()
+
+    class Meta:
+        model = ChartOfAccount
+        fields = [
+            'id', 'code', 'name', 'account_type', 'account_subtype',
+            'parent', 'is_active', 'is_system', 'currency',
+            'current_balance', 'normal_balance',
+        ]
 
 
 class ExchangeRateSerializer(serializers.ModelSerializer):

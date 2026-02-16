@@ -160,37 +160,99 @@ export default function Expenses() {
     }
   })
 
-  // Create mutation
+  // Create mutation - optimistic
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => expenseApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expenses'] })
+    onMutate: async (newData) => {
       setShowModal(false)
-      showToast.success('Expense created successfully')
+      await queryClient.cancelQueries({ queryKey: ['expenses'] })
+      const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, debouncedSearch])
+
+      const optimistic: Expense = {
+        id: `temp-${Date.now()}`,
+        expense_number: 'Creating...',
+        expense_type: String(newData.expense_type || ''),
+        status: 'pending',
+        payee_name: String(newData.payee_name || ''),
+        payee_type: String(newData.payee_type || ''),
+        date: String(newData.date || ''),
+        amount: Number(newData.amount || 0),
+        currency: String(newData.currency || 'USD'),
+        description: String(newData.description || ''),
+        reference: String(newData.reference || ''),
+        created_at: new Date().toISOString(),
+        _isOptimistic: true,
+      }
+      queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch], (old: any) => {
+        const items = old || []
+        return [optimistic, ...items]
+      })
+      return { previousData }
     },
-    onError: (err) => showToast.error(parseApiError(err))
+    onSuccess: () => {
+      showToast.success('Expense created successfully')
+      queryClient.invalidateQueries({ queryKey: ['expenses'] })
+    },
+    onError: (err, _, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch], context.previousData)
+      }
+      showToast.error(parseApiError(err))
+    }
   })
 
-  // Approve mutation
+  // Approve mutation - optimistic
   const approveMutation = useMutation({
     mutationFn: (id: number) => expenseApi.approve(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expenses'] })
+    onMutate: async (id) => {
       setShowApproveConfirm(null)
-      showToast.success('Expense approved successfully')
+      await queryClient.cancelQueries({ queryKey: ['expenses'] })
+      const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, debouncedSearch])
+      queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch], (old: any) => {
+        const items = old || []
+        return items.map((item: any) =>
+          item.id === id ? { ...item, status: 'approved', _isOptimistic: true } : item
+        )
+      })
+      return { previousData }
     },
-    onError: (err) => showToast.error(parseApiError(err))
+    onSuccess: () => {
+      showToast.success('Expense approved successfully')
+      queryClient.invalidateQueries({ queryKey: ['expenses'] })
+    },
+    onError: (err, _, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch], context.previousData)
+      }
+      showToast.error(parseApiError(err))
+    }
   })
 
-  // Pay mutation
+  // Pay mutation - optimistic
   const payMutation = useMutation({
     mutationFn: (id: number) => expenseApi.pay(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expenses'] })
+    onMutate: async (id) => {
       setShowPayConfirm(null)
-      showToast.success('Expense paid and posted to ledger')
+      await queryClient.cancelQueries({ queryKey: ['expenses'] })
+      const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, debouncedSearch])
+      queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch], (old: any) => {
+        const items = old || []
+        return items.map((item: any) =>
+          item.id === id ? { ...item, status: 'paid', _isOptimistic: true } : item
+        )
+      })
+      return { previousData }
     },
-    onError: (err) => showToast.error(parseApiError(err))
+    onSuccess: () => {
+      showToast.success('Expense paid and posted to ledger')
+      queryClient.invalidateQueries({ queryKey: ['expenses'] })
+    },
+    onError: (err, _, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch], context.previousData)
+      }
+      showToast.error(parseApiError(err))
+    }
   })
 
   // Calculate summary stats

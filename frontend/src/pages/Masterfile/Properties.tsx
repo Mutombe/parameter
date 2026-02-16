@@ -28,7 +28,7 @@ import {
 import { propertyApi, landlordApi, propertyManagerApi, usersApi } from '../../services/api'
 import { formatPercent, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, ConfirmDialog, Pagination } from '../../components/ui'
-import toast from 'react-hot-toast'
+import { showToast, parseApiError } from '../../lib/toast'
 import { PiBuildingApartmentLight } from "react-icons/pi"
 import { TbUserSquareRounded } from "react-icons/tb"
 
@@ -147,29 +147,79 @@ export default function Properties() {
   const createMutation = useMutation({
     mutationFn: (data: { landlord: number; name: string; property_type: string; address: string; city: string; total_units: number; unit_definition: string }) =>
       editingId ? propertyApi.update(editingId, data) : propertyApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['properties'] })
-      toast.success(editingId ? 'Property updated successfully' : 'Property created successfully')
+    onMutate: async (newData) => {
+      const isUpdating = !!editingId
       resetForm()
+      await queryClient.cancelQueries({ queryKey: ['properties'] })
+      const previousData = queryClient.getQueryData(['properties', debouncedSearch, currentPage])
+
+      if (!isUpdating) {
+        const optimistic = {
+          id: `temp-${Date.now()}`,
+          name: newData.name,
+          landlord: newData.landlord,
+          landlord_name: landlords?.find((l: any) => l.id === newData.landlord)?.name || '',
+          property_type: newData.property_type,
+          address: newData.address,
+          city: newData.city,
+          total_units: newData.total_units,
+          unit_count: 0,
+          vacancy_rate: 0,
+          unit_definition: newData.unit_definition,
+          created_at: new Date().toISOString(),
+          _isOptimistic: true,
+        }
+        queryClient.setQueryData(['properties', debouncedSearch, currentPage], (old: any) => {
+          const items = old?.results || old || []
+          return old?.results ? { ...old, results: [optimistic, ...items] } : [optimistic, ...items]
+        })
+      } else {
+        queryClient.setQueryData(['properties', debouncedSearch, currentPage], (old: any) => {
+          const items = old?.results || old || []
+          const updated = items.map((item: any) =>
+            item.id === editingId ? { ...item, ...newData, _isOptimistic: true } : item
+          )
+          return old?.results ? { ...old, results: updated } : updated
+        })
+      }
+      return { previousData, isUpdating }
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.detail
-        || error?.response?.data?.message
-        || Object.values(error?.response?.data || {})[0]
-        || 'Failed to save property'
-      toast.error(Array.isArray(message) ? message[0] : message)
+    onSuccess: (_, __, context) => {
+      showToast.success(context?.isUpdating ? 'Property updated successfully' : 'Property created successfully')
+      queryClient.invalidateQueries({ queryKey: ['properties'] })
+    },
+    onError: (error, _, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['properties', debouncedSearch, currentPage], context.previousData)
+      }
+      showToast.error(parseApiError(error, 'Failed to save property'))
     },
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => propertyApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['properties'] })
-      toast.success('Property deleted')
+    onMutate: async (id) => {
       setShowDeleteDialog(false)
+      await queryClient.cancelQueries({ queryKey: ['properties'] })
+      const previousData = queryClient.getQueryData(['properties', debouncedSearch, currentPage])
+      queryClient.setQueryData(['properties', debouncedSearch, currentPage], (old: any) => {
+        const items = old?.results || old || []
+        const filtered = items.filter((item: any) => item.id !== id)
+        return old?.results ? { ...old, results: filtered } : filtered
+      })
+      return { previousData }
+    },
+    onSuccess: () => {
+      showToast.success('Property deleted')
+      queryClient.invalidateQueries({ queryKey: ['properties'] })
       setSelectedProperty(null)
     },
-    onError: () => toast.error('Failed to delete property'),
+    onError: (error, _, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['properties', debouncedSearch, currentPage], context.previousData)
+      }
+      showToast.error(parseApiError(error, 'Failed to delete property'))
+    },
   })
 
   // Preview units query (only fetch when generate modal is open)
@@ -189,14 +239,11 @@ export default function Properties() {
       }),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['properties'] })
-      toast.success(`Created ${response.data.created_count} units successfully`)
+      showToast.success(`Created ${response.data.created_count} units successfully`)
       setShowGenerateModal(false)
       setShowDetailsModal(false)
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.error || 'Failed to generate units'
-      toast.error(message)
-    },
+    onError: (error) => showToast.error(parseApiError(error, 'Failed to generate units')),
   })
 
   // Manager assignment state
@@ -227,17 +274,12 @@ export default function Properties() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['properties'] })
       queryClient.invalidateQueries({ queryKey: ['property-managers'] })
-      toast.success('Manager assigned successfully')
+      showToast.success('Manager assigned successfully')
       setSelectedManagerUserId('')
       setManagerIsPrimary(false)
       refetchManagers()
     },
-    onError: (error: any) => {
-      const message = error?.response?.data?.detail
-        || error?.response?.data?.non_field_errors?.[0]
-        || 'Failed to assign manager'
-      toast.error(Array.isArray(message) ? message[0] : message)
-    },
+    onError: (error) => showToast.error(parseApiError(error, 'Failed to assign manager')),
   })
 
   const removeManagerMutation = useMutation({
@@ -245,10 +287,10 @@ export default function Properties() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['properties'] })
       queryClient.invalidateQueries({ queryKey: ['property-managers'] })
-      toast.success('Manager removed')
+      showToast.success('Manager removed')
       refetchManagers()
     },
-    onError: () => toast.error('Failed to remove manager'),
+    onError: (error) => showToast.error(parseApiError(error, 'Failed to remove manager')),
   })
 
   const resetForm = () => {

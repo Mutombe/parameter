@@ -7,7 +7,8 @@ from django.db.models import Sum, Count, Q
 from .models import Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager
 from .serializers import (
     LandlordSerializer, PropertySerializer, PropertyListSerializer,
-    UnitSerializer, RentalTenantSerializer, LeaseAgreementSerializer,
+    UnitSerializer, RentalTenantSerializer, RentalTenantListSerializer,
+    LeaseAgreementSerializer,
     LeaseActivateSerializer, LeaseTerminateSerializer, PropertyManagerSerializer
 )
 
@@ -192,15 +193,27 @@ class UnitViewSet(viewsets.ModelViewSet):
 
 class RentalTenantViewSet(viewsets.ModelViewSet):
     """CRUD for Rental Tenants."""
-    queryset = RentalTenant.objects.select_related('unit', 'unit__property').prefetch_related(
-        'leases', 'leases__unit', 'leases__unit__property', 'invoices', 'receipts'
-    ).all()
-    serializer_class = RentalTenantSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ['tenant_type', 'is_active']
     search_fields = ['code', 'name', 'email', 'phone', 'id_number']
     ordering_fields = ['name', 'created_at']
     ordering = ['-created_at']
+
+    def get_queryset(self):
+        """Use lightweight queryset for list, full prefetch for detail."""
+        base = RentalTenant.objects.select_related('unit', 'unit__property')
+        if self.action == 'list':
+            # List view: only prefetch leases (for has_active_lease), skip invoices/receipts
+            return base.prefetch_related('leases').all()
+        # Detail/retrieve: full prefetch
+        return base.prefetch_related(
+            'leases', 'leases__unit', 'leases__unit__property', 'invoices', 'receipts'
+        ).all()
+
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return RentalTenantListSerializer
+        return RentalTenantSerializer
 
     def get_queryset(self):
         """Enhanced queryset with lease_status filtering."""

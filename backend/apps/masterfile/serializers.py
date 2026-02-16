@@ -162,6 +162,30 @@ class PropertyListSerializer(serializers.ModelSerializer):
         return None
 
 
+class RentalTenantListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for list views — avoids loading invoices/receipts."""
+    has_active_lease = serializers.SerializerMethodField()
+    lease_count = serializers.SerializerMethodField()
+    unit_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RentalTenant
+        fields = [
+            'id', 'code', 'name', 'tenant_type', 'account_type', 'unit', 'unit_name',
+            'email', 'phone', 'is_active', 'has_active_lease', 'lease_count',
+            'created_at', 'updated_at'
+        ]
+
+    def get_unit_name(self, obj):
+        return str(obj.unit) if obj.unit else None
+
+    def get_has_active_lease(self, obj):
+        return any(l.status == 'active' for l in obj.leases.all())
+
+    def get_lease_count(self, obj):
+        return len(obj.leases.all())
+
+
 class RentalTenantSerializer(serializers.ModelSerializer):
     active_leases = serializers.SerializerMethodField()
     has_active_lease = serializers.SerializerMethodField()

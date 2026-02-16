@@ -40,23 +40,26 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
 
-  // Fetch data for search
+  // Fetch data for search — share cache with list views for instant results
   const { data: landlords } = useQuery({
-    queryKey: ['search-landlords'],
+    queryKey: ['landlords'],
     queryFn: () => landlordApi.list().then(r => r.data.results || r.data || []),
     enabled: open,
+    staleTime: 5 * 60 * 1000, // 5 min — reuse cached data
   })
 
   const { data: properties } = useQuery({
-    queryKey: ['search-properties'],
+    queryKey: ['properties'],
     queryFn: () => propertyApi.list().then(r => r.data.results || r.data || []),
     enabled: open,
+    staleTime: 5 * 60 * 1000,
   })
 
   const { data: tenants } = useQuery({
-    queryKey: ['search-tenants'],
+    queryKey: ['tenants'],
     queryFn: () => tenantApi.list().then(r => r.data.results || r.data || []),
     enabled: open,
+    staleTime: 5 * 60 * 1000,
   })
 
   // Build search results

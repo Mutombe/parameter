@@ -21,7 +21,7 @@ import {
 import { unitApi, propertyApi } from '../../services/api'
 import { formatCurrency, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog } from '../../components/ui'
-import toast from 'react-hot-toast'
+import { showToast, parseApiError } from '../../lib/toast'
 import { PiBuildingApartmentLight } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
 
@@ -154,23 +154,80 @@ export default function Units() {
   const createMutation = useMutation({
     mutationFn: (data: any) =>
       editingId ? unitApi.update(editingId, data) : unitApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['units'] })
-      toast.success(editingId ? 'Unit updated successfully' : 'Unit created successfully')
+    onMutate: async (newData) => {
+      const isUpdating = !!editingId
       resetForm()
+      await queryClient.cancelQueries({ queryKey: ['units'] })
+      const previousData = queryClient.getQueryData(['units', debouncedSearch, filter])
+
+      if (!isUpdating) {
+        const optimistic = {
+          id: `temp-${Date.now()}`,
+          unit_number: newData.unit_number,
+          property: newData.property,
+          property_name: properties?.find((p: Property) => p.id === newData.property)?.name || '',
+          unit_type: newData.unit_type,
+          rental_amount: newData.rental_amount,
+          deposit_amount: newData.deposit_amount || 0,
+          currency: newData.currency,
+          bedrooms: newData.bedrooms,
+          bathrooms: newData.bathrooms,
+          square_meters: newData.square_meters,
+          floor_number: newData.floor_number,
+          is_occupied: false,
+          is_active: true,
+          description: newData.description,
+          _isOptimistic: true,
+        }
+        queryClient.setQueryData(['units', debouncedSearch, filter], (old: any) => {
+          const items = old || []
+          return [optimistic, ...items]
+        })
+      } else {
+        queryClient.setQueryData(['units', debouncedSearch, filter], (old: any) => {
+          const items = old || []
+          return items.map((item: any) =>
+            item.id === editingId ? { ...item, ...newData, _isOptimistic: true } : item
+          )
+        })
+      }
+      return { previousData, isUpdating }
     },
-    onError: () => toast.error('Failed to save unit'),
+    onSuccess: (_, __, context) => {
+      showToast.success(context?.isUpdating ? 'Unit updated successfully' : 'Unit created successfully')
+      queryClient.invalidateQueries({ queryKey: ['units'] })
+    },
+    onError: (error, _, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['units', debouncedSearch, filter], context.previousData)
+      }
+      showToast.error(parseApiError(error, 'Failed to save unit'))
+    },
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => unitApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['units'] })
-      toast.success('Unit deleted')
+    onMutate: async (id) => {
       setShowDeleteDialog(false)
+      await queryClient.cancelQueries({ queryKey: ['units'] })
+      const previousData = queryClient.getQueryData(['units', debouncedSearch, filter])
+      queryClient.setQueryData(['units', debouncedSearch, filter], (old: any) => {
+        const items = old || []
+        return items.filter((item: any) => item.id !== id)
+      })
+      return { previousData }
+    },
+    onSuccess: () => {
+      showToast.success('Unit deleted')
+      queryClient.invalidateQueries({ queryKey: ['units'] })
       setSelectedUnit(null)
     },
-    onError: () => toast.error('Failed to delete unit'),
+    onError: (error, _, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['units', debouncedSearch, filter], context.previousData)
+      }
+      showToast.error(parseApiError(error, 'Failed to delete unit'))
+    },
   })
 
   const resetForm = () => {

@@ -172,48 +172,130 @@ export default function Leases() {
   const createMutation = useMutation({
     mutationFn: (data: any) =>
       editingId ? leaseApi.update(editingId, data) : leaseApi.create(data),
-    onSuccess: async (response) => {
-      const leaseId = response.data?.id || editingId
-      if (documentFile && leaseId) {
+    onMutate: async (newData) => {
+      const isUpdating = !!editingId
+      const savedDoc = documentFile
+      resetForm()
+      await queryClient.cancelQueries({ queryKey: ['leases'] })
+      const previousData = queryClient.getQueryData(['leases', debouncedSearch, statusFilter])
+
+      if (!isUpdating) {
+        const optimistic = {
+          id: `temp-${Date.now()}`,
+          lease_number: 'Creating...',
+          tenant: Number(newData.tenant),
+          tenant_name: tenants?.find((t: any) => t.id === Number(newData.tenant))?.name || '',
+          unit: Number(newData.unit),
+          unit_display: allUnits?.find((u: any) => u.id === Number(newData.unit))?.unit_number || '',
+          monthly_rent: Number(newData.monthly_rent),
+          deposit_amount: Number(newData.deposit_amount || 0),
+          currency: newData.currency,
+          start_date: newData.start_date,
+          end_date: newData.end_date,
+          payment_day: Number(newData.payment_day),
+          status: 'draft' as const,
+          notes: newData.notes || '',
+          document: null,
+          created_at: new Date().toISOString(),
+          _isOptimistic: true,
+        }
+        queryClient.setQueryData(['leases', debouncedSearch, statusFilter], (old: any) => {
+          const items = old || []
+          return [optimistic, ...items]
+        })
+      } else {
+        queryClient.setQueryData(['leases', debouncedSearch, statusFilter], (old: any) => {
+          const items = old || []
+          return items.map((item: any) =>
+            item.id === editingId ? { ...item, ...newData, _isOptimistic: true } : item
+          )
+        })
+      }
+      // Preserve doc file ref for upload in onSuccess
+      ;(createMutation as any)._pendingDoc = savedDoc
+      return { previousData, isUpdating }
+    },
+    onSuccess: async (response, _, context) => {
+      const leaseId = response.data?.id
+      const doc = (createMutation as any)._pendingDoc
+      if (doc && leaseId) {
         try {
-          await leaseApi.uploadDocument(leaseId, documentFile)
-          showToast.success(editingId ? 'Lease updated with document' : 'Lease created with document')
+          await leaseApi.uploadDocument(leaseId, doc)
+          showToast.success(context?.isUpdating ? 'Lease updated with document' : 'Lease created with document')
         } catch {
           showToast.warning('Lease saved but document upload failed')
         }
       } else {
-        showToast.success(editingId ? 'Lease updated successfully' : 'Lease created successfully')
+        showToast.success(context?.isUpdating ? 'Lease updated successfully' : 'Lease created successfully')
       }
+      (createMutation as any)._pendingDoc = null
       queryClient.invalidateQueries({ queryKey: ['leases'] })
       queryClient.invalidateQueries({ queryKey: ['units-all'] })
-      resetForm()
     },
-    onError: (error) => showToast.error(parseApiError(error, 'Failed to save lease')),
+    onError: (error, _, context) => {
+      (createMutation as any)._pendingDoc = null
+      if (context?.previousData) {
+        queryClient.setQueryData(['leases', debouncedSearch, statusFilter], context.previousData)
+      }
+      showToast.error(parseApiError(error, 'Failed to save lease'))
+    },
   })
 
   const activateMutation = useMutation({
     mutationFn: (id: number) => leaseApi.activate(id),
+    onMutate: async (id) => {
+      setShowActivateDialog(false)
+      await queryClient.cancelQueries({ queryKey: ['leases'] })
+      const previousData = queryClient.getQueryData(['leases', debouncedSearch, statusFilter])
+      queryClient.setQueryData(['leases', debouncedSearch, statusFilter], (old: any) => {
+        const items = old || []
+        return items.map((item: any) =>
+          item.id === id ? { ...item, status: 'active', _isOptimistic: true } : item
+        )
+      })
+      return { previousData }
+    },
     onSuccess: () => {
+      showToast.success('Lease activated successfully')
       queryClient.invalidateQueries({ queryKey: ['leases'] })
       queryClient.invalidateQueries({ queryKey: ['units-all'] })
-      showToast.success('Lease activated successfully')
-      setShowActivateDialog(false)
       setSelectedLease(null)
     },
-    onError: (error) => showToast.error(parseApiError(error, 'Failed to activate lease')),
+    onError: (error, _, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['leases', debouncedSearch, statusFilter], context.previousData)
+      }
+      showToast.error(parseApiError(error, 'Failed to activate lease'))
+    },
   })
 
   const terminateMutation = useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string }) =>
       leaseApi.terminate(id, reason),
+    onMutate: async ({ id }) => {
+      setShowDeleteDialog(false)
+      await queryClient.cancelQueries({ queryKey: ['leases'] })
+      const previousData = queryClient.getQueryData(['leases', debouncedSearch, statusFilter])
+      queryClient.setQueryData(['leases', debouncedSearch, statusFilter], (old: any) => {
+        const items = old || []
+        return items.map((item: any) =>
+          item.id === id ? { ...item, status: 'terminated', _isOptimistic: true } : item
+        )
+      })
+      return { previousData }
+    },
     onSuccess: () => {
+      showToast.success('Lease terminated')
       queryClient.invalidateQueries({ queryKey: ['leases'] })
       queryClient.invalidateQueries({ queryKey: ['units-all'] })
-      showToast.success('Lease terminated')
-      setShowDeleteDialog(false)
       setSelectedLease(null)
     },
-    onError: (error) => showToast.error(parseApiError(error, 'Failed to terminate lease')),
+    onError: (error, _, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['leases', debouncedSearch, statusFilter], context.previousData)
+      }
+      showToast.error(parseApiError(error, 'Failed to terminate lease'))
+    },
   })
 
   const resetForm = () => {

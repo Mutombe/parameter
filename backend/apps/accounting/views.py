@@ -30,7 +30,7 @@ from .serializers import (
 
 class ChartOfAccountViewSet(viewsets.ModelViewSet):
     """CRUD for Chart of Accounts."""
-    queryset = ChartOfAccount.objects.select_related('parent').all()
+    queryset = ChartOfAccount.objects.select_related('parent').prefetch_related('children').all()
     serializer_class = ChartOfAccountSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ['account_type', 'account_subtype', 'is_active', 'currency']

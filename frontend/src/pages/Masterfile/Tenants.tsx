@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { tenantApi, unitApi, propertyApi } from '../../services/api'
 import { useDebounce, formatCurrency } from '../../lib/utils'
 import { Pagination, EmptyState, Modal } from '../../components/ui'
-import toast from 'react-hot-toast'
+import { showToast, parseApiError } from '../../lib/toast'
 import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
 
@@ -130,23 +130,64 @@ export default function Tenants() {
 
   const createMutation = useMutation({
     mutationFn: (data: typeof form) => tenantApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tenants'] })
-      toast.success('Tenant created')
+    onMutate: async (newData) => {
       setShowForm(false)
+      await queryClient.cancelQueries({ queryKey: ['tenants'] })
+      const previousData = queryClient.getQueryData(['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter])
+
+      const optimistic = {
+        id: `temp-${Date.now()}`,
+        name: newData.name,
+        tenant_type: newData.tenant_type,
+        account_type: newData.account_type,
+        email: newData.email,
+        phone: newData.phone,
+        has_active_lease: false,
+        lease_count: 0,
+        unit_name: '',
+        created_at: new Date().toISOString(),
+        _isOptimistic: true,
+      }
+      queryClient.setQueryData(['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter], (old: any) => {
+        const items = old?.results || old || []
+        return old?.results ? { ...old, results: [optimistic, ...items] } : [optimistic, ...items]
+      })
+      return { previousData }
+    },
+    onSuccess: () => {
+      showToast.success('Tenant created')
+      queryClient.invalidateQueries({ queryKey: ['tenants'] })
+    },
+    onError: (error, _, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter], context.previousData)
+      }
+      showToast.error(parseApiError(error, 'Failed to create tenant'))
     },
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => tenantApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tenants'] })
-      toast.success('Tenant deleted')
+    onMutate: async (id) => {
       setDeletingId(null)
+      await queryClient.cancelQueries({ queryKey: ['tenants'] })
+      const previousData = queryClient.getQueryData(['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter])
+      queryClient.setQueryData(['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter], (old: any) => {
+        const items = old?.results || old || []
+        const filtered = items.filter((item: any) => item.id !== id)
+        return old?.results ? { ...old, results: filtered } : filtered
+      })
+      return { previousData }
     },
-    onError: () => {
-      toast.error('Failed to delete tenant')
-      setDeletingId(null)
+    onSuccess: () => {
+      showToast.success('Tenant deleted')
+      queryClient.invalidateQueries({ queryKey: ['tenants'] })
+    },
+    onError: (error, _, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter], context.previousData)
+      }
+      showToast.error(parseApiError(error, 'Failed to delete tenant'))
     },
   })
 

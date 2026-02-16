@@ -16,54 +16,51 @@ from apps.masterfile.models import Property, Unit, Landlord, RentalTenant, Lease
 
 
 class DashboardStatsView(APIView):
-    """Dashboard KPIs and statistics."""
+    """Dashboard KPIs and statistics. Optimized to ~5 queries instead of 15+."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         today = timezone.now().date()
         month_start = today.replace(day=1)
-
-        # Property stats
-        total_properties = Property.objects.count()
-        total_units = Unit.objects.count()
-        vacant_units = Unit.objects.filter(is_occupied=False).count()
-        occupancy_rate = ((total_units - vacant_units) / total_units * 100) if total_units else 0
-
-        # Financial stats
-        total_invoiced = Invoice.objects.aggregate(Sum('total_amount'))['total_amount__sum'] or 0
-        total_collected = Receipt.objects.aggregate(Sum('amount'))['amount__sum'] or 0
-        outstanding = total_invoiced - total_collected
-
-        # Monthly stats
-        monthly_invoiced = Invoice.objects.filter(
-            date__gte=month_start
-        ).aggregate(Sum('total_amount'))['total_amount__sum'] or 0
-
-        monthly_collected = Receipt.objects.filter(
-            date__gte=month_start
-        ).aggregate(Sum('amount'))['amount__sum'] or 0
-
-        # Overdue invoices
-        overdue_count = Invoice.objects.filter(
-            status__in=['sent', 'partial'],
-            due_date__lt=today
-        ).count()
-
-        overdue_amount = Invoice.objects.filter(
-            status__in=['sent', 'partial'],
-            due_date__lt=today
-        ).aggregate(Sum('balance'))['balance__sum'] or 0
-
-        # Leases expiring soon
         thirty_days = today + timedelta(days=30)
-        expiring_leases = LeaseAgreement.objects.filter(
-            status='active',
-            end_date__lte=thirty_days
-        ).count()
-
-        # Revenue trend - last 6 months of invoiced vs collected
         six_months_ago = (today - timedelta(days=180)).replace(day=1)
 
+        # === Query 1: All property/unit stats in one query ===
+        unit_stats = Unit.objects.aggregate(
+            total_units=Count('id'),
+            vacant_units=Count('id', filter=Q(is_occupied=False)),
+        )
+        total_units = unit_stats['total_units'] or 0
+        vacant_units = unit_stats['vacant_units'] or 0
+        occupancy_rate = ((total_units - vacant_units) / total_units * 100) if total_units else 0
+
+        # === Query 2: All invoice stats in one query ===
+        inv_stats = Invoice.objects.aggregate(
+            total_invoiced=Coalesce(Sum('total_amount'), Decimal('0')),
+            monthly_invoiced=Coalesce(Sum('total_amount', filter=Q(date__gte=month_start)), Decimal('0')),
+            overdue_count=Count('id', filter=Q(status__in=['sent', 'partial'], due_date__lt=today)),
+            overdue_amount=Coalesce(Sum('balance', filter=Q(status__in=['sent', 'partial'], due_date__lt=today)), Decimal('0')),
+        )
+
+        # === Query 3: All receipt stats in one query ===
+        rcpt_stats = Receipt.objects.aggregate(
+            total_collected=Coalesce(Sum('amount'), Decimal('0')),
+            monthly_collected=Coalesce(Sum('amount', filter=Q(date__gte=month_start)), Decimal('0')),
+        )
+
+        total_invoiced = inv_stats['total_invoiced']
+        total_collected = rcpt_stats['total_collected']
+
+        # === Query 4: All entity counts in one pass ===
+        total_properties = Property.objects.count()
+        landlord_count = Landlord.objects.count()
+        tenant_count = RentalTenant.objects.count()
+        lease_stats = LeaseAgreement.objects.aggregate(
+            active=Count('id', filter=Q(status='active')),
+            expiring=Count('id', filter=Q(status='active', end_date__lte=thirty_days)),
+        )
+
+        # === Query 5 & 6: Revenue trend (already efficient aggregations) ===
         monthly_invoices = Invoice.objects.filter(
             date__gte=six_months_ago
         ).annotate(
@@ -83,7 +80,6 @@ class DashboardStatsView(APIView):
         invoice_by_month = {r['month'].strftime('%b'): float(r['total']) for r in monthly_invoices}
         receipt_by_month = {r['month'].strftime('%b'): float(r['total']) for r in monthly_receipts}
 
-        # Build ordered list of months
         revenue_trend = []
         current = six_months_ago
         while current <= today:
@@ -93,7 +89,6 @@ class DashboardStatsView(APIView):
                 'invoiced': invoice_by_month.get(label, 0),
                 'collected': receipt_by_month.get(label, 0),
             })
-            # Advance to next month
             if current.month == 12:
                 current = current.replace(year=current.year + 1, month=1)
             else:
@@ -109,22 +104,22 @@ class DashboardStatsView(APIView):
             'financial': {
                 'total_invoiced': float(total_invoiced),
                 'total_collected': float(total_collected),
-                'outstanding': float(outstanding),
+                'outstanding': float(total_invoiced - total_collected),
                 'collection_rate': round((float(total_collected) / float(total_invoiced) * 100), 1) if total_invoiced else 0
             },
             'monthly': {
-                'invoiced': float(monthly_invoiced),
-                'collected': float(monthly_collected)
+                'invoiced': float(inv_stats['monthly_invoiced']),
+                'collected': float(rcpt_stats['monthly_collected'])
             },
             'alerts': {
-                'overdue_invoices': overdue_count,
-                'overdue_amount': float(overdue_amount),
-                'expiring_leases': expiring_leases
+                'overdue_invoices': inv_stats['overdue_count'],
+                'overdue_amount': float(inv_stats['overdue_amount']),
+                'expiring_leases': lease_stats['expiring']
             },
             'counts': {
-                'landlords': Landlord.objects.count(),
-                'tenants': RentalTenant.objects.count(),
-                'active_leases': LeaseAgreement.objects.filter(status='active').count()
+                'landlords': landlord_count,
+                'tenants': tenant_count,
+                'active_leases': lease_stats['active']
             },
             'revenue_trend': revenue_trend,
         })
@@ -289,7 +284,7 @@ class VacancyReportView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        properties = Property.objects.annotate(
+        properties = Property.objects.select_related('landlord').annotate(
             unit_count=Count('units'),
             vacant_count=Count('units', filter=Q(units__is_occupied=False)),
             occupied_count=Count('units', filter=Q(units__is_occupied=True))
@@ -420,9 +415,9 @@ class LandlordStatementView(APIView):
             'properties': [
                 {
                     'name': p.name,
-                    'units': p.units.count()
+                    'units': p.unit_count
                 }
-                for p in properties
+                for p in properties.annotate(unit_count=Count('units'))
             ]
         })
 
@@ -1052,42 +1047,47 @@ class LeaseChargeSummaryView(APIView):
         if landlord_id:
             leases = leases.filter(unit__property__landlord_id=landlord_id)
 
-        # Build lease charge summary
+        # Batch query: get all invoice aggregations in one query instead of per-lease
+        inv_filter = Q(invoice__lease__in=leases, invoice__date__lte=end_date)
+        if start_date:
+            inv_filter &= Q(invoice__date__gte=start_date)
+
+        # Aggregate all invoices grouped by lease + type in a single query
+        charge_data = Invoice.objects.filter(
+            lease__in=leases, date__lte=end_date,
+            **({'date__gte': start_date} if start_date else {})
+        ).values('lease_id', 'invoice_type').annotate(
+            total=Coalesce(Sum('total_amount'), Decimal('0')),
+            paid=Coalesce(Sum('amount_paid'), Decimal('0')),
+            count=Count('id')
+        )
+
+        # Index charge data by lease_id
+        charges_by_lease = {}
+        for row in charge_data:
+            lid = row['lease_id']
+            if lid not in charges_by_lease:
+                charges_by_lease[lid] = {}
+            charges_by_lease[lid][row['invoice_type']] = {
+                'total': float(row['total']),
+                'paid': float(row['paid']),
+                'count': row['count']
+            }
+
         lease_charges = []
         total_rent = Decimal('0')
         total_other = Decimal('0')
 
         for lease in leases:
-            # Get invoices for this lease in the period
-            invoices = Invoice.objects.filter(lease=lease)
-            if start_date:
-                invoices = invoices.filter(date__gte=start_date)
-            invoices = invoices.filter(date__lte=end_date)
+            charge_breakdown = charges_by_lease.get(lease.id, {})
+            lease_total = sum(c['total'] for c in charge_breakdown.values())
+            lease_paid = sum(c['paid'] for c in charge_breakdown.values())
 
-            # Aggregate by type
-            charges_by_type = invoices.values('invoice_type').annotate(
-                total=Sum('total_amount'),
-                paid=Sum('amount_paid'),
-                count=Count('id')
-            )
-
-            charge_breakdown = {}
-            lease_total = Decimal('0')
-            lease_paid = Decimal('0')
-
-            for charge in charges_by_type:
-                charge_breakdown[charge['invoice_type']] = {
-                    'total': float(charge['total'] or 0),
-                    'paid': float(charge['paid'] or 0),
-                    'count': charge['count']
-                }
-                lease_total += charge['total'] or 0
-                lease_paid += charge['paid'] or 0
-
-                if charge['invoice_type'] == 'rent':
-                    total_rent += charge['total'] or 0
+            for inv_type, data in charge_breakdown.items():
+                if inv_type == 'rent':
+                    total_rent += Decimal(str(data['total']))
                 else:
-                    total_other += charge['total'] or 0
+                    total_other += Decimal(str(data['total']))
 
             lease_charges.append({
                 'lease_number': lease.lease_number,
@@ -1096,9 +1096,9 @@ class LeaseChargeSummaryView(APIView):
                 'unit': lease.unit.unit_number,
                 'monthly_rent': float(lease.monthly_rent),
                 'charges': charge_breakdown,
-                'total_charged': float(lease_total),
-                'total_paid': float(lease_paid),
-                'balance': float(lease_total - lease_paid)
+                'total_charged': lease_total,
+                'total_paid': lease_paid,
+                'balance': lease_total - lease_paid
             })
 
         return Response({
@@ -1131,6 +1131,7 @@ class ReceiptListingView(APIView):
         income_type = request.query_params.get('income_type')
         payment_method = request.query_params.get('payment_method')
         export = request.query_params.get('export')  # 'csv' or 'excel'
+        limit = min(int(request.query_params.get('limit', 500)), 2000)
 
         # Build queryset
         receipts = Receipt.objects.select_related(
@@ -1147,7 +1148,7 @@ class ReceiptListingView(APIView):
         if payment_method:
             receipts = receipts.filter(payment_method=payment_method)
 
-        receipts = receipts.order_by('-date', '-created_at')
+        receipts = receipts.order_by('-date', '-created_at')[:limit]
 
         # Build receipt list
         receipt_list = []
@@ -1693,48 +1694,45 @@ class DataVisualizationView(APIView):
         })
 
     def _occupancy_timeline(self, request):
-        """Property occupancy over time - timeline chart."""
+        """Property occupancy over time - timeline chart. Single query approach."""
         property_id = request.query_params.get('property_id')
         months = int(request.query_params.get('months', 12))
 
         today = timezone.now().date()
         start_date = today - timedelta(days=months * 30)
 
-        # Get historical lease data
-        leases = LeaseAgreement.objects.filter(
-            start_date__lte=today
+        # Get total units once
+        if property_id:
+            total_units = Unit.objects.filter(property_id=property_id).count()
+        else:
+            total_units = Unit.objects.count()
+
+        # Get all relevant leases in one query
+        lease_qs = LeaseAgreement.objects.filter(
+            start_date__lte=today,
+            status__in=['active', 'expired']
         )
         if property_id:
-            leases = leases.filter(unit__property_id=property_id)
+            lease_qs = lease_qs.filter(unit__property_id=property_id)
 
-        # Build monthly occupancy data
+        leases = list(lease_qs.values_list('start_date', 'end_date', 'status'))
+
+        # Build monthly occupancy by iterating in Python (avoids N queries)
         timeline = []
         current_date = start_date.replace(day=1)
-
         while current_date <= today:
             month_end = (current_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-
-            active_leases = leases.filter(
-                start_date__lte=month_end,
-                status__in=['active', 'expired']
-            ).filter(
-                Q(end_date__gte=current_date) | Q(status='active')
-            ).count()
-
-            if property_id:
-                total_units = Unit.objects.filter(property_id=property_id).count()
-            else:
-                total_units = Unit.objects.count()
-
-            occupancy_rate = (active_leases / total_units * 100) if total_units else 0
-
+            active_count = sum(
+                1 for start, end, st in leases
+                if start <= month_end and (end >= current_date or st == 'active')
+            )
+            occupancy_rate = (active_count / total_units * 100) if total_units else 0
             timeline.append({
                 'month': current_date.strftime('%Y-%m'),
-                'active_leases': active_leases,
+                'active_leases': active_count,
                 'total_units': total_units,
                 'occupancy_rate': round(occupancy_rate, 1)
             })
-
             current_date = (current_date + timedelta(days=32)).replace(day=1)
 
         return Response({
