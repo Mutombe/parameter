@@ -369,14 +369,11 @@ The Parameter Team
                 'error': 'This subdomain is reserved'
             }
 
-        # Check database - use public schema context for multi-tenant safety
+        # Check database - use schema_context to ensure public schema
         try:
-            from django.db import connection
-            # Ensure we're querying from public schema
-            with connection.cursor() as cursor:
-                cursor.execute("SET search_path TO public")
-
-            is_available = not Client.objects.filter(schema_name=schema_name).exists()
+            from django_tenants.utils import schema_context
+            with schema_context('public'):
+                is_available = not Client.objects.filter(schema_name=schema_name).exists()
 
             return {
                 'valid': True,
