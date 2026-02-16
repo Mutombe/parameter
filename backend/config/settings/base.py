@@ -77,7 +77,7 @@ def get_tenant_url(subdomain):
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',  # django-cors-headers - must be first
     'middleware.tenant_middleware.SubdomainHeaderMiddleware',  # Handle X-Tenant-Subdomain header
-    'django_tenants.middleware.main.TenantMainMiddleware',
+    'middleware.tenant_middleware.SafeTenantMiddleware',  # Safe wrapper around TenantMainMiddleware
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',

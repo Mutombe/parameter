@@ -1,10 +1,11 @@
 """Custom tenant middleware for request context and subdomain routing."""
 import threading
 import logging
+from django.db import connection as db_connection
 from django.utils.deprecation import MiddlewareMixin
 from django.conf import settings
 from django.core.cache import cache
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 
 _thread_locals = threading.local()
 logger = logging.getLogger(__name__)
@@ -141,6 +142,48 @@ class SubdomainHeaderMiddleware(MiddlewareMixin):
                     logger.warning(f"SubdomainHeaderMiddleware: error finding primary domain: {e}")
             else:
                 logger.warning(f"SubdomainHeaderMiddleware: no public tenant found, host={original_host}")
+
+
+class SafeTenantMiddleware(MiddlewareMixin):
+    """
+    Safe wrapper around django-tenants' TenantMainMiddleware.
+
+    If TenantMainMiddleware fails to resolve a tenant (e.g. missing Domain
+    records, DB issues), this catches the error and manually sets the
+    connection to the public schema so views can still handle the request.
+    """
+
+    def process_request(self, request):
+        from django_tenants.middleware.main import TenantMainMiddleware
+
+        try:
+            mw = TenantMainMiddleware(lambda r: None)
+            mw.process_request(request)
+        except Exception as e:
+            logger.error(f"TenantMainMiddleware failed: {e} — falling back to public schema")
+            # Manually set the connection to public schema
+            try:
+                db_connection.set_schema_to_public()
+            except Exception:
+                try:
+                    with db_connection.cursor() as cursor:
+                        cursor.execute("SET search_path TO public")
+                except Exception as e2:
+                    logger.error(f"Failed to set public schema: {e2}")
+
+            # Try to set a public tenant on the request
+            if not getattr(request, 'tenant', None):
+                try:
+                    from django_tenants.utils import get_tenant_model
+                    TenantModel = get_tenant_model()
+                    public_tenant = TenantModel.objects.filter(schema_name='public').first()
+                    if public_tenant:
+                        request.tenant = public_tenant
+                except Exception:
+                    pass
+
+            # Set the URL conf to public schema URLs
+            request.urlconf = getattr(settings, 'PUBLIC_SCHEMA_URLCONF', settings.ROOT_URLCONF)
 
 
 class TenantContextMiddleware(MiddlewareMixin):
