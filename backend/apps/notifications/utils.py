@@ -331,19 +331,16 @@ def send_landlord_email(landlord, subject, message, blocking=False):
 def send_staff_email(subject, message, roles=None, blocking=False):
     """
     Send a branded HTML email to all active staff members (Admin/Accountant by default).
-    Uses daemon threads to prevent blocking.
+    Scoped to the current tenant schema. Uses daemon threads to prevent blocking.
     """
     try:
-        from apps.accounts.models import User
-        if roles is None:
-            roles = [User.Role.ADMIN, User.Role.ACCOUNTANT]
-        staff = User.objects.filter(
-            role__in=roles, is_active=True, notifications_enabled=True
-        ).values_list('email', flat=True)
-        emails = [e for e in staff if e]
+        from apps.accounts.utils import get_tenant_staff_emails
+        emails = get_tenant_staff_emails(roles=roles)
         if not emails:
             return
         _send_threaded(subject, message, emails, blocking)
+    except ValueError:
+        logger.warning(f"send_staff_email() called outside tenant context, skipping: {subject}")
     except Exception as e:
         logger.error(f"Failed to send staff email: {e}")
 

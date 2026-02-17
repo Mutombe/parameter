@@ -166,13 +166,12 @@ def send_daily_digest():
         try:
             with tenant_context(tenant):
                 from apps.notifications.models import Notification, NotificationPreference
-                from apps.accounts.models import User
+                from apps.accounts.utils import get_tenant_users
 
-                # Get users with daily digest enabled
-                users_with_digest = User.objects.filter(
-                    notification_preferences__daily_digest=True,
-                    is_active=True
-                )
+                # Get users with daily digest enabled (scoped to tenant)
+                users_with_digest = get_tenant_users(
+                    tenant_schema=tenant.schema_name
+                ).filter(notification_preferences__daily_digest=True)
 
                 yesterday = timezone.now() - timedelta(days=1)
 
@@ -222,14 +221,12 @@ def send_daily_digest():
 def broadcast_notification(notification_type, title, message, data=None, roles=None):
     """
     Broadcast a notification to all users or users with specific roles.
+    Scoped to the current tenant.
     """
-    from apps.accounts.models import User
+    from apps.accounts.utils import get_tenant_users
     from apps.notifications.models import Notification
 
-    query = User.objects.filter(is_active=True, notifications_enabled=True)
-
-    if roles:
-        query = query.filter(role__in=roles)
+    query = get_tenant_users(roles=roles, notifications_enabled_only=True)
 
     notifications_created = 0
 

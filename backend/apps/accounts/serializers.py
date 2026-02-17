@@ -69,16 +69,46 @@ class UserSerializer(serializers.ModelSerializer):
         return None
 
     def get_tenant_info(self, obj):
-        """Get current tenant info including demo status."""
+        """Get current tenant info including demo status and settings."""
         request = self.context.get('request')
         if request and hasattr(request, 'tenant'):
             tenant = request.tenant
+
+            # Build logo URL
+            logo_url = None
+            if tenant.logo:
+                from django.conf import settings
+                try:
+                    raw_url = tenant.logo.url
+                    if raw_url.startswith('http://') or raw_url.startswith('https://'):
+                        logo_url = raw_url
+                    else:
+                        backend_url = getattr(settings, 'BACKEND_URL', '')
+                        if backend_url:
+                            logo_url = f"{backend_url.rstrip('/')}{raw_url}"
+                        elif request:
+                            try:
+                                logo_url = request.build_absolute_uri(raw_url)
+                            except Exception:
+                                logo_url = raw_url
+                except Exception:
+                    pass
+
             return {
                 'name': tenant.name,
+                'email': tenant.email,
+                'phone': tenant.phone,
+                'address': tenant.address,
+                'logo_url': logo_url,
                 'is_demo': tenant.is_demo,
                 'demo_expires_at': tenant.demo_expires_at.isoformat() if tenant.demo_expires_at else None,
                 'demo_time_remaining': tenant.demo_time_remaining,
-                'account_status': tenant.account_status
+                'account_status': tenant.account_status,
+                'default_currency': tenant.default_currency,
+                'invoice_prefix': getattr(tenant, 'invoice_prefix', 'INV-'),
+                'invoice_footer': getattr(tenant, 'invoice_footer', 'Thank you for your business!'),
+                'paper_size': getattr(tenant, 'paper_size', 'A4'),
+                'show_logo': getattr(tenant, 'show_logo', True),
             }
         return None
 
@@ -173,16 +203,21 @@ class CreateInvitationSerializer(serializers.Serializer):
     role = serializers.ChoiceField(choices=User.Role.choices, default=User.Role.CLERK)
 
     def validate_email(self, value):
+        from django.db import connection
+
         # Check if user already exists
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError('A user with this email already exists')
 
-        # Check for pending invitation
-        pending = UserInvitation.objects.filter(
+        # Check for pending invitation (scoped to current tenant)
+        pending_qs = UserInvitation.objects.filter(
             email=value,
             status=UserInvitation.Status.PENDING
-        ).exists()
-        if pending:
+        )
+        schema = connection.schema_name
+        if schema and schema != 'public':
+            pending_qs = pending_qs.filter(tenant_schema=schema)
+        if pending_qs.exists():
             raise serializers.ValidationError('A pending invitation already exists for this email')
 
         return value
@@ -215,6 +250,15 @@ class CreateInvitationSerializer(serializers.Serializer):
             })
 
         return data
+
+
+class BulkCreateInvitationSerializer(serializers.Serializer):
+    """Serializer for bulk creating invitations."""
+    invitations = serializers.ListField(
+        child=serializers.DictField(),
+        min_length=1,
+        max_length=500,
+    )
 
 
 class AcceptInvitationSerializer(serializers.Serializer):

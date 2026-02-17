@@ -51,12 +51,13 @@ def create_masterfile_notification(entity_type, entity_id, entity_name, change_t
     from apps.notifications.models import Notification, MasterfileChangeLog
     from apps.masterfile.models import PropertyManager
 
-    # Get all admin and accountant users
-    notify_users = User.objects.filter(
-        role__in=[User.Role.ADMIN, User.Role.ACCOUNTANT],
-        is_active=True,
-        notifications_enabled=True
-    )
+    # Get all admin and accountant users for the current tenant
+    from apps.accounts.utils import get_tenant_staff, get_tenant_users
+    try:
+        notify_users = get_tenant_staff()
+    except ValueError:
+        logger.warning("create_masterfile_notification() called outside tenant context, skipping")
+        return
 
     # Also notify property managers if entity is property-related
     if entity_type in ('property', 'unit', 'tenant', 'lease'):
@@ -81,11 +82,9 @@ def create_masterfile_notification(entity_type, entity_id, entity_name, change_t
             manager_user_ids = PropertyManager.objects.filter(
                 property_id=property_id
             ).values_list('user_id', flat=True)
-            manager_users = User.objects.filter(
-                id__in=manager_user_ids,
-                is_active=True,
-                notifications_enabled=True
-            )
+            manager_users = get_tenant_users(
+                notifications_enabled_only=True
+            ).filter(id__in=manager_user_ids)
             notify_users = (notify_users | manager_users).distinct()
 
     # Exclude the user who made the change

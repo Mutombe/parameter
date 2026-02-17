@@ -19,6 +19,7 @@ from .serializers import (
     UserSerializer, UserCreateSerializer, LoginSerializer,
     ChangePasswordSerializer, UserActivitySerializer,
     UserInvitationSerializer, CreateInvitationSerializer, AcceptInvitationSerializer,
+    BulkCreateInvitationSerializer,
     RequestPasswordResetSerializer, ResetPasswordSerializer
 )
 from rest_framework.throttling import ScopedRateThrottle
@@ -425,9 +426,7 @@ class UserViewSet(viewsets.ModelViewSet):
         # Scope to current tenant
         schema = connection.schema_name
         if schema and schema != 'public':
-            queryset = queryset.filter(
-                Q(tenant_schema=schema) | Q(tenant_schema='')
-            )
+            queryset = queryset.filter(tenant_schema=schema)
         role = self.request.query_params.get('role')
         if role:
             queryset = queryset.filter(role=role)
@@ -456,12 +455,18 @@ class UserViewSet(viewsets.ModelViewSet):
 
 
 class UserActivityViewSet(viewsets.ReadOnlyModelViewSet):
-    """View user activity logs (Admin only)."""
-    queryset = UserActivity.objects.all()
+    """View user activity logs (Admin only). Scoped to current tenant."""
     serializer_class = UserActivitySerializer
     permission_classes = [IsAdminUser]
     filterset_fields = ['user', 'action']
     search_fields = ['action', 'details']
+
+    def get_queryset(self):
+        schema = connection.schema_name
+        qs = UserActivity.objects.select_related('user')
+        if schema and schema != 'public':
+            qs = qs.filter(user__tenant_schema=schema)
+        return qs
 
 
 class UserInvitationViewSet(viewsets.ModelViewSet):
@@ -572,6 +577,77 @@ Powered by Parameter.co.zw
             logger.info(f"User invitation email sent to {invitation.email} with URL: {invite_url}")
         except Exception as e:
             logger.error(f"Failed to send invitation email to {invitation.email}: {str(e)}")
+
+    @action(detail=False, methods=['post'])
+    def bulk_invite(self, request):
+        """Bulk create and send invitations. Supports partial success."""
+        from datetime import timedelta
+
+        serializer = BulkCreateInvitationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        rows = serializer.validated_data['invitations']
+        results = []
+        success_count = 0
+        error_count = 0
+
+        for idx, row in enumerate(rows):
+            try:
+                # Validate each row using CreateInvitationSerializer
+                row_serializer = CreateInvitationSerializer(
+                    data=row, context={'request': request}
+                )
+                row_serializer.is_valid(raise_exception=True)
+                data = row_serializer.validated_data
+
+                invitation = UserInvitation.objects.create(
+                    email=data['email'],
+                    first_name=data.get('first_name', ''),
+                    last_name=data.get('last_name', ''),
+                    role=data['role'],
+                    token=UserInvitation.generate_token(),
+                    invited_by=request.user,
+                    tenant_schema=connection.schema_name or '',
+                    expires_at=timezone.now() + timedelta(days=7)
+                )
+
+                # Send invitation email
+                self._send_invitation_email(invitation, request)
+
+                results.append({
+                    'row': idx + 1,
+                    'email': data['email'],
+                    'status': 'success',
+                })
+                success_count += 1
+
+            except Exception as e:
+                error_msg = str(e)
+                # Try to extract DRF validation error messages
+                if hasattr(e, 'detail'):
+                    if isinstance(e.detail, dict):
+                        error_msg = '; '.join(
+                            f"{k}: {v[0] if isinstance(v, list) else v}"
+                            for k, v in e.detail.items()
+                        )
+                    elif isinstance(e.detail, list):
+                        error_msg = '; '.join(str(v) for v in e.detail)
+                    else:
+                        error_msg = str(e.detail)
+
+                results.append({
+                    'row': idx + 1,
+                    'email': row.get('email', ''),
+                    'status': 'error',
+                    'error': error_msg,
+                })
+                error_count += 1
+
+        return Response({
+            'success_count': success_count,
+            'error_count': error_count,
+            'results': results,
+        }, status=status.HTTP_200_OK if success_count > 0 else status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'])
     def resend(self, request, pk=None):

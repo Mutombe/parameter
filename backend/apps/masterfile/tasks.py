@@ -40,13 +40,13 @@ def send_lease_expiry_reminders():
 def check_expiring_leases_for_tenant():
     """Check for expiring leases and create notifications."""
     from apps.masterfile.models import LeaseAgreement
-    from apps.accounts.models import User
+    from apps.accounts.utils import get_tenant_staff
 
     today = timezone.now().date()
     notifications_created = 0
 
-    # Get admin users for notifications
-    admin_users = User.objects.filter(role__in=[User.Role.ADMIN, User.Role.ACCOUNTANT])
+    # Get admin users for notifications (scoped to tenant)
+    admin_users = get_tenant_staff()
 
     # Check for leases expiring in 30, 60, and 90 days
     reminder_days = [30, 60, 90]

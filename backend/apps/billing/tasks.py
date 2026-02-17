@@ -45,10 +45,10 @@ def generate_monthly_invoices_all_tenants():
 
     logger.info(f"Monthly invoice generation complete: {results}")
 
-    # Email staff summary of bulk invoice generation
+    # Email system alert for cross-tenant summary (runs outside tenant context)
     if results['total_invoices'] > 0 or results['failed']:
         try:
-            from apps.notifications.utils import send_staff_email
+            from apps.notifications.tasks import send_system_alert_email
             success_lines = '\n'.join(
                 f"  - {s['tenant']}: {s['invoices_created']} invoices"
                 for s in results['success'] if s['invoices_created'] > 0
@@ -58,7 +58,7 @@ def generate_monthly_invoices_all_tenants():
                 for f in results['failed']
             ) if results['failed'] else '  None'
 
-            send_staff_email(
+            send_system_alert_email(
                 f'Monthly Billing Complete: {results["total_invoices"]} Invoices Generated',
                 f"""Monthly invoice generation has completed.
 
@@ -72,9 +72,6 @@ Successful:
 
 Failed:
 {failed_lines}
-
-Best regards,
-Parameter System
 """
             )
         except Exception:
@@ -100,6 +97,7 @@ def generate_monthly_invoices_for_tenant(tenant):
     from apps.masterfile.models import LeaseAgreement
     from apps.billing.models import Invoice
     from apps.accounts.models import User
+    from apps.accounts.utils import get_tenant_users
 
     today = timezone.now().date()
     # Get first day of current month
@@ -110,8 +108,8 @@ def generate_monthly_invoices_for_tenant(tenant):
     else:
         period_end = period_start.replace(month=period_start.month + 1, day=1) - timedelta(days=1)
 
-    # Get system user for created_by
-    system_user = User.objects.filter(role=User.Role.ADMIN).first()
+    # Get system user for created_by (scoped to tenant)
+    system_user = get_tenant_users(roles=[User.Role.ADMIN]).first()
 
     active_leases = LeaseAgreement.objects.filter(
         status='active',
@@ -202,20 +200,17 @@ def mark_overdue_invoices_all_tenants():
 
     logger.info(f"Marked {total_marked} invoices as overdue across all tenants")
 
-    # Email staff summary
+    # Email system alert for cross-tenant summary (runs outside tenant context)
     if total_marked > 0:
         try:
-            from apps.notifications.utils import send_staff_email
-            send_staff_email(
+            from apps.notifications.tasks import send_system_alert_email
+            send_system_alert_email(
                 f'Daily Overdue Report: {total_marked} Invoices Marked Overdue',
                 f"""The daily overdue check has completed.
 
 {total_marked} invoice(s) have been marked as overdue across all companies.
 
-Tenants have been notified by email. Please review the overdue invoices in the billing dashboard.
-
-Best regards,
-Parameter System
+Tenants have been notified by email.
 """
             )
         except Exception:
@@ -293,12 +288,10 @@ Powered by Parameter.co.zw
             except Exception:
                 pass
 
-    # Create notifications for admins/accountants
+    # Create notifications for admins/accountants (scoped to tenant)
     if newly_overdue:
-        admin_users = User.objects.filter(
-            role__in=[User.Role.ADMIN, User.Role.ACCOUNTANT],
-            is_active=True, notifications_enabled=True
-        )
+        from apps.accounts.utils import get_tenant_staff
+        admin_users = get_tenant_staff()
         from apps.notifications.utils import push_notification_to_user
         for invoice in newly_overdue:
             for admin_user in admin_users:
@@ -446,10 +439,8 @@ Powered by Parameter.co.zw
         except Exception:
             pass
 
-    admin_users = User.objects.filter(
-        role__in=[User.Role.ADMIN, User.Role.ACCOUNTANT],
-        is_active=True, notifications_enabled=True
-    )
+    from apps.accounts.utils import get_tenant_staff
+    admin_users = get_tenant_staff()
 
     count = 0
     for invoice in upcoming_invoices:
@@ -504,20 +495,17 @@ def apply_late_penalties_all_tenants():
 
     logger.info(f"Applied {total_penalties} late penalties across all tenants")
 
-    # Email staff summary
+    # Email system alert for cross-tenant summary (runs outside tenant context)
     if total_penalties > 0:
         try:
-            from apps.notifications.utils import send_staff_email
-            send_staff_email(
+            from apps.notifications.tasks import send_system_alert_email
+            send_system_alert_email(
                 f'Late Penalties Applied: {total_penalties} Penalty Invoice(s) Created',
                 f"""The daily late penalty processing has completed.
 
 {total_penalties} penalty invoice(s) have been created across all companies.
 
-Affected tenants have been notified by email. Please review the penalty invoices in the Late Penalties dashboard.
-
-Best regards,
-Parameter System
+Affected tenants have been notified by email.
 """
             )
         except Exception:
@@ -530,6 +518,7 @@ def _apply_late_penalties():
     """Apply late penalties for overdue invoices in the current tenant schema."""
     from apps.billing.models import Invoice, LatePenaltyConfig, LatePenaltyExclusion
     from apps.accounts.models import User
+    from apps.accounts.utils import get_tenant_users
 
     today = timezone.now().date()
     penalties_created = 0
@@ -542,7 +531,8 @@ def _apply_late_penalties():
         invoice_type='penalty'
     ).select_related('tenant', 'unit', 'property'))
 
-    system_user = User.objects.filter(role=User.Role.ADMIN).first()
+    # Get system user for created_by (scoped to tenant)
+    system_user = get_tenant_users(roles=[User.Role.ADMIN]).first()
 
     for invoice in overdue_invoices:
         try:
