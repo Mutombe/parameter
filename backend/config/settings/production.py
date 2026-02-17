@@ -111,11 +111,12 @@ LOGGING = {
     },
 }
 
-# Cache configuration - use database cache (no Redis dependency)
+# Cache configuration - use in-memory cache (no DB table needed, works with multi-tenancy)
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
-        'LOCATION': 'django_cache_table',
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'parameter-cache',
+        'TIMEOUT': 300,
     }
 }
 
