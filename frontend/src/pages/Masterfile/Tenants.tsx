@@ -294,23 +294,25 @@ export default function Tenants() {
                 </div>
               </div>
 
-              {/* Property & Unit Allocation */}
+              {/* Property & Unit Allocation (Optional) */}
               <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 space-y-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <Building2 className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-800">Unit Allocation</span>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm font-medium text-blue-800">Unit Allocation</span>
+                  </div>
+                  <span className="text-xs text-blue-500">Optional - can be assigned via lease later</span>
                 </div>
 
                 {/* Property Selection */}
                 <div>
-                  <label className="label text-blue-700">Select Property *</label>
+                  <label className="label text-blue-700">Select Property</label>
                   <select
                     value={form.property}
                     onChange={(e) => handlePropertyChange(e.target.value ? parseInt(e.target.value) : '')}
                     className="input"
-                    required
                   >
-                    <option value="">-- Select Property --</option>
+                    <option value="">-- No property (assign later) --</option>
                     {properties.map((property: any) => (
                       <option key={property.id} value={property.id}>
                         {property.name} ({property.city})
@@ -322,14 +324,13 @@ export default function Tenants() {
                 {/* Unit Selection - Only shown after property is selected */}
                 {form.property && (
                   <div>
-                    <label className="label text-blue-700">Select Unit *</label>
+                    <label className="label text-blue-700">Select Unit</label>
                     <select
                       value={form.unit}
                       onChange={(e) => setForm({ ...form, unit: e.target.value ? parseInt(e.target.value) : '' })}
                       className="input"
-                      required
                     >
-                      <option value="">-- Select Unit --</option>
+                      <option value="">-- No unit (assign later) --</option>
                       {availableUnits.map((unit: any) => (
                         <option key={unit.id} value={unit.id}>
                           Unit {unit.unit_number} - {unit.unit_type} ({unit.currency} {unit.rental_amount}/mo)
@@ -338,7 +339,7 @@ export default function Tenants() {
                     </select>
                     {availableUnits.length === 0 && (
                       <p className="text-xs text-amber-600 mt-1">
-                        No available units in this property. All units are occupied.
+                        No available units. Units are auto-created when you create a lease.
                       </p>
                     )}
                     {availableUnits.length > 0 && (
