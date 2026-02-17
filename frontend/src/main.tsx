@@ -9,11 +9,11 @@ import './index.css'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000, // Data is fresh for 5 minutes
-      gcTime: 30 * 60 * 1000, // Keep unused data in cache for 30 minutes
+      staleTime: 2 * 60 * 1000, // Data is fresh for 2 minutes (was 5 — too stale for multi-user)
+      gcTime: 10 * 60 * 1000, // Keep unused data in cache for 10 minutes (was 30)
       retry: 1,
-      refetchOnWindowFocus: false, // Don't refetch when window regains focus
-      refetchOnMount: false, // Don't refetch when component mounts if data exists
+      refetchOnWindowFocus: true, // Refetch when window regains focus for fresh data
+      refetchOnMount: 'always', // Always check freshness on mount
     },
     mutations: {
       retry: 0, // Don't retry mutations

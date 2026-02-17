@@ -112,11 +112,26 @@ WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
 # Channel Layers (WebSocket support)
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+# Use Redis channel layer if REDIS_URL is configured, otherwise fall back to InMemory
+REDIS_URL = config('REDIS_URL', default='')
+
+if REDIS_URL:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': [REDIS_URL],
+                'capacity': 1500,
+                'expiry': 10,
+            },
+        }
     }
-}
+else:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        }
+    }
 
 # Database - PostgreSQL with django-tenants
 # Add these at the top of your settings.py
@@ -141,14 +156,26 @@ DATABASES = {
 
 DATABASE_ROUTERS = ('django_tenants.routers.TenantSyncRouter',)
 
-# Cache (use database cache - no Redis needed, upgrade to Redis for high traffic)
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'parameter-cache',
-        'TIMEOUT': 300,  # 5 minutes default
+# Cache — use Redis if available, otherwise LocMemCache
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+            'TIMEOUT': 300,  # 5 minutes default
+            'OPTIONS': {
+                'db': 1,
+            },
+        }
     }
-}
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'parameter-cache',
+            'TIMEOUT': 300,  # 5 minutes default
+        }
+    }
 
 AUTH_USER_MODEL = 'accounts.User'
 
@@ -271,20 +298,32 @@ AI_MAX_TOKENS = config('AI_MAX_TOKENS', default=4096, cast=int)
 DEFAULT_CURRENCY = 'USD'
 SUPPORTED_CURRENCIES = ['USD', 'ZiG']
 
-# Django-Q2 Configuration (database-based task queue - no Redis needed)
-Q_CLUSTER = {
+# Django-Q2 Configuration
+# Use Redis as broker if available for better throughput, otherwise ORM
+_q_cluster_base = {
     'name': 'parameter',
-    'workers': config('Q_WORKERS', default=2, cast=int),
-    'timeout': 60,
-    'retry': 120,
-    'queue_limit': 50,
+    'workers': config('Q_WORKERS', default=4, cast=int),
+    'timeout': 90,
+    'retry': 180,
+    'queue_limit': 500,
     'bulk': 10,
-    'orm': 'default',  # Use database as broker
     'catch_up': False,
     'ack_failures': True,
     'max_attempts': 3,
     'attempt_count': 0,
+    'recycle': 500,  # Restart worker after 500 tasks to prevent memory leaks
 }
+
+if REDIS_URL:
+    Q_CLUSTER = {
+        **_q_cluster_base,
+        'redis': REDIS_URL,
+    }
+else:
+    Q_CLUSTER = {
+        **_q_cluster_base,
+        'orm': 'default',  # Use database as broker
+    }
 
 # Email Configuration (for notifications)
 EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')

@@ -637,3 +637,107 @@ Powered by Parameter.co.zw
             logger.error(f"Failed to apply penalty for invoice {invoice.invoice_number}: {e}")
 
     return penalties_created
+
+
+def send_invoice_emails_task(invoice_ids, subject_template, message_template, company_name):
+    """
+    Background task: Send invoice emails to tenants.
+    Called via Django-Q async_task from InvoiceViewSet.send_invoices.
+    """
+    from apps.billing.models import Invoice
+    from apps.notifications.utils import send_email
+
+    invoices = Invoice.objects.filter(
+        id__in=invoice_ids
+    ).select_related('tenant', 'unit', 'unit__property')
+
+    sent = 0
+    failed = 0
+
+    for invoice in invoices:
+        if not invoice.tenant.email:
+            continue
+
+        try:
+            subject = subject_template.format(
+                company_name=company_name,
+                invoice_number=invoice.invoice_number
+            )
+
+            default_message = f"""Dear {invoice.tenant.name},
+
+Please find your invoice details below:
+
+- Invoice Number: {invoice.invoice_number}
+- Amount Due: {invoice.currency} {invoice.balance:,.2f}
+- Due Date: {invoice.due_date}
+- Description: {invoice.description}
+- Property: {invoice.unit.property.name if invoice.unit else 'N/A'}
+- Unit: {invoice.unit.unit_number if invoice.unit else 'N/A'}
+
+Please ensure payment is made by the due date to avoid any late fees.
+
+Thank you for your prompt attention.
+
+Best regards,
+{company_name}
+"""
+            message = message_template or default_message
+            send_email(invoice.tenant.email, subject, message, blocking=True)
+            sent += 1
+
+        except Exception as e:
+            logger.error(f'Failed to send invoice {invoice.invoice_number}: {e}')
+            failed += 1
+
+    logger.info(f"Invoice email task complete: {sent} sent, {failed} failed")
+    return {'sent': sent, 'failed': failed}
+
+
+def send_bulk_email_task(recipient_ids, subject, message, company_name, user_id):
+    """
+    Background task: Send bulk email to tenants.
+    Called via Django-Q async_task from BulkMailingViewSet.send_bulk_email.
+    """
+    from apps.masterfile.models import RentalTenant
+    from apps.notifications.utils import send_email
+    from apps.accounting.models import AuditTrail
+    from apps.accounts.models import User
+
+    recipients = RentalTenant.objects.filter(id__in=recipient_ids)
+    user = User.objects.filter(id=user_id).first()
+
+    sent = 0
+    failed = 0
+
+    for recipient in recipients:
+        try:
+            personalized_message = message.format(
+                tenant_name=recipient.name,
+                company_name=company_name
+            )
+            send_email(recipient.email, subject, personalized_message, blocking=True)
+            sent += 1
+        except Exception as e:
+            logger.error(f'Failed to send email to {recipient.email}: {e}')
+            failed += 1
+
+    # Update audit trail with final results
+    try:
+        AuditTrail.objects.create(
+            action='bulk_email_completed',
+            model_name='RentalTenant',
+            record_id=0,
+            changes={
+                'subject': subject,
+                'sent_count': sent,
+                'failed_count': failed,
+                'total_recipients': len(recipient_ids),
+            },
+            user=user
+        )
+    except Exception:
+        pass
+
+    logger.info(f"Bulk email task complete: {sent} sent, {failed} failed")
+    return {'sent': sent, 'failed': failed}

@@ -224,6 +224,9 @@ export const reportsApi = {
     api.get('/reports/income-expenditure/', { params }),
   charts: (params: { chart_type: string; tenant_id?: number; property_id?: number; months?: number; start_date?: string; end_date?: string }) =>
     api.get('/reports/charts/', { params }),
+  // Server-side streaming CSV export for large datasets
+  streamExport: (type: string, filters?: Record<string, string>) =>
+    api.get('/reports/export/', { params: { type, ...filters }, responseType: 'blob' }),
 }
 
 // Masterfile API

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -11,9 +11,9 @@ import {
   Home,
   ArrowRight,
   ExternalLink,
+  Loader2,
 } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
-import { landlordApi, propertyApi, tenantApi, invoiceApi } from '../../services/api'
+import { searchApi } from '../../services/api'
 import { cn } from '../../lib/utils'
 import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
@@ -22,7 +22,7 @@ import { PiBuildingApartmentLight } from "react-icons/pi";
 
 interface SearchResult {
   id: number
-  type: 'landlord' | 'property' | 'tenant' | 'invoice' | 'unit'
+  type: 'landlord' | 'property' | 'tenant' | 'invoice' | 'unit' | 'lease'
   title: string
   subtitle: string
   icon: React.ElementType
@@ -34,82 +34,32 @@ interface GlobalSearchProps {
   onClose: () => void
 }
 
+const typeIcons: Record<string, React.ElementType> = {
+  landlord: PiUsersFour,
+  property: PiBuildingApartmentLight,
+  tenant: UserCheck,
+  invoice: Receipt,
+  unit: Home,
+  lease: Building2,
+}
+
+const typeColors: Record<string, string> = {
+  landlord: 'bg-blue-50 text-blue-600',
+  property: 'bg-purple-50 text-purple-600',
+  tenant: 'bg-green-50 text-green-600',
+  invoice: 'bg-orange-50 text-orange-600',
+  unit: 'bg-cyan-50 text-cyan-600',
+  lease: 'bg-amber-50 text-amber-600',
+}
+
 export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
   const navigate = useNavigate()
   const inputRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
-
-  // Fetch data for search — share cache with list views for instant results
-  const { data: landlords } = useQuery({
-    queryKey: ['landlords'],
-    queryFn: () => landlordApi.list().then(r => r.data.results || r.data || []),
-    enabled: open,
-    staleTime: 5 * 60 * 1000, // 5 min — reuse cached data
-  })
-
-  const { data: properties } = useQuery({
-    queryKey: ['properties'],
-    queryFn: () => propertyApi.list().then(r => r.data.results || r.data || []),
-    enabled: open,
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const { data: tenants } = useQuery({
-    queryKey: ['tenants'],
-    queryFn: () => tenantApi.list().then(r => r.data.results || r.data || []),
-    enabled: open,
-    staleTime: 5 * 60 * 1000,
-  })
-
-  // Build search results
-  const results: SearchResult[] = []
-
-  if (query.length >= 2) {
-    const lowerQuery = query.toLowerCase()
-
-    // Search landlords
-    landlords?.forEach((item: any) => {
-      if (item.name?.toLowerCase().includes(lowerQuery) || item.email?.toLowerCase().includes(lowerQuery)) {
-        results.push({
-          id: item.id,
-          type: 'landlord',
-          title: item.name,
-          subtitle: item.email || item.phone,
-          icon: PiUsersFour,
-          href: `/dashboard/landlords?view=${item.id}`,
-        })
-      }
-    })
-
-    // Search properties
-    properties?.forEach((item: any) => {
-      if (item.name?.toLowerCase().includes(lowerQuery) || item.address?.toLowerCase().includes(lowerQuery)) {
-        results.push({
-          id: item.id,
-          type: 'property',
-          title: item.name,
-          subtitle: item.address || `${item.total_units || 0} units`,
-          icon: PiBuildingApartmentLight,
-          href: `/dashboard/properties?view=${item.id}`,
-        })
-      }
-    })
-
-    // Search tenants
-    tenants?.forEach((item: any) => {
-      if (item.name?.toLowerCase().includes(lowerQuery) || item.email?.toLowerCase().includes(lowerQuery)) {
-        results.push({
-          id: item.id,
-          type: 'tenant',
-          title: item.name,
-          subtitle: item.email || item.phone,
-          icon: UserCheck,
-          href: `/dashboard/tenants?view=${item.id}`,
-        })
-      }
-    })
-  }
+  const [results, setResults] = useState<SearchResult[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Quick links when no query
   const quickLinks: SearchResult[] = [
@@ -119,6 +69,59 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
     { id: 4, type: 'invoice', title: 'Invoices', subtitle: 'Billing & invoices', icon: Receipt, href: '/dashboard/invoices' },
     { id: 5, type: 'unit', title: 'Units', subtitle: 'Property units', icon: Home, href: '/dashboard/units' },
   ]
+
+  // Debounced server-side search
+  const performSearch = useCallback(async (searchQuery: string) => {
+    if (searchQuery.length < 2) {
+      setResults([])
+      setIsSearching(false)
+      return
+    }
+
+    setIsSearching(true)
+    try {
+      const response = await searchApi.search({ q: searchQuery, limit: 10 })
+      const data = response.data
+
+      const mapped: SearchResult[] = (data.results || []).map((item: any) => ({
+        id: item.id,
+        type: item.type,
+        title: item.title || item.name || item.invoice_number || item.lease_number || `${item.type} #${item.id}`,
+        subtitle: item.subtitle || item.email || item.address || '',
+        icon: typeIcons[item.type] || Search,
+        href: item.href || `/${item.type}s`,
+      }))
+
+      setResults(mapped)
+    } catch {
+      setResults([])
+    } finally {
+      setIsSearching(false)
+    }
+  }, [])
+
+  // Handle query changes with debounce
+  useEffect(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current)
+    }
+
+    if (query.length >= 2) {
+      setIsSearching(true)
+      debounceRef.current = setTimeout(() => {
+        performSearch(query)
+      }, 300)
+    } else {
+      setResults([])
+      setIsSearching(false)
+    }
+
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current)
+      }
+    }
+  }, [query, performSearch])
 
   const displayResults = query.length >= 2 ? results : quickLinks
 
@@ -151,20 +154,13 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
       setTimeout(() => inputRef.current?.focus(), 100)
       setQuery('')
       setActiveIndex(0)
+      setResults([])
     }
   }, [open])
 
   const handleSelect = (result: SearchResult) => {
     navigate(result.href)
     onClose()
-  }
-
-  const typeColors = {
-    landlord: 'bg-blue-50 text-blue-600',
-    property: 'bg-purple-50 text-purple-600',
-    tenant: 'bg-green-50 text-green-600',
-    invoice: 'bg-orange-50 text-orange-600',
-    unit: 'bg-cyan-50 text-cyan-600',
   }
 
   return (
@@ -187,7 +183,11 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
           >
             {/* Search Input */}
             <div className="flex items-center gap-3 px-4 border-b border-gray-100">
-              <Search className="w-5 h-5 text-gray-400" />
+              {isSearching ? (
+                <Loader2 className="w-5 h-5 text-primary-500 animate-spin" />
+              ) : (
+                <Search className="w-5 h-5 text-gray-400" />
+              )}
               <input
                 ref={inputRef}
                 type="text"
@@ -212,7 +212,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
 
             {/* Results */}
             <div className="max-h-[400px] overflow-y-auto p-2">
-              {query.length >= 2 && results.length === 0 ? (
+              {query.length >= 2 && !isSearching && results.length === 0 ? (
                 <div className="py-12 text-center">
                   <Search className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                   <p className="text-gray-500">No results found for "{query}"</p>
@@ -242,7 +242,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
                           activeIndex === index ? 'bg-primary-50' : 'hover:bg-gray-50'
                         )}
                       >
-                        <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center', typeColors[result.type])}>
+                        <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center', typeColors[result.type] || 'bg-gray-50 text-gray-600')}>
                           <Icon className="w-5 h-5" />
                         </div>
                         <div className="flex-1 text-left">

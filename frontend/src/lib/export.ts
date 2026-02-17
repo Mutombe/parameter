@@ -268,3 +268,44 @@ export function exportTableData(
     exportToCSV(data, columns, filename)
   }
 }
+
+/**
+ * Server-side streaming export for large datasets.
+ * Downloads CSV directly from the backend, avoiding client-side memory limits.
+ */
+export async function streamExportFromServer(
+  type: string,
+  filters?: Record<string, string>
+): Promise<void> {
+  try {
+    const { reportsApi } = await import('../services/api')
+    const response = await reportsApi.streamExport(type, filters)
+    const blob = response.data as Blob
+    const timestamp = new Date().toISOString().split('T')[0]
+    const filename = `${type}_${timestamp}.csv`
+
+    downloadBlob(blob, filename)
+  } catch (error) {
+    console.error('Server-side export failed:', error)
+    throw error
+  }
+}
+
+/**
+ * Trigger download from a Blob
+ */
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.style.display = 'none'
+
+  document.body.appendChild(link)
+  link.click()
+
+  setTimeout(() => {
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }, 100)
+}

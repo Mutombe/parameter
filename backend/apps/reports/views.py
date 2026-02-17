@@ -1,4 +1,6 @@
 """Views for financial reports."""
+import hashlib
+import logging
 from decimal import Decimal
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -6,6 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum, Count, Q, F, Avg, Case, When, Value, CharField
 from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
+from django.core.cache import cache
 from django.http import HttpResponse
 from datetime import timedelta, date
 import csv
@@ -14,11 +17,51 @@ from apps.accounting.models import ChartOfAccount, GeneralLedger, Journal, BankA
 from apps.billing.models import Invoice, Receipt, Expense
 from apps.masterfile.models import Property, Unit, Landlord, RentalTenant, LeaseAgreement
 
+logger = logging.getLogger(__name__)
+
+
+def _cache_report(cache_key, ttl=60):
+    """
+    Decorator for caching report responses.
+    cache_key can contain {param} placeholders resolved from request.query_params.
+    """
+    def decorator(view_method):
+        def wrapper(self, request, *args, **kwargs):
+            # Build final cache key from request params
+            params = dict(request.query_params)
+            key_parts = [cache_key]
+            for k, v in sorted(params.items()):
+                key_parts.append(f"{k}={v}")
+            # Include schema name for multi-tenancy
+            schema = getattr(getattr(request, 'tenant', None), 'schema_name', 'public')
+            full_key = f"report:{schema}:{':'.join(key_parts)}"
+            # Hash to keep key length safe
+            hashed_key = hashlib.md5(full_key.encode()).hexdigest()
+
+            try:
+                cached = cache.get(hashed_key)
+                if cached is not None:
+                    return Response(cached)
+            except Exception:
+                pass
+
+            response = view_method(self, request, *args, **kwargs)
+
+            try:
+                cache.set(hashed_key, response.data, ttl)
+            except Exception:
+                pass
+
+            return response
+        return wrapper
+    return decorator
+
 
 class DashboardStatsView(APIView):
     """Dashboard KPIs and statistics. Optimized to ~5 queries instead of 15+."""
     permission_classes = [IsAuthenticated]
 
+    @_cache_report('dashboard', ttl=30)
     def get(self, request):
         today = timezone.now().date()
         month_start = today.replace(day=1)
@@ -129,6 +172,7 @@ class TrialBalanceReportView(APIView):
     """Trial Balance Report."""
     permission_classes = [IsAuthenticated]
 
+    @_cache_report('trial_balance', ttl=60)
     def get(self, request):
         as_of_date = request.query_params.get('as_of_date', timezone.now().date())
 
@@ -176,6 +220,7 @@ class IncomeStatementView(APIView):
     """Profit & Loss Statement."""
     permission_classes = [IsAuthenticated]
 
+    @_cache_report('income_statement', ttl=60)
     def get(self, request):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date', timezone.now().date())
@@ -223,6 +268,7 @@ class BalanceSheetView(APIView):
     """Balance Sheet Report."""
     permission_classes = [IsAuthenticated]
 
+    @_cache_report('balance_sheet', ttl=60)
     def get(self, request):
         as_of_date = request.query_params.get('as_of_date', timezone.now().date())
 
@@ -283,6 +329,7 @@ class VacancyReportView(APIView):
     """Vacancy Report by Property."""
     permission_classes = [IsAuthenticated]
 
+    @_cache_report('vacancy', ttl=120)
     def get(self, request):
         properties = Property.objects.select_related('landlord').annotate(
             unit_count=Count('units'),
@@ -326,6 +373,7 @@ class RentRollView(APIView):
     """Rent Roll Report - All active leases with rental amounts."""
     permission_classes = [IsAuthenticated]
 
+    @_cache_report('rent_roll', ttl=120)
     def get(self, request):
         leases = LeaseAgreement.objects.filter(
             status='active'
@@ -426,6 +474,7 @@ class CashFlowStatementView(APIView):
     """Cash Flow Statement Report."""
     permission_classes = [IsAuthenticated]
 
+    @_cache_report('cash_flow', ttl=120)
     def get(self, request):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date', timezone.now().date())
@@ -572,6 +621,7 @@ class AgedAnalysisView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @_cache_report('aged_analysis', ttl=120)
     def get(self, request):
         today = timezone.now().date()
         as_of_date = request.query_params.get('as_of_date', today)
@@ -1648,6 +1698,7 @@ class DataVisualizationView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @_cache_report('charts', ttl=60)
     def get(self, request):
         chart_type = request.query_params.get('chart_type')
 
@@ -1845,3 +1896,159 @@ class DataVisualizationView(APIView):
                 'values': values
             }
         })
+
+
+class StreamingCSVExportView(APIView):
+    """
+    Server-side streaming CSV export for large datasets.
+    Avoids loading all data into browser memory.
+    Supports: invoices, receipts, tenants, properties, leases, expenses
+    """
+    permission_classes = [IsAuthenticated]
+
+    EXPORT_CONFIGS = {
+        'invoices': {
+            'model': Invoice,
+            'select_related': ['tenant', 'unit', 'unit__property', 'lease'],
+            'fields': [
+                ('invoice_number', 'Invoice Number'),
+                ('tenant__name', 'Tenant'),
+                ('unit__unit_number', 'Unit'),
+                ('unit__property__name', 'Property'),
+                ('invoice_type', 'Type'),
+                ('status', 'Status'),
+                ('date', 'Date'),
+                ('due_date', 'Due Date'),
+                ('amount', 'Amount'),
+                ('vat_amount', 'VAT'),
+                ('total_amount', 'Total'),
+                ('amount_paid', 'Paid'),
+                ('balance', 'Balance'),
+                ('currency', 'Currency'),
+                ('description', 'Description'),
+            ],
+        },
+        'receipts': {
+            'model': Receipt,
+            'select_related': ['tenant', 'invoice'],
+            'fields': [
+                ('receipt_number', 'Receipt Number'),
+                ('tenant__name', 'Tenant'),
+                ('invoice__invoice_number', 'Invoice'),
+                ('date', 'Date'),
+                ('amount', 'Amount'),
+                ('currency', 'Currency'),
+                ('payment_method', 'Payment Method'),
+                ('reference', 'Reference'),
+                ('description', 'Description'),
+            ],
+        },
+        'tenants': {
+            'model': RentalTenant,
+            'select_related': [],
+            'fields': [
+                ('code', 'Code'),
+                ('name', 'Name'),
+                ('email', 'Email'),
+                ('phone', 'Phone'),
+                ('id_number', 'ID Number'),
+                ('account_type', 'Account Type'),
+                ('is_active', 'Active'),
+            ],
+        },
+        'properties': {
+            'model': Property,
+            'select_related': ['landlord'],
+            'fields': [
+                ('code', 'Code'),
+                ('name', 'Name'),
+                ('landlord__name', 'Landlord'),
+                ('address', 'Address'),
+                ('city', 'City'),
+                ('property_type', 'Type'),
+            ],
+        },
+        'leases': {
+            'model': LeaseAgreement,
+            'select_related': ['tenant', 'unit', 'unit__property'],
+            'fields': [
+                ('lease_number', 'Lease Number'),
+                ('tenant__name', 'Tenant'),
+                ('unit__unit_number', 'Unit'),
+                ('unit__property__name', 'Property'),
+                ('monthly_rent', 'Monthly Rent'),
+                ('currency', 'Currency'),
+                ('start_date', 'Start Date'),
+                ('end_date', 'End Date'),
+                ('status', 'Status'),
+            ],
+        },
+        'expenses': {
+            'model': Expense,
+            'select_related': [],
+            'fields': [
+                ('expense_number', 'Expense Number'),
+                ('expense_type', 'Type'),
+                ('payee_name', 'Payee'),
+                ('date', 'Date'),
+                ('amount', 'Amount'),
+                ('currency', 'Currency'),
+                ('status', 'Status'),
+                ('description', 'Description'),
+            ],
+        },
+    }
+
+    def get(self, request):
+        export_type = request.query_params.get('type')
+        if export_type not in self.EXPORT_CONFIGS:
+            return Response(
+                {'error': f'Invalid export type. Available: {", ".join(self.EXPORT_CONFIGS.keys())}'},
+                status=400
+            )
+
+        config = self.EXPORT_CONFIGS[export_type]
+        model = config['model']
+        queryset = model.objects.all()
+        if config['select_related']:
+            queryset = queryset.select_related(*config['select_related'])
+
+        # Apply basic filters from query params
+        for key, value in request.query_params.items():
+            if key in ('type', 'format'):
+                continue
+            if hasattr(model, key) or '__' in key:
+                try:
+                    queryset = queryset.filter(**{key: value})
+                except Exception:
+                    pass
+
+        # Stream CSV response
+        import csv
+
+        class Echo:
+            """Pseudo-buffer that returns everything written to it."""
+            def write(self, value):
+                return value
+
+        def csv_rows():
+            pseudo_buffer = Echo()
+            writer = csv.writer(pseudo_buffer)
+            # Header row
+            yield writer.writerow([f[1] for f in config['fields']])
+            # Data rows — iterate in chunks of 2000
+            for obj in queryset.iterator(chunk_size=2000):
+                row = []
+                for field_path, _ in config['fields']:
+                    value = obj
+                    for part in field_path.split('__'):
+                        value = getattr(value, part, '') if value else ''
+                    row.append(str(value) if value is not None else '')
+                yield writer.writerow(row)
+
+        from django.http import StreamingHttpResponse
+
+        response = StreamingHttpResponse(csv_rows(), content_type='text/csv')
+        timestamp = timezone.now().strftime('%Y%m%d')
+        response['Content-Disposition'] = f'attachment; filename="{export_type}_{timestamp}.csv"'
+        return response

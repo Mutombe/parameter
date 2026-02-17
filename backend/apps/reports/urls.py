@@ -6,7 +6,7 @@ from .views import (
     CashFlowStatementView, AgedAnalysisView, TenantAccountSummaryView,
     DepositAccountSummaryView, CommissionReportView, LeaseChargeSummaryView,
     ReceiptListingView, CommissionAnalysisView, IncomeItemAnalysisView,
-    IncomeExpenditureReportView, DataVisualizationView
+    IncomeExpenditureReportView, DataVisualizationView, StreamingCSVExportView
 )
 
 urlpatterns = [
@@ -43,4 +43,7 @@ urlpatterns = [
 
     # Data visualization
     path('charts/', DataVisualizationView.as_view(), name='data-visualization'),
+
+    # Streaming CSV export
+    path('export/', StreamingCSVExportView.as_view(), name='streaming-export'),
 ]

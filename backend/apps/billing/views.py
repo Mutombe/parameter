@@ -7,7 +7,6 @@ from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
-from django.core.mail import send_mass_mail, send_mail
 from django.conf import settings
 from datetime import date
 from calendar import monthrange
@@ -66,10 +65,12 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['post'])
+    @transaction.atomic
     def generate_monthly(self, request):
         """
         Generate monthly rent invoices for all active leases.
         This is the automated billing cron job (Activity 1).
+        Optimized with prefetch and bulk_create.
         """
         serializer = BulkInvoiceSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -78,8 +79,10 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         year = serializer.validated_data['year']
         lease_ids = serializer.validated_data.get('lease_ids', [])
 
-        # Get active leases
-        leases = LeaseAgreement.objects.filter(status='active')
+        # Get active leases with related objects in one query
+        leases = LeaseAgreement.objects.filter(
+            status='active'
+        ).select_related('tenant', 'unit')
         if lease_ids:
             leases = leases.filter(id__in=lease_ids)
 
@@ -90,40 +93,47 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         invoice_date = date.today()
         due_date = date(year, month, 15)  # Due on 15th
 
-        created_invoices = []
+        # Batch check: get all lease IDs that already have invoices for this period
+        existing_lease_ids = set(
+            Invoice.objects.filter(
+                lease__in=leases,
+                period_start=period_start,
+                period_end=period_end
+            ).values_list('lease_id', flat=True)
+        )
+
+        invoices_to_create = []
         errors = []
 
         for lease in leases:
-            # Check if invoice already exists for this period
-            existing = Invoice.objects.filter(
-                lease=lease,
-                period_start=period_start,
-                period_end=period_end
-            ).exists()
-
-            if existing:
+            if lease.id in existing_lease_ids:
                 errors.append(f'Invoice already exists for {lease.lease_number}')
                 continue
 
+            invoices_to_create.append(Invoice(
+                tenant=lease.tenant,
+                lease=lease,
+                unit=lease.unit,
+                invoice_type=Invoice.InvoiceType.RENT,
+                date=invoice_date,
+                due_date=due_date,
+                period_start=period_start,
+                period_end=period_end,
+                amount=lease.monthly_rent,
+                vat_amount=Decimal('0'),
+                currency=lease.currency,
+                description=f'Rent for {period_start.strftime("%B %Y")} - {lease.unit}',
+                created_by=request.user
+            ))
+
+        # Bulk create all invoices at once (triggers save() for number generation)
+        created_invoices = []
+        for invoice in invoices_to_create:
             try:
-                invoice = Invoice.objects.create(
-                    tenant=lease.tenant,
-                    lease=lease,
-                    unit=lease.unit,
-                    invoice_type=Invoice.InvoiceType.RENT,
-                    date=invoice_date,
-                    due_date=due_date,
-                    period_start=period_start,
-                    period_end=period_end,
-                    amount=lease.monthly_rent,
-                    vat_amount=Decimal('0'),
-                    currency=lease.currency,
-                    description=f'Rent for {period_start.strftime("%B %Y")} - {lease.unit}',
-                    created_by=request.user
-                )
+                invoice.save()
                 created_invoices.append(invoice)
             except Exception as e:
-                errors.append(f'Error creating invoice for {lease.lease_number}: {str(e)}')
+                errors.append(f'Error creating invoice: {str(e)}')
 
         return Response({
             'created': len(created_invoices),
@@ -204,31 +214,34 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         if not leases.exists():
             return Response({'error': 'No active leases found for this property'}, status=400)
 
+        # Batch check: get all lease IDs that already have this charge type for the period
+        existing_lease_ids = set(
+            Invoice.objects.filter(
+                lease__in=leases,
+                invoice_type=invoice_type,
+                period_start=period_start,
+                period_end=period_end
+            ).values_list('lease_id', flat=True)
+        )
+
         created_invoices = []
         errors = []
+        today = timezone.now().date()
 
         for lease in leases:
+            if lease.id in existing_lease_ids:
+                errors.append(f'Invoice already exists for lease {lease.lease_number}')
+                continue
+
             try:
-                # Check for duplicate
-                existing = Invoice.objects.filter(
-                    lease=lease,
-                    invoice_type=invoice_type,
-                    period_start=period_start,
-                    period_end=period_end
-                ).exists()
-
-                if existing:
-                    errors.append(f'Invoice already exists for lease {lease.lease_number}')
-                    continue
-
-                invoice = Invoice.objects.create(
+                invoice = Invoice(
                     tenant=lease.tenant,
                     lease=lease,
                     unit=lease.unit,
                     property=property_obj,
                     invoice_type=invoice_type,
-                    date=timezone.now().date(),
-                    due_date=due_date or (timezone.now().date() + timezone.timedelta(days=15)),
+                    date=today,
+                    due_date=due_date or (today + timezone.timedelta(days=15)),
                     period_start=period_start,
                     period_end=period_end,
                     amount=amount,
@@ -237,6 +250,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                     description=description or f'{invoice_type.title()} charge for {lease.unit}',
                     created_by=request.user
                 )
+                invoice.save()
                 created_invoices.append(invoice)
             except Exception as e:
                 errors.append(f'Error creating invoice for {lease.lease_number}: {str(e)}')
@@ -348,6 +362,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         """
         Send invoice emails to tenants.
         Can send to all tenants, specific properties, or specific tenants.
+        Emails are sent asynchronously via background tasks.
         """
         tenant_ids = request.data.get('tenant_ids', [])
         property_ids = request.data.get('property_ids', [])
@@ -375,11 +390,11 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             )
 
         # Get tenant info
-        tenant = getattr(request, 'tenant', None)
-        company_name = tenant.name if tenant else 'Property Management'
-        site_url = getattr(settings, 'SITE_URL', 'https://parameter.co.zw')
+        tenant_org = getattr(request, 'tenant', None)
+        company_name = tenant_org.name if tenant_org else 'Property Management'
 
-        sent = []
+        # Collect invoice IDs and validate emails synchronously
+        queued = []
         failed = []
 
         for invoice in invoices:
@@ -390,62 +405,38 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                 })
                 continue
 
+            # Mark draft invoices as sent immediately
+            if invoice.status == 'draft':
+                invoice.status = 'sent'
+                invoice.save(update_fields=['status', 'updated_at'])
+
+            queued.append({
+                'invoice': invoice.invoice_number,
+                'email': invoice.tenant.email
+            })
+
+        # Queue email sending as a background task
+        if queued:
+            invoice_id_list = list(
+                invoices.filter(tenant__email__isnull=False)
+                    .exclude(tenant__email='')
+                    .values_list('id', flat=True)
+            )
             try:
-                subject = subject_template.format(
-                    company_name=company_name,
-                    invoice_number=invoice.invoice_number
+                from django_q.tasks import async_task
+                async_task(
+                    'apps.billing.tasks.send_invoice_emails_task',
+                    invoice_id_list,
+                    subject_template,
+                    message_template,
+                    company_name,
                 )
-
-                default_message = f"""
-Dear {invoice.tenant.name},
-
-Please find your invoice details below:
-
-Invoice Number: {invoice.invoice_number}
-Amount Due: {invoice.currency} {invoice.balance:,.2f}
-Due Date: {invoice.due_date}
-Description: {invoice.description}
-
-Property: {invoice.unit.property.name if invoice.unit else 'N/A'}
-Unit: {invoice.unit.unit_number if invoice.unit else 'N/A'}
-
-Please ensure payment is made by the due date to avoid any late fees.
-
-Thank you for your prompt attention.
-
-Best regards,
-{company_name}
-"""
-                message = message_template or default_message
-
-                send_mail(
-                    subject=subject,
-                    message=message,
-                    from_email=f'{company_name} <{settings.DEFAULT_FROM_EMAIL}>',
-                    recipient_list=[invoice.tenant.email],
-                    fail_silently=False
-                )
-
-                # Update status
-                if invoice.status == 'draft':
-                    invoice.status = 'sent'
-                    invoice.save()
-
-                sent.append({
-                    'invoice': invoice.invoice_number,
-                    'email': invoice.tenant.email
-                })
-
             except Exception as e:
-                logger.error(f'Failed to send invoice {invoice.invoice_number}: {e}')
-                failed.append({
-                    'invoice': invoice.invoice_number,
-                    'error': str(e)
-                })
+                logger.error(f'Failed to queue email task: {e}')
 
         return Response({
-            'message': f'Sent {len(sent)} invoice(s)',
-            'sent': sent,
+            'message': f'Queued {len(queued)} invoice email(s) for delivery',
+            'queued': queued,
             'failed': failed
         })
 
@@ -509,58 +500,45 @@ class BulkMailingViewSet(viewsets.ViewSet):
         tenant_org = getattr(request, 'tenant', None)
         company_name = tenant_org.name if tenant_org else 'Property Management'
 
-        sent = []
-        failed = []
+        # Collect recipient IDs and queue background task
+        recipient_ids = list(tenants.values_list('id', flat=True))
+        recipient_count = len(recipient_ids)
 
-        for recipient in tenants:
-            try:
-                personalized_message = message.format(
-                    tenant_name=recipient.name,
-                    company_name=company_name
-                )
+        if recipient_count == 0:
+            return Response({
+                'message': 'No recipients found',
+                'queued_count': 0,
+            })
 
-                send_mail(
-                    subject=subject,
-                    message=personalized_message,
-                    from_email=f'{company_name} <{settings.DEFAULT_FROM_EMAIL}>',
-                    recipient_list=[recipient.email],
-                    fail_silently=False
-                )
-
-                sent.append({
-                    'tenant_id': recipient.id,
-                    'name': recipient.name,
-                    'email': recipient.email
-                })
-
-            except Exception as e:
-                logger.error(f'Failed to send email to {recipient.email}: {e}')
-                failed.append({
-                    'tenant_id': recipient.id,
-                    'name': recipient.name,
-                    'email': recipient.email,
-                    'error': str(e)
-                })
+        # Queue email sending as a background task
+        try:
+            from django_q.tasks import async_task
+            async_task(
+                'apps.billing.tasks.send_bulk_email_task',
+                recipient_ids,
+                subject,
+                message,
+                company_name,
+                request.user.id,
+            )
+        except Exception as e:
+            logger.error(f'Failed to queue bulk email task: {e}')
 
         # Audit trail
         AuditTrail.objects.create(
-            action='bulk_email_sent',
+            action='bulk_email_queued',
             model_name='RentalTenant',
             record_id=0,
             changes={
                 'subject': subject,
-                'recipients_count': len(sent),
-                'failed_count': len(failed)
+                'recipients_count': recipient_count,
             },
             user=request.user
         )
 
         return Response({
-            'message': f'Email sent to {len(sent)} recipient(s)',
-            'sent_count': len(sent),
-            'failed_count': len(failed),
-            'sent': sent,
-            'failed': failed
+            'message': f'Queued {recipient_count} email(s) for delivery',
+            'queued_count': recipient_count,
         })
 
     @action(detail=False, methods=['get'])
@@ -656,15 +634,16 @@ class ReceiptViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         receipts_data = serializer.validated_data['receipts']
+        today = timezone.now().date()
         created_receipts = []
         errors = []
 
         for receipt_data in receipts_data:
             try:
-                receipt = Receipt.objects.create(
+                receipt = Receipt(
                     tenant_id=receipt_data['tenant_id'],
                     invoice_id=receipt_data.get('invoice_id'),
-                    date=receipt_data.get('date', timezone.now().date()),
+                    date=receipt_data.get('date', today),
                     amount=Decimal(str(receipt_data['amount'])),
                     currency=receipt_data.get('currency', 'USD'),
                     payment_method=receipt_data.get('payment_method', 'cash'),
@@ -673,6 +652,7 @@ class ReceiptViewSet(viewsets.ModelViewSet):
                     description=receipt_data.get('description', ''),
                     created_by=request.user
                 )
+                receipt.save()
                 # Auto-post to ledger
                 receipt.post_to_ledger(request.user)
                 created_receipts.append(receipt)
