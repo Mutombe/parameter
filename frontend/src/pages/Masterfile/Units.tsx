@@ -17,6 +17,7 @@ import {
   Bed,
   Bath,
   Square,
+  Download,
 } from 'lucide-react'
 import { unitApi, propertyApi } from '../../services/api'
 import { formatCurrency, cn, useDebounce } from '../../lib/utils'
@@ -24,6 +25,9 @@ import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, 
 import { showToast, parseApiError } from '../../lib/toast'
 import { PiBuildingApartmentLight } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
+import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
+import { exportTableData } from '../../lib/export'
+import { useSelection } from '../../hooks/useSelection'
 
 interface Unit {
   id: number
@@ -135,6 +139,8 @@ export default function Units() {
     description: '',
     is_active: true,
   })
+  const selection = useSelection<number>({ clearOnChange: [debouncedSearch, filter] })
+  const [bulkConfirm, setBulkConfirm] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
 
   const { data: units, isLoading } = useQuery({
     queryKey: ['units', debouncedSearch, filter],
@@ -298,6 +304,37 @@ export default function Units() {
       : 0,
   }
 
+  const selectableItems = (units || []).filter((u: any) => !u._isOptimistic)
+  const pageIds = selectableItems.map((u: any) => u.id)
+
+  const handleBulkExport = () => {
+    const selected = selectableItems.filter((u: any) => selection.isSelected(u.id))
+    exportTableData(selected, [
+      { key: 'unit_number', header: 'Unit Number' },
+      { key: 'property_name', header: 'Property' },
+      { key: 'unit_type', header: 'Type' },
+      { key: 'rental_amount', header: 'Rental Amount' },
+      { key: 'is_occupied', header: 'Occupied' },
+    ], 'units_export')
+    showToast.success(`Exported ${selected.length} units`)
+  }
+
+  const handleBulkDelete = () => {
+    setBulkConfirm({
+      open: true,
+      title: `Delete ${selection.selectedCount} units?`,
+      message: 'This action cannot be undone.',
+      onConfirm: async () => {
+        const ids = Array.from(selection.selectedIds)
+        for (const id of ids) { try { await unitApi.delete(id) } catch {} }
+        selection.clearSelection()
+        queryClient.invalidateQueries({ queryKey: ['units'] })
+        showToast.success(`Deleted ${ids.length} units`)
+        setBulkConfirm(d => ({ ...d, open: false }))
+      },
+    })
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -433,6 +470,13 @@ export default function Units() {
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
+              <th className="px-4 py-4 w-10">
+                <SelectionCheckbox
+                  checked={selection.isAllPageSelected(pageIds)}
+                  indeterminate={selection.isPartialPageSelected(pageIds)}
+                  onChange={() => selection.selectPage(pageIds)}
+                />
+              </th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Property</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
@@ -448,7 +492,7 @@ export default function Units() {
               [...Array(5)].map((_, i) => <SkeletonTableRow key={i} />)
             ) : !units || units.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-12">
+                <td colSpan={8} className="px-6 py-12">
                   <EmptyState
                     icon={DoorOpen}
                     title="No units found"
@@ -470,8 +514,14 @@ export default function Units() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: index * 0.02 }}
-                    className="hover:bg-gray-50 transition-colors group"
+                    className={cn("hover:bg-gray-50 transition-colors group", selection.isSelected(unit.id) ? 'bg-primary-50' : '')}
                   >
+                    <td className="px-4 py-4 w-10" onClick={(e) => e.stopPropagation()}>
+                      <SelectionCheckbox
+                        checked={selection.isSelected(unit.id)}
+                        onChange={() => selection.toggle(unit.id)}
+                      />
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-primary-100 flex items-center justify-center">
@@ -705,6 +755,27 @@ export default function Units() {
         confirmText="Delete"
         variant="danger"
         loading={deleteMutation.isPending}
+      />
+
+      {/* Bulk Delete Confirmation */}
+      <ConfirmDialog
+        open={bulkConfirm.open}
+        onClose={() => setBulkConfirm(d => ({ ...d, open: false }))}
+        onConfirm={bulkConfirm.onConfirm}
+        title={bulkConfirm.title}
+        description={bulkConfirm.message}
+        confirmText="Delete"
+        variant="danger"
+      />
+
+      <BulkActionsBar
+        selectedCount={selection.selectedCount}
+        onClearSelection={selection.clearSelection}
+        entityName="units"
+        actions={[
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
+          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger' },
+        ]}
       />
     </div>
   )

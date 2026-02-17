@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -8,9 +8,6 @@ import {
   Bell,
   Mail,
   Shield,
-  Palette,
-  Globe,
-  Database,
   FileText,
   Printer,
   Clock,
@@ -22,13 +19,15 @@ import {
   CreditCard,
   Home as HomeIcon,
   Monitor,
+  Upload,
+  X,
+  ImageIcon,
 } from 'lucide-react'
-import { PageHeader, Button, Input, Card, Badge } from '../components/ui'
+import { PageHeader, Button, Input, Select } from '../components/ui'
 import { useAuthStore } from '../stores/authStore'
-import { notificationsApi } from '../services/api'
+import { companySettingsApi, notificationsApi, authApi } from '../services/api'
 import toast from 'react-hot-toast'
 import { cn } from '../lib/utils'
-import { SiFsecure } from "react-icons/si";
 import { PiBuildingApartmentLight } from "react-icons/pi";
 
 
@@ -89,14 +88,22 @@ const pushPrefConfig = [
 ]
 
 export default function Settings() {
-  const { user } = useAuthStore()
+  const { user, setUser } = useAuthStore()
   const queryClient = useQueryClient()
   const [activeSection, setActiveSection] = useState('company')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Load company settings from API
+  const { data: serverSettings, isLoading: settingsLoading } = useQuery({
+    queryKey: ['company-settings'],
+    queryFn: () => companySettingsApi.get().then(r => r.data),
+  })
+
   const [settings, setSettings] = useState({
-    company_name: 'Demo Real Estate Company',
-    company_email: 'info@demo.com',
-    company_phone: '+263 77 123 4567',
-    company_address: '123 Main Street, Harare',
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
     default_currency: 'USD',
     secondary_currency: 'ZiG',
     exchange_rate: '25.00',
@@ -106,6 +113,60 @@ export default function Settings() {
     show_logo: true,
     session_timeout: '30',
     two_factor: false,
+  })
+
+  // Sync server data into local state
+  useEffect(() => {
+    if (serverSettings) {
+      setSettings(prev => ({
+        ...prev,
+        name: serverSettings.name || '',
+        email: serverSettings.email || '',
+        phone: serverSettings.phone || '',
+        address: serverSettings.address || '',
+        default_currency: serverSettings.default_currency || 'USD',
+        secondary_currency: serverSettings.secondary_currency || 'ZiG',
+        exchange_rate: String(serverSettings.exchange_rate || '25.00'),
+        invoice_prefix: serverSettings.invoice_prefix || 'INV-',
+        invoice_footer: serverSettings.invoice_footer || 'Thank you for your business!',
+        paper_size: serverSettings.paper_size || 'A4',
+        show_logo: serverSettings.show_logo ?? true,
+      }))
+    }
+  }, [serverSettings])
+
+  // Save mutation
+  const saveMutation = useMutation({
+    mutationFn: (data: object) => companySettingsApi.update(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['company-settings'] })
+      // Refresh auth to update tenant_info in store
+      authApi.me().then(r => setUser(r.data))
+      toast.success('Settings saved successfully')
+    },
+    onError: () => toast.error('Failed to save settings'),
+  })
+
+  // Logo upload mutation
+  const logoUploadMutation = useMutation({
+    mutationFn: (file: File) => companySettingsApi.uploadLogo(file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['company-settings'] })
+      authApi.me().then(r => setUser(r.data))
+      toast.success('Logo uploaded successfully')
+    },
+    onError: () => toast.error('Failed to upload logo'),
+  })
+
+  // Logo remove mutation
+  const logoRemoveMutation = useMutation({
+    mutationFn: () => companySettingsApi.removeLogo(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['company-settings'] })
+      authApi.me().then(r => setUser(r.data))
+      toast.success('Logo removed')
+    },
+    onError: () => toast.error('Failed to remove logo'),
   })
 
   // Notification preferences from API
@@ -126,7 +187,6 @@ export default function Settings() {
   })
 
   const handlePrefToggle = (key: string, value: boolean) => {
-    // Optimistic update
     queryClient.setQueryData(['notification-preferences'], (old: any) => ({
       ...old,
       [key]: value,
@@ -143,7 +203,15 @@ export default function Settings() {
   }
 
   const handleSave = () => {
-    toast.success('Settings saved successfully')
+    const { session_timeout, two_factor, ...apiData } = settings
+    saveMutation.mutate(apiData)
+  }
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      logoUploadMutation.mutate(file)
+    }
   }
 
   const colorMap: Record<string, string> = {
@@ -162,8 +230,12 @@ export default function Settings() {
         subtitle="Configure system preferences and business settings"
         icon={SettingsIcon}
         actions={
-          <Button onClick={handleSave}>
-            <Check className="w-4 h-4 mr-2" />
+          <Button onClick={handleSave} disabled={saveMutation.isPending}>
+            {saveMutation.isPending ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Check className="w-4 h-4 mr-2" />
+            )}
             Save Changes
           </Button>
         }
@@ -217,297 +289,349 @@ export default function Settings() {
             animate={{ opacity: 1, y: 0 }}
             className="bg-white rounded-xl border border-gray-200 p-6"
           >
-            {activeSection === 'company' && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Company Information</h3>
-                  <p className="text-sm text-gray-500">Update your business details and branding</p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Input
-                    label="Company Name"
-                    value={settings.company_name}
-                    onChange={(e) => setSettings({ ...settings, company_name: e.target.value })}
-                  />
-                  <Input
-                    label="Email"
-                    type="email"
-                    value={settings.company_email}
-                    onChange={(e) => setSettings({ ...settings, company_email: e.target.value })}
-                  />
-                  <Input
-                    label="Phone"
-                    value={settings.company_phone}
-                    onChange={(e) => setSettings({ ...settings, company_phone: e.target.value })}
-                  />
-                  <Input
-                    label="Address"
-                    value={settings.company_address}
-                    onChange={(e) => setSettings({ ...settings, company_address: e.target.value })}
-                  />
-                </div>
+            {settingsLoading && activeSection !== 'notifications' && activeSection !== 'security' ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-primary-500" />
+                <span className="ml-2 text-sm text-gray-500">Loading settings...</span>
               </div>
-            )}
-
-            {activeSection === 'currency' && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Currency Settings</h3>
-                  <p className="text-sm text-gray-500">Configure your default and secondary currencies</p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Primary Currency</label>
-                    <select
-                      value={settings.default_currency}
-                      onChange={(e) => setSettings({ ...settings, default_currency: e.target.value })}
-                      className="w-full px-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-                    >
-                      <option value="USD">USD - US Dollar</option>
-                      <option value="ZiG">ZiG - Zimbabwe Gold</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Secondary Currency</label>
-                    <select
-                      value={settings.secondary_currency}
-                      onChange={(e) => setSettings({ ...settings, secondary_currency: e.target.value })}
-                      className="w-full px-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-                    >
-                      <option value="ZiG">ZiG - Zimbabwe Gold</option>
-                      <option value="USD">USD - US Dollar</option>
-                    </select>
-                  </div>
-                  <Input
-                    label="Exchange Rate"
-                    type="number"
-                    step="0.01"
-                    value={settings.exchange_rate}
-                    onChange={(e) => setSettings({ ...settings, exchange_rate: e.target.value })}
-                  />
-                </div>
-              </div>
-            )}
-
-            {activeSection === 'notifications' && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Notification Preferences</h3>
-                  <p className="text-sm text-gray-500">Choose how you want to receive notifications. Changes save automatically.</p>
-                </div>
-
-                {prefsLoading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="w-6 h-6 animate-spin text-primary-500" />
-                    <span className="ml-2 text-sm text-gray-500">Loading preferences...</span>
-                  </div>
-                ) : (
-                  <>
-                    {/* Email Notifications */}
+            ) : (
+              <>
+                {activeSection === 'company' && (
+                  <div className="space-y-6">
                     <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <Mail className="w-4 h-4 text-gray-500" />
-                        <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Email Notifications</h4>
-                      </div>
-                      <div className="space-y-2">
-                        {emailPrefConfig.map((pref) => {
-                          const Icon = pref.icon
-                          const checked = notifPrefs?.[pref.key as keyof NotificationPref] ?? true
-                          return (
-                            <label key={pref.key} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
-                              <div className="flex items-center gap-3">
-                                <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', pref.color)}>
-                                  <Icon className="w-4 h-4" />
-                                </div>
-                                <div>
-                                  <p className="text-sm font-medium text-gray-900">{pref.label}</p>
-                                  <p className="text-xs text-gray-500">{pref.description}</p>
-                                </div>
-                              </div>
-                              <input
-                                type="checkbox"
-                                checked={!!checked}
-                                onChange={(e) => handlePrefToggle(pref.key, e.target.checked)}
-                                className="w-5 h-5 rounded text-primary-600 focus:ring-primary-500"
-                              />
-                            </label>
-                          )
-                        })}
-                      </div>
+                      <h3 className="text-lg font-semibold text-gray-900">Company Information</h3>
+                      <p className="text-sm text-gray-500">Update your business details and branding</p>
                     </div>
 
-                    {/* In-App Notifications */}
+                    {/* Logo Upload */}
                     <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <Bell className="w-4 h-4 text-gray-500" />
-                        <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">In-App Notifications</h4>
-                      </div>
-                      <div className="space-y-2">
-                        {pushPrefConfig.map((pref) => {
-                          const Icon = pref.icon
-                          const checked = notifPrefs?.[pref.key as keyof NotificationPref] ?? true
-                          return (
-                            <label key={pref.key} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
-                              <div className="flex items-center gap-3">
-                                <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', pref.color)}>
-                                  <Icon className="w-4 h-4" />
-                                </div>
-                                <div>
-                                  <p className="text-sm font-medium text-gray-900">{pref.label}</p>
-                                  <p className="text-xs text-gray-500">{pref.description}</p>
-                                </div>
-                              </div>
-                              <input
-                                type="checkbox"
-                                checked={!!checked}
-                                onChange={(e) => handlePrefToggle(pref.key, e.target.checked)}
-                                className="w-5 h-5 rounded text-primary-600 focus:ring-primary-500"
-                              />
-                            </label>
-                          )
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Daily Digest */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <Inbox className="w-4 h-4 text-gray-500" />
-                        <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Daily Digest</h4>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-indigo-100 text-indigo-600">
-                              <Inbox className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium text-gray-900">Daily Digest Email</p>
-                              <p className="text-xs text-gray-500">Receive a summary of all notifications once a day</p>
-                            </div>
+                      <label className="block text-sm font-medium text-gray-700 mb-3">Company Logo</label>
+                      <div className="flex items-center gap-4">
+                        <div className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden bg-gray-50">
+                          {serverSettings?.logo_url ? (
+                            <img src={serverSettings.logo_url} alt="Logo" className="w-full h-full object-contain" />
+                          ) : (
+                            <ImageIcon className="w-8 h-8 text-gray-300" />
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => fileInputRef.current?.click()}
+                              disabled={logoUploadMutation.isPending}
+                            >
+                              {logoUploadMutation.isPending ? (
+                                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                              ) : (
+                                <Upload className="w-4 h-4 mr-1.5" />
+                              )}
+                              Upload
+                            </Button>
+                            {serverSettings?.logo_url && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => logoRemoveMutation.mutate()}
+                                disabled={logoRemoveMutation.isPending}
+                              >
+                                <X className="w-4 h-4 mr-1.5" />
+                                Remove
+                              </Button>
+                            )}
                           </div>
-                          <input
-                            type="checkbox"
-                            checked={!!notifPrefs?.daily_digest}
-                            onChange={(e) => handlePrefToggle('daily_digest', e.target.checked)}
-                            className="w-5 h-5 rounded text-primary-600 focus:ring-primary-500"
-                          />
-                        </label>
-                        {notifPrefs?.daily_digest && (
-                          <div className="ml-12 p-3 bg-gray-50 rounded-xl">
-                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Delivery Time</label>
-                            <input
-                              type="time"
-                              value={notifPrefs?.digest_time || '08:00'}
-                              onChange={(e) => handleDigestTimeChange(e.target.value)}
-                              className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-                            />
-                          </div>
-                        )}
+                          <p className="text-xs text-gray-400">PNG, JPG up to 2MB. Appears on printed documents.</p>
+                        </div>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoUpload}
+                          className="hidden"
+                        />
                       </div>
                     </div>
-                  </>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        label="Company Name"
+                        value={settings.name}
+                        onChange={(e) => setSettings({ ...settings, name: e.target.value })}
+                      />
+                      <Input
+                        label="Email"
+                        type="email"
+                        value={settings.email}
+                        onChange={(e) => setSettings({ ...settings, email: e.target.value })}
+                      />
+                      <Input
+                        label="Phone"
+                        value={settings.phone}
+                        onChange={(e) => setSettings({ ...settings, phone: e.target.value })}
+                      />
+                      <Input
+                        label="Address"
+                        value={settings.address}
+                        onChange={(e) => setSettings({ ...settings, address: e.target.value })}
+                      />
+                    </div>
+                  </div>
                 )}
-              </div>
-            )}
 
-            {activeSection === 'invoicing' && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Invoice Settings</h3>
-                  <p className="text-sm text-gray-500">Customize your invoice templates</p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Input
-                    label="Invoice Prefix"
-                    value={settings.invoice_prefix}
-                    onChange={(e) => setSettings({ ...settings, invoice_prefix: e.target.value })}
-                    placeholder="INV-"
-                  />
-                  <Input
-                    label="Invoice Footer"
-                    value={settings.invoice_footer}
-                    onChange={(e) => setSettings({ ...settings, invoice_footer: e.target.value })}
-                    placeholder="Thank you message..."
-                  />
-                </div>
-              </div>
-            )}
-
-            {activeSection === 'printing' && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Print Settings</h3>
-                  <p className="text-sm text-gray-500">Configure print layouts and paper size</p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Paper Size</label>
-                    <select
-                      value={settings.paper_size}
-                      onChange={(e) => setSettings({ ...settings, paper_size: e.target.value })}
-                      className="w-full px-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-                    >
-                      <option value="A4">A4</option>
-                      <option value="Letter">Letter</option>
-                      <option value="Legal">Legal</option>
-                    </select>
-                  </div>
-                  <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={settings.show_logo}
-                      onChange={(e) => setSettings({ ...settings, show_logo: e.target.checked })}
-                      className="w-5 h-5 rounded text-primary-600 focus:ring-primary-500"
-                    />
+                {activeSection === 'currency' && (
+                  <div className="space-y-6">
                     <div>
-                      <p className="text-sm font-medium text-gray-900">Show Logo on Documents</p>
-                      <p className="text-xs text-gray-500">Include company logo on printed documents</p>
+                      <h3 className="text-lg font-semibold text-gray-900">Currency Settings</h3>
+                      <p className="text-sm text-gray-500">Configure your default and secondary currencies</p>
                     </div>
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {activeSection === 'security' && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Security Settings</h3>
-                  <p className="text-sm text-gray-500">Manage your account security</p>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Session Timeout (minutes)</label>
-                    <select
-                      value={settings.session_timeout}
-                      onChange={(e) => setSettings({ ...settings, session_timeout: e.target.value })}
-                      className="w-full md:w-1/3 px-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-                    >
-                      <option value="15">15 minutes</option>
-                      <option value="30">30 minutes</option>
-                      <option value="60">1 hour</option>
-                      <option value="120">2 hours</option>
-                    </select>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <Select
+                        label="Primary Currency"
+                        value={settings.default_currency}
+                        onChange={(e) => setSettings({ ...settings, default_currency: e.target.value })}
+                        options={[
+                          { value: 'USD', label: 'USD - US Dollar' },
+                          { value: 'ZiG', label: 'ZiG - Zimbabwe Gold' },
+                        ]}
+                      />
+                      <Select
+                        label="Secondary Currency"
+                        value={settings.secondary_currency}
+                        onChange={(e) => setSettings({ ...settings, secondary_currency: e.target.value })}
+                        options={[
+                          { value: 'ZiG', label: 'ZiG - Zimbabwe Gold' },
+                          { value: 'USD', label: 'USD - US Dollar' },
+                        ]}
+                      />
+                      <Input
+                        label="Exchange Rate"
+                        type="number"
+                        step="0.01"
+                        value={settings.exchange_rate}
+                        onChange={(e) => setSettings({ ...settings, exchange_rate: e.target.value })}
+                      />
+                    </div>
                   </div>
-                  <label className="flex items-center justify-between p-4 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
-                        <Shield className="w-5 h-5 text-red-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">Two-Factor Authentication</p>
-                        <p className="text-xs text-gray-500">Add an extra layer of security</p>
-                      </div>
+                )}
+
+                {activeSection === 'notifications' && (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Notification Preferences</h3>
+                      <p className="text-sm text-gray-500">Choose how you want to receive notifications. Changes save automatically.</p>
                     </div>
-                    <input
-                      type="checkbox"
-                      checked={settings.two_factor}
-                      onChange={(e) => setSettings({ ...settings, two_factor: e.target.checked })}
-                      className="w-5 h-5 rounded text-primary-600 focus:ring-primary-500"
-                    />
-                  </label>
-                </div>
-              </div>
+
+                    {prefsLoading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <Loader2 className="w-6 h-6 animate-spin text-primary-500" />
+                        <span className="ml-2 text-sm text-gray-500">Loading preferences...</span>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Email Notifications */}
+                        <div>
+                          <div className="flex items-center gap-2 mb-3">
+                            <Mail className="w-4 h-4 text-gray-500" />
+                            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Email Notifications</h4>
+                          </div>
+                          <div className="space-y-2">
+                            {emailPrefConfig.map((pref) => {
+                              const Icon = pref.icon
+                              const checked = notifPrefs?.[pref.key as keyof NotificationPref] ?? true
+                              return (
+                                <label key={pref.key} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
+                                  <div className="flex items-center gap-3">
+                                    <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', pref.color)}>
+                                      <Icon className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-medium text-gray-900">{pref.label}</p>
+                                      <p className="text-xs text-gray-500">{pref.description}</p>
+                                    </div>
+                                  </div>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!checked}
+                                    onChange={(e) => handlePrefToggle(pref.key, e.target.checked)}
+                                    className="w-5 h-5 rounded text-primary-600 focus:ring-primary-500"
+                                  />
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        {/* In-App Notifications */}
+                        <div>
+                          <div className="flex items-center gap-2 mb-3">
+                            <Bell className="w-4 h-4 text-gray-500" />
+                            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">In-App Notifications</h4>
+                          </div>
+                          <div className="space-y-2">
+                            {pushPrefConfig.map((pref) => {
+                              const Icon = pref.icon
+                              const checked = notifPrefs?.[pref.key as keyof NotificationPref] ?? true
+                              return (
+                                <label key={pref.key} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
+                                  <div className="flex items-center gap-3">
+                                    <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', pref.color)}>
+                                      <Icon className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-medium text-gray-900">{pref.label}</p>
+                                      <p className="text-xs text-gray-500">{pref.description}</p>
+                                    </div>
+                                  </div>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!checked}
+                                    onChange={(e) => handlePrefToggle(pref.key, e.target.checked)}
+                                    className="w-5 h-5 rounded text-primary-600 focus:ring-primary-500"
+                                  />
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Daily Digest */}
+                        <div>
+                          <div className="flex items-center gap-2 mb-3">
+                            <Inbox className="w-4 h-4 text-gray-500" />
+                            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Daily Digest</h4>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="flex items-center justify-between p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-indigo-100 text-indigo-600">
+                                  <Inbox className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-gray-900">Daily Digest Email</p>
+                                  <p className="text-xs text-gray-500">Receive a summary of all notifications once a day</p>
+                                </div>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={!!notifPrefs?.daily_digest}
+                                onChange={(e) => handlePrefToggle('daily_digest', e.target.checked)}
+                                className="w-5 h-5 rounded text-primary-600 focus:ring-primary-500"
+                              />
+                            </label>
+                            {notifPrefs?.daily_digest && (
+                              <div className="ml-12 p-3 bg-gray-50 rounded-xl">
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Delivery Time</label>
+                                <input
+                                  type="time"
+                                  value={notifPrefs?.digest_time || '08:00'}
+                                  onChange={(e) => handleDigestTimeChange(e.target.value)}
+                                  className="px-3 py-2 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {activeSection === 'invoicing' && (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Invoice Settings</h3>
+                      <p className="text-sm text-gray-500">Customize your invoice templates</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        label="Invoice Prefix"
+                        value={settings.invoice_prefix}
+                        onChange={(e) => setSettings({ ...settings, invoice_prefix: e.target.value })}
+                        placeholder="INV-"
+                      />
+                      <Input
+                        label="Invoice Footer"
+                        value={settings.invoice_footer}
+                        onChange={(e) => setSettings({ ...settings, invoice_footer: e.target.value })}
+                        placeholder="Thank you message..."
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {activeSection === 'printing' && (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Print Settings</h3>
+                      <p className="text-sm text-gray-500">Configure print layouts and paper size</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Select
+                        label="Paper Size"
+                        value={settings.paper_size}
+                        onChange={(e) => setSettings({ ...settings, paper_size: e.target.value })}
+                        options={[
+                          { value: 'A4', label: 'A4' },
+                          { value: 'Letter', label: 'Letter' },
+                          { value: 'Legal', label: 'Legal' },
+                        ]}
+                      />
+                      <label className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={settings.show_logo}
+                          onChange={(e) => setSettings({ ...settings, show_logo: e.target.checked })}
+                          className="w-5 h-5 rounded text-primary-600 focus:ring-primary-500"
+                        />
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">Show Logo on Documents</p>
+                          <p className="text-xs text-gray-500">Include company logo on printed documents</p>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {activeSection === 'security' && (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Security Settings</h3>
+                      <p className="text-sm text-gray-500">Manage your account security</p>
+                    </div>
+                    <div className="space-y-4">
+                      <Select
+                        label="Session Timeout (minutes)"
+                        value={settings.session_timeout}
+                        onChange={(e) => setSettings({ ...settings, session_timeout: e.target.value })}
+                        options={[
+                          { value: '15', label: '15 minutes' },
+                          { value: '30', label: '30 minutes' },
+                          { value: '60', label: '1 hour' },
+                          { value: '120', label: '2 hours' },
+                        ]}
+                      />
+                      <label className="flex items-center justify-between p-4 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
+                            <Shield className="w-5 h-5 text-red-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">Two-Factor Authentication</p>
+                            <p className="text-xs text-gray-500">Add an extra layer of security</p>
+                          </div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={settings.two_factor}
+                          onChange={(e) => setSettings({ ...settings, two_factor: e.target.checked })}
+                          className="w-5 h-5 rounded text-primary-600 focus:ring-primary-500"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </motion.div>
         </div>

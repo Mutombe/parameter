@@ -14,6 +14,7 @@ import {
   CheckCircle,
 } from 'lucide-react'
 import { tenantsApi } from '../services/api'
+import { Select } from '../components/ui'
 import { cn } from '../lib/utils'
 import { useThemeEffect } from '../hooks/useThemeEffect'
 import toast from 'react-hot-toast'
@@ -292,19 +293,15 @@ export default function Register() {
                         placeholder="+263 77 123 4567"
                       />
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Currency
-                      </label>
-                      <select
-                        value={formData.default_currency}
-                        onChange={(e) => updateForm('default_currency', e.target.value)}
-                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
-                      >
-                        <option value="USD">USD - US Dollar</option>
-                        <option value="ZiG">ZiG - Zimbabwe Gold</option>
-                      </select>
-                    </div>
+                    <Select
+                      label="Currency"
+                      value={formData.default_currency}
+                      onChange={(e) => updateForm('default_currency', e.target.value)}
+                      options={[
+                        { value: 'USD', label: 'USD - US Dollar' },
+                        { value: 'ZiG', label: 'ZiG - Zimbabwe Gold' },
+                      ]}
+                    />
                   </div>
                 </div>
               </motion.div>

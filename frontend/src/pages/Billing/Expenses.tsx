@@ -22,11 +22,16 @@ import {
   FileText,
   Check,
   Ban,
+  Download,
+  Trash2,
 } from 'lucide-react'
 import { expenseApi, landlordApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
+import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
+import { exportTableData } from '../../lib/export'
+import { useSelection } from '../../hooks/useSelection'
 
 interface Expense {
   id: number | string
@@ -137,6 +142,9 @@ export default function Expenses() {
   const [showPayConfirm, setShowPayConfirm] = useState<Expense | null>(null)
 
   const debouncedSearch = useDebounce(searchQuery, 300)
+
+  const selection = useSelection<number | string>({ clearOnChange: [debouncedSearch, statusFilter, typeFilter] })
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
 
   // Fetch expenses
   const { data: expenses = [], isLoading, error } = useQuery({
@@ -285,6 +293,49 @@ export default function Expenses() {
     createMutation.mutate(data)
   }
 
+  const selectableItems = (expenses || []).filter((e: any) => !e._isOptimistic)
+  const pageIds = selectableItems.map((e: any) => e.id)
+
+  const handleBulkExport = () => {
+    const selected = selectableItems.filter((e: any) => selection.isSelected(e.id))
+    exportTableData(selected, [
+      { key: 'description', header: 'Description' },
+      { key: 'amount', header: 'Amount' },
+      { key: 'category_name', header: 'Category' },
+      { key: 'date', header: 'Date' },
+      { key: 'status', header: 'Status' },
+      { key: 'vendor', header: 'Vendor' },
+    ], 'expenses_export')
+    showToast.success(`Exported ${selected.length} expenses`)
+  }
+
+  const handleBulkApprove = async () => {
+    const ids = Array.from(selection.selectedIds)
+    let approved = 0
+    for (const id of ids) {
+      try { await expenseApi.approve(id as number); approved++ } catch {}
+    }
+    selection.clearSelection()
+    queryClient.invalidateQueries({ queryKey: ['expenses'] })
+    showToast.success(`Approved ${approved} expenses`)
+  }
+
+  const handleBulkDelete = () => {
+    setConfirmDialog({
+      open: true,
+      title: `Delete ${selection.selectedCount} expenses?`,
+      message: 'This action cannot be undone.',
+      onConfirm: async () => {
+        const ids = Array.from(selection.selectedIds)
+        for (const id of ids) { try { await expenseApi.delete(id as number) } catch {} }
+        selection.clearSelection()
+        queryClient.invalidateQueries({ queryKey: ['expenses'] })
+        showToast.success(`Deleted ${ids.length} expenses`)
+        setConfirmDialog(d => ({ ...d, open: false }))
+      },
+    })
+  }
+
   if (isLoading) {
     return (
       <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
@@ -408,27 +459,41 @@ export default function Expenses() {
             className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
           />
         </div>
-        <select
+        <Select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-        >
-          <option value="">All Status</option>
-          <option value="pending">Pending</option>
-          <option value="approved">Approved</option>
-          <option value="paid">Paid</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-        <select
+          placeholder="All Status"
+          options={[
+            { value: '', label: 'All Status' },
+            { value: 'pending', label: 'Pending' },
+            { value: 'approved', label: 'Approved' },
+            { value: 'paid', label: 'Paid' },
+            { value: 'cancelled', label: 'Cancelled' },
+          ]}
+        />
+        <Select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
           className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-        >
-          <option value="">All Types</option>
-          {expenseTypes.map(type => (
-            <option key={type.value} value={type.value}>{type.label}</option>
-          ))}
-        </select>
+          placeholder="All Types"
+          options={[
+            { value: '', label: 'All Types' },
+            ...expenseTypes,
+          ]}
+        />
+        <div className="flex items-center gap-3 ml-auto">
+          {selectableItems.length > 0 && (
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-500">
+              <SelectionCheckbox
+                checked={selection.isAllPageSelected(pageIds)}
+                indeterminate={selection.isPartialPageSelected(pageIds)}
+                onChange={() => selection.selectPage(pageIds)}
+              />
+              Select all
+            </label>
+          )}
+        </div>
       </div>
 
       {/* Expenses List */}
@@ -459,12 +524,21 @@ export default function Expenses() {
                   exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ delay: index * 0.05 }}
                   className={cn(
-                    "bg-white rounded-xl border p-4 hover:shadow-md transition-all cursor-pointer",
+                    "bg-white rounded-xl border p-4 pl-12 hover:shadow-md transition-all cursor-pointer relative",
                     config.borderColor,
-                    expense._isOptimistic && "opacity-60"
+                    expense._isOptimistic && "opacity-60",
+                    selection.isSelected(expense.id) && "ring-2 ring-blue-500 border-blue-300"
                   )}
                   onClick={() => navigate(`/dashboard/expenses/${expense.id}`)}
                 >
+                  {!expense._isOptimistic && (
+                    <div className="absolute top-4 left-3" onClick={(e) => e.stopPropagation()}>
+                      <SelectionCheckbox
+                        checked={selection.isSelected(expense.id)}
+                        onChange={() => selection.toggle(expense.id)}
+                      />
+                    </div>
+                  )}
                   <div className="flex items-center gap-4">
                     <div className={cn("p-3 rounded-xl", config.bgColor)}>
                       <StatusIcon className={cn("h-6 w-6", config.color)} />
@@ -725,6 +799,27 @@ export default function Expenses() {
         message={`Are you sure you want to pay expense ${showPayConfirm?.expense_number} for ${formatCurrency(showPayConfirm?.amount || 0)}? This will create a journal entry and post to the ledger.`}
         confirmText="Pay & Post"
         isLoading={payMutation.isPending}
+      />
+
+      <BulkActionsBar
+        selectedCount={selection.selectedCount}
+        onClearSelection={selection.clearSelection}
+        entityName="expenses"
+        actions={[
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
+          { label: 'Approve', icon: Check, onClick: handleBulkApprove, variant: 'primary' },
+          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger' },
+        ]}
+      />
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type="danger"
+        confirmText="Confirm"
       />
     </div>
   )

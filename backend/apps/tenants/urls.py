@@ -8,7 +8,8 @@ from .views import (
     CompanyOnboardingView, SubdomainCheckView, SubscriptionPlansView,
     TenantInvitationViewSet, AcceptTenantInvitationView, DemoSignupView,
     DemoSignupStatusView, ProcessDemoSignupView,
-    SeedDemoDataView, CreateDemoTenantView, TenantDebugView
+    SeedDemoDataView, CreateDemoTenantView, TenantDebugView,
+    CompanySettingsView, CompanyLogoUploadView, CompanyLogoProxyView,
 )
 
 router = DefaultRouter()
@@ -18,6 +19,10 @@ router.register('invitations', TenantInvitationViewSet, basename='tenant-invitat
 
 urlpatterns = [
     path('', include(router.urls)),
+    # Company Settings (authenticated tenant users)
+    path('company-settings/', CompanySettingsView.as_view(), name='company-settings'),
+    path('company-settings/logo/', CompanyLogoUploadView.as_view(), name='company-logo'),
+    path('company-settings/logo/proxy/', CompanyLogoProxyView.as_view(), name='company-logo-proxy'),
     # Public health check (for Render.com monitoring)
     path('healthz/', PublicHealthCheckView.as_view(), name='public-health-check'),
     # Company Onboarding (Public)

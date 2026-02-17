@@ -7,7 +7,9 @@ from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAdminUser
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.http import HttpResponse
 from django_tenants.utils import tenant_context
 from .models import Client, Domain, GlobalSettings, TenantInvitation
 from .serializers import (
@@ -15,10 +17,100 @@ from .serializers import (
     DomainSerializer, GlobalSettingsSerializer,
     CompanyOnboardingSerializer, SubdomainCheckSerializer,
     TenantInvitationSerializer, CreateTenantInvitationSerializer,
-    AcceptTenantInvitationSerializer, DemoSignupSerializer
+    AcceptTenantInvitationSerializer, DemoSignupSerializer,
+    CompanySettingsSerializer
 )
 from .onboarding import OnboardingService
 from apps.accounts.models import User
+
+
+class CompanySettingsView(APIView):
+    """GET/PATCH company settings for the current tenant."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        tenant = request.tenant
+        serializer = CompanySettingsSerializer(tenant, context={'request': request})
+        return Response(serializer.data)
+
+    def patch(self, request):
+        tenant = request.tenant
+        serializer = CompanySettingsSerializer(
+            tenant, data=request.data, partial=True, context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class CompanyLogoUploadView(APIView):
+    """Upload or remove company logo."""
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        tenant = request.tenant
+        logo = request.FILES.get('logo')
+        if not logo:
+            return Response(
+                {'error': 'No logo file provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        # Remove old logo if exists
+        if tenant.logo:
+            tenant.logo.delete(save=False)
+        tenant.logo = logo
+        tenant.save(update_fields=['logo', 'updated_at'])
+        serializer = CompanySettingsSerializer(tenant, context={'request': request})
+        return Response(serializer.data)
+
+    def delete(self, request):
+        tenant = request.tenant
+        if tenant.logo:
+            tenant.logo.delete(save=False)
+            tenant.logo = None
+            tenant.save(update_fields=['logo', 'updated_at'])
+        return Response({'message': 'Logo removed'})
+
+
+class CompanyLogoProxyView(APIView):
+    """Serve the tenant logo through the same origin to avoid CORS issues (PDF export).
+    Accepts ?t=<subdomain> query param for requests that can't send headers (e.g. <img> tags).
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        tenant = getattr(request, 'tenant', None)
+
+        # If middleware resolved to public schema, try subdomain from query param
+        if not tenant or tenant.schema_name == 'public':
+            subdomain = request.GET.get('t', '').lower().strip()
+            if subdomain:
+                schema_name = subdomain.replace('-', '_').replace(' ', '_')
+                try:
+                    tenant = Client.objects.get(schema_name=schema_name)
+                except Client.DoesNotExist:
+                    return Response({'error': 'Not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not tenant or not tenant.logo:
+            return Response({'error': 'No logo'}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            logo_file = tenant.logo.open('rb')
+            content = logo_file.read()
+            logo_file.close()
+            # Determine content type from file name
+            name = tenant.logo.name.lower()
+            if name.endswith('.png'):
+                ct = 'image/png'
+            elif name.endswith('.svg'):
+                ct = 'image/svg+xml'
+            else:
+                ct = 'image/jpeg'
+            response = HttpResponse(content, content_type=ct)
+            response['Cache-Control'] = 'public, max-age=86400'
+            return response
+        except Exception:
+            return Response({'error': 'Unable to read logo'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class ClientViewSet(viewsets.ModelViewSet):

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff, Loader2, Building2, Shield, BarChart3, AlertTriangle } from 'lucide-react'
@@ -24,13 +24,20 @@ export default function Login() {
   useThemeEffect()
   const navigate = useNavigate()
   const location = useLocation()
-  const { setUser } = useAuthStore()
+  const { setUser, isAuthenticated, user } = useAuthStore()
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({
     email: '',
     password: '',
   })
+
+  // Redirect authenticated users to their dashboard
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate(user?.role === 'tenant_portal' ? '/portal' : '/dashboard', { replace: true })
+    }
+  }, [isAuthenticated, user, navigate])
 
   // Check if redirected from demo expiry
   const demoExpired = location.state?.demoExpired

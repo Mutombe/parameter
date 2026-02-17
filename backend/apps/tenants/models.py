@@ -61,6 +61,18 @@ class Client(TenantMixin):
 
     # Multi-currency
     default_currency = models.CharField(max_length=3, default='USD')
+    secondary_currency = models.CharField(max_length=3, default='ZiG')
+    exchange_rate = models.DecimalField(max_digits=12, decimal_places=2, default=25.00)
+
+    # Invoice & Print Settings
+    invoice_prefix = models.CharField(max_length=20, default='INV-')
+    invoice_footer = models.TextField(default='Thank you for your business!')
+    paper_size = models.CharField(
+        max_length=10,
+        choices=[('A4', 'A4'), ('Letter', 'Letter'), ('Legal', 'Legal')],
+        default='A4'
+    )
+    show_logo = models.BooleanField(default=True)
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)

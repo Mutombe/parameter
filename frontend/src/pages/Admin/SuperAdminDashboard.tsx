@@ -31,6 +31,7 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import { tenantsApi, tenantInvitationsApi } from '../../services/api'
+import { Select, TimeAgo } from '../../components/ui'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { useAuthStore } from '../../stores/authStore'
 import { showToast, parseApiError } from '../../lib/toast'
@@ -506,17 +507,18 @@ export default function SuperAdminDashboard() {
                       className="pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent w-64 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                     />
                   </div>
-                  <select
+                  <Select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
                     className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-                  >
-                    <option value="all">All Status</option>
-                    <option value="active">Active</option>
-                    <option value="trial">Trial</option>
-                    <option value="suspended">Suspended</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
+                    options={[
+                      { value: 'all', label: 'All Status' },
+                      { value: 'active', label: 'Active' },
+                      { value: 'trial', label: 'Trial' },
+                      { value: 'suspended', label: 'Suspended' },
+                      { value: 'cancelled', label: 'Cancelled' },
+                    ]}
+                  />
                 </div>
               </div>
             </div>
@@ -564,7 +566,7 @@ export default function SuperAdminDashboard() {
                         </td>
                         <td className="py-4 px-6 text-sm text-gray-900">{tenant.users || tenant.users_count || 0}</td>
                         <td className="py-4 px-6 text-sm text-gray-900">{tenant.properties || tenant.properties_count || 0}</td>
-                        <td className="py-4 px-6 text-sm text-gray-500">{tenant.created_at ? formatDate(tenant.created_at) : '-'}</td>
+                        <td className="py-4 px-6 text-sm text-gray-500">{tenant.created_at ? <TimeAgo date={tenant.created_at} /> : '-'}</td>
                         <td className="py-4 px-6 text-right">
                           <div className="flex items-center justify-end gap-2 relative">
                             <button className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors" title="View details">
@@ -729,7 +731,7 @@ export default function SuperAdminDashboard() {
                             {invitation.status}
                           </span>
                         </td>
-                        <td className="py-4 px-6 text-sm text-gray-500">{invitation.created_at ? formatDate(invitation.created_at) : '-'}</td>
+                        <td className="py-4 px-6 text-sm text-gray-500">{invitation.created_at ? <TimeAgo date={invitation.created_at} /> : '-'}</td>
                         <td className="py-4 px-6 text-sm text-gray-500">{invitation.expires_at ? formatDate(invitation.expires_at) : '-'}</td>
                         <td className="py-4 px-6 text-right">
                           {invitation.status === 'pending' && (
@@ -841,27 +843,29 @@ export default function SuperAdminDashboard() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Account Type</label>
-                  <select
+                  <Select
                     value={inviteForm.invitation_type}
                     onChange={(e) => setInviteForm({ ...inviteForm, invitation_type: e.target.value as 'full' | 'demo' })}
                     className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-                  >
-                    <option value="full">Full Account</option>
-                    <option value="demo">Demo Account (2 hours)</option>
-                  </select>
+                    options={[
+                      { value: 'full', label: 'Full Account' },
+                      { value: 'demo', label: 'Demo Account (2 hours)' },
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Subscription Plan</label>
-                  <select
+                  <Select
                     value={inviteForm.subscription_plan}
                     onChange={(e) => setInviteForm({ ...inviteForm, subscription_plan: e.target.value })}
                     className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-                  >
-                    <option value="free">Free Trial</option>
-                    <option value="basic">Basic</option>
-                    <option value="professional">Professional</option>
-                    <option value="enterprise">Enterprise</option>
-                  </select>
+                    options={[
+                      { value: 'free', label: 'Free Trial' },
+                      { value: 'basic', label: 'Basic' },
+                      { value: 'professional', label: 'Professional' },
+                      { value: 'enterprise', label: 'Enterprise' },
+                    ]}
+                  />
                 </div>
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Personal Message (optional)</label>

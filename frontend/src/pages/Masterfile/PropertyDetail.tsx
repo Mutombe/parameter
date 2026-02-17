@@ -244,7 +244,8 @@ export default function PropertyDetail() {
   // Unit data
   const units = unitsData?.results || unitsData || []
   const totalUnits = units.length || property?.total_units || 0
-  const occupiedUnits = units.filter((u: any) => u.is_occupied).length
+  // Derive occupancy from current_tenant (dynamically computed) instead of is_occupied (static boolean)
+  const occupiedUnits = units.filter((u: any) => !!u.current_tenant).length
   const vacantUnits = totalUnits - occupiedUnits
   const occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0
 
@@ -653,18 +654,18 @@ export default function PropertyDetail() {
                     <td className="px-6 py-4">
                       <span className={cn(
                         'inline-flex px-2 py-0.5 rounded-full text-xs font-medium',
-                        unit.is_occupied ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                        unit.current_tenant ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
                       )}>
-                        {unit.is_occupied ? 'Occupied' : 'Vacant'}
+                        {unit.current_tenant ? 'Occupied' : 'Vacant'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {unit.tenant_name ? (
+                      {unit.current_tenant ? (
                         <button
-                          onClick={() => unit.tenant && navigate(`/dashboard/tenants/${unit.tenant}`)}
+                          onClick={() => unit.current_tenant?.id && navigate(`/dashboard/tenants/${unit.current_tenant.id}`)}
                           className="text-primary-600 hover:text-primary-700"
                         >
-                          {unit.tenant_name}
+                          {unit.current_tenant.name}
                         </button>
                       ) : '-'}
                     </td>
@@ -740,12 +741,12 @@ export default function PropertyDetail() {
             value={editForm.landlord}
             onChange={(e) => setEditForm({ ...editForm, landlord: e.target.value })}
             required
-          >
-            <option value="">Select a landlord</option>
-            {landlords?.map((l: any) => (
-              <option key={l.id} value={l.id}>{l.name}</option>
-            ))}
-          </Select>
+            placeholder="Select a landlord"
+            options={[
+              { value: '', label: 'Select a landlord' },
+              ...(landlords || []).map((l: any) => ({ value: String(l.id), label: l.name })),
+            ]}
+          />
 
           <Input
             label="Property Name"
@@ -760,12 +761,13 @@ export default function PropertyDetail() {
               label="Property Type"
               value={editForm.property_type}
               onChange={(e) => setEditForm({ ...editForm, property_type: e.target.value })}
-            >
-              <option value="residential">Residential</option>
-              <option value="commercial">Commercial</option>
-              <option value="industrial">Industrial</option>
-              <option value="mixed">Mixed Use</option>
-            </Select>
+              options={[
+                { value: 'residential', label: 'Residential' },
+                { value: 'commercial', label: 'Commercial' },
+                { value: 'industrial', label: 'Industrial' },
+                { value: 'mixed', label: 'Mixed Use' },
+              ]}
+            />
 
             <Input
               type="number"

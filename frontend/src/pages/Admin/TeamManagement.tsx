@@ -12,15 +12,20 @@ import {
   Clock,
   AlertTriangle,
   Shield,
+  Upload,
+  Download,
+  FileText,
+  Loader2,
+  X,
 } from 'lucide-react'
 import { invitationsApi, usersApi } from '../../services/api'
-import { formatDistanceToNow } from '../../lib/utils'
-import { PageHeader, Button, Modal } from '../../components/ui'
+import { PageHeader, Button, Modal, SelectionCheckbox, BulkActionsBar, TimeAgo } from '../../components/ui'
 import toast from 'react-hot-toast'
 import { SiFsecure } from "react-icons/si";
 import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
 import { useAuthStore } from '../../stores/authStore'
+import { useSelection } from '../../hooks/useSelection'
 
 
 // Full list of role options with descriptions
@@ -45,19 +50,45 @@ const statusIcons: Record<string, any> = {
   cancelled: XCircle,
 }
 
+interface BulkInviteResult {
+  row: number
+  email: string
+  status: 'success' | 'error'
+  error?: string
+}
+
 export default function TeamManagement() {
   const queryClient = useQueryClient()
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'users' | 'invitations'>('users')
+  const [inviteTab, setInviteTab] = useState<'single' | 'multiple' | 'csv'>('single')
   const { user: currentUser } = useAuthStore()
 
-  // Form state
+  // Form state - single invite
   const [inviteForm, setInviteForm] = useState({
     email: '',
     first_name: '',
     last_name: '',
     role: 'clerk',
   })
+
+  // Multi invite state
+  const [bulkEmails, setBulkEmails] = useState('')
+  const [bulkRole, setBulkRole] = useState('clerk')
+  const [bulkFirstName, setBulkFirstName] = useState('')
+  const [bulkLastName, setBulkLastName] = useState('')
+
+  // CSV invite state
+  const [csvFile, setCsvFile] = useState<File | null>(null)
+  const [csvRows, setCsvRows] = useState<Array<{ email: string; first_name: string; last_name: string; role: string }>>([])
+  const [csvParsed, setCsvParsed] = useState(false)
+
+  // Bulk invite results
+  const [bulkResults, setBulkResults] = useState<BulkInviteResult[] | null>(null)
+  const [bulkSending, setBulkSending] = useState(false)
+
+  // Selection for invitations tab
+  const selection = useSelection<number>({ clearOnChange: [activeTab] })
 
   // Check if current user can invite others
   const canInvite = Boolean(currentUser?.role && ['super_admin', 'admin', 'accountant'].includes(currentUser.role))
@@ -151,11 +182,154 @@ export default function TeamManagement() {
   const handleOpenInviteModal = () => {
     const defaultRole = roleOptions.length > 0 ? roleOptions[roleOptions.length - 1].value : 'clerk'
     setInviteForm({ email: '', first_name: '', last_name: '', role: defaultRole })
+    setInviteTab('single')
+    setBulkEmails('')
+    setBulkRole(defaultRole)
+    setBulkFirstName('')
+    setBulkLastName('')
+    setCsvFile(null)
+    setCsvRows([])
+    setCsvParsed(false)
+    setBulkResults(null)
     setInviteModalOpen(true)
+  }
+
+  // Bulk invite: Multiple emails
+  const handleBulkInviteMultiple = async () => {
+    const emails = bulkEmails
+      .split(/[,\n]/)
+      .map(e => e.trim())
+      .filter(e => e && e.includes('@'))
+
+    if (emails.length === 0) {
+      toast.error('Please enter at least one valid email')
+      return
+    }
+
+    setBulkSending(true)
+    try {
+      const invitations = emails.map(email => ({
+        email,
+        first_name: bulkFirstName,
+        last_name: bulkLastName,
+        role: bulkRole,
+      }))
+      const res = await invitationsApi.bulkCreate({ invitations })
+      setBulkResults(res.data.results)
+      queryClient.invalidateQueries({ queryKey: ['invitations'] })
+      toast.success(`${res.data.success_count} invitations sent`)
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to send invitations')
+    }
+    setBulkSending(false)
+  }
+
+  // CSV parsing
+  const handleCsvFile = (file: File) => {
+    setCsvFile(file)
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const text = e.target?.result as string
+      const lines = text.split('\n').filter(l => l.trim())
+      // Skip header row
+      const rows = lines.slice(1).map(line => {
+        const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''))
+        return {
+          email: cols[0] || '',
+          first_name: cols[1] || '',
+          last_name: cols[2] || '',
+          role: cols[3] || 'clerk',
+        }
+      }).filter(r => r.email && r.email.includes('@'))
+      setCsvRows(rows)
+      setCsvParsed(true)
+    }
+    reader.readAsText(file)
+  }
+
+  const handleCsvInvite = async () => {
+    if (csvRows.length === 0) return
+    setBulkSending(true)
+    try {
+      const res = await invitationsApi.bulkCreate({ invitations: csvRows })
+      setBulkResults(res.data.results)
+      queryClient.invalidateQueries({ queryKey: ['invitations'] })
+      toast.success(`${res.data.success_count} invitations sent`)
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to send invitations')
+    }
+    setBulkSending(false)
+  }
+
+  const downloadCsvTemplate = () => {
+    const csv = 'email,first_name,last_name,role\njohn@example.com,John,Doe,clerk\njane@example.com,Jane,Smith,accountant'
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'invite_template.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // Bulk actions for invitations tab
+  const handleBulkResend = async () => {
+    const ids = Array.from(selection.selectedIds)
+    let count = 0
+    for (const id of ids) {
+      try { await invitationsApi.resend(id); count++ } catch {}
+    }
+    selection.clearSelection()
+    queryClient.invalidateQueries({ queryKey: ['invitations'] })
+    toast.success(`Resent ${count} invitations`)
+  }
+
+  const handleBulkCancel = async () => {
+    const ids = Array.from(selection.selectedIds)
+    let count = 0
+    for (const id of ids) {
+      try { await invitationsApi.cancel(id); count++ } catch {}
+    }
+    selection.clearSelection()
+    queryClient.invalidateQueries({ queryKey: ['invitations'] })
+    toast.success(`Cancelled ${count} invitations`)
   }
 
   const userList = (users as any)?.results || users || []
   const invitationList = (invitations as any)?.results || invitations || []
+  const pendingInvitations = invitationList.filter((i: any) => i.status === 'pending')
+  const pageIds = pendingInvitations.map((i: any) => i.id)
+
+  // Role selector component (shared between tabs)
+  const RoleSelector = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+    <div className="space-y-2">
+      {roleOptions.map((role) => (
+        <label
+          key={role.value}
+          className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-colors ${
+            value === role.value
+              ? 'border-primary-500 bg-primary-50'
+              : 'border-gray-200 hover:border-gray-300'
+          }`}
+        >
+          <input
+            type="radio"
+            name="role"
+            value={role.value}
+            checked={value === role.value}
+            onChange={() => onChange(role.value)}
+            className="mt-0.5"
+          />
+          <div>
+            <p className="font-medium text-gray-900">{role.label}</p>
+            <p className="text-sm text-gray-500">{role.description}</p>
+          </div>
+        </label>
+      ))}
+    </div>
+  )
+
+  const inputClass = "w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
 
   return (
     <div className="space-y-6">
@@ -194,7 +368,7 @@ export default function TeamManagement() {
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            Pending Invitations ({invitationList.filter((i: any) => i.status === 'pending').length})
+            Pending Invitations ({pendingInvitations.length})
           </button>
         )}
       </div>
@@ -300,7 +474,7 @@ export default function TeamManagement() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
-                        {user.last_activity ? formatDistanceToNow(user.last_activity) : 'Never'}
+                        <TimeAgo date={user.last_activity} fallback="Never" />
                       </td>
                       <td className="px-6 py-4 text-right">
                         {canManageUsers && user.id !== currentUser?.id && (
@@ -338,6 +512,7 @@ export default function TeamManagement() {
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
+                      <th className="px-4 py-4 w-10" />
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Invitee</th>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Role</th>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
@@ -348,6 +523,7 @@ export default function TeamManagement() {
                   <tbody className="divide-y divide-gray-100">
                     {[...Array(3)].map((_, i) => (
                       <tr key={i} className="animate-pulse">
+                        <td className="px-4 py-4" />
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-400">
@@ -397,6 +573,13 @@ export default function TeamManagement() {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
+                    <th className="px-4 py-4 w-10">
+                      <SelectionCheckbox
+                        checked={selection.isAllPageSelected(pageIds)}
+                        indeterminate={selection.isPartialPageSelected(pageIds)}
+                        onChange={() => selection.selectPage(pageIds)}
+                      />
+                    </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Invitee</th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Role</th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
@@ -408,7 +591,15 @@ export default function TeamManagement() {
                   {invitationList.map((invite: any) => {
                     const StatusIcon = statusIcons[invite.status] || Clock
                     return (
-                      <tr key={invite.id} className="hover:bg-gray-50 transition-colors">
+                      <tr key={invite.id} className={`transition-colors ${selection.isSelected(invite.id) ? 'bg-primary-50' : 'hover:bg-gray-50'}`}>
+                        <td className="px-4 py-4 w-10" onClick={(e) => e.stopPropagation()}>
+                          {invite.status === 'pending' && (
+                            <SelectionCheckbox
+                              checked={selection.isSelected(invite.id)}
+                              onChange={() => selection.toggle(invite.id)}
+                            />
+                          )}
+                        </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
@@ -437,7 +628,7 @@ export default function TeamManagement() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-500">
-                          {formatDistanceToNow(invite.created_at)}
+                          <TimeAgo date={invite.created_at} />
                         </td>
                         <td className="px-6 py-4 text-right">
                           {invite.status === 'pending' && (
@@ -469,103 +660,276 @@ export default function TeamManagement() {
         )}
       </AnimatePresence>
 
-      {/* Invite Modal */}
+      {/* Selection Bulk Actions */}
+      <BulkActionsBar
+        selectedCount={selection.selectedCount}
+        onClearSelection={selection.clearSelection}
+        entityName="invitations"
+        actions={[
+          { label: 'Resend', icon: RefreshCw, onClick: handleBulkResend, variant: 'primary' },
+          { label: 'Cancel', icon: XCircle, onClick: handleBulkCancel, variant: 'danger' },
+        ]}
+      />
+
+      {/* Invite Modal - Tabbed */}
       <Modal
         open={inviteModalOpen}
         onClose={() => setInviteModalOpen(false)}
-        title="Invite Team Member"
+        title="Invite Team Members"
       >
-        <form onSubmit={handleSubmitInvite} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email Address *
-            </label>
-            <input
-              type="email"
-              required
-              value={inviteForm.email}
-              onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-              className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
-              placeholder="colleague@company.com"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                First Name
-              </label>
-              <input
-                type="text"
-                value={inviteForm.first_name}
-                onChange={(e) => setInviteForm({ ...inviteForm, first_name: e.target.value })}
-                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
-                placeholder="John"
-              />
+        {bulkResults ? (
+          /* Results view */
+          <div className="space-y-4">
+            <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
+              <div className="flex items-center gap-2 text-emerald-600">
+                <CheckCircle className="w-5 h-5" />
+                <span className="font-medium">{bulkResults.filter(r => r.status === 'success').length} sent</span>
+              </div>
+              {bulkResults.some(r => r.status === 'error') && (
+                <div className="flex items-center gap-2 text-rose-600">
+                  <XCircle className="w-5 h-5" />
+                  <span className="font-medium">{bulkResults.filter(r => r.status === 'error').length} failed</span>
+                </div>
+              )}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Last Name
-              </label>
-              <input
-                type="text"
-                value={inviteForm.last_name}
-                onChange={(e) => setInviteForm({ ...inviteForm, last_name: e.target.value })}
-                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
-                placeholder="Doe"
-              />
+
+            <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-xl">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">#</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Email</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {bulkResults.map((r) => (
+                    <tr key={r.row}>
+                      <td className="px-3 py-2 text-gray-500">{r.row}</td>
+                      <td className="px-3 py-2">{r.email}</td>
+                      <td className="px-3 py-2">
+                        {r.status === 'success' ? (
+                          <span className="inline-flex items-center gap-1 text-emerald-600">
+                            <CheckCircle className="w-3.5 h-3.5" /> Sent
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-rose-600" title={r.error}>
+                            <XCircle className="w-3.5 h-3.5" /> {r.error?.substring(0, 50)}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button onClick={() => { setBulkResults(null); setInviteModalOpen(false) }}>
+                Done
+              </Button>
             </div>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Role *
-            </label>
-            <div className="space-y-2">
-              {roleOptions.map((role) => (
-                <label
-                  key={role.value}
-                  className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-colors ${
-                    inviteForm.role === role.value
-                      ? 'border-primary-500 bg-primary-50'
-                      : 'border-gray-200 hover:border-gray-300'
+        ) : (
+          /* Tabbed invite form */
+          <div className="space-y-4">
+            {/* Tab selector */}
+            <div className="flex border-b border-gray-200">
+              {(['single', 'multiple', 'csv'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setInviteTab(tab)}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors capitalize ${
+                    inviteTab === tab
+                      ? 'border-primary-500 text-primary-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
                   }`}
                 >
-                  <input
-                    type="radio"
-                    name="role"
-                    value={role.value}
-                    checked={inviteForm.role === role.value}
-                    onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
-                    className="mt-0.5"
-                  />
-                  <div>
-                    <p className="font-medium text-gray-900">{role.label}</p>
-                    <p className="text-sm text-gray-500">{role.description}</p>
-                  </div>
-                </label>
+                  {tab === 'csv' ? 'CSV Upload' : tab}
+                </button>
               ))}
             </div>
-          </div>
 
-          <div className="flex justify-end gap-3 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setInviteModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={createInvitationMutation.isPending}
-              className="gap-2"
-            >
-              <Send className="w-4 h-4" />
-              {createInvitationMutation.isPending ? 'Sending...' : 'Send Invitation'}
-            </Button>
+            {inviteTab === 'single' && (
+              <form onSubmit={handleSubmitInvite} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email Address *</label>
+                  <input
+                    type="email"
+                    required
+                    value={inviteForm.email}
+                    onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                    className={inputClass}
+                    placeholder="colleague@company.com"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
+                    <input
+                      type="text"
+                      value={inviteForm.first_name}
+                      onChange={(e) => setInviteForm({ ...inviteForm, first_name: e.target.value })}
+                      className={inputClass}
+                      placeholder="John"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
+                    <input
+                      type="text"
+                      value={inviteForm.last_name}
+                      onChange={(e) => setInviteForm({ ...inviteForm, last_name: e.target.value })}
+                      className={inputClass}
+                      placeholder="Doe"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+                  <RoleSelector value={inviteForm.role} onChange={(v) => setInviteForm({ ...inviteForm, role: v })} />
+                </div>
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button type="button" variant="outline" onClick={() => setInviteModalOpen(false)}>Cancel</Button>
+                  <Button type="submit" disabled={createInvitationMutation.isPending} className="gap-2">
+                    <Send className="w-4 h-4" />
+                    {createInvitationMutation.isPending ? 'Sending...' : 'Send Invitation'}
+                  </Button>
+                </div>
+              </form>
+            )}
+
+            {inviteTab === 'multiple' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email Addresses (one per line or comma-separated) *
+                  </label>
+                  <textarea
+                    value={bulkEmails}
+                    onChange={(e) => setBulkEmails(e.target.value)}
+                    className={`${inputClass} min-h-[120px]`}
+                    placeholder={"john@example.com\njane@example.com\nbob@example.com"}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    {bulkEmails.split(/[,\n]/).filter(e => e.trim() && e.trim().includes('@')).length} email(s) detected
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Shared First Name</label>
+                    <input type="text" value={bulkFirstName} onChange={(e) => setBulkFirstName(e.target.value)} className={inputClass} placeholder="Optional" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Shared Last Name</label>
+                    <input type="text" value={bulkLastName} onChange={(e) => setBulkLastName(e.target.value)} className={inputClass} placeholder="Optional" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+                  <RoleSelector value={bulkRole} onChange={setBulkRole} />
+                </div>
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button type="button" variant="outline" onClick={() => setInviteModalOpen(false)}>Cancel</Button>
+                  <Button onClick={handleBulkInviteMultiple} disabled={bulkSending} className="gap-2">
+                    {bulkSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    {bulkSending ? 'Sending...' : `Send ${bulkEmails.split(/[,\n]/).filter(e => e.trim() && e.trim().includes('@')).length} Invitations`}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {inviteTab === 'csv' && (
+              <div className="space-y-4">
+                {!csvParsed ? (
+                  <>
+                    <div
+                      className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-primary-400 transition-colors cursor-pointer"
+                      onClick={() => document.getElementById('csv-upload')?.click()}
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        const file = e.dataTransfer.files[0]
+                        if (file && (file.name.endsWith('.csv') || file.type === 'text/csv')) {
+                          handleCsvFile(file)
+                        }
+                      }}
+                    >
+                      <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+                      <p className="text-gray-600 font-medium">Drop a CSV file here or click to browse</p>
+                      <p className="text-sm text-gray-400 mt-1">Columns: email, first_name, last_name, role</p>
+                      <input
+                        id="csv-upload"
+                        type="file"
+                        accept=".csv"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) handleCsvFile(file)
+                        }}
+                      />
+                    </div>
+                    <button
+                      onClick={downloadCsvTemplate}
+                      className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                    >
+                      <Download className="w-4 h-4" />
+                      Download Template
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-gray-400" />
+                        <span className="text-sm font-medium">{csvFile?.name}</span>
+                        <span className="text-xs text-gray-500">({csvRows.length} rows)</span>
+                      </div>
+                      <button
+                        onClick={() => { setCsvFile(null); setCsvRows([]); setCsvParsed(false) }}
+                        className="text-sm text-gray-500 hover:text-gray-700"
+                      >
+                        Change file
+                      </button>
+                    </div>
+
+                    <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-xl">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 sticky top-0">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Email</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">First Name</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Last Name</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Role</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {csvRows.map((row, i) => (
+                            <tr key={i}>
+                              <td className="px-3 py-2">{row.email}</td>
+                              <td className="px-3 py-2">{row.first_name || '-'}</td>
+                              <td className="px-3 py-2">{row.last_name || '-'}</td>
+                              <td className="px-3 py-2 capitalize">{row.role}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-4">
+                      <Button type="button" variant="outline" onClick={() => setInviteModalOpen(false)}>Cancel</Button>
+                      <Button onClick={handleCsvInvite} disabled={bulkSending || csvRows.length === 0} className="gap-2">
+                        {bulkSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        {bulkSending ? 'Sending...' : `Send ${csvRows.length} Invitations`}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
-        </form>
+        )}
       </Modal>
     </div>
   )

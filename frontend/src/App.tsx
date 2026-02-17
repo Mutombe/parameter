@@ -36,6 +36,8 @@ const BankAccounts = lazy(() => import('./pages/Accounting/BankAccounts'))
 const IncomeTypes = lazy(() => import('./pages/Accounting/IncomeTypes'))
 const ExpenseCategories = lazy(() => import('./pages/Accounting/ExpenseCategories'))
 const Reports = lazy(() => import('./pages/Reports/Reports'))
+const AgedAnalysis = lazy(() => import('./pages/Reports/AgedAnalysis'))
+const BankReconciliation = lazy(() => import('./pages/Accounting/BankReconciliation'))
 const AuditTrail = lazy(() => import('./pages/Admin/AuditTrail'))
 const TeamManagement = lazy(() => import('./pages/Admin/TeamManagement'))
 const SuperAdminDashboard = lazy(() => import('./pages/Admin/SuperAdminDashboard'))
@@ -147,7 +149,9 @@ export default function App() {
         <Route path="bank-accounts" element={<LazyPage><BankAccounts /></LazyPage>} />
         <Route path="income-types" element={<LazyPage><IncomeTypes /></LazyPage>} />
         <Route path="expense-categories" element={<LazyPage><ExpenseCategories /></LazyPage>} />
+        <Route path="bank-reconciliation" element={<LazyPage><BankReconciliation /></LazyPage>} />
         <Route path="reports" element={<LazyPage><Reports /></LazyPage>} />
+        <Route path="aged-analysis" element={<LazyPage><AgedAnalysis /></LazyPage>} />
         <Route path="audit-trail" element={<LazyPage><AuditTrail /></LazyPage>} />
         <Route path="team" element={<LazyPage><TeamManagement /></LazyPage>} />
         <Route path="super-admin" element={<LazyPage fallback={<SkeletonDashboard />}><SuperAdminDashboard /></LazyPage>} />

@@ -2,10 +2,13 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Search, CreditCard, Plus, Send, Loader2, Eye, X, User, FileText } from 'lucide-react'
+import { Search, CreditCard, Plus, Send, Loader2, Eye, X, User, FileText, Download, Printer, BookOpen } from 'lucide-react'
 import { receiptApi, tenantApi, invoiceApi } from '../../services/api'
 import { formatCurrency, formatDate, useDebounce, cn } from '../../lib/utils'
-import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea } from '../../components/ui'
+import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, SelectionCheckbox, BulkActionsBar } from '../../components/ui'
+import { exportTableData } from '../../lib/export'
+import { useSelection } from '../../hooks/useSelection'
+import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { Skeleton, OptimisticItemSkeleton } from '../../components/ui/Skeleton'
 import { showToast, parseApiError } from '../../lib/toast'
 
@@ -43,6 +46,8 @@ export default function Receipts() {
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null)
   const [postingId, setPostingId] = useState<number | null>(null)
+  const selection = useSelection<number | string>({ clearOnChange: [debouncedSearch] })
+
   const [form, setForm] = useState({
     tenant: '',
     invoice: '',
@@ -179,6 +184,33 @@ export default function Receipts() {
     unposted: receipts.filter((r: Receipt) => !r.journal).length,
   }
 
+  const selectableItems = (receipts || []).filter((r: any) => !r._isOptimistic)
+  const pageIds = selectableItems.map((r: any) => r.id)
+
+  const handleBulkExport = () => {
+    const selected = selectableItems.filter((r: any) => selection.isSelected(r.id))
+    exportTableData(selected, [
+      { key: 'receipt_number', header: 'Receipt Number' },
+      { key: 'tenant_name', header: 'Tenant' },
+      { key: 'amount', header: 'Amount' },
+      { key: 'payment_method', header: 'Payment Method' },
+      { key: 'date', header: 'Date' },
+      { key: 'reference', header: 'Reference' },
+    ], 'receipts_export')
+    showToast.success(`Exported ${selected.length} receipts`)
+  }
+
+  const handleBulkPost = async () => {
+    const ids = Array.from(selection.selectedIds)
+    let posted = 0
+    for (const id of ids) {
+      try { await receiptApi.postToLedger(id as number); posted++ } catch {}
+    }
+    selection.clearSelection()
+    queryClient.invalidateQueries({ queryKey: ['receipts'] })
+    showToast.success(`Posted ${posted} receipts to ledger`)
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -279,6 +311,13 @@ export default function Receipts() {
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
+              <th className="px-4 py-4 w-10">
+                <SelectionCheckbox
+                  checked={selection.isAllPageSelected(pageIds)}
+                  indeterminate={selection.isPartialPageSelected(pageIds)}
+                  onChange={() => selection.selectPage(pageIds)}
+                />
+              </th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Receipt</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Tenant</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Amount</th>
@@ -293,6 +332,7 @@ export default function Receipts() {
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <tr key={i} className="animate-pulse">
+                  <td className="px-4 py-4 w-10"><Skeleton className="h-4 w-4" /></td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
@@ -328,9 +368,18 @@ export default function Receipts() {
                   transition={{ duration: 0.3, delay: receipt._isOptimistic ? 0 : index * 0.02 }}
                   className={cn(
                     'hover:bg-gray-50 transition-colors',
-                    receipt._isOptimistic && 'bg-blue-50'
+                    receipt._isOptimistic && 'bg-blue-50',
+                    selection.isSelected(receipt.id) && 'bg-primary-50'
                   )}
                 >
+                  <td className="px-4 py-4 w-10" onClick={(e) => e.stopPropagation()}>
+                    {!receipt._isOptimistic && (
+                      <SelectionCheckbox
+                        checked={selection.isSelected(receipt.id)}
+                        onChange={() => selection.toggle(receipt.id)}
+                      />
+                    )}
+                  </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className={cn(
@@ -409,60 +458,29 @@ export default function Receipts() {
         icon={Plus}
       >
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Tenant Select with Loading */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Tenant <span className="text-red-500">*</span>
-            </label>
-            {tenantsLoading ? (
-              <div className="relative">
-                <Skeleton className="h-11 w-full rounded-xl" />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
-                </div>
-              </div>
-            ) : (
-              <select
-                value={form.tenant}
-                onChange={(e) => setForm({ ...form, tenant: e.target.value })}
-                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-                required
-              >
-                <option value="">Select tenant</option>
-                {tenants?.map((t: any) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-            )}
-          </div>
+          {/* Tenant Select */}
+          <AsyncSelect
+            label="Tenant"
+            placeholder="Select tenant"
+            value={form.tenant}
+            onChange={(val) => setForm({ ...form, tenant: String(val) })}
+            options={tenants?.map((t: any) => ({ value: t.id, label: t.name })) || []}
+            isLoading={tenantsLoading}
+            required
+            searchable
+          />
 
-          {/* Invoice Select with Loading */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Against Invoice (Optional)
-            </label>
-            {invoicesLoading ? (
-              <div className="relative">
-                <Skeleton className="h-11 w-full rounded-xl" />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
-                </div>
-              </div>
-            ) : (
-              <select
-                value={form.invoice}
-                onChange={(e) => setForm({ ...form, invoice: e.target.value })}
-                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-              >
-                <option value="">Select invoice</option>
-                {invoices?.map((inv: any) => (
-                  <option key={inv.id} value={inv.id}>
-                    {inv.invoice_number} - {formatCurrency(inv.balance)} ({inv.tenant_name})
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
+          {/* Invoice Select */}
+          <AsyncSelect
+            label="Against Invoice (Optional)"
+            placeholder="Select invoice"
+            value={form.invoice}
+            onChange={(val) => setForm({ ...form, invoice: String(val) })}
+            options={invoices?.map((inv: any) => ({ value: inv.id, label: `${inv.invoice_number} - ${formatCurrency(inv.balance)} (${inv.tenant_name})` })) || []}
+            isLoading={invoicesLoading}
+            searchable
+            clearable
+          />
 
           <div className="grid grid-cols-2 gap-4">
             <Input
@@ -489,13 +507,14 @@ export default function Receipts() {
               label="Payment Method"
               value={form.payment_method}
               onChange={(e) => setForm({ ...form, payment_method: e.target.value })}
-            >
-              <option value="cash">Cash</option>
-              <option value="bank_transfer">Bank Transfer</option>
-              <option value="ecocash">EcoCash</option>
-              <option value="card">Card</option>
-              <option value="cheque">Cheque</option>
-            </Select>
+              options={[
+                { value: 'cash', label: 'Cash' },
+                { value: 'bank_transfer', label: 'Bank Transfer' },
+                { value: 'ecocash', label: 'EcoCash' },
+                { value: 'card', label: 'Card' },
+                { value: 'cheque', label: 'Cheque' },
+              ]}
+            />
             <Input
               label="Reference"
               placeholder="Bank ref, EcoCash ref..."
@@ -531,6 +550,16 @@ export default function Receipts() {
           </div>
         </form>
       </Modal>
+
+      <BulkActionsBar
+        selectedCount={selection.selectedCount}
+        onClearSelection={selection.clearSelection}
+        entityName="receipts"
+        actions={[
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
+          { label: 'Post to Ledger', icon: BookOpen, onClick: handleBulkPost, variant: 'primary' },
+        ]}
+      />
     </div>
   )
 }

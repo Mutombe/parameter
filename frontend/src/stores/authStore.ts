@@ -3,10 +3,19 @@ import { persist } from 'zustand/middleware'
 
 interface TenantInfo {
   name: string
+  email?: string
+  phone?: string
+  address?: string
+  logo_url?: string | null
   is_demo: boolean
   demo_expires_at: string | null
   demo_time_remaining: number | null
   account_status: string
+  default_currency?: string
+  invoice_prefix?: string
+  invoice_footer?: string
+  paper_size?: string
+  show_logo?: boolean
 }
 
 interface User {

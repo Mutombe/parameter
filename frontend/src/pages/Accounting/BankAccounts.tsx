@@ -12,10 +12,14 @@ import {
   Trash2,
   RefreshCw,
   DollarSign,
+  Download,
 } from 'lucide-react'
 import { bankAccountApi } from '../../services/api'
 import { formatCurrency, cn } from '../../lib/utils'
 import { showToast } from '../../lib/toast'
+import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
+import { exportTableData } from '../../lib/export'
+import { useSelection } from '../../hooks/useSelection'
 
 interface BankAccount {
   id: number
@@ -47,6 +51,8 @@ export default function BankAccounts() {
     currency: 'USD',
     gl_account: '',
   })
+
+  const selection = useSelection<number>({ clearOnChange: [searchQuery] })
 
   const { data, isLoading } = useQuery({
     queryKey: ['bank-accounts'],
@@ -92,6 +98,21 @@ export default function BankAccounts() {
       case 'cash': return 'bg-amber-100 text-amber-600'
       default: return 'bg-gray-100 text-gray-600'
     }
+  }
+
+  const selectableItems = (accounts || []).filter((a: any) => !a._isOptimistic)
+  const pageIds = selectableItems.map((a: any) => a.id)
+
+  const handleBulkExport = () => {
+    const selected = selectableItems.filter((a: any) => selection.isSelected(a.id))
+    exportTableData(selected, [
+      { key: 'name', header: 'Account Name' },
+      { key: 'bank_name', header: 'Bank' },
+      { key: 'account_number', header: 'Account Number' },
+      { key: 'currency', header: 'Currency' },
+      { key: 'current_balance', header: 'Balance' },
+    ], 'bank_accounts_export')
+    showToast.success(`Exported ${selected.length} bank accounts`)
   }
 
   return (
@@ -164,15 +185,27 @@ export default function BankAccounts() {
 
       {/* Search */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search accounts..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
-          />
+        <div className="flex items-center gap-4">
+          <div className="relative max-w-md flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search accounts..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
+            />
+          </div>
+          {selectableItems.length > 0 && (
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-500">
+              <SelectionCheckbox
+                checked={selection.isAllPageSelected(pageIds)}
+                indeterminate={selection.isPartialPageSelected(pageIds)}
+                onChange={() => selection.selectPage(pageIds)}
+              />
+              Select all
+            </label>
+          )}
         </div>
       </div>
 
@@ -209,8 +242,20 @@ export default function BankAccounts() {
                 key={account.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow"
+                className={cn(
+                  "bg-white rounded-xl border border-gray-200 p-6 pl-10 hover:shadow-lg transition-shadow relative",
+                  selection.isSelected(account.id) && 'ring-2 ring-primary-500 bg-primary-50/30'
+                )}
               >
+                <div
+                  className="absolute top-3 left-3 z-10"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <SelectionCheckbox
+                    checked={selection.isSelected(account.id)}
+                    onChange={() => selection.toggle(account.id)}
+                  />
+                </div>
                 <div className="flex items-start justify-between mb-4">
                   <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center", getAccountColor(account.account_type))}>
                     <Icon className="w-6 h-6" />
@@ -246,6 +291,15 @@ export default function BankAccounts() {
           })}
         </div>
       )}
+
+      <BulkActionsBar
+        selectedCount={selection.selectedCount}
+        onClearSelection={selection.clearSelection}
+        entityName="bank accounts"
+        actions={[
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
+        ]}
+      />
     </div>
   )
 }

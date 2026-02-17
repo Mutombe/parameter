@@ -17,12 +17,17 @@ import {
   Percent,
   X,
   Loader2,
+  Download,
 } from 'lucide-react'
-import { landlordApi } from '../../services/api'
+import { Upload, FileSpreadsheet } from 'lucide-react'
+import { landlordApi, importsApi } from '../../services/api'
 import { cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, ConfirmDialog, Pagination } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, ConfirmDialog, Pagination, SplitButton } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { TbUserSquareRounded } from "react-icons/tb"
+import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
+import { exportTableData } from '../../lib/export'
+import { useSelection } from '../../hooks/useSelection'
 
 const PAGE_SIZE = 12
 
@@ -83,6 +88,9 @@ export default function Landlords() {
     address: '',
     commission_rate: '10.00',
   })
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
+
+  const selection = useSelection<number>({ clearOnChange: [debouncedSearch, typeFilter] })
 
   // Reset page when search/filter changes
   const handleSearchChange = (value: string) => {
@@ -270,6 +278,49 @@ export default function Landlords() {
     totalProperties: landlords?.reduce((sum: number, l: Landlord) => sum + (l.property_count || 0), 0) || 0,
   }
 
+  const selectableItems = (landlords || []).filter((l: any) => !l._isOptimistic)
+  const pageIds = selectableItems.map((l: any) => l.id)
+
+  const handleBulkExport = () => {
+    const selected = selectableItems.filter((l: any) => selection.isSelected(l.id))
+    exportTableData(selected, [
+      { key: 'name', header: 'Name' },
+      { key: 'code', header: 'Code' },
+      { key: 'email', header: 'Email' },
+      { key: 'phone', header: 'Phone' },
+      { key: 'landlord_type', header: 'Type' },
+    ], 'landlords_export')
+    showToast.success(`Exported ${selected.length} landlords`)
+  }
+
+  const handleBulkDelete = () => {
+    setShowBulkDeleteDialog(true)
+  }
+
+  const handleBulkDeleteConfirm = async () => {
+    const ids = Array.from(selection.selectedIds)
+    for (const id of ids) { try { await landlordApi.delete(id) } catch {} }
+    selection.clearSelection()
+    queryClient.invalidateQueries({ queryKey: ['landlords'] })
+    showToast.success(`Deleted ${ids.length} landlords`)
+    setShowBulkDeleteDialog(false)
+  }
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await importsApi.downloadTemplate('landlords')
+      const blob = response.data as Blob
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'import_template_landlords.xlsx'
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      showToast.error('Failed to download template')
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -277,10 +328,16 @@ export default function Landlords() {
         subtitle="Manage property owners and their portfolios"
         icon={TbUserSquareRounded}
         actions={
-          <Button onClick={() => setShowForm(true)} className="gap-2">
+          <SplitButton
+            onClick={() => setShowForm(true)}
+            menuItems={[
+              { label: 'Import from File', icon: Upload, onClick: () => navigate('/dashboard/data-import') },
+              { label: 'Download Template', icon: FileSpreadsheet, onClick: handleDownloadTemplate },
+            ]}
+          >
             <Plus className="w-4 h-4" />
             Add Landlord
-          </Button>
+          </SplitButton>
         }
       />
 
@@ -361,12 +418,24 @@ export default function Landlords() {
           </Badge>
         )}
 
-        <div className="ml-auto text-sm text-gray-500">
-          {isLoading ? (
-            <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
-          ) : (
-            <>{filteredLandlords.length} landlords</>
+        <div className="flex items-center gap-3 ml-auto">
+          {selectableItems.length > 0 && (
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-500">
+              <SelectionCheckbox
+                checked={selection.isAllPageSelected(pageIds)}
+                indeterminate={selection.isPartialPageSelected(pageIds)}
+                onChange={() => selection.selectPage(pageIds)}
+              />
+              Select all
+            </label>
           )}
+          <span className="text-sm text-gray-500">
+            {isLoading ? (
+              <span className="inline-block h-4 w-20 bg-gray-200 rounded animate-pulse" />
+            ) : (
+              <>{filteredLandlords.length} landlords</>
+            )}
+          </span>
         </div>
       </div>
 
@@ -420,12 +489,23 @@ export default function Landlords() {
                 animate={{ opacity: 1, y: 0, backgroundColor: 'transparent' }}
                 transition={{ delay: isOptimistic ? 0 : index * 0.02, duration: 0.3 }}
                 className={cn(
-                  'bg-white rounded-xl border p-4 transition-all group',
+                  'bg-white rounded-xl border p-4 pl-10 transition-all group relative',
                   isOptimistic || isUpdating
                     ? 'border-primary-200 bg-primary-50/50'
-                    : 'border-gray-200 hover:shadow-md hover:border-gray-300'
+                    : 'border-gray-200 hover:shadow-md hover:border-gray-300',
+                  !isOptimistic && selection.isSelected(landlord.id as number) && 'ring-2 ring-primary-500 bg-primary-50/30'
                 )}
               >
+                {/* Selection checkbox */}
+                {!isOptimistic && !isUpdating && (
+                  <div className="absolute left-2.5 top-1/2 -translate-y-1/2">
+                    <SelectionCheckbox
+                      checked={selection.isSelected(landlord.id as number)}
+                      onChange={() => selection.toggle(landlord.id as number)}
+                    />
+                  </div>
+                )}
+
                 <div className="flex items-center gap-4">
                   {/* Icon */}
                   <div className={cn(
@@ -731,6 +811,27 @@ export default function Landlords() {
         confirmText="Delete"
         variant="danger"
         loading={deleteMutation.isPending}
+      />
+
+      {/* Bulk Delete Confirmation */}
+      <ConfirmDialog
+        open={showBulkDeleteDialog}
+        onClose={() => setShowBulkDeleteDialog(false)}
+        onConfirm={handleBulkDeleteConfirm}
+        title={`Delete ${selection.selectedCount} landlords?`}
+        description="This action cannot be undone."
+        confirmText="Delete"
+        variant="danger"
+      />
+
+      <BulkActionsBar
+        selectedCount={selection.selectedCount}
+        onClearSelection={selection.clearSelection}
+        entityName="landlords"
+        actions={[
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
+          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger' },
+        ]}
       />
     </div>
   )

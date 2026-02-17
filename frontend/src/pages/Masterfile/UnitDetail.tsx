@@ -137,6 +137,8 @@ export default function UnitDetail() {
   const leases = leasesData?.results || leasesData || []
   const invoices = invoicesData?.results || invoicesData || []
   const activeLease = leases.find((l: any) => l.status === 'active')
+  // Derive occupancy from actual lease/tenant data instead of the static is_occupied boolean
+  const isOccupied = !!activeLease || !!unit?.current_tenant
 
   return (
     <div className="space-y-6">
@@ -158,12 +160,12 @@ export default function UnitDetail() {
                 <h1 className="text-xl md:text-2xl font-bold text-gray-900">Unit {unit?.unit_number}</h1>
                 <span className={cn(
                   'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
-                  unit?.is_occupied
+                  isOccupied
                     ? 'bg-emerald-50 text-emerald-600'
                     : 'bg-rose-50 text-rose-600'
                 )}>
-                  {unit?.is_occupied ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                  {unit?.is_occupied ? 'Occupied' : 'Vacant'}
+                  {isOccupied ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                  {isOccupied ? 'Occupied' : 'Vacant'}
                 </span>
               </>
             )}
@@ -278,11 +280,11 @@ export default function UnitDetail() {
         />
         <StatCard
           title="Occupancy"
-          value={unit?.is_occupied ? 'Occupied' : 'Vacant'}
+          value={isOccupied ? 'Occupied' : 'Vacant'}
           icon={Home}
           color="orange"
-          isLoading={loadingUnit}
-          valueClassName={unit?.is_occupied ? 'text-emerald-600' : 'text-rose-600'}
+          isLoading={loadingUnit || loadingLeases}
+          valueClassName={isOccupied ? 'text-emerald-600' : 'text-rose-600'}
         />
       </motion.div>
 

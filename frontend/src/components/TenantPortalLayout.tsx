@@ -19,6 +19,8 @@ import { useAuthStore } from '../stores/authStore'
 import { authApi } from '../services/api'
 import { cn } from '../lib/utils'
 import { useThemeEffect } from '../hooks/useThemeEffect'
+import { useNetworkStatus } from '../hooks/useNetworkStatus'
+import SessionExpiredModal from './SessionExpiredModal'
 import toast from 'react-hot-toast'
 
 const navItems = [
@@ -36,6 +38,7 @@ export default function TenantPortalLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   useThemeEffect()
+  useNetworkStatus()
 
   const isImpersonating = !!impersonation
 
@@ -181,6 +184,8 @@ export default function TenantPortalLayout() {
           <Outlet />
         </main>
       </div>
+
+      <SessionExpiredModal />
     </div>
   )
 }

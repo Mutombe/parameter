@@ -23,10 +23,14 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Loader2,
+  Download,
 } from 'lucide-react'
 import { journalApi, accountApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton, Textarea } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton, Textarea, SelectionCheckbox, BulkActionsBar, TimeAgo } from '../../components/ui'
+import { AsyncSelect } from '../../components/ui/AsyncSelect'
+import { exportTableData } from '../../lib/export'
+import { useSelection } from '../../hooks/useSelection'
 import toast from 'react-hot-toast'
 
 interface JournalEntry {
@@ -126,6 +130,7 @@ export default function Journals() {
   const [reversalModal, setReversalModal] = useState<{ open: boolean; journalId: number | null; reason: string }>({
     open: false, journalId: null, reason: ''
   })
+  const selection = useSelection<number>({ clearOnChange: [debouncedSearch, statusFilter] })
   const [newJournal, setNewJournal] = useState({
     date: new Date().toISOString().split('T')[0],
     description: '',
@@ -245,6 +250,32 @@ export default function Journals() {
     reversed: journals?.filter((j: Journal) => j.status === 'reversed').length || 0,
   }
 
+  const selectableItems = (journals || []).filter((j: any) => !j._isOptimistic)
+  const pageIds = selectableItems.map((j: any) => j.id)
+
+  const handleBulkExport = () => {
+    const selected = selectableItems.filter((j: any) => selection.isSelected(j.id))
+    exportTableData(selected, [
+      { key: 'journal_number', header: 'Journal Number' },
+      { key: 'date', header: 'Date' },
+      { key: 'description', header: 'Description' },
+      { key: 'total_amount', header: 'Amount' },
+      { key: 'status', header: 'Status' },
+    ], 'journals_export')
+    toast.success(`Exported ${selected.length} journals`)
+  }
+
+  const handleBulkPost = async () => {
+    const ids = Array.from(selection.selectedIds)
+    let posted = 0
+    for (const id of ids) {
+      try { await journalApi.post(id); posted++ } catch {}
+    }
+    selection.clearSelection()
+    queryClient.invalidateQueries({ queryKey: ['journals'] })
+    toast.success(`Posted ${posted} journals`)
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -313,6 +344,11 @@ export default function Journals() {
 
       {/* Search and Filter */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center gap-4">
+        <SelectionCheckbox
+          checked={selection.isAllPageSelected(pageIds)}
+          indeterminate={selection.isPartialPageSelected(pageIds)}
+          onChange={() => selection.selectPage(pageIds)}
+        />
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
@@ -324,16 +360,18 @@ export default function Journals() {
           />
         </div>
 
-        <select
+        <Select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           className="px-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-        >
-          <option value="">All Statuses</option>
-          <option value="draft">Draft</option>
-          <option value="posted">Posted</option>
-          <option value="reversed">Reversed</option>
-        </select>
+          placeholder="All Statuses"
+          options={[
+            { value: '', label: 'All Statuses' },
+            { value: 'draft', label: 'Draft' },
+            { value: 'posted', label: 'Posted' },
+            { value: 'reversed', label: 'Reversed' },
+          ]}
+        />
 
         <div className="ml-auto text-sm text-gray-500">
           {isLoading ? (
@@ -394,13 +432,24 @@ export default function Journals() {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.03 }}
-                    className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+                    className={cn(
+                      'bg-white rounded-xl border overflow-hidden transition-all',
+                      selection.isSelected(journal.id)
+                        ? 'ring-2 ring-primary-500 bg-primary-50/30 border-primary-300'
+                        : 'border-gray-200'
+                    )}
                   >
                     {/* Journal Header */}
                     <div
                       className="p-5 flex items-center gap-4 cursor-pointer hover:bg-gray-50 transition-colors"
                       onClick={() => toggleExpand(journal.id)}
                     >
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <SelectionCheckbox
+                          checked={selection.isSelected(journal.id)}
+                          onChange={() => selection.toggle(journal.id)}
+                        />
+                      </div>
                       <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white">
                         <FileSpreadsheet className="w-6 h-6" />
                       </div>
@@ -518,10 +567,10 @@ export default function Journals() {
 
                           {/* Actions */}
                           <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-                            <p className="text-sm text-gray-500">
-                              Created {formatDate(journal.created_at)}
-                              {journal.posted_at && ` • Posted ${formatDate(journal.posted_at)}`}
-                              {journal.reversed_at && ` • Reversed ${formatDate(journal.reversed_at)}`}
+                            <p className="text-sm text-gray-500 flex items-center gap-1 flex-wrap">
+                              Created <TimeAgo date={journal.created_at} />
+                              {journal.posted_at && <> • Posted <TimeAgo date={journal.posted_at} /></>}
+                              {journal.reversed_at && <> • Reversed <TimeAgo date={journal.reversed_at} /></>}
                             </p>
                             <div className="flex items-center gap-2">
                               {journal.status === 'draft' && (
@@ -637,19 +686,13 @@ export default function Journals() {
                   {newJournal.entries.map((entry, index) => (
                     <tr key={index}>
                       <td className="px-4 py-2">
-                        <select
-                          value={entry.account}
-                          onChange={(e) => updateEntry(index, 'account', Number(e.target.value))}
-                          className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-                          required
-                        >
-                          <option value={0}>Select account...</option>
-                          {accounts?.map((acc: any) => (
-                            <option key={acc.id} value={acc.id}>
-                              {acc.code} - {acc.name}
-                            </option>
-                          ))}
-                        </select>
+                        <AsyncSelect
+                          placeholder="Select account..."
+                          value={entry.account || ''}
+                          onChange={(val) => updateEntry(index, 'account', Number(val))}
+                          options={accounts?.map((acc: any) => ({ value: acc.id, label: `${acc.code} - ${acc.name}` })) || []}
+                          searchable
+                        />
                       </td>
                       <td className="px-4 py-2">
                         <input
@@ -810,6 +853,16 @@ export default function Journals() {
           </div>
         </form>
       </Modal>
+
+      <BulkActionsBar
+        selectedCount={selection.selectedCount}
+        onClearSelection={selection.clearSelection}
+        entityName="journals"
+        actions={[
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
+          { label: 'Post', icon: Send, onClick: handleBulkPost, variant: 'primary' },
+        ]}
+      />
     </div>
   )
 }

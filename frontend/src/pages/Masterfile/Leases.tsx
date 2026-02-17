@@ -21,13 +21,18 @@ import {
   Loader2,
   Paperclip,
   Upload,
+  Download,
 } from 'lucide-react'
-import { leaseApi, tenantApi, unitApi } from '../../services/api'
+import { leaseApi, tenantApi, unitApi, propertyApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, ConfirmDialog } from '../../components/ui'
+import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { showToast, parseApiError } from '../../lib/toast'
 import { TbUserSquareRounded } from "react-icons/tb";
+import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
+import { exportTableData } from '../../lib/export'
+import { useSelection } from '../../hooks/useSelection'
 interface Lease {
   id: number
   lease_number: string
@@ -60,6 +65,11 @@ interface Unit {
   is_occupied: boolean
 }
 
+interface Property {
+  id: number
+  name: string
+}
+
 const statusConfig: Record<string, { color: string; bgColor: string; icon: any; label: string }> = {
   draft: { color: 'text-gray-600', bgColor: 'bg-gray-100', icon: Clock, label: 'Draft' },
   active: { color: 'text-emerald-600', bgColor: 'bg-emerald-50', icon: CheckCircle, label: 'Active' },
@@ -71,6 +81,9 @@ const statusConfig: Record<string, { color: string; bgColor: string; icon: any; 
 function SkeletonTableRow() {
   return (
     <tr className="animate-pulse">
+      <td className="px-4 py-4 w-10">
+        <div className="w-4 h-4 bg-gray-200 rounded" />
+      </td>
       <td className="px-6 py-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
@@ -127,9 +140,14 @@ export default function Leases() {
   const [selectedLease, setSelectedLease] = useState<Lease | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [documentFile, setDocumentFile] = useState<File | null>(null)
+  const selection = useSelection<number>({ clearOnChange: [debouncedSearch, statusFilter] })
+  const [bulkConfirm, setBulkConfirm] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
+
   const [form, setForm] = useState({
     tenant: '',
     unit: '',
+    property: '',
+    unit_number: '',
     monthly_rent: '',
     deposit_amount: '',
     currency: 'USD',
@@ -164,9 +182,22 @@ export default function Leases() {
     staleTime: 30000,
   })
 
+  const { data: properties, isLoading: propertiesLoading } = useQuery({
+    queryKey: ['properties-list'],
+    queryFn: () => propertyApi.list().then(r => r.data.results || r.data),
+    enabled: showForm,
+    staleTime: 30000,
+  })
+
+  const selectedPropertyName = properties?.find(
+    (p: Property) => String(p.id) === form.property
+  )?.name
+
   // When editing, include the current unit even if occupied; for new leases, show only vacant
+  // Also filter by selected property when one is chosen
   const units = allUnits?.filter((u: Unit) =>
-    !u.is_occupied || (editingId && form.unit === String(u.id))
+    (!form.property || u.property_name === selectedPropertyName) &&
+    (!u.is_occupied || (editingId && form.unit === String(u.id)))
   )
 
   const createMutation = useMutation({
@@ -186,7 +217,9 @@ export default function Leases() {
           tenant: Number(newData.tenant),
           tenant_name: tenants?.find((t: any) => t.id === Number(newData.tenant))?.name || '',
           unit: Number(newData.unit),
-          unit_display: allUnits?.find((u: any) => u.id === Number(newData.unit))?.unit_number || '',
+          unit_display: newData.unit
+            ? allUnits?.find((u: any) => u.id === Number(newData.unit))?.unit_number || ''
+            : newData.unit_number || '',
           monthly_rent: Number(newData.monthly_rent),
           deposit_amount: Number(newData.deposit_amount || 0),
           currency: newData.currency,
@@ -305,6 +338,8 @@ export default function Leases() {
     setForm({
       tenant: '',
       unit: '',
+      property: '',
+      unit_number: '',
       monthly_rent: '',
       deposit_amount: '',
       currency: 'USD',
@@ -317,9 +352,13 @@ export default function Leases() {
 
   const handleEdit = (lease: Lease) => {
     setEditingId(lease.id)
+    const editUnit = allUnits?.find((u: Unit) => u.id === lease.unit)
+    const editProperty = properties?.find((p: Property) => p.name === editUnit?.property_name)
     setForm({
       tenant: String(lease.tenant),
       unit: String(lease.unit),
+      property: editProperty ? String(editProperty.id) : '',
+      unit_number: '',
       monthly_rent: String(lease.monthly_rent),
       deposit_amount: String(lease.deposit_amount || ''),
       currency: lease.currency,
@@ -343,14 +382,24 @@ export default function Leases() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const data = {
-      ...form,
+    const data: any = {
       tenant: parseInt(form.tenant),
-      unit: parseInt(form.unit),
       monthly_rent: parseFloat(form.monthly_rent),
       deposit_amount: form.deposit_amount ? parseFloat(form.deposit_amount) : null,
       payment_day: parseInt(form.payment_day),
+      currency: form.currency,
+      start_date: form.start_date,
+      end_date: form.end_date,
+      notes: form.notes,
     }
+
+    if (form.unit) {
+      data.unit = parseInt(form.unit)
+    } else if (form.property && form.unit_number) {
+      data.property = parseInt(form.property)
+      data.unit_number = form.unit_number
+    }
+
     createMutation.mutate(data)
   }
 
@@ -366,6 +415,39 @@ export default function Leases() {
       thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30)
       return endDate <= thirtyDaysFromNow
     }).length || 0,
+  }
+
+  const selectableItems = (leases || []).filter((l: any) => !l._isOptimistic)
+  const pageIds = selectableItems.map((l: any) => l.id)
+
+  const handleBulkExport = () => {
+    const selected = selectableItems.filter((l: any) => selection.isSelected(l.id))
+    exportTableData(selected, [
+      { key: 'lease_number', header: 'Lease Number' },
+      { key: 'tenant_name', header: 'Tenant' },
+      { key: 'unit_display', header: 'Unit' },
+      { key: 'monthly_rent', header: 'Monthly Rent' },
+      { key: 'start_date', header: 'Start Date' },
+      { key: 'end_date', header: 'End Date' },
+      { key: 'status', header: 'Status' },
+    ], 'leases_export')
+    showToast.success(`Exported ${selected.length} leases`)
+  }
+
+  const handleBulkDelete = () => {
+    setBulkConfirm({
+      open: true,
+      title: `Delete ${selection.selectedCount} leases?`,
+      message: 'This action cannot be undone.',
+      onConfirm: async () => {
+        const ids = Array.from(selection.selectedIds)
+        for (const id of ids) { try { await leaseApi.update(id, { status: 'terminated' }) } catch {} }
+        selection.clearSelection()
+        queryClient.invalidateQueries({ queryKey: ['leases'] })
+        showToast.success(`Terminated ${ids.length} leases`)
+        setBulkConfirm(d => ({ ...d, open: false }))
+      },
+    })
   }
 
   // Calculate total monthly rent (guard against null/undefined monthly_rent values)
@@ -496,17 +578,19 @@ export default function Leases() {
           />
         </div>
 
-        <select
+        <Select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           className="px-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-        >
-          <option value="">All Statuses</option>
-          <option value="draft">Draft</option>
-          <option value="active">Active</option>
-          <option value="expired">Expired</option>
-          <option value="terminated">Terminated</option>
-        </select>
+          placeholder="All Statuses"
+          options={[
+            { value: '', label: 'All Statuses' },
+            { value: 'draft', label: 'Draft' },
+            { value: 'active', label: 'Active' },
+            { value: 'expired', label: 'Expired' },
+            { value: 'terminated', label: 'Terminated' },
+          ]}
+        />
 
         <div className="ml-auto text-sm text-gray-500">
           {leases?.length || 0} leases
@@ -518,6 +602,13 @@ export default function Leases() {
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
+              <th className="px-4 py-4 w-10">
+                <SelectionCheckbox
+                  checked={selection.isAllPageSelected(pageIds)}
+                  indeterminate={selection.isPartialPageSelected(pageIds)}
+                  onChange={() => selection.selectPage(pageIds)}
+                />
+              </th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Lease</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit</th>
@@ -532,7 +623,7 @@ export default function Leases() {
               [...Array(5)].map((_, i) => <SkeletonTableRow key={i} />)
             ) : !leases || leases.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-12">
+                <td colSpan={8} className="px-6 py-12">
                   <EmptyState
                     icon={FileText}
                     title="No leases found"
@@ -557,8 +648,14 @@ export default function Leases() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: index * 0.02 }}
-                    className="hover:bg-gray-50 transition-colors group"
+                    className={cn('hover:bg-gray-50 transition-colors group', selection.isSelected(lease.id) && 'bg-primary-50/60')}
                   >
+                    <td className="px-4 py-4 w-10" onClick={(e) => e.stopPropagation()}>
+                      <SelectionCheckbox
+                        checked={selection.isSelected(lease.id)}
+                        onChange={() => selection.toggle(lease.id)}
+                      />
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
@@ -660,62 +757,56 @@ export default function Leases() {
       >
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Tenant Select with Loading */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Tenant <span className="text-red-500">*</span>
-              </label>
-              {tenantsLoading ? (
-                <div className="relative">
-                  <Skeleton className="h-11 w-full rounded-xl" />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
-                  </div>
-                </div>
-              ) : (
-                <select
-                  value={form.tenant}
-                  onChange={(e) => setForm({ ...form, tenant: e.target.value })}
-                  className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-                  required
-                >
-                  <option value="">Select Tenant</option>
-                  {tenants?.map((t: Tenant) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              )}
-            </div>
+            {/* Tenant Select */}
+            <AsyncSelect
+              label="Tenant"
+              placeholder="Select Tenant"
+              value={form.tenant}
+              onChange={(val) => setForm({ ...form, tenant: String(val) })}
+              options={tenants?.map((t: Tenant) => ({ value: t.id, label: t.name })) || []}
+              isLoading={tenantsLoading}
+              required
+              searchable
+            />
 
-            {/* Unit Select with Loading */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Unit <span className="text-red-500">*</span>
-              </label>
-              {unitsLoading ? (
-                <div className="relative">
-                  <Skeleton className="h-11 w-full rounded-xl" />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
-                  </div>
-                </div>
-              ) : (
-                <select
-                  value={form.unit}
-                  onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                  className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-                  required
-                >
-                  <option value="">Select Unit</option>
-                  {units?.map((u: Unit) => (
-                    <option key={u.id} value={u.id}>
-                      {u.unit_number} - {u.property_name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
+            {/* Property Select */}
+            <AsyncSelect
+              label="Property"
+              placeholder="Select Property"
+              value={form.property}
+              onChange={(val) => setForm({ ...form, property: String(val), unit: '', unit_number: '' })}
+              options={properties?.map((p: Property) => ({ value: p.id, label: p.name })) || []}
+              isLoading={propertiesLoading}
+              required
+              searchable
+            />
           </div>
+
+          {/* Existing Unit - optional, filtered by property */}
+          <AsyncSelect
+            label="Existing Unit (optional)"
+            placeholder={form.property ? "Select existing unit or leave empty" : "Select a property first"}
+            value={form.unit}
+            onChange={(val) => setForm({ ...form, unit: String(val), unit_number: '' })}
+            options={units?.map((u: Unit) => ({ value: u.id, label: `${u.unit_number} - ${u.property_name}` })) || []}
+            isLoading={unitsLoading}
+            searchable
+            clearable
+            disabled={!form.property}
+          />
+
+          {/* Unit Number - only visible when no existing unit selected */}
+          {!form.unit && (
+            <div>
+              <Input
+                label="Unit Number"
+                placeholder="e.g. A101"
+                value={form.unit_number}
+                onChange={(e) => setForm({ ...form, unit_number: e.target.value, unit: '' })}
+              />
+              <p className="text-xs text-gray-500 mt-1">New unit will be auto-created</p>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Input
@@ -743,10 +834,11 @@ export default function Leases() {
               label="Currency"
               value={form.currency}
               onChange={(e) => setForm({ ...form, currency: e.target.value })}
-            >
-              <option value="USD">USD</option>
-              <option value="ZiG">ZiG</option>
-            </Select>
+              options={[
+                { value: 'USD', label: 'USD' },
+                { value: 'ZiG', label: 'ZiG' },
+              ]}
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -770,11 +862,11 @@ export default function Leases() {
               label="Payment Day"
               value={form.payment_day}
               onChange={(e) => setForm({ ...form, payment_day: e.target.value })}
-            >
-              {Array.from({ length: 28 }, (_, i) => (
-                <option key={i + 1} value={i + 1}>Day {i + 1}</option>
-              ))}
-            </Select>
+              options={Array.from({ length: 28 }, (_, i) => ({
+                value: String(i + 1),
+                label: `Day ${i + 1}`,
+              }))}
+            />
           </div>
 
           {/* Document Upload */}
@@ -854,6 +946,26 @@ export default function Leases() {
         confirmText="Terminate"
         variant="danger"
         loading={terminateMutation.isPending}
+      />
+
+      <BulkActionsBar
+        selectedCount={selection.selectedCount}
+        onClearSelection={selection.clearSelection}
+        entityName="leases"
+        actions={[
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
+          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger' },
+        ]}
+      />
+
+      <ConfirmDialog
+        open={bulkConfirm.open}
+        onClose={() => setBulkConfirm(d => ({ ...d, open: false }))}
+        onConfirm={bulkConfirm.onConfirm}
+        title={bulkConfirm.title}
+        message={bulkConfirm.message}
+        type="danger"
+        confirmText="Confirm"
       />
     </div>
   )

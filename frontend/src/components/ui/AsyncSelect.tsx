@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
-import { ChevronDown, Loader2, Search, X } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { ChevronDown, Loader2, Search, X, Inbox } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { Skeleton } from './Skeleton'
 
@@ -13,7 +13,7 @@ interface Option {
 interface AsyncSelectProps {
   label?: string
   placeholder?: string
-  value: string | number
+  value: string | number | null
   onChange: (value: string | number) => void
   options: Option[]
   isLoading?: boolean
@@ -21,6 +21,7 @@ interface AsyncSelectProps {
   required?: boolean
   disabled?: boolean
   searchable?: boolean
+  clearable?: boolean
   className?: string
   emptyMessage?: string
 }
@@ -36,13 +37,16 @@ export function AsyncSelect({
   required = false,
   disabled = false,
   searchable = false,
+  clearable = false,
   className,
   emptyMessage = 'No options available',
 }: AsyncSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -50,6 +54,7 @@ export function AsyncSelect({
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false)
         setSearchTerm('')
+        setHighlightedIndex(-1)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -60,6 +65,9 @@ export function AsyncSelect({
   useEffect(() => {
     if (isOpen && searchable && inputRef.current) {
       inputRef.current.focus()
+    }
+    if (isOpen) {
+      setHighlightedIndex(-1)
     }
   }, [isOpen, searchable])
 
@@ -72,14 +80,69 @@ export function AsyncSelect({
       )
     : options
 
-  const handleSelect = (optionValue: string | number) => {
+  const handleSelect = useCallback((optionValue: string | number) => {
     onChange(optionValue)
     setIsOpen(false)
     setSearchTerm('')
-  }
+    setHighlightedIndex(-1)
+  }, [onChange])
+
+  const handleClear = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    onChange('' as any)
+  }, [onChange])
+
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (highlightedIndex >= 0 && listRef.current) {
+      const items = listRef.current.querySelectorAll('[data-option]')
+      const item = items[highlightedIndex] as HTMLElement
+      if (item) {
+        item.scrollIntoView({ block: 'nearest' })
+      }
+    }
+  }, [highlightedIndex])
+
+  // Keyboard navigation
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!isOpen) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        setIsOpen(true)
+      }
+      return
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        setHighlightedIndex(prev =>
+          prev < filteredOptions.length - 1 ? prev + 1 : 0
+        )
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        setHighlightedIndex(prev =>
+          prev > 0 ? prev - 1 : filteredOptions.length - 1
+        )
+        break
+      case 'Enter':
+        e.preventDefault()
+        if (highlightedIndex >= 0 && highlightedIndex < filteredOptions.length) {
+          handleSelect(filteredOptions[highlightedIndex].value)
+        }
+        break
+      case 'Escape':
+        e.preventDefault()
+        setIsOpen(false)
+        setSearchTerm('')
+        setHighlightedIndex(-1)
+        break
+    }
+  }, [isOpen, filteredOptions, highlightedIndex, handleSelect])
 
   return (
-    <div className={cn('relative', className)} ref={containerRef}>
+    <div className={cn('relative', className)} ref={containerRef} onKeyDown={handleKeyDown}>
       {label && (
         <label className="block text-sm font-medium text-gray-700 mb-1.5">
           {label}
@@ -108,10 +171,22 @@ export function AsyncSelect({
             placeholder
           )}
         </span>
-        <ChevronDown className={cn(
-          'w-4 h-4 text-gray-400 transition-transform',
-          isOpen && 'rotate-180'
-        )} />
+        <div className="flex items-center gap-1 ml-2 shrink-0">
+          {clearable && selectedOption && !disabled && (
+            <span
+              role="button"
+              tabIndex={-1}
+              onClick={handleClear}
+              className="p-0.5 text-gray-400 hover:text-gray-600 rounded"
+            >
+              <X className="w-3.5 h-3.5" />
+            </span>
+          )}
+          <ChevronDown className={cn(
+            'w-4 h-4 text-gray-400 transition-transform',
+            isOpen && 'rotate-180'
+          )} />
+        </div>
       </button>
 
       {error && (
@@ -120,10 +195,10 @@ export function AsyncSelect({
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg dark:shadow-black/30 overflow-hidden animate-slide-up">
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg dark:shadow-black/30 overflow-hidden animate-slide-up dark:bg-slate-900 dark:border-slate-600">
           {/* Search input */}
           {searchable && (
-            <div className="p-2 border-b border-gray-100">
+            <div className="p-2 border-b border-gray-100 dark:border-slate-700">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
@@ -131,13 +206,13 @@ export function AsyncSelect({
                   type="text"
                   placeholder="Search..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => { setSearchTerm(e.target.value); setHighlightedIndex(-1) }}
                   className="w-full pl-9 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:bg-slate-900 dark:border-slate-600 dark:text-slate-200 dark:placeholder:text-slate-500"
                 />
                 {searchTerm && (
                   <button
                     type="button"
-                    onClick={() => setSearchTerm('')}
+                    onClick={() => { setSearchTerm(''); setHighlightedIndex(-1) }}
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
                   >
                     <X className="w-3 h-3" />
@@ -148,7 +223,7 @@ export function AsyncSelect({
           )}
 
           {/* Options list */}
-          <div className="max-h-60 overflow-y-auto">
+          <div className="max-h-60 overflow-y-auto" ref={listRef}>
             {isLoading ? (
               // Loading skeleton
               <div className="p-2 space-y-1">
@@ -164,22 +239,38 @@ export function AsyncSelect({
               </div>
             ) : filteredOptions.length === 0 ? (
               // Empty state
-              <div className="p-4 text-center text-sm text-gray-500">
-                {searchTerm ? 'No matching options' : emptyMessage}
+              <div className="px-4 py-6 text-center">
+                <Inbox className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                <p className="text-sm text-gray-500">
+                  {searchTerm ? `No results for "${searchTerm}"` : emptyMessage}
+                </p>
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => { setSearchTerm(''); setHighlightedIndex(-1) }}
+                    className="mt-2 text-xs text-primary-600 hover:text-primary-700 font-medium"
+                  >
+                    Clear search
+                  </button>
+                )}
               </div>
             ) : (
               // Options
               <div className="p-1">
-                {filteredOptions.map((option) => (
+                {filteredOptions.map((option, index) => (
                   <button
                     key={option.value}
                     type="button"
+                    data-option
                     onClick={() => handleSelect(option.value)}
+                    onMouseEnter={() => setHighlightedIndex(index)}
                     className={cn(
                       'w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm rounded-lg transition-colors',
                       String(option.value) === String(value)
-                        ? 'bg-primary-50 text-primary-700'
-                        : 'hover:bg-gray-50 text-gray-700'
+                        ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                        : index === highlightedIndex
+                          ? 'bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-slate-200'
+                          : 'hover:bg-gray-50 text-gray-700 dark:text-slate-300 dark:hover:bg-slate-800'
                     )}
                   >
                     {option.icon && (

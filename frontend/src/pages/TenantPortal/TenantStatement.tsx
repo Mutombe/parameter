@@ -4,7 +4,7 @@ import { BookOpen, Printer } from 'lucide-react'
 import { tenantPortalApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { Button } from '../../components/ui'
-import { printElement } from '../../lib/print'
+import { printElement } from '../../lib/printTemplate'
 
 export default function TenantStatement() {
   const { data, isLoading } = useQuery({

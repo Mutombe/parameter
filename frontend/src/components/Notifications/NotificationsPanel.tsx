@@ -12,7 +12,7 @@ import {
   Clock,
 } from 'lucide-react'
 import { notificationsApi } from '../../services/api'
-import { formatDistanceToNow } from '../../lib/utils'
+import { TimeAgo } from '../ui'
 import toast from 'react-hot-toast'
 import { TbUserSquareRounded } from "react-icons/tb";
 import { PiBuildingApartmentLight } from "react-icons/pi";
@@ -290,7 +290,7 @@ export default function NotificationsPanel({ open, onClose }: NotificationsPanel
                           <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{notif.message}</p>
                         )}
                         <p className="text-xs text-gray-400 mt-1">
-                          {formatDistanceToNow(notif.created_at)}
+                          <TimeAgo date={notif.created_at} />
                         </p>
                       </div>
                       {!notif.is_read && (

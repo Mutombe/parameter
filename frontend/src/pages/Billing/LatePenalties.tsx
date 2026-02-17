@@ -20,7 +20,8 @@ import {
   Ban,
 } from 'lucide-react'
 import { penaltyApi, propertyApi, tenantApi } from '../../services/api'
-import { PageHeader, Button, Input, Modal, Badge, EmptyState, ConfirmDialog } from '../../components/ui'
+import { PageHeader, Button, Input, Modal, Badge, EmptyState, ConfirmDialog, Select } from '../../components/ui'
+import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import toast from 'react-hot-toast'
 import { cn, formatCurrency } from '../../lib/utils'
 
@@ -174,9 +175,12 @@ export default function LatePenalties() {
     },
   })
 
-  const configs = configsData?.results || configsData || []
-  const exclusions = exclusionsData?.results || exclusionsData || []
-  const penaltyInvoices = penaltyInvoicesData?.results || penaltyInvoicesData || []
+  const configsRaw = configsData?.results || configsData
+  const configs = Array.isArray(configsRaw) ? configsRaw : []
+  const exclusionsRaw = exclusionsData?.results || exclusionsData
+  const exclusions = Array.isArray(exclusionsRaw) ? exclusionsRaw : []
+  const penaltyInvoicesRaw = penaltyInvoicesData?.results || penaltyInvoicesData
+  const penaltyInvoices = Array.isArray(penaltyInvoicesRaw) ? penaltyInvoicesRaw : []
 
   const resetConfigForm = () => {
     setShowConfigModal(false)
@@ -561,33 +565,36 @@ export default function LatePenalties() {
       >
         <form onSubmit={handleSubmitConfig} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Property (optional)</label>
-              <select value={configForm.property} onChange={(e) => setConfigForm({ ...configForm, property: e.target.value })}
-                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600">
-                <option value="">All Properties</option>
-                {(properties || []).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tenant Override (optional)</label>
-              <select value={configForm.tenant} onChange={(e) => setConfigForm({ ...configForm, tenant: e.target.value })}
-                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600">
-                <option value="">All Tenants</option>
-                {(tenants || []).map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </div>
+            <AsyncSelect
+              label="Property (optional)"
+              placeholder="All Properties"
+              value={configForm.property}
+              onChange={(val) => setConfigForm({ ...configForm, property: String(val) })}
+              options={(properties || []).map((p: any) => ({ value: p.id, label: p.name }))}
+              searchable
+              clearable
+            />
+            <AsyncSelect
+              label="Tenant Override (optional)"
+              placeholder="All Tenants"
+              value={configForm.tenant}
+              onChange={(val) => setConfigForm({ ...configForm, tenant: String(val) })}
+              options={(tenants || []).map((t: any) => ({ value: t.id, label: t.name }))}
+              searchable
+              clearable
+            />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Penalty Type</label>
-            <select value={configForm.penalty_type} onChange={(e) => setConfigForm({ ...configForm, penalty_type: e.target.value })}
-              className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600">
-              <option value="percentage">Percentage of Invoice</option>
-              <option value="flat_fee">Flat Fee</option>
-              <option value="both">Percentage + Flat Fee</option>
-            </select>
-          </div>
+          <Select
+            label="Penalty Type"
+            value={configForm.penalty_type}
+            onChange={(e) => setConfigForm({ ...configForm, penalty_type: e.target.value })}
+            options={[
+              { value: 'percentage', label: 'Percentage of Invoice' },
+              { value: 'flat_fee', label: 'Flat Fee' },
+              { value: 'both', label: 'Percentage + Flat Fee' },
+            ]}
+          />
 
           <div className="grid grid-cols-3 gap-4">
             {configForm.penalty_type !== 'flat_fee' && (
@@ -598,14 +605,15 @@ export default function LatePenalties() {
               <Input label="Flat Fee" type="number" step="0.01" value={configForm.flat_fee}
                 onChange={(e) => setConfigForm({ ...configForm, flat_fee: e.target.value })} />
             )}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
-              <select value={configForm.currency} onChange={(e) => setConfigForm({ ...configForm, currency: e.target.value })}
-                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600">
-                <option value="USD">USD</option>
-                <option value="ZiG">ZiG</option>
-              </select>
-            </div>
+            <Select
+              label="Currency"
+              value={configForm.currency}
+              onChange={(e) => setConfigForm({ ...configForm, currency: e.target.value })}
+              options={[
+                { value: 'USD', label: 'USD' },
+                { value: 'ZiG', label: 'ZiG' },
+              ]}
+            />
           </div>
 
           <div className="grid grid-cols-3 gap-4">
@@ -637,14 +645,15 @@ export default function LatePenalties() {
       {/* Exclusion Modal */}
       <Modal open={showExclusionModal} onClose={() => setShowExclusionModal(false)} title="Add Exclusion" icon={ShieldOff}>
         <form onSubmit={handleSubmitExclusion} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Tenant</label>
-            <select value={exclusionForm.tenant} onChange={(e) => setExclusionForm({ ...exclusionForm, tenant: e.target.value })}
-              required className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600">
-              <option value="">Select tenant</option>
-              {(tenants || []).map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          </div>
+          <AsyncSelect
+            label="Tenant"
+            placeholder="Select tenant"
+            value={exclusionForm.tenant}
+            onChange={(val) => setExclusionForm({ ...exclusionForm, tenant: String(val) })}
+            options={(tenants || []).map((t: any) => ({ value: t.id, label: t.name }))}
+            required
+            searchable
+          />
           <Input label="Reason" value={exclusionForm.reason}
             onChange={(e) => setExclusionForm({ ...exclusionForm, reason: e.target.value })}
             required placeholder="Reason for exclusion" />

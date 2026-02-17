@@ -24,11 +24,17 @@ import {
   Zap,
   Loader2,
   X,
+  Trash2,
+  BookOpen,
 } from 'lucide-react'
 import { invoiceApi, tenantApi, unitApi, leaseApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog } from '../../components/ui'
+import { printInvoice } from '../../lib/printTemplate'
+import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, SelectionCheckbox, BulkActionsBar } from '../../components/ui'
+import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
+import { exportTableData } from '../../lib/export'
+import { useSelection } from '../../hooks/useSelection'
 import { TbUserSquareRounded } from "react-icons/tb";
 
 interface Invoice {
@@ -164,6 +170,10 @@ export default function Invoices() {
     description: '',
   })
 
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
+
+  const selection = useSelection<number | string>({ clearOnChange: [debouncedSearch, statusFilter] })
+
   const { data: invoices, isLoading } = useQuery({
     queryKey: ['invoices', debouncedSearch, statusFilter],
     queryFn: () => {
@@ -276,105 +286,18 @@ export default function Invoices() {
   }
 
   const handlePrint = (invoice: Invoice) => {
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) {
-      showToast.error('Unable to open print window')
-      return
-    }
-
-    const statusLabel = statusConfig[invoice.status]?.label || invoice.status
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Invoice ${invoice.invoice_number}</title>
-        <style>
-          @page { size: A4; margin: 2cm; }
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; color: #1a1a1a; }
-          .header { text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #e5e7eb; }
-          .header h1 { font-size: 28px; margin: 0 0 5px 0; color: #111827; }
-          .header p { color: #6b7280; margin: 5px 0; }
-          .invoice-info { display: flex; justify-content: space-between; margin-bottom: 30px; }
-          .invoice-info div { }
-          .invoice-info h3 { font-size: 14px; color: #6b7280; margin: 0 0 5px 0; text-transform: uppercase; }
-          .invoice-info p { margin: 5px 0; font-size: 16px; }
-          .details { background: #f9fafb; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
-          .details h3 { margin: 0 0 15px 0; font-size: 18px; }
-          .row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e5e7eb; }
-          .row:last-child { border-bottom: none; }
-          .row .label { color: #6b7280; }
-          .row .value { font-weight: 600; }
-          .total { background: #111827; color: white; padding: 20px; border-radius: 8px; text-align: center; }
-          .total h3 { margin: 0 0 5px 0; font-size: 14px; text-transform: uppercase; opacity: 0.8; }
-          .total p { font-size: 32px; font-weight: bold; margin: 0; }
-          .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #9ca3af; text-align: center; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>INVOICE</h1>
-          <p>${invoice.invoice_number}</p>
-        </div>
-
-        <div class="invoice-info">
-          <div>
-            <h3>Bill To</h3>
-            <p><strong>${invoice.tenant_name}</strong></p>
-            ${invoice.unit_name ? `<p>${invoice.unit_name}</p>` : ''}
-          </div>
-          <div style="text-align: right;">
-            <h3>Invoice Details</h3>
-            <p>Date: ${formatDate(invoice.date)}</p>
-            <p>Due Date: ${formatDate(invoice.due_date)}</p>
-            <p>Status: ${statusLabel}</p>
-          </div>
-        </div>
-
-        <div class="details">
-          <h3>Invoice Summary</h3>
-          <div class="row">
-            <span class="label">Type</span>
-            <span class="value">${invoice.invoice_type.charAt(0).toUpperCase() + invoice.invoice_type.slice(1)}</span>
-          </div>
-          ${invoice.description ? `
-          <div class="row">
-            <span class="label">Description</span>
-            <span class="value">${invoice.description}</span>
-          </div>
-          ` : ''}
-          <div class="row">
-            <span class="label">Total Amount</span>
-            <span class="value">${formatCurrency(invoice.total_amount)}</span>
-          </div>
-          <div class="row">
-            <span class="label">Amount Paid</span>
-            <span class="value">${formatCurrency(Number(invoice.total_amount) - Number(invoice.balance))}</span>
-          </div>
-          <div class="row">
-            <span class="label">Balance Due</span>
-            <span class="value" style="color: ${Number(invoice.balance) > 0 ? '#dc2626' : '#059669'};">${formatCurrency(invoice.balance)}</span>
-          </div>
-        </div>
-
-        <div class="total">
-          <h3>Amount Due</h3>
-          <p>${formatCurrency(invoice.balance)}</p>
-        </div>
-
-        <div class="footer">
-          Generated by Parameter Real Estate Accounting System &bull; ${new Date().toLocaleDateString()}
-        </div>
-      </body>
-      </html>
-    `)
-
-    printWindow.document.close()
-    printWindow.onload = () => {
-      printWindow.focus()
-      printWindow.print()
-      printWindow.close()
-    }
+    printInvoice({
+      invoice_number: invoice.invoice_number,
+      tenant_name: invoice.tenant_name,
+      unit_name: invoice.unit_name,
+      date: invoice.date,
+      due_date: invoice.due_date,
+      status: invoice.status,
+      invoice_type: invoice.invoice_type,
+      description: invoice.description,
+      total_amount: Number(invoice.total_amount),
+      balance: Number(invoice.balance),
+    })
   }
 
   const generateMutation = useMutation({
@@ -401,6 +324,98 @@ export default function Invoices() {
   const totalCollected = invoices?.reduce((sum: number, i: Invoice) => sum + (Number(i.total_amount || 0) - Number(i.balance || 0)), 0) || 0
   const totalOutstanding = invoices?.reduce((sum: number, i: Invoice) => sum + Number(i.balance || 0), 0) || 0
   const collectionRate = totalAmount > 0 ? (totalCollected / totalAmount) * 100 : 0
+
+  // Selectable IDs (exclude optimistic items)
+  const selectableInvoices = (invoices || []).filter((i: Invoice) => !i._isOptimistic)
+  const pageIds = selectableInvoices.map((i: Invoice) => i.id)
+
+  const handleBulkExport = () => {
+    const selected = selectableInvoices.filter((i: Invoice) => selection.isSelected(i.id))
+    exportTableData(selected, [
+      { key: 'invoice_number', header: 'Invoice Number' },
+      { key: 'tenant_name', header: 'Tenant' },
+      { key: 'unit_name', header: 'Unit' },
+      { key: 'invoice_type', header: 'Type' },
+      { key: 'date', header: 'Date' },
+      { key: 'due_date', header: 'Due Date' },
+      { key: 'total_amount', header: 'Amount' },
+      { key: 'balance', header: 'Balance' },
+      { key: 'status', header: 'Status' },
+    ], 'invoices_export')
+    showToast.success(`Exported ${selected.length} invoices`)
+  }
+
+  const handleBulkPrint = () => {
+    const selected = selectableInvoices.filter((i: Invoice) => selection.isSelected(i.id))
+    selected.forEach((invoice: Invoice) => {
+      printInvoice({
+        invoice_number: invoice.invoice_number,
+        tenant_name: invoice.tenant_name,
+        unit_name: invoice.unit_name,
+        date: invoice.date,
+        due_date: invoice.due_date,
+        status: invoice.status,
+        invoice_type: invoice.invoice_type,
+        description: invoice.description,
+        total_amount: Number(invoice.total_amount),
+        balance: Number(invoice.balance),
+      })
+    })
+    showToast.success(`Printing ${selected.length} invoices`)
+  }
+
+  const handleBulkPost = () => {
+    setConfirmDialog({
+      open: true,
+      title: `Post ${selection.selectedCount} invoices to ledger?`,
+      message: 'This will post selected draft invoices to the general ledger.',
+      onConfirm: async () => {
+        const ids = Array.from(selection.selectedIds).filter(id => {
+          const inv = selectableInvoices.find((i: Invoice) => i.id === id)
+          return inv?.status === 'draft'
+        })
+        for (const id of ids) { await invoiceApi.postToLedger(id as number) }
+        selection.clearSelection()
+        queryClient.invalidateQueries({ queryKey: ['invoices'] })
+        showToast.success(`Posted ${ids.length} invoices to ledger`)
+        setConfirmDialog(d => ({ ...d, open: false }))
+      },
+    })
+  }
+
+  const handleBulkSend = () => {
+    const ids = Array.from(selection.selectedIds) as number[]
+    invoiceApi.sendInvoices({ invoice_ids: ids }).then(() => {
+      selection.clearSelection()
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      showToast.success(`Sent ${ids.length} invoices`)
+    }).catch((err) => showToast.error(parseApiError(err, 'Failed to send invoices')))
+  }
+
+  const handleBulkDelete = () => {
+    setConfirmDialog({
+      open: true,
+      title: `Delete ${selection.selectedCount} invoices?`,
+      message: 'This action cannot be undone. Only draft invoices will be deleted.',
+      onConfirm: async () => {
+        const ids = Array.from(selection.selectedIds)
+        let deleted = 0
+        for (const id of ids) {
+          try {
+            const inv = selectableInvoices.find((i: Invoice) => i.id === id)
+            if (inv?.status === 'draft') {
+              await invoiceApi.update(id as number, { status: 'cancelled' })
+              deleted++
+            }
+          } catch { /* skip */ }
+        }
+        selection.clearSelection()
+        queryClient.invalidateQueries({ queryKey: ['invoices'] })
+        showToast.success(`Deleted ${deleted} invoices`)
+        setConfirmDialog(d => ({ ...d, open: false }))
+      },
+    })
+  }
 
   return (
     <div className="space-y-6">
@@ -536,18 +551,20 @@ export default function Invoices() {
           />
         </div>
 
-        <select
+        <Select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           className="px-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-        >
-          <option value="">All Statuses</option>
-          <option value="draft">Draft</option>
-          <option value="sent">Sent</option>
-          <option value="partial">Partial</option>
-          <option value="paid">Paid</option>
-          <option value="overdue">Overdue</option>
-        </select>
+          placeholder="All Statuses"
+          options={[
+            { value: '', label: 'All Statuses' },
+            { value: 'draft', label: 'Draft' },
+            { value: 'sent', label: 'Sent' },
+            { value: 'partial', label: 'Partial' },
+            { value: 'paid', label: 'Paid' },
+            { value: 'overdue', label: 'Overdue' },
+          ]}
+        />
 
         <div className="ml-auto text-sm text-gray-500">
           {isLoading ? (
@@ -634,6 +651,13 @@ export default function Invoices() {
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
+                      <th className="px-4 py-4 w-10">
+                        <SelectionCheckbox
+                          checked={selection.isAllPageSelected(pageIds)}
+                          indeterminate={selection.isPartialPageSelected(pageIds)}
+                          onChange={() => selection.selectPage(pageIds)}
+                        />
+                      </th>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice</th>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
@@ -662,9 +686,17 @@ export default function Invoices() {
                           transition={{ delay: isOptimistic ? 0 : index * 0.02, duration: 0.3 }}
                           className={cn(
                             'transition-colors',
-                            isOptimistic ? 'bg-blue-50' : 'hover:bg-gray-50'
+                            isOptimistic ? 'bg-blue-50' : selection.isSelected(invoice.id) ? 'bg-primary-50' : 'hover:bg-gray-50'
                           )}
                         >
+                          <td className="px-4 py-4 w-10" onClick={(e) => e.stopPropagation()}>
+                            {!isOptimistic && (
+                              <SelectionCheckbox
+                                checked={selection.isSelected(invoice.id)}
+                                onChange={() => selection.toggle(invoice.id)}
+                              />
+                            )}
+                          </td>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
                               <div className={cn(
@@ -793,67 +825,30 @@ export default function Invoices() {
         icon={Plus}
       >
         <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(form); }} className="space-y-5">
-          {/* Tenant Select with Loading */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Tenant <span className="text-red-500">*</span>
-            </label>
-            {tenantsLoading ? (
-              <div className="relative">
-                <Skeleton className="h-11 w-full rounded-xl" />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
-                </div>
-              </div>
-            ) : (
-              <>
-                <select
-                  value={form.tenant}
-                  onChange={(e) => setForm({ ...form, tenant: e.target.value })}
-                  className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-                  required
-                >
-                  <option value="">Select tenant</option>
-                  {tenants?.map((t: any) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} ({t.code}) {t.unit_name ? `- ${t.unit_name}` : ''}
-                    </option>
-                  ))}
-                </select>
-                {tenants?.length === 0 && (
-                  <p className="text-xs text-amber-600 mt-1">No tenants found. Create a tenant first in Masterfile.</p>
-                )}
-              </>
-            )}
-          </div>
+          {/* Tenant Select */}
+          <AsyncSelect
+            label="Tenant"
+            placeholder="Select tenant"
+            value={form.tenant}
+            onChange={(val) => setForm({ ...form, tenant: String(val) })}
+            options={tenants?.map((t: any) => ({ value: t.id, label: `${t.name} (${t.code})${t.unit_name ? ` - ${t.unit_name}` : ''}` })) || []}
+            isLoading={tenantsLoading}
+            required
+            searchable
+            emptyMessage="No tenants found. Create a tenant first in Masterfile."
+          />
 
-          {/* Unit Select with Loading */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Unit <span className="text-gray-400 font-normal">(Optional)</span>
-            </label>
-            {unitsLoading ? (
-              <div className="relative">
-                <Skeleton className="h-11 w-full rounded-xl" />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
-                </div>
-              </div>
-            ) : (
-              <select
-                value={form.unit}
-                onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-              >
-                <option value="">No specific unit</option>
-                {units?.map((u: any) => (
-                  <option key={u.id} value={u.id}>
-                    Unit {u.unit_number} - {u.property_name || 'Unknown Property'}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
+          {/* Unit Select */}
+          <AsyncSelect
+            label="Unit (Optional)"
+            placeholder="No specific unit"
+            value={form.unit}
+            onChange={(val) => setForm({ ...form, unit: String(val) })}
+            options={units?.map((u: any) => ({ value: u.id, label: `Unit ${u.unit_number} - ${u.property_name || 'Unknown Property'}` })) || []}
+            isLoading={unitsLoading}
+            searchable
+            clearable
+          />
 
           <div className="grid grid-cols-2 gap-4">
             <Input
@@ -877,12 +872,13 @@ export default function Invoices() {
               label="Invoice Type"
               value={form.invoice_type}
               onChange={(e) => setForm({ ...form, invoice_type: e.target.value })}
-            >
-              <option value="rent">Rent</option>
-              <option value="utilities">Utilities</option>
-              <option value="deposit">Deposit</option>
-              <option value="other">Other</option>
-            </Select>
+              options={[
+                { value: 'rent', label: 'Rent' },
+                { value: 'utilities', label: 'Utilities' },
+                { value: 'deposit', label: 'Deposit' },
+                { value: 'other', label: 'Other' },
+              ]}
+            />
 
             <Input
               type="number"
@@ -934,14 +930,11 @@ export default function Invoices() {
               label="Month"
               value={generateForm.month}
               onChange={(e) => setGenerateForm({ ...generateForm, month: Number(e.target.value) })}
-            >
-              {[
+              options={[
                 'January', 'February', 'March', 'April', 'May', 'June',
                 'July', 'August', 'September', 'October', 'November', 'December'
-              ].map((month, i) => (
-                <option key={i} value={i + 1}>{month}</option>
-              ))}
-            </Select>
+              ].map((month, i) => ({ value: String(i + 1), label: month }))}
+            />
 
             <Input
               type="number"
@@ -1086,6 +1079,31 @@ export default function Invoices() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Bulk Actions Bar */}
+      <BulkActionsBar
+        selectedCount={selection.selectedCount}
+        onClearSelection={selection.clearSelection}
+        entityName="invoices"
+        actions={[
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
+          { label: 'Print', icon: Printer, onClick: handleBulkPrint, variant: 'outline' },
+          { label: 'Post to Ledger', icon: BookOpen, onClick: handleBulkPost, variant: 'primary' },
+          { label: 'Send', icon: Send, onClick: handleBulkSend, variant: 'primary' },
+          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger' },
+        ]}
+      />
+
+      {/* Bulk Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type="danger"
+        confirmText="Confirm"
+      />
     </div>
   )
 }

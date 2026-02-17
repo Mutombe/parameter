@@ -21,11 +21,15 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Sparkles,
+  Download,
 } from 'lucide-react'
 import { accountApi } from '../../services/api'
 import { formatCurrency, cn } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton } from '../../components/ui'
 import toast from 'react-hot-toast'
+import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
+import { exportTableData } from '../../lib/export'
+import { useSelection } from '../../hooks/useSelection'
 
 interface Account {
   id: number
@@ -131,6 +135,8 @@ export default function ChartOfAccounts() {
     account_subtype: 'current_asset',
   })
 
+  const selection = useSelection<number>({ clearOnChange: [search, typeFilter] })
+
   const { data: accounts, isLoading } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => accountApi.list().then(r => r.data.results || r.data),
@@ -197,6 +203,21 @@ export default function ChartOfAccounts() {
     equity: ['capital', 'retained_earnings'],
     revenue: ['operating_revenue', 'other_income'],
     expense: ['operating_expense', 'cost_of_sales', 'other_expense'],
+  }
+
+  const allAccounts = accounts || []
+  const selectableItems = Array.isArray(allAccounts) ? allAccounts.filter((a: any) => !a._isOptimistic) : []
+  const pageIds = selectableItems.map((a: any) => a.id)
+
+  const handleBulkExport = () => {
+    const selected = selectableItems.filter((a: any) => selection.isSelected(a.id))
+    exportTableData(selected, [
+      { key: 'code', header: 'Code' },
+      { key: 'name', header: 'Name' },
+      { key: 'account_type', header: 'Type' },
+      { key: 'current_balance', header: 'Balance' },
+    ], 'chart_of_accounts_export')
+    toast.success(`Exported ${selected.length} accounts`)
   }
 
   return (
@@ -306,12 +327,24 @@ export default function ChartOfAccounts() {
                 <span className="text-xs">×</span>
               </Badge>
             )}
-            <div className="ml-auto text-sm text-gray-500">
-              {isLoading ? (
-                <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
-              ) : (
-                <>{filteredAccounts.length} accounts</>
+            <div className="flex items-center gap-3 ml-auto">
+              {pageIds.length > 0 && (
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-500">
+                  <SelectionCheckbox
+                    checked={selection.isAllPageSelected(pageIds)}
+                    indeterminate={selection.isPartialPageSelected(pageIds)}
+                    onChange={() => selection.selectPage(pageIds)}
+                  />
+                  Select all
+                </label>
               )}
+              <div className="text-sm text-gray-500">
+                {isLoading ? (
+                  <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
+                ) : (
+                  <>{filteredAccounts.length} accounts</>
+                )}
+              </div>
             </div>
           </div>
 
@@ -373,6 +406,7 @@ export default function ChartOfAccounts() {
                         <table className="w-full">
                           <thead className="bg-gray-50 border-y border-gray-200">
                             <tr>
+                              <th className="w-10 px-3 py-3"></th>
                               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Code</th>
                               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Account Name</th>
                               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Sub-Type</th>
@@ -387,8 +421,17 @@ export default function ChartOfAccounts() {
                                 initial={{ opacity: 0, x: -10 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: index * 0.02 }}
-                                className="hover:bg-gray-50 transition-colors group"
+                                className={cn(
+                                  'hover:bg-gray-50 transition-colors group',
+                                  selection.isSelected(account.id) && 'bg-primary-50'
+                                )}
                               >
+                                <td className="w-10 px-3 py-4">
+                                  <SelectionCheckbox
+                                    checked={selection.isSelected(account.id)}
+                                    onChange={() => selection.toggle(account.id)}
+                                  />
+                                </td>
                                 <td className="px-6 py-4">
                                   <div className="flex items-center gap-3">
                                     <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center', config.bgColor)}>
@@ -520,6 +563,15 @@ export default function ChartOfAccounts() {
           </div>
         </form>
       </Modal>
+
+      <BulkActionsBar
+        selectedCount={selection.selectedCount}
+        onClearSelection={selection.clearSelection}
+        entityName="accounts"
+        actions={[
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
+        ]}
+      />
     </div>
   )
 }

@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { expenseApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
-import { Button, ConfirmDialog } from '../../components/ui'
+import { Button, ConfirmDialog, TimeAgo } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 
 const container = {
@@ -232,7 +232,7 @@ export default function ExpenseDetail() {
                 {expense?.approved_at && (
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <CheckCircle2 className="w-3.5 h-3.5 text-gray-400" />
-                    <span>Approved {formatDate(expense.approved_at)}</span>
+                    <span>Approved <TimeAgo date={expense.approved_at} /></span>
                   </div>
                 )}
               </div>
@@ -320,12 +320,12 @@ export default function ExpenseDetail() {
               </div>
               <div>
                 <p className="text-xs text-gray-500">Created</p>
-                <p className="text-sm font-medium text-gray-900">{expense?.created_at ? formatDate(expense.created_at) : '-'}</p>
+                <p className="text-sm font-medium text-gray-900">{expense?.created_at ? <TimeAgo date={expense.created_at} /> : '-'}</p>
               </div>
               {expense?.approved_at && (
                 <div>
                   <p className="text-xs text-gray-500">Approved At</p>
-                  <p className="text-sm font-medium text-gray-900">{formatDate(expense.approved_at)}</p>
+                  <p className="text-sm font-medium text-gray-900"><TimeAgo date={expense.approved_at} /></p>
                 </div>
               )}
               {expense?.journal_number && (

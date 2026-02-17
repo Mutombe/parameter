@@ -1,4 +1,5 @@
-import axios from 'axios'
+import axios, { type InternalAxiosRequestConfig } from 'axios'
+import { useSessionStore } from '../stores/sessionStore'
 
 // API base URL - use environment variable for production, localhost for development
 // In production on Render, frontend is served from same origin as API
@@ -51,8 +52,30 @@ const api = axios.create({
   },
 })
 
+// Slow network detection infrastructure
+const SLOW_THRESHOLD_MS = 5000
+const ROLLING_WINDOW_SIZE = 5
+const requestDurations: number[] = []
+let slowNetworkCallback: ((isSlow: boolean) => void) | null = null
+let wasSlow = false
+
+export function onSlowNetworkChange(callback: (isSlow: boolean) => void) {
+  slowNetworkCallback = callback
+  return () => { slowNetworkCallback = null }
+}
+
+// Extend config type to carry timing metadata
+declare module 'axios' {
+  interface InternalAxiosRequestConfig {
+    _requestStartTime?: number
+  }
+}
+
 // Add CSRF token and tenant subdomain handling
 api.interceptors.request.use((config) => {
+  // Stamp start time for slow-network detection
+  config._requestStartTime = Date.now()
+
   // CSRF token for Django
   const csrfToken = document.cookie
     .split('; ')
@@ -86,15 +109,53 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Response interceptor for error handling
+// Response interceptor for error handling + slow-network tracking
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Track request duration for slow-network detection
+    const start = response.config._requestStartTime
+    if (start) {
+      const duration = Date.now() - start
+      requestDurations.push(duration)
+      if (requestDurations.length > ROLLING_WINDOW_SIZE) {
+        requestDurations.shift()
+      }
+      if (requestDurations.length === ROLLING_WINDOW_SIZE) {
+        const avg = requestDurations.reduce((a, b) => a + b, 0) / ROLLING_WINDOW_SIZE
+        const isSlow = avg > SLOW_THRESHOLD_MS
+        if (isSlow !== wasSlow) {
+          wasSlow = isSlow
+          slowNetworkCallback?.(isSlow)
+        }
+      }
+    }
+    return response
+  },
   (error) => {
     if (error.response?.status === 401) {
-      // Avoid redirect loops — don't redirect if already on login/public pages
       const path = window.location.pathname
-      if (path !== '/login' && path !== '/' && !path.startsWith('/accept-invite') && !path.startsWith('/demo')) {
-        window.location.href = '/login'
+      const url = (error.config as InternalAxiosRequestConfig)?.url || ''
+
+      // Guard: skip for public pages and login endpoint itself
+      const isPublicPage = path === '/login' || path === '/' || path.startsWith('/accept-invite') || path.startsWith('/demo')
+      const isLoginRequest = url.includes('/auth/login')
+
+      if (!isPublicPage && !isLoginRequest) {
+        const sessionStore = useSessionStore.getState()
+
+        // Only trigger modal once for concurrent 401s
+        if (!sessionStore.isSessionExpired) {
+          sessionStore.setSessionExpired(true)
+        }
+
+        // Queue the failed request — caller suspends until re-login replays it
+        return new Promise((resolve, reject) => {
+          sessionStore.addToQueue({
+            config: error.config as InternalAxiosRequestConfig,
+            resolve,
+            reject,
+          })
+        })
       }
     }
     return Promise.reject(error)
@@ -502,12 +563,29 @@ export const invitationsApi = {
     api.post('/accounts/invitations/', data),
   resend: (id: number) => api.post(`/accounts/invitations/${id}/resend/`),
   cancel: (id: number) => api.post(`/accounts/invitations/${id}/cancel/`),
+  bulkCreate: (data: {
+    invitations: Array<{ email: string; first_name?: string; last_name?: string; role?: string }>
+  }) => api.post('/accounts/invitations/bulk_invite/', data),
   // Get allowed roles for current user
   allowedRoles: () => api.get('/accounts/invitations/allowed_roles/'),
   // Accept invitation (public)
   validate: (token: string) => api.get('/accounts/accept-invitation/', { params: { token } }),
   accept: (data: { token: string; password: string; confirm_password: string; first_name?: string; last_name?: string }) =>
     api.post('/accounts/accept-invitation/', data),
+}
+
+// Company Settings API (tenant-scoped)
+export const companySettingsApi = {
+  get: () => api.get('/tenants/company-settings/'),
+  update: (data: object) => api.patch('/tenants/company-settings/', data),
+  uploadLogo: (file: File) => {
+    const formData = new FormData()
+    formData.append('logo', file)
+    return api.post('/tenants/company-settings/logo/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  removeLogo: () => api.delete('/tenants/company-settings/logo/'),
 }
 
 // Tenants/Onboarding API (Public schema)

@@ -24,11 +24,15 @@ import {
   UserPlus,
   Shield,
   Users,
+  Download,
 } from 'lucide-react'
-import { propertyApi, landlordApi, propertyManagerApi, usersApi } from '../../services/api'
+import { Upload, FileSpreadsheet } from 'lucide-react'
+import { propertyApi, landlordApi, propertyManagerApi, usersApi, importsApi } from '../../services/api'
 import { formatPercent, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, ConfirmDialog, Pagination } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, ConfirmDialog, Pagination, SelectionCheckbox, BulkActionsBar, SplitButton } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
+import { exportTableData } from '../../lib/export'
+import { useSelection } from '../../hooks/useSelection'
 import { PiBuildingApartmentLight } from "react-icons/pi"
 import { TbUserSquareRounded } from "react-icons/tb"
 
@@ -118,6 +122,10 @@ export default function Properties() {
     currency: 'USD',
     unit_type: 'apartment',
   })
+
+  const selection = useSelection<number>({ clearOnChange: [debouncedSearch, typeFilter] })
+
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
 
   // Reset page when search/filter changes
   const handleSearchChange = (value: string) => {
@@ -378,6 +386,53 @@ export default function Properties() {
     mixed: properties?.filter((p: Property) => p.property_type === 'mixed').length || 0,
   }
 
+  const selectableItems = (filteredProperties || []).filter((p: any) => !p._isOptimistic)
+  const pageIds = selectableItems.map((p: any) => p.id)
+
+  const handleBulkExport = () => {
+    const selected = selectableItems.filter((p: any) => selection.isSelected(p.id))
+    exportTableData(selected, [
+      { key: 'name', header: 'Name' },
+      { key: 'code', header: 'Code' },
+      { key: 'property_type', header: 'Type' },
+      { key: 'city', header: 'City' },
+      { key: 'landlord_name', header: 'Landlord' },
+      { key: 'total_units', header: 'Total Units' },
+    ], 'properties_export')
+    showToast.success(`Exported ${selected.length} properties`)
+  }
+
+  const handleBulkDelete = () => {
+    setBulkDeleteConfirm({
+      open: true,
+      title: `Delete ${selection.selectedCount} properties?`,
+      message: 'This action cannot be undone.',
+      onConfirm: async () => {
+        const ids = Array.from(selection.selectedIds)
+        for (const id of ids) { try { await propertyApi.delete(id) } catch {} }
+        selection.clearSelection()
+        queryClient.invalidateQueries({ queryKey: ['properties'] })
+        showToast.success(`Deleted ${ids.length} properties`)
+        setBulkDeleteConfirm(d => ({ ...d, open: false }))
+      },
+    })
+  }
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await importsApi.downloadTemplate('properties')
+      const blob = response.data as Blob
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'import_template_properties.xlsx'
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      showToast.error('Failed to download template')
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -385,10 +440,16 @@ export default function Properties() {
         subtitle="Manage buildings and property portfolios"
         icon={PiBuildingApartmentLight}
         actions={
-          <Button onClick={() => setShowForm(true)} className="gap-2">
+          <SplitButton
+            onClick={() => setShowForm(true)}
+            menuItems={[
+              { label: 'Import from File', icon: Upload, onClick: () => navigate('/dashboard/data-import') },
+              { label: 'Download Template', icon: FileSpreadsheet, onClick: handleDownloadTemplate },
+            ]}
+          >
             <Plus className="w-4 h-4" />
             Add Property
-          </Button>
+          </SplitButton>
         }
       />
 
@@ -478,12 +539,24 @@ export default function Properties() {
           </Badge>
         )}
 
-        <div className="ml-auto text-sm text-gray-500">
-          {isLoading ? (
-            <div className="h-4 w-24 bg-gray-200 rounded animate-pulse" />
-          ) : (
-            <>{filteredProperties.length} properties</>
+        <div className="flex items-center gap-3 ml-auto">
+          {selectableItems.length > 0 && (
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-500">
+              <SelectionCheckbox
+                checked={selection.isAllPageSelected(pageIds)}
+                indeterminate={selection.isPartialPageSelected(pageIds)}
+                onChange={() => selection.selectPage(pageIds)}
+              />
+              Select all
+            </label>
           )}
+          <p className="text-sm text-gray-500">
+            {isLoading ? (
+              <span className="inline-block h-4 w-24 bg-gray-200 rounded animate-pulse" />
+            ) : (
+              <>{filteredProperties.length} properties</>
+            )}
+          </p>
         </div>
       </div>
 
@@ -536,8 +609,19 @@ export default function Properties() {
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.02 }}
-                className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md hover:border-gray-300 transition-all group"
+                className={cn(
+                  'relative bg-white rounded-xl border border-gray-200 p-4 pl-10 hover:shadow-md hover:border-gray-300 transition-all group',
+                  selection.isSelected(property.id) && 'ring-2 ring-primary-500 bg-primary-50/30'
+                )}
               >
+                {/* Selection checkbox */}
+                <div className="absolute left-3 top-1/2 -translate-y-1/2" onClick={(e) => e.stopPropagation()}>
+                  <SelectionCheckbox
+                    checked={selection.isSelected(property.id)}
+                    onChange={() => selection.toggle(property.id)}
+                  />
+                </div>
+
                 <div className="flex items-center gap-4">
                   {/* Icon */}
                   <div className={cn(
@@ -1184,6 +1268,28 @@ export default function Properties() {
           </div>
         </div>
       </Modal>
+
+      {/* Bulk Actions Bar */}
+      <BulkActionsBar
+        selectedCount={selection.selectedCount}
+        onClearSelection={selection.clearSelection}
+        entityName="properties"
+        actions={[
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
+          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger' },
+        ]}
+      />
+
+      {/* Bulk Delete Confirmation */}
+      <ConfirmDialog
+        open={bulkDeleteConfirm.open}
+        onClose={() => setBulkDeleteConfirm(d => ({ ...d, open: false }))}
+        onConfirm={bulkDeleteConfirm.onConfirm}
+        title={bulkDeleteConfirm.title}
+        message={bulkDeleteConfirm.message}
+        type="danger"
+        confirmText="Confirm"
+      />
     </div>
   )
 }

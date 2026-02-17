@@ -76,6 +76,48 @@ class GlobalSettingsSerializer(serializers.ModelSerializer):
         fields = ['id', 'key', 'value', 'description', 'updated_at']
 
 
+class CompanySettingsSerializer(serializers.ModelSerializer):
+    """Serializer for company settings (current tenant)."""
+    logo_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Client
+        fields = [
+            'name', 'email', 'phone', 'address', 'logo', 'logo_url',
+            'default_currency', 'secondary_currency', 'exchange_rate',
+            'invoice_prefix', 'invoice_footer', 'paper_size', 'show_logo',
+        ]
+        extra_kwargs = {
+            'logo': {'write_only': True, 'required': False},
+        }
+
+    def get_logo_url(self, obj):
+        if obj.logo:
+            from django.conf import settings
+            try:
+                logo_url = obj.logo.url
+            except Exception:
+                return None
+
+            if logo_url.startswith('http://') or logo_url.startswith('https://'):
+                return logo_url
+
+            backend_url = getattr(settings, 'BACKEND_URL', '')
+            if not backend_url:
+                request = self.context.get('request')
+                if request:
+                    try:
+                        return request.build_absolute_uri(logo_url)
+                    except Exception:
+                        pass
+
+            if backend_url:
+                return f"{backend_url.rstrip('/')}{logo_url}"
+
+            return logo_url
+        return None
+
+
 class CompanyOnboardingSerializer(serializers.Serializer):
     """Serializer for company onboarding/registration."""
 

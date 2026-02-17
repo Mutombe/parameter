@@ -1,4 +1,4 @@
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard,
@@ -27,6 +27,8 @@ import {
   Upload,
   Bell,
   AlertTriangle,
+  Scale,
+  Clock,
 } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useAuthStore } from '../../stores/authStore'
@@ -91,12 +93,14 @@ const navigation: NavSection[] = [
       { name: 'Bank Accounts', href: '/dashboard/bank-accounts', icon: Landmark },
       { name: 'Income Types', href: '/dashboard/income-types', icon: DollarSign },
       { name: 'Expense Categories', href: '/dashboard/expense-categories', icon: GitCompare },
+      { name: 'Reconciliation', href: '/dashboard/bank-reconciliation', icon: Scale },
     ],
   },
   {
     title: 'Analytics',
     items: [
       { name: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
+      { name: 'Aged Analysis', href: '/dashboard/aged-analysis', icon: Clock },
     ],
   },
   {
@@ -160,7 +164,7 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
     >
       {/* Logo Section */}
       <div className="h-16 flex items-center justify-between px-4 border-b border-gray-100">
-        <div className="flex items-center gap-3 overflow-hidden">
+        <Link to="/" className="flex items-center gap-3 overflow-hidden hover:opacity-80 transition-opacity">
           <img
             src="/logo.png"
             alt="Parameter"
@@ -183,7 +187,7 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+        </Link>
 
         {/* Close button for mobile drawer */}
         {isMobileDrawer && onClose && (

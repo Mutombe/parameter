@@ -35,8 +35,8 @@ import {
   Legend,
 } from 'recharts'
 import { reportsApi } from '../../services/api'
-import { formatCurrency, formatPercent, cn } from '../../lib/utils'
-import { printElement } from '../../lib/print'
+import { formatCurrency, formatPercent, formatDate, cn } from '../../lib/utils'
+import { printElement } from '../../lib/printTemplate'
 import { exportReport } from '../../lib/export'
 import { PageHeader, Button, Badge, Skeleton, EmptyState } from '../../components/ui'
 import toast from 'react-hot-toast'
@@ -98,7 +98,7 @@ export default function Reports() {
   const handlePrint = () => {
     printElement('report-content', {
       title: reportNames[activeReport],
-      subtitle: `Generated on ${new Date().toLocaleDateString()}`,
+      subtitle: `Generated on ${formatDate(new Date())}`,
       orientation: activeReport === 'rent-roll' ? 'landscape' : 'portrait',
     })
   }
@@ -226,7 +226,7 @@ function TrialBalanceReport() {
               {isLoading ? (
                 <div className="h-4 w-32 bg-gray-200 rounded animate-pulse mt-1" />
               ) : (
-                <p className="text-sm text-gray-500">As of {data?.as_of_date || new Date().toLocaleDateString()}</p>
+                <p className="text-sm text-gray-500">As of {data?.as_of_date ? formatDate(data.as_of_date) : formatDate(new Date())}</p>
               )}
             </div>
           </div>

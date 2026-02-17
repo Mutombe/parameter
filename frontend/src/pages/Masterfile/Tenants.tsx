@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Users, Phone, Mail, Trash2, Loader2, Eye, X, FileText, Receipt, Building2, Calendar, DollarSign, AlertCircle, Home } from 'lucide-react'
+import { Plus, Search, Users, Phone, Mail, Trash2, Loader2, Eye, X, FileText, Receipt, Building2, Calendar, DollarSign, AlertCircle, Home, Download } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { tenantApi, unitApi, propertyApi } from '../../services/api'
-import { useDebounce, formatCurrency } from '../../lib/utils'
-import { Pagination, EmptyState, Modal } from '../../components/ui'
+import { Upload, FileSpreadsheet } from 'lucide-react'
+import { tenantApi, unitApi, propertyApi, importsApi } from '../../services/api'
+import { useDebounce, formatCurrency, formatDate, cn } from '../../lib/utils'
+import { Pagination, EmptyState, Modal, SelectionCheckbox, BulkActionsBar, ConfirmDialog, SplitButton, Select } from '../../components/ui'
+import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
+import { exportTableData } from '../../lib/export'
+import { useSelection } from '../../hooks/useSelection'
 import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
 
@@ -38,6 +42,9 @@ export default function Tenants() {
   // Filter state
   const [tenantTypeFilter, setTenantTypeFilter] = useState('')
   const [leaseStatusFilter, setLeaseStatusFilter] = useState('')
+
+  const selection = useSelection<number>({ clearOnChange: [debouncedSearch, tenantTypeFilter, leaseStatusFilter] })
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
 
   // Detail modal state
   const [selectedTenantId, setSelectedTenantId] = useState<number | null>(null)
@@ -196,6 +203,52 @@ export default function Tenants() {
     deleteMutation.mutate(id)
   }
 
+  const selectableItems = (tenants || []).filter((t: any) => !t._isOptimistic)
+  const pageIds = selectableItems.map((t: any) => t.id)
+
+  const handleBulkExport = () => {
+    const selected = selectableItems.filter((t: any) => selection.isSelected(t.id))
+    exportTableData(selected, [
+      { key: 'name', header: 'Name' },
+      { key: 'code', header: 'Code' },
+      { key: 'tenant_type', header: 'Type' },
+      { key: 'email', header: 'Email' },
+      { key: 'phone', header: 'Phone' },
+    ], 'tenants_export')
+    showToast.success(`Exported ${selected.length} tenants`)
+  }
+
+  const handleBulkDelete = () => {
+    setConfirmDialog({
+      open: true,
+      title: `Delete ${selection.selectedCount} tenants?`,
+      message: 'This action cannot be undone.',
+      onConfirm: async () => {
+        const ids = Array.from(selection.selectedIds)
+        for (const id of ids) { try { await tenantApi.delete(id) } catch {} }
+        selection.clearSelection()
+        queryClient.invalidateQueries({ queryKey: ['tenants'] })
+        showToast.success(`Deleted ${ids.length} tenants`)
+        setConfirmDialog(d => ({ ...d, open: false }))
+      },
+    })
+  }
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await importsApi.downloadTemplate('tenants')
+      const blob = response.data as Blob
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'import_template_tenants.xlsx'
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      showToast.error('Failed to download template')
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -203,9 +256,15 @@ export default function Tenants() {
           <h1 className="text-2xl font-bold text-gray-900">Tenants</h1>
           <p className="text-gray-500 mt-1">Manage rental tenants</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="btn-primary">
-          <Plus className="w-4 h-4 mr-2" /> Add Tenant
-        </button>
+        <SplitButton
+          onClick={() => setShowForm(true)}
+          menuItems={[
+            { label: 'Import from File', icon: Upload, onClick: () => navigate('/dashboard/data-import') },
+            { label: 'Download Template', icon: FileSpreadsheet, onClick: handleDownloadTemplate },
+          ]}
+        >
+          <Plus className="w-4 h-4" /> Add Tenant
+        </SplitButton>
       </div>
 
       <div className="card p-4">
@@ -220,27 +279,33 @@ export default function Tenants() {
               className="input pl-10"
             />
           </div>
-          <select
+          <Select
             value={tenantTypeFilter}
             onChange={(e) => handleFilterChange('tenantType', e.target.value)}
             className="input min-w-[140px]"
-          >
-            {tenantTypeOptions.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-          <select
+            options={tenantTypeOptions}
+          />
+          <Select
             value={leaseStatusFilter}
             onChange={(e) => handleFilterChange('leaseStatus', e.target.value)}
             className="input min-w-[160px]"
-          >
-            {leaseStatusOptions.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-          <p className="text-sm text-gray-500 ml-auto">
-            {totalCount} tenant{totalCount !== 1 ? 's' : ''} total
-          </p>
+            options={leaseStatusOptions}
+          />
+          <div className="flex items-center gap-3 ml-auto">
+            {selectableItems.length > 0 && (
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-500">
+                <SelectionCheckbox
+                  checked={selection.isAllPageSelected(pageIds)}
+                  indeterminate={selection.isPartialPageSelected(pageIds)}
+                  onChange={() => selection.selectPage(pageIds)}
+                />
+                Select all
+              </label>
+            )}
+            <p className="text-sm text-gray-500">
+              {totalCount} tenant{totalCount !== 1 ? 's' : ''} total
+            </p>
+          </div>
         </div>
       </div>
 
@@ -279,18 +344,28 @@ export default function Tenants() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="label">Tenant Type</label>
-                  <select value={form.tenant_type} onChange={(e) => setForm({ ...form, tenant_type: e.target.value })} className="input">
-                    <option value="individual">Individual</option>
-                    <option value="company">Company</option>
-                  </select>
+                  <Select
+                    value={form.tenant_type}
+                    onChange={(e) => setForm({ ...form, tenant_type: e.target.value })}
+                    className="input"
+                    options={[
+                      { value: 'individual', label: 'Individual' },
+                      { value: 'company', label: 'Company' },
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="label">Account Type</label>
-                  <select value={form.account_type} onChange={(e) => setForm({ ...form, account_type: e.target.value })} className="input">
-                    <option value="rental">Rental Tenant</option>
-                    <option value="levy">Levy Account Holder</option>
-                    <option value="both">Both (Rental & Levy)</option>
-                  </select>
+                  <Select
+                    value={form.account_type}
+                    onChange={(e) => setForm({ ...form, account_type: e.target.value })}
+                    className="input"
+                    options={[
+                      { value: 'rental', label: 'Rental Tenant' },
+                      { value: 'levy', label: 'Levy Account Holder' },
+                      { value: 'both', label: 'Both (Rental & Levy)' },
+                    ]}
+                  />
                 </div>
               </div>
 
@@ -305,43 +380,29 @@ export default function Tenants() {
                 </div>
 
                 {/* Property Selection */}
-                <div>
-                  <label className="label text-blue-700">Select Property</label>
-                  <select
-                    value={form.property}
-                    onChange={(e) => handlePropertyChange(e.target.value ? parseInt(e.target.value) : '')}
-                    className="input"
-                  >
-                    <option value="">-- No property (assign later) --</option>
-                    {properties.map((property: any) => (
-                      <option key={property.id} value={property.id}>
-                        {property.name} ({property.city})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <AsyncSelect
+                  label="Select Property"
+                  placeholder="-- No property (assign later) --"
+                  value={form.property}
+                  onChange={(val) => handlePropertyChange(val ? Number(val) : '')}
+                  options={properties.map((property: any) => ({ value: property.id, label: `${property.name} (${property.city})` }))}
+                  searchable
+                  clearable
+                />
 
                 {/* Unit Selection - Only shown after property is selected */}
                 {form.property && (
                   <div>
-                    <label className="label text-blue-700">Select Unit</label>
-                    <select
+                    <AsyncSelect
+                      label="Select Unit"
+                      placeholder="-- No unit (assign later) --"
                       value={form.unit}
-                      onChange={(e) => setForm({ ...form, unit: e.target.value ? parseInt(e.target.value) : '' })}
-                      className="input"
-                    >
-                      <option value="">-- No unit (assign later) --</option>
-                      {availableUnits.map((unit: any) => (
-                        <option key={unit.id} value={unit.id}>
-                          Unit {unit.unit_number} - {unit.unit_type} ({unit.currency} {unit.rental_amount}/mo)
-                        </option>
-                      ))}
-                    </select>
-                    {availableUnits.length === 0 && (
-                      <p className="text-xs text-amber-600 mt-1">
-                        No available units. Units are auto-created when you create a lease.
-                      </p>
-                    )}
+                      onChange={(val) => setForm({ ...form, unit: val ? Number(val) : '' })}
+                      options={availableUnits.map((unit: any) => ({ value: unit.id, label: `Unit ${unit.unit_number} - ${unit.unit_type} (${unit.currency} ${unit.rental_amount}/mo)` }))}
+                      searchable
+                      clearable
+                      emptyMessage="No available units. Units are auto-created when you create a lease."
+                    />
                     {availableUnits.length > 0 && (
                       <p className="text-xs text-blue-600 mt-1">
                         {availableUnits.length} unit(s) available
@@ -354,11 +415,16 @@ export default function Tenants() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="label">ID Type</label>
-                  <select value={form.id_type} onChange={(e) => setForm({ ...form, id_type: e.target.value })} className="input">
-                    <option value="national_id">National ID</option>
-                    <option value="passport">Passport</option>
-                    <option value="company_reg">Company Reg</option>
-                  </select>
+                  <Select
+                    value={form.id_type}
+                    onChange={(e) => setForm({ ...form, id_type: e.target.value })}
+                    className="input"
+                    options={[
+                      { value: 'national_id', label: 'National ID' },
+                      { value: 'passport', label: 'Passport' },
+                      { value: 'company_reg', label: 'Company Reg' },
+                    ]}
+                  />
                 </div>
                 <div>
                   <label className="label">ID Number</label>
@@ -429,7 +495,13 @@ export default function Tenants() {
             />
           </div>
         ) : tenants?.map((tenant: any) => (
-            <div key={tenant.id} className="card p-5 hover:shadow-md transition-shadow">
+            <div key={tenant.id} className={cn('card p-5 pl-10 hover:shadow-md transition-shadow relative', selection.isSelected(tenant.id) && 'ring-2 ring-primary-500 bg-primary-50/30')}>
+              <div className="absolute top-3 left-3" onClick={(e) => e.stopPropagation()}>
+                <SelectionCheckbox
+                  checked={selection.isSelected(tenant.id)}
+                  onChange={() => selection.toggle(tenant.id)}
+                />
+              </div>
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
@@ -516,6 +588,26 @@ export default function Tenants() {
           />
         </div>
       )}
+
+      <BulkActionsBar
+        selectedCount={selection.selectedCount}
+        onClearSelection={selection.clearSelection}
+        entityName="tenants"
+        actions={[
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
+          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger' },
+        ]}
+      />
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(d => ({ ...d, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type="danger"
+        confirmText="Confirm"
+      />
 
       {/* Tenant Detail Modal */}
       <AnimatePresence>
@@ -668,7 +760,7 @@ export default function Tenants() {
                                   {lease.currency} {lease.monthly_rent}/mo
                                 </p>
                                 <p className="text-xs text-gray-500">
-                                  Ends: {new Date(lease.end_date).toLocaleDateString()}
+                                  Ends: {formatDate(lease.end_date)}
                                 </p>
                               </div>
                             </div>
@@ -693,7 +785,7 @@ export default function Tenants() {
                                 <div>
                                   <p className="font-medium text-gray-700">{lease.unit}</p>
                                   <p className="text-xs text-gray-500">
-                                    {lease.property} • {new Date(lease.start_date).toLocaleDateString()} - {new Date(lease.end_date).toLocaleDateString()}
+                                    {lease.property} • {formatDate(lease.start_date)} - {formatDate(lease.end_date)}
                                   </p>
                                 </div>
                               </div>
@@ -724,7 +816,7 @@ export default function Tenants() {
                               <div className="flex items-center gap-2">
                                 <FileText className="w-4 h-4 text-gray-400" />
                                 <span className="text-sm font-medium">{invoice.invoice_number}</span>
-                                <span className="text-xs text-gray-500">{new Date(invoice.date).toLocaleDateString()}</span>
+                                <span className="text-xs text-gray-500">{formatDate(invoice.date)}</span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-medium">{formatCurrency(invoice.amount)}</span>

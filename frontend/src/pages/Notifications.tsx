@@ -17,9 +17,9 @@ import {
   ExternalLink,
 } from 'lucide-react'
 import { notificationsApi } from '../services/api'
-import { PageHeader, Button, Badge, Pagination, EmptyState } from '../components/ui'
+import { PageHeader, Button, Badge, Pagination, EmptyState, Select, TimeAgo } from '../components/ui'
 import toast from 'react-hot-toast'
-import { cn, formatDistanceToNow } from '../lib/utils'
+import { cn } from '../lib/utils'
 import { PiBuildingApartmentLight } from "react-icons/pi"
 import { TbUserSquareRounded } from "react-icons/tb"
 
@@ -300,15 +300,12 @@ export default function Notifications() {
           {/* Type Filter */}
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 text-gray-400" />
-            <select
+            <Select
               value={typeFilter}
               onChange={(e) => { setTypeFilter(e.target.value); setCurrentPage(1) }}
               className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-            >
-              {typeFilterOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
+              options={typeFilterOptions}
+            />
           </div>
 
           <div className="ml-auto text-sm text-gray-500">
@@ -400,7 +397,7 @@ export default function Notifications() {
                       )}
                       <div className="flex items-center gap-3 mt-1.5">
                         <span className="text-xs text-gray-400">
-                          {notif.time_ago || formatDistanceToNow(notif.created_at)}
+                          <TimeAgo date={notif.created_at} />
                         </span>
                         <span className="text-xs text-gray-300">
                           {notif.notification_type?.replace(/_/g, ' ')}

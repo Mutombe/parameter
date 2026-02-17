@@ -33,7 +33,15 @@ export { AsyncSelect, SelectSkeleton } from './AsyncSelect'
 
 // Forms & Inputs
 export { Button, IconButton } from './Button'
+export { SplitButton } from './SplitButton'
 export { Input, Textarea, Select, FormRow, FormSection } from './Input'
+
+// Selection & Bulk Actions
+export { SelectionCheckbox } from './SelectionCheckbox'
+export { BulkActionsBar } from './BulkActionsBar'
+
+// Time
+export { TimeAgo } from './TimeAgo'
 
 // Dialogs
 export { ConfirmDialog } from './ConfirmDialog'

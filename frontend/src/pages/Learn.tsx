@@ -5,9 +5,10 @@ import {
   Building2, Users, FileText, BarChart3, DollarSign, Receipt,
   BookOpen, ChevronRight, Search, Home, Settings, UserPlus,
   PieChart, Calculator, FileCheck, Bell, Shield, Zap,
-  ArrowLeft, Menu, X, Phone, Mail, Sun, Moon, Monitor
+  ArrowLeft, Menu, X, Phone, Mail, Sun, Moon, Monitor, LayoutDashboard
 } from 'lucide-react'
 import { useUIStore } from '../stores/uiStore'
+import { useAuthStore } from '../stores/authStore'
 import { useThemeEffect } from '../hooks/useThemeEffect'
 import PrivacyPolicyModal from '../components/PrivacyPolicyModal'
 import { SiFsecure } from "react-icons/si";
@@ -1278,7 +1279,9 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
 
 export default function Learn() {
   const { theme, setTheme } = useUIStore()
+  const { isAuthenticated, user } = useAuthStore()
   useThemeEffect()
+  const dashboardPath = user?.role === 'tenant_portal' ? '/portal' : '/dashboard'
   const [activeSection, setActiveSection] = useState('getting-started')
   const [activeSubsection, setActiveSubsection] = useState('overview')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -1308,13 +1311,25 @@ export default function Learn() {
             <div className="flex items-center gap-2 md:gap-6">
               <div className="hidden md:flex items-center gap-6">
                 <Link to="/" className="text-gray-600 hover:text-gray-900 transition-colors">Home</Link>
-                <Link to="/login" className="text-gray-600 hover:text-gray-900 transition-colors">Sign In</Link>
-                <Link
-                  to="/signup"
-                  className="px-4 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors"
-                >
-                  Get Started
-                </Link>
+                {isAuthenticated ? (
+                  <Link
+                    to={dashboardPath}
+                    className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors"
+                  >
+                    <LayoutDashboard className="w-4 h-4" />
+                    Dashboard
+                  </Link>
+                ) : (
+                  <>
+                    <Link to="/login" className="text-gray-600 hover:text-gray-900 transition-colors">Sign In</Link>
+                    <Link
+                      to="/signup"
+                      className="px-4 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors"
+                    >
+                      Get Started
+                    </Link>
+                  </>
+                )}
               </div>
               <button
                 onClick={() => setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light')}
@@ -1463,7 +1478,12 @@ export default function Learn() {
               <ul className="space-y-2 text-sm">
                 <li><Link to="/" className="hover:text-white transition-colors">Home</Link></li>
                 <li><Link to="/learn" className="hover:text-white transition-colors">Documentation</Link></li>
-                <li><Link to="/signup" className="hover:text-white transition-colors">Get Started</Link></li>
+                <li>
+                  {isAuthenticated
+                    ? <Link to={dashboardPath} className="hover:text-white transition-colors">Dashboard</Link>
+                    : <Link to="/signup" className="hover:text-white transition-colors">Get Started</Link>
+                  }
+                </li>
               </ul>
             </div>
             <div>

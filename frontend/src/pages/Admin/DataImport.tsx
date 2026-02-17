@@ -16,8 +16,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { importsApi } from '../../services/api'
-import { formatDistanceToNow } from '../../lib/utils'
-import { PageHeader, Button, Modal } from '../../components/ui'
+import { PageHeader, Button, Modal, TimeAgo } from '../../components/ui'
 import toast from 'react-hot-toast'
 import { TbDatabaseImport } from "react-icons/tb"
 
@@ -530,7 +529,7 @@ export default function DataImport() {
                           )}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-500">
-                          {formatDistanceToNow(job.created_at)}
+                          <TimeAgo date={job.created_at} />
                         </td>
                         <td className="px-6 py-4 text-right">
                           {job.status === 'validated' && (

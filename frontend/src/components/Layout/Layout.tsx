@@ -5,11 +5,14 @@ import Sidebar from './Sidebar'
 import Header from './Header'
 import AskMeButton from '../AskMe/AskMeButton'
 import AskMeModal from '../AskMe/AskMeModal'
+import PrintPreviewModal from '../PrintPreviewModal'
+import SessionExpiredModal from '../SessionExpiredModal'
 import DemoExpiryBanner from '../DemoExpiryBanner'
 import ErrorBoundary from '../ErrorBoundary'
 import { useUIStore } from '../../stores/uiStore'
 import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket'
 import { useThemeEffect } from '../../hooks/useThemeEffect'
+import { useNetworkStatus } from '../../hooks/useNetworkStatus'
 
 const MOBILE_BREAKPOINT = 1024 // lg breakpoint
 
@@ -29,6 +32,9 @@ export default function Layout() {
 
   // Apply dark/light theme class to <html>
   useThemeEffect()
+
+  // Detect network connectivity and show toast notifications
+  useNetworkStatus()
 
   // Detect mobile/desktop and handle resize
   useEffect(() => {
@@ -107,6 +113,8 @@ export default function Layout() {
 
       <AskMeButton />
       <AskMeModal open={askMeOpen} onClose={() => setAskMeOpen(false)} />
+      <PrintPreviewModal />
+      <SessionExpiredModal />
     </div>
   )
 }

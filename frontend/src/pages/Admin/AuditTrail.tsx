@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Search, Shield, Clock, ChevronLeft, ChevronRight, Calendar, Monitor, Globe } from 'lucide-react'
 import { auditApi } from '../../services/api'
+import { Select, TimeAgo } from '../../components/ui'
 import { formatDate, useDebounce } from '../../lib/utils'
 import { TbUserSquareRounded } from "react-icons/tb";
 
@@ -80,24 +81,29 @@ export default function AuditTrail() {
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Action</label>
-          <select value={actionFilter} onChange={(e) => handleFilterChange(setActionFilter, e.target.value)} className="input w-auto">
-            <option value="">All Actions</option>
-            <option value="journal_posted">Journal Posted</option>
-            <option value="journal_reversed">Journal Reversed</option>
-            <option value="invoice_created">Invoice Created</option>
-            <option value="invoice_updated">Invoice Updated</option>
-            <option value="invoice_payment_applied">Payment Applied</option>
-            <option value="invoice_marked_overdue">Marked Overdue</option>
-            <option value="receipt_created">Receipt Created</option>
-            <option value="account_created">Account Created</option>
-            <option value="account_updated">Account Updated</option>
-            <option value="fiscal_period_closed">Period Closed</option>
-            <option value="reconciliation_completed">Reconciliation Done</option>
-            <option value="expense_reallocated">Expense Reallocated</option>
-            <option value="uniform_charge_applied">Uniform Charge</option>
-            <option value="billing_deleted">Billing Deleted</option>
-            <option value="bulk_email_sent">Bulk Email Sent</option>
-          </select>
+          <Select
+            value={actionFilter}
+            onChange={(e) => handleFilterChange(setActionFilter, e.target.value)}
+            className="input w-auto"
+            options={[
+              { value: '', label: 'All Actions' },
+              { value: 'journal_posted', label: 'Journal Posted' },
+              { value: 'journal_reversed', label: 'Journal Reversed' },
+              { value: 'invoice_created', label: 'Invoice Created' },
+              { value: 'invoice_updated', label: 'Invoice Updated' },
+              { value: 'invoice_payment_applied', label: 'Payment Applied' },
+              { value: 'invoice_marked_overdue', label: 'Marked Overdue' },
+              { value: 'receipt_created', label: 'Receipt Created' },
+              { value: 'account_created', label: 'Account Created' },
+              { value: 'account_updated', label: 'Account Updated' },
+              { value: 'fiscal_period_closed', label: 'Period Closed' },
+              { value: 'reconciliation_completed', label: 'Reconciliation Done' },
+              { value: 'expense_reallocated', label: 'Expense Reallocated' },
+              { value: 'uniform_charge_applied', label: 'Uniform Charge' },
+              { value: 'billing_deleted', label: 'Billing Deleted' },
+              { value: 'bulk_email_sent', label: 'Bulk Email Sent' },
+            ]}
+          />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">From Date</label>
@@ -211,7 +217,7 @@ export default function AuditTrail() {
                     </span>
                     <span className="flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5" />
-                      {new Date(log.timestamp).toLocaleString()}
+                      <TimeAgo date={log.timestamp} />
                     </span>
                     {log.ip_address && (
                       <span className="flex items-center gap-1">

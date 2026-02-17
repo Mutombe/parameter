@@ -5,9 +5,10 @@ import {
   Building2, Users, FileText, BarChart3, Shield, Zap,
   CheckCircle, ArrowRight, Phone, Mail, ChevronRight,
   Globe, DollarSign, PieChart, Clock, BookOpen, Lock,
-  Menu, X, Sun, Moon, Monitor
+  Menu, X, Sun, Moon, Monitor, LayoutDashboard
 } from 'lucide-react'
 import { useUIStore } from '../stores/uiStore'
+import { useAuthStore } from '../stores/authStore'
 import { useThemeEffect } from '../hooks/useThemeEffect'
 import PrivacyPolicyModal from '../components/PrivacyPolicyModal'
 import { SiFsecure } from "react-icons/si";
@@ -106,9 +107,13 @@ const plans = [
 
 export default function Landing() {
   const { theme, setTheme } = useUIStore()
+  const { isAuthenticated, user } = useAuthStore()
   useThemeEffect()
   const [privacyOpen, setPrivacyOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  // Determine dashboard path based on user role
+  const dashboardPath = user?.role === 'tenant_portal' ? '/portal' : '/dashboard'
   const [contactForm, setContactForm] = useState({
   firstName: '',
   lastName: '',
@@ -158,15 +163,27 @@ const generateEmailLink = () => {
               >
                 {theme === 'dark' ? <Moon className="w-5 h-5" /> : theme === 'light' ? <Sun className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
               </button>
-              <Link to="/login" className="hidden sm:block text-gray-600 hover:text-gray-900 font-medium transition-colors">
-                Sign In
-              </Link>
-              <Link
-                to="/signup"
-                className="hidden sm:block px-4 sm:px-5 py-2 sm:py-2.5 bg-primary-600 text-white text-sm sm:text-base font-medium rounded-xl hover:bg-primary-700 transition-colors"
-              >
-                Get Started
-              </Link>
+              {isAuthenticated ? (
+                <Link
+                  to={dashboardPath}
+                  className="hidden sm:flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-primary-600 text-white text-sm sm:text-base font-medium rounded-xl hover:bg-primary-700 transition-colors"
+                >
+                  <LayoutDashboard className="w-4 h-4" />
+                  Dashboard
+                </Link>
+              ) : (
+                <>
+                  <Link to="/login" className="hidden sm:block text-gray-600 hover:text-gray-900 font-medium transition-colors">
+                    Sign In
+                  </Link>
+                  <Link
+                    to="/signup"
+                    className="hidden sm:block px-4 sm:px-5 py-2 sm:py-2.5 bg-primary-600 text-white text-sm sm:text-base font-medium rounded-xl hover:bg-primary-700 transition-colors"
+                  >
+                    Get Started
+                  </Link>
+                </>
+              )}
               {/* Mobile menu button */}
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -231,20 +248,33 @@ const generateEmailLink = () => {
                     {theme === 'dark' ? <Moon className="w-5 h-5" /> : theme === 'light' ? <Sun className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
                     Theme: {theme.charAt(0).toUpperCase() + theme.slice(1)}
                   </button>
-                  <Link
-                    to="/login"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="block px-4 py-2.5 text-center text-gray-900 font-medium hover:bg-gray-50 rounded-xl transition-colors"
-                  >
-                    Sign In
-                  </Link>
-                  <Link
-                    to="/signup"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="block px-4 py-2.5 text-center bg-primary-600 text-white font-medium rounded-xl hover:bg-primary-700 transition-colors"
-                  >
-                    Get Started
-                  </Link>
+                  {isAuthenticated ? (
+                    <Link
+                      to={dashboardPath}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-primary-600 text-white font-medium rounded-xl hover:bg-primary-700 transition-colors"
+                    >
+                      <LayoutDashboard className="w-4 h-4" />
+                      Dashboard
+                    </Link>
+                  ) : (
+                    <>
+                      <Link
+                        to="/login"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className="block px-4 py-2.5 text-center text-gray-900 font-medium hover:bg-gray-50 rounded-xl transition-colors"
+                      >
+                        Sign In
+                      </Link>
+                      <Link
+                        to="/signup"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className="block px-4 py-2.5 text-center bg-primary-600 text-white font-medium rounded-xl hover:bg-primary-700 transition-colors"
+                      >
+                        Get Started
+                      </Link>
+                    </>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -689,7 +719,12 @@ const generateEmailLink = () => {
                 <li><a href="#features" className="hover:text-white transition-colors">Features</a></li>
                 <li><a href="#pricing" className="hover:text-white transition-colors">Pricing</a></li>
                 <li><Link to="/learn" className="hover:text-white transition-colors">Documentation</Link></li>
-                <li><Link to="/signup" className="hover:text-white transition-colors">Get Started</Link></li>
+                <li>
+                  {isAuthenticated
+                    ? <Link to={dashboardPath} className="hover:text-white transition-colors">Dashboard</Link>
+                    : <Link to="/signup" className="hover:text-white transition-colors">Get Started</Link>
+                  }
+                </li>
               </ul>
             </div>
             <div>

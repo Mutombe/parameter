@@ -33,7 +33,7 @@ import {
   Bar,
 } from 'recharts'
 import { reportsApi } from '../services/api'
-import { formatCurrency, formatPercent, cn } from '../lib/utils'
+import { formatCurrency, formatPercent, formatDate, cn } from '../lib/utils'
 import { useNavigate } from 'react-router-dom'
 import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
@@ -210,13 +210,13 @@ export default function Dashboard() {
           <p className="text-sm md:text-base text-gray-500 mt-1">
             Welcome back! Here's your property overview for{' '}
             <span className="font-medium text-gray-700">
-              {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              {formatDate(new Date())}
             </span>
           </p>
         </div>
         <div className="hidden sm:flex items-center gap-2 text-sm text-gray-500">
           <Clock className="w-4 h-4" />
-          Last updated: {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+          Last updated: {new Date().toLocaleTimeString()}
         </div>
       </motion.div>
 
