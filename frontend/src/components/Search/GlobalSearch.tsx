@@ -278,7 +278,7 @@ export default function GlobalSearch({ open, onClose }: GlobalSearchProps) {
                 </span>
               </div>
               <button
-                onClick={() => { navigate(`/search${query ? `?q=${encodeURIComponent(query)}` : ''}`); onClose(); }}
+                onClick={() => { navigate(`/dashboard/search${query ? `?q=${encodeURIComponent(query)}` : ''}`); onClose(); }}
                 className="flex items-center gap-1 text-primary-600 hover:text-primary-700 font-medium"
               >
                 <span>Advanced Search</span>
