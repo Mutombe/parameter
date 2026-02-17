@@ -443,6 +443,14 @@ class AuditTrail(models.Model):
         # Preserve user email
         if self.user and not self.user_email:
             self.user_email = self.user.email
+        # Auto-populate IP and user agent from request context if not set
+        if not self.ip_address or not self.user_agent:
+            from middleware.tenant_middleware import get_current_request_meta
+            meta = get_current_request_meta()
+            if not self.ip_address and meta.get('ip_address'):
+                self.ip_address = meta['ip_address']
+            if not self.user_agent and meta.get('user_agent'):
+                self.user_agent = meta['user_agent']
         # Prevent updates to existing records
         if self.pk:
             raise ValidationError('Audit trail entries cannot be modified')

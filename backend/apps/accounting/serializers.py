@@ -174,7 +174,8 @@ class AuditTrailSerializer(serializers.ModelSerializer):
         model = AuditTrail
         fields = [
             'id', 'action', 'model_name', 'record_id', 'changes',
-            'user', 'user_name', 'user_email', 'ip_address', 'timestamp'
+            'user', 'user_name', 'user_email', 'ip_address', 'user_agent',
+            'timestamp'
         ]
 
 

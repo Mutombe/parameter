@@ -176,14 +176,15 @@ export default function Invoices() {
 
   const { data: tenants, isLoading: tenantsLoading } = useQuery({
     queryKey: ['tenants-select'],
-    queryFn: () => tenantApi.list().then(r => r.data.results || r.data),
+    queryFn: () => tenantApi.list({ page_size: 500 }).then(r => r.data.results || r.data),
     enabled: showForm,
     staleTime: 30000,
   })
 
+  // Fetch units filtered by selected tenant's active lease, or all units
   const { data: units, isLoading: unitsLoading } = useQuery({
-    queryKey: ['units-select'],
-    queryFn: () => unitApi.list().then(r => r.data.results || r.data),
+    queryKey: ['units-select', form.tenant],
+    queryFn: () => unitApi.list({ page_size: 500 }).then(r => r.data.results || r.data),
     enabled: showForm,
     staleTime: 30000,
   })
@@ -805,24 +806,31 @@ export default function Invoices() {
                 </div>
               </div>
             ) : (
-              <select
-                value={form.tenant}
-                onChange={(e) => setForm({ ...form, tenant: e.target.value })}
-                className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
-                required
-              >
-                <option value="">Select tenant</option>
-                {tenants?.map((t: any) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
+              <>
+                <select
+                  value={form.tenant}
+                  onChange={(e) => setForm({ ...form, tenant: e.target.value })}
+                  className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
+                  required
+                >
+                  <option value="">Select tenant</option>
+                  {tenants?.map((t: any) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.code}) {t.unit_name ? `- ${t.unit_name}` : ''}
+                    </option>
+                  ))}
+                </select>
+                {tenants?.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">No tenants found. Create a tenant first in Masterfile.</p>
+                )}
+              </>
             )}
           </div>
 
           {/* Unit Select with Loading */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Unit (Optional)
+              Unit <span className="text-gray-400 font-normal">(Optional)</span>
             </label>
             {unitsLoading ? (
               <div className="relative">
@@ -837,9 +845,11 @@ export default function Invoices() {
                 onChange={(e) => setForm({ ...form, unit: e.target.value })}
                 className="w-full px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
               >
-                <option value="">Select unit</option>
+                <option value="">No specific unit</option>
                 {units?.map((u: any) => (
-                  <option key={u.id} value={u.id}>{u.property_name} - {u.unit_number}</option>
+                  <option key={u.id} value={u.id}>
+                    Unit {u.unit_number} - {u.property_name || 'Unknown Property'}
+                  </option>
                 ))}
               </select>
             )}

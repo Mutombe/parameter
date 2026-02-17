@@ -270,6 +270,17 @@ class AuditTrailViewSet(viewsets.ReadOnlyModelViewSet):
     ordering_fields = ['timestamp']
     ordering = ['-timestamp']
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        # Date range filtering
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        if start_date:
+            queryset = queryset.filter(timestamp__date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(timestamp__date__lte=end_date)
+        return queryset
+
 
 class FiscalPeriodViewSet(viewsets.ModelViewSet):
     """Manage fiscal periods."""

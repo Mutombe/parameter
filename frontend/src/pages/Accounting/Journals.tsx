@@ -123,6 +123,9 @@ export default function Journals() {
   const [expandedJournals, setExpandedJournals] = useState<Set<number>>(new Set())
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [postingId, setPostingId] = useState<number | null>(null)
+  const [reversalModal, setReversalModal] = useState<{ open: boolean; journalId: number | null; reason: string }>({
+    open: false, journalId: null, reason: ''
+  })
   const [newJournal, setNewJournal] = useState({
     date: new Date().toISOString().split('T')[0],
     description: '',
@@ -550,10 +553,7 @@ export default function Journals() {
                                   variant="outline"
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    const reason = prompt('Enter reason for reversal:')
-                                    if (reason) {
-                                      reverseMutation.mutate({ id: journal.id, reason })
-                                    }
+                                    setReversalModal({ open: true, journalId: journal.id, reason: '' })
                                   }}
                                   disabled={reverseMutation.isPending}
                                   className="gap-2 text-gray-600"
@@ -747,6 +747,65 @@ export default function Journals() {
             </Button>
             <Button type="submit" className="flex-1" disabled={createMutation.isPending || !isBalanced}>
               {createMutation.isPending ? 'Creating...' : 'Create Journal'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Reversal Reason Modal */}
+      <Modal
+        open={reversalModal.open}
+        onClose={() => setReversalModal({ open: false, journalId: null, reason: '' })}
+        title="Reverse Journal Entry"
+        icon={RotateCcw}
+      >
+        <form onSubmit={(e) => {
+          e.preventDefault()
+          if (reversalModal.journalId && reversalModal.reason.trim()) {
+            reverseMutation.mutate({ id: reversalModal.journalId, reason: reversalModal.reason.trim() })
+            setReversalModal({ open: false, journalId: null, reason: '' })
+          }
+        }} className="space-y-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-amber-800">This action cannot be undone</p>
+                <p className="text-xs text-amber-600 mt-1">
+                  Reversing a journal creates a new journal with swapped debits and credits.
+                  All account balances will be adjusted accordingly.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Reason for reversal <span className="text-red-500">*</span>
+            </label>
+            <Textarea
+              placeholder="Explain why this journal is being reversed..."
+              value={reversalModal.reason}
+              onChange={(e) => setReversalModal({ ...reversalModal, reason: e.target.value })}
+              rows={3}
+            />
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setReversalModal({ open: false, journalId: null, reason: '' })}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="flex-1 bg-amber-600 hover:bg-amber-700"
+              disabled={!reversalModal.reason.trim() || reverseMutation.isPending}
+            >
+              {reverseMutation.isPending ? 'Reversing...' : 'Confirm Reversal'}
             </Button>
           </div>
         </form>

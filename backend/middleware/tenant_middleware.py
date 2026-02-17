@@ -52,6 +52,14 @@ def get_current_user():
     return getattr(_thread_locals, 'user', None)
 
 
+def get_current_request_meta():
+    """Get the current request's IP address and user agent from thread local storage."""
+    return {
+        'ip_address': getattr(_thread_locals, 'ip_address', None),
+        'user_agent': getattr(_thread_locals, 'user_agent', ''),
+    }
+
+
 class SubdomainHeaderMiddleware(MiddlewareMixin):
     """
     Middleware to resolve tenant from X-Tenant-Subdomain header.
@@ -187,17 +195,25 @@ class SafeTenantMiddleware(MiddlewareMixin):
 
 
 class TenantContextMiddleware(MiddlewareMixin):
-    """Middleware to store tenant and user context for audit trails."""
+    """Middleware to store tenant, user, and request metadata for audit trails."""
+
+    def _get_client_ip(self, request):
+        """Extract the client IP address from the request."""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            return x_forwarded_for.split(',')[0].strip()
+        return request.META.get('REMOTE_ADDR')
 
     def process_request(self, request):
-        """Store tenant and user in thread local storage."""
+        """Store tenant, user, IP, and user agent in thread local storage."""
         _thread_locals.tenant = getattr(request, 'tenant', None)
         _thread_locals.user = getattr(request, 'user', None)
+        _thread_locals.ip_address = self._get_client_ip(request)
+        _thread_locals.user_agent = request.META.get('HTTP_USER_AGENT', '')
 
     def process_response(self, request, response):
         """Clean up thread local storage."""
-        if hasattr(_thread_locals, 'tenant'):
-            del _thread_locals.tenant
-        if hasattr(_thread_locals, 'user'):
-            del _thread_locals.user
+        for attr in ('tenant', 'user', 'ip_address', 'user_agent'):
+            if hasattr(_thread_locals, attr):
+                delattr(_thread_locals, attr)
         return response
