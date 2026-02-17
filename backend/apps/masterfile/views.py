@@ -3,6 +3,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db.models import Sum, Count, Q
 from .models import Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager
 from .serializers import (
@@ -322,6 +323,7 @@ class LeaseAgreementViewSet(viewsets.ModelViewSet):
     ).all()
     serializer_class = LeaseAgreementSerializer
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     filterset_fields = ['tenant', 'unit', 'status']
     search_fields = ['lease_number', 'tenant__name', 'unit__unit_number']
     ordering_fields = ['start_date', 'end_date', 'created_at']
@@ -329,6 +331,47 @@ class LeaseAgreementViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='upload_document')
+    def upload_document(self, request, pk=None):
+        """Upload or replace a lease document."""
+        lease = self.get_object()
+        document = request.FILES.get('document')
+
+        if not document:
+            return Response(
+                {'error': 'No document file provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate file size (10MB max)
+        if document.size > 10 * 1024 * 1024:
+            return Response(
+                {'error': 'File size must be under 10MB'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate file type
+        allowed_types = [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ]
+        if document.content_type not in allowed_types:
+            return Response(
+                {'error': 'Only PDF and Word documents are allowed'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Delete old document if replacing
+        if lease.document:
+            lease.document.delete(save=False)
+
+        lease.document = document
+        lease.save(update_fields=['document'])
+
+        serializer = self.get_serializer(lease)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post'])
     def activate(self, request, pk=None):
