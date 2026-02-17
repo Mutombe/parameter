@@ -7,6 +7,8 @@ interface UIState {
   sidebarOpen: boolean
   mobileSidebarOpen: boolean
   askMeOpen: boolean
+  commandPaletteOpen: boolean
+  shortcutsModalOpen: boolean
   isMobile: boolean
   theme: Theme
   toggleSidebar: () => void
@@ -15,6 +17,8 @@ interface UIState {
   setMobileSidebarOpen: (open: boolean) => void
   toggleAskMe: () => void
   setAskMeOpen: (open: boolean) => void
+  setCommandPaletteOpen: (open: boolean) => void
+  setShortcutsModalOpen: (open: boolean) => void
   setIsMobile: (isMobile: boolean) => void
   setTheme: (theme: Theme) => void
 }
@@ -25,6 +29,8 @@ export const useUIStore = create<UIState>()(
       sidebarOpen: true,
       mobileSidebarOpen: false,
       askMeOpen: false,
+      commandPaletteOpen: false,
+      shortcutsModalOpen: false,
       isMobile: false,
       theme: 'system',
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
@@ -33,6 +39,8 @@ export const useUIStore = create<UIState>()(
       setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
       toggleAskMe: () => set((state) => ({ askMeOpen: !state.askMeOpen })),
       setAskMeOpen: (open) => set({ askMeOpen: open }),
+      setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+      setShortcutsModalOpen: (open) => set({ shortcutsModalOpen: open }),
       setIsMobile: (isMobile) => set({ isMobile }),
       setTheme: (theme) => set({ theme }),
     }),

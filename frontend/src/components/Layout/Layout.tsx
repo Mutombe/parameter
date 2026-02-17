@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Sidebar from './Sidebar'
 import Header from './Header'
@@ -9,7 +9,10 @@ import PrintPreviewModal from '../PrintPreviewModal'
 import SessionExpiredModal from '../SessionExpiredModal'
 import DemoExpiryBanner from '../DemoExpiryBanner'
 import ErrorBoundary from '../ErrorBoundary'
+import GlobalSearch from '../Search/GlobalSearch'
+import KeyboardShortcutsModal from '../KeyboardShortcutsModal'
 import { useUIStore } from '../../stores/uiStore'
+import { useHotkeys } from '../../hooks/useHotkeys'
 import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket'
 import { useThemeEffect } from '../../hooks/useThemeEffect'
 import { useNetworkStatus } from '../../hooks/useNetworkStatus'
@@ -21,11 +24,68 @@ export default function Layout() {
     sidebarOpen,
     mobileSidebarOpen,
     askMeOpen,
+    commandPaletteOpen,
+    shortcutsModalOpen,
     isMobile,
     setAskMeOpen,
+    setCommandPaletteOpen,
+    setShortcutsModalOpen,
     setIsMobile,
-    setMobileSidebarOpen
+    setMobileSidebarOpen,
+    toggleSidebar,
   } = useUIStore()
+
+  const navigate = useNavigate()
+
+  // Global keyboard shortcuts
+  useHotkeys(
+    [
+      {
+        key: 'k',
+        modifier: 'ctrl',
+        handler: (e) => {
+          e.preventDefault()
+          setCommandPaletteOpen(!commandPaletteOpen)
+        },
+      },
+      {
+        key: '?',
+        handler: () => {
+          if (!commandPaletteOpen) setShortcutsModalOpen(!shortcutsModalOpen)
+        },
+      },
+      {
+        key: ',',
+        modifier: 'ctrl',
+        handler: (e) => {
+          e.preventDefault()
+          navigate('/dashboard/settings')
+        },
+      },
+      {
+        key: '\\',
+        modifier: 'ctrl',
+        handler: (e) => {
+          e.preventDefault()
+          toggleSidebar()
+        },
+      },
+    ],
+    [
+      { keys: ['g', 'd'], handler: () => navigate('/dashboard') },
+      { keys: ['g', 'i'], handler: () => navigate('/dashboard/invoices') },
+      { keys: ['g', 'r'], handler: () => navigate('/dashboard/receipts') },
+      { keys: ['g', 'e'], handler: () => navigate('/dashboard/expenses') },
+      { keys: ['g', 't'], handler: () => navigate('/dashboard/tenants') },
+      { keys: ['g', 'p'], handler: () => navigate('/dashboard/properties') },
+      { keys: ['g', 'l'], handler: () => navigate('/dashboard/landlords') },
+      { keys: ['g', 'u'], handler: () => navigate('/dashboard/units') },
+      { keys: ['g', 'a'], handler: () => navigate('/dashboard/leases') },
+      { keys: ['g', 's'], handler: () => navigate('/dashboard/settings') },
+      { keys: ['g', 'n'], handler: () => navigate('/dashboard/notifications') },
+      { keys: ['g', 'm'], handler: () => navigate('/dashboard/team') },
+    ]
+  )
 
   // Establish WebSocket connection for real-time notifications
   useNotificationWebSocket()
@@ -115,6 +175,8 @@ export default function Layout() {
       <AskMeModal open={askMeOpen} onClose={() => setAskMeOpen(false)} />
       <PrintPreviewModal />
       <SessionExpiredModal />
+      <GlobalSearch open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
+      <KeyboardShortcutsModal open={shortcutsModalOpen} onClose={() => setShortcutsModalOpen(false)} />
     </div>
   )
 }

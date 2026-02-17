@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -28,6 +28,7 @@ import { TbUserSquareRounded } from "react-icons/tb";
 import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
+import { useHotkeys } from '../../hooks/useHotkeys'
 
 interface Unit {
   id: number
@@ -140,6 +141,12 @@ export default function Units() {
     is_active: true,
   })
   const selection = useSelection<number>({ clearOnChange: [debouncedSearch, filter] })
+
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  useHotkeys([
+    { key: 'c', handler: () => setShowForm(true) },
+    { key: '/', handler: (e) => { e.preventDefault(); searchInputRef.current?.focus() } },
+  ])
   const [bulkConfirm, setBulkConfirm] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
 
   const { data: units, isLoading } = useQuery({
@@ -435,6 +442,7 @@ export default function Units() {
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
+            ref={searchInputRef}
             type="text"
             placeholder="Search units..."
             value={search}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -28,6 +28,7 @@ import { TbUserSquareRounded } from "react-icons/tb"
 import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
+import { useHotkeys } from '../../hooks/useHotkeys'
 
 const PAGE_SIZE = 12
 
@@ -91,6 +92,12 @@ export default function Landlords() {
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
 
   const selection = useSelection<number>({ clearOnChange: [debouncedSearch, typeFilter] })
+
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  useHotkeys([
+    { key: 'c', handler: () => setShowForm(true) },
+    { key: '/', handler: (e) => { e.preventDefault(); searchInputRef.current?.focus() } },
+  ])
 
   // Reset page when search/filter changes
   const handleSearchChange = (value: string) => {
@@ -399,6 +406,7 @@ export default function Landlords() {
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
+            ref={searchInputRef}
             type="text"
             placeholder="Search by name, email, or phone..."
             value={search}

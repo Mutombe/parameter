@@ -5,7 +5,7 @@ import {
   Building2, Users, FileText, BarChart3, DollarSign, Receipt,
   BookOpen, ChevronRight, Search, Home, Settings, UserPlus,
   PieChart, Calculator, FileCheck, Bell, Shield, Zap,
-  ArrowLeft, Menu, X, Phone, Mail, Sun, Moon, Monitor, LayoutDashboard
+  ArrowLeft, Menu, X, Phone, Mail, Sun, Moon, Monitor, LayoutDashboard, Keyboard
 } from 'lucide-react'
 import { useUIStore } from '../stores/uiStore'
 import { useAuthStore } from '../stores/authStore'
@@ -27,6 +27,7 @@ const sections = [
       { id: 'registration', title: 'Registration & Setup' },
       { id: 'dashboard', title: 'Understanding the Dashboard' },
       { id: 'navigation', title: 'Navigation Guide' },
+      { id: 'keyboard-shortcuts', title: 'Keyboard Shortcuts' },
     ]
   },
   {
@@ -308,6 +309,85 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
         <div className="bg-amber-50 rounded-xl p-4">
           <p className="text-sm text-amber-800">
             <strong>Tip:</strong> Use the search bar (Ctrl/Cmd + K) to quickly find any record or navigate to any page.
+          </p>
+        </div>
+      </div>
+    )
+  },
+  'keyboard-shortcuts': {
+    title: 'Keyboard Shortcuts',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Parameter supports keyboard shortcuts to help you navigate faster and perform common actions without
+          leaving the keyboard. Press <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-xs font-medium text-gray-600">?</kbd> anywhere
+          in the app to see the full shortcuts reference.
+        </p>
+
+        <div>
+          <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <Keyboard className="w-5 h-5 text-primary-600" />
+            General
+          </h4>
+          <div className="bg-gray-50 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <tbody className="divide-y divide-gray-200">
+                <tr><td className="px-4 py-2.5 text-gray-700">Command palette</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">Ctrl/⌘</kbd> + <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">K</kbd></td></tr>
+                <tr><td className="px-4 py-2.5 text-gray-700">Show shortcuts help</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">?</kbd></td></tr>
+                <tr><td className="px-4 py-2.5 text-gray-700">Go to Settings</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">Ctrl/⌘</kbd> + <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">,</kbd></td></tr>
+                <tr><td className="px-4 py-2.5 text-gray-700">Toggle sidebar</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">Ctrl/⌘</kbd> + <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">\</kbd></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <h4 className="font-semibold text-gray-900 mb-3">Go-To Navigation</h4>
+          <p className="text-sm text-gray-600 mb-3">
+            Press <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-200 rounded text-xs text-gray-600">G</kbd> followed
+            by a letter to quickly navigate to any page:
+          </p>
+          <div className="bg-gray-50 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <tbody className="divide-y divide-gray-200">
+                <tr><td className="px-4 py-2.5 text-gray-700">Dashboard</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">G</kbd> then <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">D</kbd></td></tr>
+                <tr><td className="px-4 py-2.5 text-gray-700">Invoices</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">G</kbd> then <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">I</kbd></td></tr>
+                <tr><td className="px-4 py-2.5 text-gray-700">Receipts</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">G</kbd> then <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">R</kbd></td></tr>
+                <tr><td className="px-4 py-2.5 text-gray-700">Expenses</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">G</kbd> then <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">E</kbd></td></tr>
+                <tr><td className="px-4 py-2.5 text-gray-700">Tenants</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">G</kbd> then <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">T</kbd></td></tr>
+                <tr><td className="px-4 py-2.5 text-gray-700">Properties</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">G</kbd> then <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">P</kbd></td></tr>
+                <tr><td className="px-4 py-2.5 text-gray-700">Landlords</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">G</kbd> then <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">L</kbd></td></tr>
+                <tr><td className="px-4 py-2.5 text-gray-700">Units</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">G</kbd> then <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">U</kbd></td></tr>
+                <tr><td className="px-4 py-2.5 text-gray-700">Leases</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">G</kbd> then <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">A</kbd></td></tr>
+                <tr><td className="px-4 py-2.5 text-gray-700">Settings</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">G</kbd> then <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">S</kbd></td></tr>
+                <tr><td className="px-4 py-2.5 text-gray-700">Notifications</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">G</kbd> then <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">N</kbd></td></tr>
+                <tr><td className="px-4 py-2.5 text-gray-700">Team</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">G</kbd> then <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">M</kbd></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <h4 className="font-semibold text-gray-900 mb-3">Page Actions</h4>
+          <p className="text-sm text-gray-600 mb-3">
+            These shortcuts work on list pages (Invoices, Receipts, Tenants, etc.):
+          </p>
+          <div className="bg-gray-50 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <tbody className="divide-y divide-gray-200">
+                <tr><td className="px-4 py-2.5 text-gray-700">Create new item</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">C</kbd></td></tr>
+                <tr><td className="px-4 py-2.5 text-gray-700">Focus search</td><td className="px-4 py-2.5 text-right"><kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">/</kbd></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="bg-primary-50 rounded-xl p-4">
+          <p className="text-sm text-primary-800">
+            <strong>Note:</strong> Single-key shortcuts (like <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">C</kbd> and <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">/</kbd>)
+            are automatically disabled when you're typing in an input field, textarea, or search box.
+            Modifier shortcuts (like <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">Ctrl/⌘</kbd> + <kbd className="px-1.5 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600">K</kbd>)
+            always work regardless of focus.
           </p>
         </div>
       </div>

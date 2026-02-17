@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Search, LogOut, Settings, ChevronDown, Sparkles, HelpCircle, BookOpen, FileText, Loader2, Menu, Sun, Moon, Monitor } from 'lucide-react'
+import { Bell, Search, LogOut, Settings, ChevronDown, Sparkles, HelpCircle, BookOpen, FileText, Loader2, Menu, Sun, Moon, Monitor, Keyboard } from 'lucide-react'
 import { useAuthStore } from '../../stores/authStore'
 import { useUIStore } from '../../stores/uiStore'
 import { authApi } from '../../services/api'
@@ -16,7 +16,7 @@ export default function Header() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuthStore()
-  const { toggleAskMe, toggleMobileSidebar, isMobile, theme, setTheme } = useUIStore()
+  const { toggleAskMe, toggleMobileSidebar, isMobile, theme, setTheme, setCommandPaletteOpen, setShortcutsModalOpen } = useUIStore()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -29,21 +29,6 @@ export default function Header() {
     setAvatarLoaded(false)
     setAvatarError(false)
   }, [user?.avatar])
-
-  // Keyboard shortcut for search (Cmd/Ctrl + K) - navigates to search page
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-        // Only navigate if not already on search page
-        if (location.pathname !== '/dashboard/search') {
-          navigate('/dashboard/search')
-        }
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [navigate, location.pathname])
 
   const unreadCount = useUnreadNotifications()
 
@@ -122,7 +107,7 @@ export default function Header() {
         {/* Search - navigates to dedicated search page */}
         <div className="flex-1 max-w-xl">
           <button
-            onClick={() => navigate('/dashboard/search')}
+            onClick={() => setCommandPaletteOpen(true)}
             className="w-full flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl hover:bg-white hover:border-gray-300 transition-all text-left group"
           >
             <Search className="w-4 h-4 text-gray-400 group-hover:text-primary-500 transition-colors flex-shrink-0" />
@@ -231,11 +216,23 @@ export default function Header() {
                         <p className="text-xs text-gray-500">Guides & tutorials</p>
                       </div>
                     </button>
+                    <button
+                      onClick={() => { setShortcutsModalOpen(true); setHelpOpen(false); }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="p-1.5 bg-gray-100 rounded-lg">
+                        <Keyboard className="w-4 h-4 text-gray-600" />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-medium">Keyboard Shortcuts</p>
+                        <p className="text-xs text-gray-500">Press ? for quick access</p>
+                      </div>
+                    </button>
                   </div>
 
                   <div className="p-3 bg-gray-50 border-t border-gray-100">
                     <p className="text-xs text-gray-500 text-center">
-                      Press <kbd className="px-1.5 py-0.5 bg-white rounded border text-gray-600">⌘K</kbd> to search anytime
+                      Press <kbd className="px-1.5 py-0.5 bg-white rounded border text-gray-600">⌘K</kbd> for command palette
                     </p>
                   </div>
                 </motion.div>

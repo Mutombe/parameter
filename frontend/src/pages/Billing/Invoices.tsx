@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -35,6 +35,7 @@ import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
+import { useHotkeys } from '../../hooks/useHotkeys'
 import { TbUserSquareRounded } from "react-icons/tb";
 
 interface Invoice {
@@ -173,6 +174,12 @@ export default function Invoices() {
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
 
   const selection = useSelection<number | string>({ clearOnChange: [debouncedSearch, statusFilter] })
+
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  useHotkeys([
+    { key: 'c', handler: () => setShowForm(true) },
+    { key: '/', handler: (e) => { e.preventDefault(); searchInputRef.current?.focus() } },
+  ])
 
   const { data: invoices, isLoading } = useQuery({
     queryKey: ['invoices', debouncedSearch, statusFilter],
@@ -543,6 +550,7 @@ export default function Invoices() {
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
+            ref={searchInputRef}
             type="text"
             placeholder="Search by invoice number or tenant..."
             value={search}

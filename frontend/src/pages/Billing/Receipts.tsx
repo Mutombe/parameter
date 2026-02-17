@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -8,6 +8,7 @@ import { formatCurrency, formatDate, useDebounce, cn } from '../../lib/utils'
 import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
+import { useHotkeys } from '../../hooks/useHotkeys'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { Skeleton, OptimisticItemSkeleton } from '../../components/ui/Skeleton'
 import { showToast, parseApiError } from '../../lib/toast'
@@ -47,6 +48,12 @@ export default function Receipts() {
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null)
   const [postingId, setPostingId] = useState<number | null>(null)
   const selection = useSelection<number | string>({ clearOnChange: [debouncedSearch] })
+
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  useHotkeys([
+    { key: 'c', handler: () => setShowForm(true) },
+    { key: '/', handler: (e) => { e.preventDefault(); searchInputRef.current?.focus() } },
+  ])
 
   const [form, setForm] = useState({
     tenant: '',
@@ -297,6 +304,7 @@ export default function Receipts() {
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input
+            ref={searchInputRef}
             type="text"
             placeholder="Search receipts..."
             value={search}

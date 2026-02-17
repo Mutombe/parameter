@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -32,6 +32,7 @@ import { showToast, parseApiError } from '../../lib/toast'
 import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
+import { useHotkeys } from '../../hooks/useHotkeys'
 
 interface Expense {
   id: number | string
@@ -144,6 +145,13 @@ export default function Expenses() {
   const debouncedSearch = useDebounce(searchQuery, 300)
 
   const selection = useSelection<number | string>({ clearOnChange: [debouncedSearch, statusFilter, typeFilter] })
+
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  useHotkeys([
+    { key: 'c', handler: () => setShowModal(true) },
+    { key: '/', handler: (e) => { e.preventDefault(); searchInputRef.current?.focus() } },
+  ])
+
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
 
   // Fetch expenses
@@ -452,6 +460,7 @@ export default function Expenses() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
+            ref={searchInputRef}
             type="text"
             placeholder="Search expenses..."
             value={searchQuery}
