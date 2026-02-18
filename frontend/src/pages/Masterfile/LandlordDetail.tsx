@@ -873,8 +873,10 @@ export default function LandlordDetail() {
                       }
                       className="hover:bg-gray-50 cursor-pointer transition-colors"
                     >
-                      <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                        {prop.property_name || prop.name}
+                      <td className="px-6 py-4 text-sm font-medium">
+                        <span className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer">
+                          {prop.property_name || prop.name}
+                        </span>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600 text-right">
                         {prop.total_units ?? prop.units ?? '-'}
