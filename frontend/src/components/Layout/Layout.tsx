@@ -11,6 +11,7 @@ import DemoExpiryBanner from '../DemoExpiryBanner'
 import ErrorBoundary from '../ErrorBoundary'
 import GlobalSearch from '../Search/GlobalSearch'
 import KeyboardShortcutsModal from '../KeyboardShortcutsModal'
+import ChainedCreationModal from '../ChainedCreationModal'
 import { useUIStore } from '../../stores/uiStore'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket'
@@ -177,6 +178,7 @@ export default function Layout() {
       <SessionExpiredModal />
       <GlobalSearch open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
       <KeyboardShortcutsModal open={shortcutsModalOpen} onClose={() => setShortcutsModalOpen(false)} />
+      <ChainedCreationModal />
     </div>
   )
 }

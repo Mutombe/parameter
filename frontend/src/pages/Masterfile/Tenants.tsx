@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Users, Phone, Mail, Trash2, Loader2, Eye, X, FileText, Receipt, Building2, Calendar, DollarSign, AlertCircle, Home, Download } from 'lucide-react'
+import { Plus, Search, Users, Phone, Mail, Trash2, Loader2, Eye, X, FileText, Receipt, Building2, Calendar, DollarSign, AlertCircle, Home, Download, Wand2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, FileSpreadsheet } from 'lucide-react'
 import { tenantApi, unitApi, propertyApi, importsApi } from '../../services/api'
@@ -9,6 +9,8 @@ import { useDebounce, formatCurrency, formatDate, cn } from '../../lib/utils'
 import { Pagination, EmptyState, Modal, SelectionCheckbox, BulkActionsBar, ConfirmDialog, SplitButton, Select } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
+import { useChainStore } from '../../stores/chainStore'
+import TenantForm from '../../components/forms/TenantForm'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
@@ -267,6 +269,7 @@ export default function Tenants() {
         <SplitButton
           onClick={() => setShowForm(true)}
           menuItems={[
+            { label: 'Chain Add', icon: Wand2, onClick: () => useChainStore.getState().startChain('tenant') },
             { label: 'Import from File', icon: Upload, onClick: () => navigate('/dashboard/data-import') },
             { label: 'Download Template', icon: FileSpreadsheet, onClick: handleDownloadTemplate },
           ]}
@@ -326,132 +329,12 @@ export default function Tenants() {
             className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 p-6"
           >
             <h2 className="text-lg font-semibold mb-4">Add New Tenant</h2>
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              const submitData: Record<string, any> = {
-                name: form.name,
-                tenant_type: form.tenant_type,
-                account_type: form.account_type,
-                email: form.email,
-                phone: form.phone,
-                id_type: form.id_type,
-                id_number: form.id_number,
-                unit: form.unit || null,
-              };
-              createMutation.mutate(submitData as typeof form);
-            }} className="space-y-4">
-              <div>
-                <label className="label">Name</label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="input"
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Tenant Type</label>
-                  <Select
-                    value={form.tenant_type}
-                    onChange={(e) => setForm({ ...form, tenant_type: e.target.value })}
-                    options={[
-                      { value: 'individual', label: 'Individual' },
-                      { value: 'company', label: 'Company' },
-                    ]}
-                  />
-                </div>
-                <div>
-                  <label className="label">Account Type</label>
-                  <Select
-                    value={form.account_type}
-                    onChange={(e) => setForm({ ...form, account_type: e.target.value })}
-                    options={[
-                      { value: 'rental', label: 'Rental Tenant' },
-                      { value: 'levy', label: 'Levy Account Holder' },
-                      { value: 'both', label: 'Both (Rental & Levy)' },
-                    ]}
-                  />
-                </div>
-              </div>
-
-              {/* Property & Unit Allocation (Optional) */}
-              <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-blue-600" />
-                    <span className="text-sm font-medium text-blue-800">Unit Allocation</span>
-                  </div>
-                  <span className="text-xs text-blue-500">Optional - can be assigned via lease later</span>
-                </div>
-
-                {/* Property Selection */}
-                <AsyncSelect
-                  label="Select Property"
-                  placeholder="-- No property (assign later) --"
-                  value={form.property}
-                  onChange={(val) => handlePropertyChange(val ? Number(val) : '')}
-                  options={properties.map((property: any) => ({ value: property.id, label: `${property.name} (${property.city})` }))}
-                  searchable
-                  clearable
-                />
-
-                {/* Unit Selection - Only shown after property is selected */}
-                {form.property && (
-                  <div>
-                    <AsyncSelect
-                      label="Select Unit"
-                      placeholder="-- No unit (assign later) --"
-                      value={form.unit}
-                      onChange={(val) => setForm({ ...form, unit: val ? Number(val) : '' })}
-                      options={availableUnits.map((unit: any) => ({ value: unit.id, label: `Unit ${unit.unit_number} - ${unit.unit_type} (${unit.currency} ${unit.rental_amount}/mo)` }))}
-                      searchable
-                      clearable
-                      emptyMessage="No available units. Units are auto-created when you create a lease."
-                    />
-                    {availableUnits.length > 0 && (
-                      <p className="text-xs text-blue-600 mt-1">
-                        {availableUnits.length} unit(s) available
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label">ID Type</label>
-                  <Select
-                    value={form.id_type}
-                    onChange={(e) => setForm({ ...form, id_type: e.target.value })}
-                    options={[
-                      { value: 'national_id', label: 'National ID' },
-                      { value: 'passport', label: 'Passport' },
-                      { value: 'company_reg', label: 'Company Reg' },
-                    ]}
-                  />
-                </div>
-                <div>
-                  <label className="label">ID Number</label>
-                  <input type="text" value={form.id_number} onChange={(e) => setForm({ ...form, id_number: e.target.value })} className="input" required />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Email</label>
-                  <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="input" required />
-                </div>
-                <div>
-                  <label className="label">Phone</label>
-                  <input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="input" required />
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 pt-4">
-                <button type="button" onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
-                <button type="submit" className="btn-primary">Save Tenant</button>
-              </div>
-            </form>
+            <TenantForm
+              initialValues={form}
+              onSubmit={(data) => createMutation.mutate(data as typeof form)}
+              isSubmitting={createMutation.isPending}
+              onCancel={() => setShowForm(false)}
+            />
           </motion.div>
         </div>
       )}

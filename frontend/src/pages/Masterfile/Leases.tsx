@@ -29,6 +29,7 @@ import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, 
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { showToast, parseApiError } from '../../lib/toast'
+import LeaseForm from '../../components/forms/LeaseForm'
 import { TbUserSquareRounded } from "react-icons/tb";
 import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
@@ -762,167 +763,15 @@ export default function Leases() {
         title={editingId ? 'Edit Lease' : 'New Lease Agreement'}
         icon={editingId ? Edit2 : Plus}
       >
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Tenant Select */}
-            <AsyncSelect
-              label="Tenant"
-              placeholder="Select Tenant"
-              value={form.tenant}
-              onChange={(val) => setForm({ ...form, tenant: String(val) })}
-              options={tenants?.map((t: Tenant) => ({ value: t.id, label: t.name })) || []}
-              isLoading={tenantsLoading}
-              required
-              searchable
-            />
-
-            {/* Property Select */}
-            <AsyncSelect
-              label="Property"
-              placeholder="Select Property"
-              value={form.property}
-              onChange={(val) => setForm({ ...form, property: String(val), unit: '', unit_number: '' })}
-              options={properties?.map((p: Property) => ({ value: p.id, label: p.name })) || []}
-              isLoading={propertiesLoading}
-              required
-              searchable
-            />
-          </div>
-
-          {/* Existing Unit - optional, filtered by property */}
-          <AsyncSelect
-            label="Existing Unit (optional)"
-            placeholder={form.property ? "Select existing unit or leave empty" : "Select a property first"}
-            value={form.unit}
-            onChange={(val) => setForm({ ...form, unit: String(val), unit_number: '' })}
-            options={units?.map((u: Unit) => ({ value: u.id, label: `${u.unit_number} - ${u.property_name}` })) || []}
-            isLoading={unitsLoading}
-            searchable
-            clearable
-            disabled={!form.property}
-          />
-
-          {/* Unit Number - only visible when no existing unit selected */}
-          {!form.unit && (
-            <div>
-              <Input
-                label="Unit Number"
-                placeholder="e.g. A101"
-                value={form.unit_number}
-                onChange={(e) => setForm({ ...form, unit_number: e.target.value, unit: '' })}
-              />
-              <p className="text-xs text-gray-500 mt-1">New unit will be auto-created</p>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Input
-              type="number"
-              label="Monthly Rent"
-              placeholder="1000.00"
-              step="0.01"
-              min="0"
-              value={form.monthly_rent}
-              onChange={(e) => setForm({ ...form, monthly_rent: e.target.value })}
-              required
-            />
-
-            <Input
-              type="number"
-              label="Deposit Amount"
-              placeholder="1000.00"
-              step="0.01"
-              min="0"
-              value={form.deposit_amount}
-              onChange={(e) => setForm({ ...form, deposit_amount: e.target.value })}
-            />
-
-            <Select
-              label="Currency"
-              value={form.currency}
-              onChange={(e) => setForm({ ...form, currency: e.target.value })}
-              options={[
-                { value: 'USD', label: 'USD' },
-                { value: 'ZiG', label: 'ZiG' },
-              ]}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Input
-              type="date"
-              label="Start Date"
-              value={form.start_date}
-              onChange={(e) => setForm({ ...form, start_date: e.target.value })}
-              required
-            />
-
-            <Input
-              type="date"
-              label="End Date"
-              value={form.end_date}
-              onChange={(e) => setForm({ ...form, end_date: e.target.value })}
-              required
-            />
-
-            <Select
-              label="Payment Day"
-              value={form.payment_day}
-              onChange={(e) => setForm({ ...form, payment_day: e.target.value })}
-              options={Array.from({ length: 28 }, (_, i) => ({
-                value: String(i + 1),
-                label: `Day ${i + 1}`,
-              }))}
-            />
-          </div>
-
-          {/* Document Upload */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
-              Lease Document
-            </label>
-            <div className="flex items-center gap-3">
-              <label className="flex-1 flex items-center gap-2 px-3 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
-                <Upload className="w-4 h-4 text-gray-400" />
-                <span className="text-gray-500 truncate">
-                  {documentFile ? documentFile.name : 'Choose PDF or Word document...'}
-                </span>
-                <input
-                  type="file"
-                  accept=".pdf,.doc,.docx"
-                  className="hidden"
-                  onChange={(e) => setDocumentFile(e.target.files?.[0] || null)}
-                />
-              </label>
-              {documentFile && (
-                <button
-                  type="button"
-                  onClick={() => setDocumentFile(null)}
-                  className="p-2 text-gray-400 hover:text-red-500 rounded-lg transition-colors"
-                >
-                  <XCircle className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          <Textarea
-            label="Notes"
-            placeholder="Additional terms or notes..."
-            value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            rows={3}
-          />
-
-          <div className="flex gap-3 pt-4">
-            <Button type="button" variant="outline" className="flex-1" onClick={resetForm}>
-              Cancel
-            </Button>
-            <Button type="submit" className="flex-1" disabled={createMutation.isPending || tenantsLoading || unitsLoading}>
-              {createMutation.isPending ? 'Saving...' : editingId ? 'Update Lease' : 'Create Lease'}
-            </Button>
-          </div>
-        </form>
+        <LeaseForm
+          initialValues={form}
+          onSubmit={(data, docFile) => {
+            if (docFile) setDocumentFile(docFile)
+            createMutation.mutate(data)
+          }}
+          isSubmitting={createMutation.isPending}
+          onCancel={resetForm}
+        />
       </Modal>
 
       {/* Activate Confirmation */}

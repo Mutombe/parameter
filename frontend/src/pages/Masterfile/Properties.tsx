@@ -32,6 +32,8 @@ import { formatPercent, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, ConfirmDialog, Pagination, SelectionCheckbox, BulkActionsBar, SplitButton } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
+import { useChainStore } from '../../stores/chainStore'
+import PropertyForm from '../../components/forms/PropertyForm'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
@@ -451,6 +453,7 @@ export default function Properties() {
           <SplitButton
             onClick={() => setShowForm(true)}
             menuItems={[
+              { label: 'Chain Add', icon: Wand2, onClick: () => useChainStore.getState().startChain('property') },
               { label: 'Import from File', icon: Upload, onClick: () => navigate('/dashboard/data-import') },
               { label: 'Download Template', icon: FileSpreadsheet, onClick: handleDownloadTemplate },
             ]}
@@ -936,86 +939,12 @@ export default function Properties() {
         title={editingId ? 'Edit Property' : 'Add New Property'}
         icon={editingId ? Edit2 : Plus}
       >
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <AsyncSelect
-            label="Landlord"
-            placeholder="Select a landlord"
-            value={form.landlord}
-            onChange={(val) => setForm({ ...form, landlord: String(val) })}
-            options={landlords?.map((l: any) => ({ value: l.id, label: l.name })) || []}
-            isLoading={landlordsLoading}
-            required
-            searchable
-            emptyMessage="No landlords found. Create a landlord first."
-          />
-
-          <Input
-            label="Property Name"
-            placeholder="e.g., Sunrise Apartments"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            required
-          />
-
-          <div className="grid grid-cols-2 gap-4">
-            <Select
-              label="Property Type"
-              value={form.property_type}
-              onChange={(e) => setForm({ ...form, property_type: e.target.value })}
-            >
-              <option value="residential">Residential</option>
-              <option value="commercial">Commercial</option>
-              <option value="industrial">Industrial</option>
-              <option value="mixed">Mixed Use</option>
-            </Select>
-
-            <Input
-              type="number"
-              label="Total Units"
-              placeholder="1"
-              min="1"
-              value={form.total_units}
-              onChange={(e) => setForm({ ...form, total_units: parseInt(e.target.value) || 1 })}
-            />
-          </div>
-
-          <Input
-            label="Address"
-            placeholder="123 Main Street"
-            value={form.address}
-            onChange={(e) => setForm({ ...form, address: e.target.value })}
-            required
-          />
-
-          <Input
-            label="City"
-            placeholder="Harare"
-            value={form.city}
-            onChange={(e) => setForm({ ...form, city: e.target.value })}
-          />
-
-          <div>
-            <Input
-              label="Unit Definition"
-              placeholder="e.g., 1-17 or A1-A20; B1-B15"
-              value={form.unit_definition}
-              onChange={(e) => setForm({ ...form, unit_definition: e.target.value })}
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Define unit ranges using formats like "1-17" (numeric) or "A1-A20; B1-B15" (alphanumeric).
-              Units can be auto-generated after property creation.
-            </p>
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <Button type="button" variant="outline" className="flex-1" onClick={resetForm}>
-              Cancel
-            </Button>
-            <Button type="submit" className="flex-1" disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Saving...' : editingId ? 'Update Property' : 'Add Property'}
-            </Button>
-          </div>
-        </form>
+        <PropertyForm
+          initialValues={form}
+          onSubmit={(data) => createMutation.mutate(data)}
+          isSubmitting={createMutation.isPending}
+          onCancel={resetForm}
+        />
       </Modal>
 
       {/* Delete Confirmation */}

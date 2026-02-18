@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import {
   Building2, Users, FileText, BarChart3, DollarSign, Receipt,
   BookOpen, ChevronRight, Search, Home, Settings, UserPlus,
-  PieChart, Calculator, FileCheck, Bell, Shield, Zap,
+  PieChart, Calculator, FileCheck, Bell, Shield, Zap, Link2,
   ArrowLeft, Menu, X, Phone, Mail, Sun, Moon, Monitor, LayoutDashboard, Keyboard
 } from 'lucide-react'
 import { useUIStore } from '../stores/uiStore'
@@ -39,6 +39,7 @@ const sections = [
       { id: 'properties', title: 'Properties & Units' },
       { id: 'tenants', title: 'Tenant Management' },
       { id: 'leases', title: 'Lease Agreements' },
+      { id: 'chain-add', title: 'Chain Add' },
     ]
   },
   {
@@ -548,6 +549,85 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
             <li><span className="inline-block w-2 h-2 bg-amber-400 rounded-full mr-2"></span><strong>Expiring:</strong> Lease ends within 30 days</li>
             <li><span className="inline-block w-2 h-2 bg-red-400 rounded-full mr-2"></span><strong>Terminated:</strong> Lease has been ended</li>
           </ul>
+        </div>
+      </div>
+    )
+  },
+  'chain-add': {
+    title: 'Chain Add',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Chain Add lets you create related entities in a single fluid workflow instead of navigating across
+          multiple pages. After saving one entity, the modal transitions to the next form with the created
+          entity pre-filled — so you can set up a full property chain without leaving the modal.
+        </p>
+
+        <div className="bg-primary-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <Link2 className="w-5 h-5 text-primary-600" />
+            Available Chains
+          </h4>
+          <div className="space-y-3">
+            <div className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span className="text-gray-600"><strong>Landlord → Property → Unit:</strong> Create a landlord, then a property for that landlord, then a unit for that property — all in one go</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span className="text-gray-600"><strong>Property → Unit:</strong> Add a property and immediately create its first unit</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span className="text-gray-600"><strong>Tenant → Lease:</strong> Create a tenant and immediately set up their lease agreement</span>
+            </div>
+          </div>
+        </div>
+
+        <h4 className="font-semibold text-gray-900">How to Use Chain Add</h4>
+        <ol className="list-decimal list-inside space-y-2 text-gray-600 ml-4">
+          <li>Go to <strong>Landlords</strong>, <strong>Properties</strong>, or <strong>Tenants</strong></li>
+          <li>Click the dropdown arrow on the <strong>"Add"</strong> button</li>
+          <li>Select <strong>"Chain Add"</strong> from the menu</li>
+          <li>Fill in the first entity form and save</li>
+          <li>The modal slides to the next form with the created entity pre-filled</li>
+          <li>Continue through the chain or close at any step</li>
+        </ol>
+
+        <div className="bg-gray-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Save Options</h4>
+          <p className="text-sm text-gray-600 mb-3">
+            At each step, the save button gives you three choices:
+          </p>
+          <ul className="space-y-2 text-sm text-gray-600">
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Save & Close:</strong> Saves the current entity and closes the modal</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Save & Add Another:</strong> Saves and resets the form for the same entity type (e.g., add multiple properties for the same landlord)</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Save & Add Next:</strong> Saves and moves to the next entity in the chain with pre-filled data</span>
+            </li>
+          </ul>
+        </div>
+
+        <div className="bg-gray-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Progress Tracking</h4>
+          <p className="text-sm text-gray-600">
+            Breadcrumbs at the top of the modal show your progress through the chain. Completed entities
+            are shown with a checkmark and their name, so you always know where you are in the workflow.
+          </p>
+        </div>
+
+        <div className="bg-amber-50 rounded-xl p-4">
+          <p className="text-sm text-amber-800">
+            <strong>Safe to close:</strong> Every entity is saved to the system immediately when you click save.
+            If you close the modal mid-chain, all previously saved entities are kept — nothing is lost.
+          </p>
         </div>
       </div>
     )

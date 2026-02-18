@@ -23,6 +23,7 @@ import { unitApi, propertyApi } from '../../services/api'
 import { formatCurrency, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
+import UnitForm from '../../components/forms/UnitForm'
 import { PiBuildingApartmentLight } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
 import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
@@ -617,138 +618,12 @@ export default function Units() {
         title={editingId ? 'Edit Unit' : 'Add New Unit'}
         icon={editingId ? Edit2 : Plus}
       >
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Unit Number"
-              placeholder="A101"
-              value={form.unit_number}
-              onChange={(e) => setForm({ ...form, unit_number: e.target.value })}
-              required
-            />
-
-            <AsyncSelect
-              label="Property"
-              placeholder="Select Property"
-              value={form.property}
-              onChange={(val) => setForm({ ...form, property: String(val) })}
-              options={properties?.map((p: Property) => ({ value: p.id, label: p.name })) || []}
-              isLoading={propertiesLoading}
-              required
-              searchable
-              emptyMessage="No properties found. Create a property first."
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Select
-              label="Unit Type"
-              value={form.unit_type}
-              onChange={(e) => setForm({ ...form, unit_type: e.target.value })}
-            >
-              <option value="studio">Studio</option>
-              <option value="apartment">Apartment</option>
-              <option value="1bed">1 Bedroom</option>
-              <option value="2bed">2 Bedroom</option>
-              <option value="3bed">3 Bedroom</option>
-              <option value="house">House</option>
-              <option value="commercial">Commercial</option>
-              <option value="office">Office</option>
-            </Select>
-
-            <Select
-              label="Currency"
-              value={form.currency}
-              onChange={(e) => setForm({ ...form, currency: e.target.value })}
-            >
-              <option value="USD">USD</option>
-              <option value="ZiG">ZiG</option>
-            </Select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              type="number"
-              label="Monthly Rent"
-              placeholder="1000.00"
-              step="0.01"
-              min="0"
-              value={form.rental_amount}
-              onChange={(e) => setForm({ ...form, rental_amount: e.target.value })}
-              required
-            />
-
-            <Input
-              type="number"
-              label="Deposit Amount"
-              placeholder="1000.00"
-              step="0.01"
-              min="0"
-              value={form.deposit_amount}
-              onChange={(e) => setForm({ ...form, deposit_amount: e.target.value })}
-            />
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div className="relative">
-              <Input
-                type="number"
-                label="Bedrooms"
-                min="0"
-                value={form.bedrooms}
-                onChange={(e) => setForm({ ...form, bedrooms: e.target.value })}
-              />
-              <Bed className="absolute right-3 top-9 w-4 h-4 text-gray-400" />
-            </div>
-
-            <div className="relative">
-              <Input
-                type="number"
-                label="Bathrooms"
-                min="0"
-                value={form.bathrooms}
-                onChange={(e) => setForm({ ...form, bathrooms: e.target.value })}
-              />
-              <Bath className="absolute right-3 top-9 w-4 h-4 text-gray-400" />
-            </div>
-
-            <div className="relative">
-              <Input
-                type="number"
-                label="Size (m2)"
-                min="0"
-                value={form.square_meters}
-                onChange={(e) => setForm({ ...form, square_meters: e.target.value })}
-              />
-              <Square className="absolute right-3 top-9 w-4 h-4 text-gray-400" />
-            </div>
-          </div>
-
-          <Input
-            type="number"
-            label="Floor Number"
-            min="0"
-            value={form.floor_number}
-            onChange={(e) => setForm({ ...form, floor_number: e.target.value })}
-          />
-
-          <Textarea
-            label="Description"
-            placeholder="Unit description..."
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            rows={2}
-          />
-
-          <div className="flex gap-3 pt-4">
-            <Button type="button" variant="outline" className="flex-1" onClick={resetForm}>
-              Cancel
-            </Button>
-            <Button type="submit" className="flex-1" disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Saving...' : editingId ? 'Update Unit' : 'Add Unit'}
-            </Button>
-          </div>
-        </form>
+        <UnitForm
+          initialValues={form}
+          onSubmit={(data) => createMutation.mutate(data)}
+          isSubmitting={createMutation.isPending}
+          onCancel={resetForm}
+        />
       </Modal>
 
       {/* Delete Confirmation */}
