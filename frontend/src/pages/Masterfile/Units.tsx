@@ -26,6 +26,7 @@ import { showToast, parseApiError } from '../../lib/toast'
 import { PiBuildingApartmentLight } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
 import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
+import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
@@ -159,7 +160,7 @@ export default function Units() {
     },
   })
 
-  const { data: properties } = useQuery({
+  const { data: properties, isLoading: propertiesLoading } = useQuery({
     queryKey: ['properties-list'],
     queryFn: () => propertyApi.list().then(r => r.data.results || r.data),
   })
@@ -626,17 +627,17 @@ export default function Units() {
               required
             />
 
-            <Select
+            <AsyncSelect
               label="Property"
+              placeholder="Select Property"
               value={form.property}
-              onChange={(e) => setForm({ ...form, property: e.target.value })}
+              onChange={(val) => setForm({ ...form, property: String(val) })}
+              options={properties?.map((p: Property) => ({ value: p.id, label: p.name })) || []}
+              isLoading={propertiesLoading}
               required
-            >
-              <option value="">Select Property</option>
-              {properties?.map((p: Property) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </Select>
+              searchable
+              emptyMessage="No properties found. Create a property first."
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

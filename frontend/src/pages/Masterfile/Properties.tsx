@@ -30,6 +30,7 @@ import { Upload, FileSpreadsheet } from 'lucide-react'
 import { propertyApi, landlordApi, propertyManagerApi, usersApi, importsApi } from '../../services/api'
 import { formatPercent, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, ConfirmDialog, Pagination, SelectionCheckbox, BulkActionsBar, SplitButton } from '../../components/ui'
+import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
@@ -154,7 +155,7 @@ export default function Properties() {
   const totalCount = propertiesData?.count || properties.length
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
-  const { data: landlords } = useQuery({
+  const { data: landlords, isLoading: landlordsLoading } = useQuery({
     queryKey: ['landlords-select'],
     queryFn: () => landlordApi.list().then(r => r.data.results || r.data),
   })
@@ -267,7 +268,7 @@ export default function Properties() {
   const [managerIsPrimary, setManagerIsPrimary] = useState(false)
 
   // Fetch staff users for manager assignment
-  const { data: staffUsers } = useQuery({
+  const { data: staffUsers, isLoading: staffLoading } = useQuery({
     queryKey: ['staff-users'],
     queryFn: () => usersApi.list().then(r => {
       const users = r.data.results || r.data
@@ -936,17 +937,17 @@ export default function Properties() {
         icon={editingId ? Edit2 : Plus}
       >
         <form onSubmit={handleSubmit} className="space-y-5">
-          <Select
+          <AsyncSelect
             label="Landlord"
+            placeholder="Select a landlord"
             value={form.landlord}
-            onChange={(e) => setForm({ ...form, landlord: e.target.value })}
+            onChange={(val) => setForm({ ...form, landlord: String(val) })}
+            options={landlords?.map((l: any) => ({ value: l.id, label: l.name })) || []}
+            isLoading={landlordsLoading}
             required
-          >
-            <option value="">Select a landlord</option>
-            {landlords?.map((l: any) => (
-              <option key={l.id} value={l.id}>{l.name}</option>
-            ))}
-          </Select>
+            searchable
+            emptyMessage="No landlords found. Create a landlord first."
+          />
 
           <Input
             label="Property Name"
@@ -1216,22 +1217,23 @@ export default function Properties() {
           {/* Assign New Manager */}
           <div className="border-t pt-4">
             <h4 className="text-sm font-medium text-gray-700 mb-3">Assign New Manager</h4>
-            <Select
+            <AsyncSelect
               label="Staff Member"
+              placeholder="Select a staff member"
               value={selectedManagerUserId}
-              onChange={(e) => setSelectedManagerUserId(e.target.value)}
-            >
-              <option value="">Select a staff member</option>
-              {staffUsers?.filter((u: any) => {
-                // Exclude already assigned managers
+              onChange={(val) => setSelectedManagerUserId(String(val))}
+              options={staffUsers?.filter((u: any) => {
                 const assignedIds = propertyManagers?.map((m: any) => m.user) || []
                 return !assignedIds.includes(u.id)
-              }).map((u: any) => (
-                <option key={u.id} value={u.id}>
-                  {u.first_name} {u.last_name} ({u.email}) - {u.role}
-                </option>
-              ))}
-            </Select>
+              }).map((u: any) => ({
+                value: u.id,
+                label: `${u.first_name} ${u.last_name} (${u.email})`,
+                description: u.role,
+              })) || []}
+              isLoading={staffLoading}
+              searchable
+              emptyMessage="No staff members available"
+            />
 
             <label className="flex items-center gap-2 mt-3 cursor-pointer">
               <input
