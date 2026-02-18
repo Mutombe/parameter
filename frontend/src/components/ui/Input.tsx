@@ -145,6 +145,10 @@ export function Select({
       const arr = Array.isArray(nodes) ? nodes : [nodes]
       arr.forEach((child: any) => {
         if (!child) return
+        if (Array.isArray(child)) {
+          extractFromChildren(child)
+          return
+        }
         if (child.type === 'option' && child.props) {
           items.push({ value: String(child.props.value ?? ''), label: String(child.props.children ?? '') })
         }
