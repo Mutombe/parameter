@@ -201,35 +201,28 @@ class RentalTenantViewSet(viewsets.ModelViewSet):
     ordering = ['-created_at']
 
     def get_queryset(self):
-        """Use lightweight queryset for list, full prefetch for detail."""
+        """Use lightweight queryset for list, full prefetch for detail, with lease_status filtering."""
         base = RentalTenant.objects.select_related('unit', 'unit__property')
         if self.action == 'list':
-            # List view: only prefetch leases (for has_active_lease), skip invoices/receipts
-            return base.prefetch_related('leases').all()
-        # Detail/retrieve: full prefetch
-        return base.prefetch_related(
-            'leases', 'leases__unit', 'leases__unit__property', 'invoices', 'receipts'
-        ).all()
+            queryset = base.prefetch_related('leases').all()
+        else:
+            queryset = base.prefetch_related(
+                'leases', 'leases__unit', 'leases__unit__property', 'invoices', 'receipts'
+            ).all()
+
+        # Filter by lease_status (active/inactive based on having active leases)
+        lease_status = self.request.query_params.get('lease_status')
+        if lease_status == 'active':
+            queryset = queryset.filter(leases__status='active').distinct()
+        elif lease_status == 'inactive':
+            queryset = queryset.exclude(leases__status='active').distinct()
+
+        return queryset
 
     def get_serializer_class(self):
         if self.action == 'list':
             return RentalTenantListSerializer
         return RentalTenantSerializer
-
-    def get_queryset(self):
-        """Enhanced queryset with lease_status filtering."""
-        queryset = super().get_queryset()
-
-        # Filter by lease_status (active/inactive based on having active leases)
-        lease_status = self.request.query_params.get('lease_status')
-        if lease_status == 'active':
-            # Tenants with at least one active lease
-            queryset = queryset.filter(leases__status='active').distinct()
-        elif lease_status == 'inactive':
-            # Tenants without any active lease
-            queryset = queryset.exclude(leases__status='active').distinct()
-
-        return queryset
 
     @action(detail=True, methods=['get'])
     def detail_view(self, request, pk=None):
