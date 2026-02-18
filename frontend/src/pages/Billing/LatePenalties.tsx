@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -54,6 +55,7 @@ interface Exclusion {
 type ActiveTab = 'configs' | 'exclusions' | 'invoices'
 
 export default function LatePenalties() {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<ActiveTab>('configs')
   const [showConfigModal, setShowConfigModal] = useState(false)
@@ -413,10 +415,10 @@ export default function LatePenalties() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="font-medium text-gray-900">
-                        {config.tenant_name
-                          ? `Tenant: ${config.tenant_name}`
-                          : config.property_name
-                            ? `Property: ${config.property_name}`
+                        {config.tenant_name && config.tenant
+                          ? <>Tenant: <button onClick={() => navigate(`/dashboard/tenants/${config.tenant}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{config.tenant_name}</button></>
+                          : config.property_name && config.property
+                            ? <>Property: <button onClick={() => navigate(`/dashboard/properties/${config.property}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{config.property_name}</button></>
                             : 'System Default'}
                       </h3>
                       <Badge variant={config.is_enabled ? 'success' : 'secondary'}>
@@ -479,7 +481,13 @@ export default function LatePenalties() {
                     <Shield className="w-5 h-5" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-medium text-gray-900">{exc.tenant_name}</h3>
+                    <h3 className="font-medium text-gray-900">
+                      {exc.tenant ? (
+                        <button onClick={() => navigate(`/dashboard/tenants/${exc.tenant}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                          {exc.tenant_name}
+                        </button>
+                      ) : exc.tenant_name}
+                    </h3>
                     <p className="text-sm text-gray-500">{exc.reason}</p>
                     <p className="text-xs text-gray-400 mt-0.5">
                       {exc.excluded_until ? `Until ${exc.excluded_until}` : 'Permanent'}
@@ -542,8 +550,23 @@ export default function LatePenalties() {
                     <FileText className="w-5 h-5" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-medium text-gray-900">{inv.invoice_number}</h3>
-                    <p className="text-sm text-gray-500">{inv.tenant_name} - {inv.description}</p>
+                    <h3 className="font-medium">
+                      {inv.id ? (
+                        <button onClick={() => navigate(`/dashboard/invoices/${inv.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                          {inv.invoice_number}
+                        </button>
+                      ) : (
+                        <span className="text-gray-900">{inv.invoice_number}</span>
+                      )}
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      {inv.tenant_id ? (
+                        <button onClick={() => navigate(`/dashboard/tenants/${inv.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                          {inv.tenant_name}
+                        </button>
+                      ) : inv.tenant_name}
+                      {' - '}{inv.description}
+                    </p>
                   </div>
                   <div className="text-right">
                     <p className="font-semibold text-gray-900">{inv.currency} {parseFloat(inv.total_amount).toLocaleString()}</p>

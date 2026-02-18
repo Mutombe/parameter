@@ -735,7 +735,16 @@ export default function Invoices() {
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <p className="text-gray-900">{invoice.tenant_name}</p>
+                            {invoice.tenant ? (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${invoice.tenant}`) }}
+                                className="text-primary-600 hover:text-primary-700 hover:underline"
+                              >
+                                {invoice.tenant_name}
+                              </button>
+                            ) : (
+                              <p className="text-gray-900">{invoice.tenant_name}</p>
+                            )}
                             {invoice.unit_name && (
                               <p className="text-xs text-gray-500">{invoice.unit_name}</p>
                             )}

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
@@ -64,6 +65,7 @@ const bucketConfig = [
 ] as const
 
 export default function AgedAnalysis() {
+  const navigate = useNavigate()
   const today = new Date().toISOString().split('T')[0]
   const [asOfDate, setAsOfDate] = useState(today)
   const [propertyFilter, setPropertyFilter] = useState<string>('')
@@ -340,8 +342,18 @@ export default function AgedAnalysis() {
                       transition={{ delay: index * 0.02 }}
                       className="hover:bg-gray-50 transition-colors"
                     >
-                      <td className="px-6 py-3 text-sm font-medium text-gray-900">
-                        {tenant.tenant_name}
+                      <td className="px-6 py-3 text-sm font-medium">
+                        {tenant.tenant_id ? (
+                          <a
+                            href={`/dashboard/tenants/${tenant.tenant_id}`}
+                            onClick={(e) => { e.preventDefault(); navigate(`/dashboard/tenants/${tenant.tenant_id}`) }}
+                            className="text-primary-600 hover:text-primary-700 hover:underline"
+                          >
+                            {tenant.tenant_name}
+                          </a>
+                        ) : (
+                          <span className="text-gray-900">{tenant.tenant_name}</span>
+                        )}
                       </td>
                       {bucketConfig.map((bucket) => {
                         const val = tenant[bucket.key as keyof TenantAging] as number || 0

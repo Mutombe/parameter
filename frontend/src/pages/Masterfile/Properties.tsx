@@ -661,9 +661,18 @@ export default function Properties() {
                   </span>
 
                   {/* Landlord */}
-                  <div className="hidden md:flex items-center gap-2 text-sm text-gray-600 min-w-[120px]">
+                  <div className="hidden md:flex items-center gap-2 text-sm min-w-[120px]">
                     <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
-                    <span className="truncate">{property.landlord_name}</span>
+                    {property.landlord ? (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/landlords/${property.landlord}`) }}
+                        className="text-primary-600 hover:text-primary-700 hover:underline truncate"
+                      >
+                        {property.landlord_name}
+                      </button>
+                    ) : (
+                      <span className="text-gray-600 truncate">{property.landlord_name}</span>
+                    )}
                   </div>
 
                   {/* Manager */}
@@ -797,9 +806,18 @@ export default function Properties() {
                           <MapPin className="w-4 h-4 text-gray-400" />
                           <span>{selectedProperty.address || selectedProperty.city}</span>
                         </div>
-                        <div className="flex items-center gap-3 text-sm text-gray-600">
+                        <div className="flex items-center gap-3 text-sm">
                           <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
-                          <span>Owned by {selectedProperty.landlord_name}</span>
+                          {selectedProperty.landlord ? (
+                            <button
+                              onClick={() => navigate(`/dashboard/landlords/${selectedProperty.landlord}`)}
+                              className="text-primary-600 hover:text-primary-700 hover:underline"
+                            >
+                              Owned by {selectedProperty.landlord_name}
+                            </button>
+                          ) : (
+                            <span className="text-gray-600">Owned by {selectedProperty.landlord_name}</span>
+                          )}
                         </div>
                       </div>
 

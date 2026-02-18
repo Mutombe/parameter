@@ -543,7 +543,16 @@ export default function Units() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <PiBuildingApartmentLight className="w-4 h-4 text-gray-400" />
-                        <span className="text-gray-600">{unit.property_name}</span>
+                        {unit.property ? (
+                          <button
+                            onClick={() => navigate(`/dashboard/properties/${unit.property}`)}
+                            className="text-primary-600 hover:text-primary-700 hover:underline"
+                          >
+                            {unit.property_name}
+                          </button>
+                        ) : (
+                          <span className="text-gray-600">{unit.property_name}</span>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -575,7 +584,12 @@ export default function Units() {
                       {unit.current_tenant ? (
                         <div className="flex items-center gap-2">
                           <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
-                          <span className="text-gray-600">{unit.current_tenant.name}</span>
+                          <button
+                            onClick={() => navigate(`/dashboard/tenants/${unit.current_tenant!.id}`)}
+                            className="text-primary-600 hover:text-primary-700 hover:underline"
+                          >
+                            {unit.current_tenant.name}
+                          </button>
                         </div>
                       ) : (
                         <span className="text-gray-400">-</span>

@@ -408,7 +408,18 @@ export default function Receipts() {
                       </span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-gray-600">{receipt.tenant_name}</td>
+                  <td className="px-6 py-4">
+                    {receipt.tenant ? (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${receipt.tenant}`) }}
+                        className="text-primary-600 hover:text-primary-700 hover:underline"
+                      >
+                        {receipt.tenant_name}
+                      </button>
+                    ) : (
+                      <span className="text-gray-600">{receipt.tenant_name}</span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 font-medium text-green-600">{formatCurrency(receipt.amount)}</td>
                   <td className="px-6 py-4">
                     <span className="px-2 py-1 bg-gray-100 rounded-full text-xs">

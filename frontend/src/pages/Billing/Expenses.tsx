@@ -558,7 +558,16 @@ export default function Expenses() {
                           {config.label}
                         </Badge>
                       </div>
-                      <p className="text-sm text-gray-600 truncate">{expense.payee_name}</p>
+                      {expense.payee_id && expense.payee_type === 'landlord' ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/landlords/${expense.payee_id}`) }}
+                          className="text-sm text-primary-600 hover:text-primary-700 hover:underline truncate"
+                        >
+                          {expense.payee_name}
+                        </button>
+                      ) : (
+                        <p className="text-sm text-gray-600 truncate">{expense.payee_name}</p>
+                      )}
                       <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />

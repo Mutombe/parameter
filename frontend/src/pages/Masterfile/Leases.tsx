@@ -676,13 +676,31 @@ export default function Leases() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
-                        <span className="text-gray-700">{lease.tenant_name}</span>
+                        {lease.tenant ? (
+                          <button
+                            onClick={() => navigate(`/dashboard/tenants/${lease.tenant}`)}
+                            className="text-primary-600 hover:text-primary-700 hover:underline"
+                          >
+                            {lease.tenant_name}
+                          </button>
+                        ) : (
+                          <span className="text-gray-700">{lease.tenant_name}</span>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <Home className="w-4 h-4 text-gray-400" />
-                        <span className="text-gray-600">{lease.unit_display}</span>
+                        {lease.unit ? (
+                          <button
+                            onClick={() => navigate(`/dashboard/units/${lease.unit}`)}
+                            className="text-primary-600 hover:text-primary-700 hover:underline"
+                          >
+                            {lease.unit_display}
+                          </button>
+                        ) : (
+                          <span className="text-gray-600">{lease.unit_display}</span>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4">
