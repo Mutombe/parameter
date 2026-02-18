@@ -61,6 +61,7 @@ interface StatCardProps {
   icon: React.ElementType
   color: 'blue' | 'green' | 'purple' | 'orange' | 'red' | 'cyan'
   isLoading?: boolean
+  href?: string
 }
 
 const colorConfig = {
@@ -72,13 +73,18 @@ const colorConfig = {
   cyan: { bg: 'bg-cyan-50', icon: 'bg-cyan-500', text: 'text-cyan-600' },
 }
 
-function StatCard({ title, value, subtitle, trend, icon: Icon, color, isLoading }: StatCardProps) {
+function StatCard({ title, value, subtitle, trend, icon: Icon, color, isLoading, href }: StatCardProps) {
+  const navigate = useNavigate()
   const colors = colorConfig[color]
 
   return (
     <motion.div
       variants={item}
-      className="bg-white rounded-xl border border-gray-200 p-4 md:p-6 hover:shadow-lg hover:border-gray-300 transition-all duration-300"
+      onClick={href ? () => navigate(href) : undefined}
+      className={cn(
+        "bg-white rounded-xl border border-gray-200 p-4 md:p-6 hover:shadow-lg hover:border-gray-300 transition-all duration-300",
+        href && "cursor-pointer"
+      )}
     >
       <div className="flex items-start justify-between">
         <div className={cn('p-2 md:p-3 rounded-xl', colors.bg)}>
@@ -138,6 +144,7 @@ export default function Dashboard() {
       trend: { value: 12, label: 'vs last month' },
       icon: PiBuildingApartmentLight,
       color: 'blue' as const,
+      href: '/dashboard/properties',
     },
     {
       title: 'Occupancy Rate',
@@ -146,6 +153,7 @@ export default function Dashboard() {
       trend: { value: occupancyRate >= 90 ? 5 : -3, label: 'vs last month' },
       icon: Home,
       color: 'green' as const,
+      href: '/dashboard/units',
     },
     {
       title: 'Monthly Revenue',
@@ -154,6 +162,7 @@ export default function Dashboard() {
       trend: { value: 8, label: 'vs last month' },
       icon: Wallet,
       color: 'purple' as const,
+      href: '/dashboard/invoices',
     },
     {
       title: 'Outstanding',
@@ -162,6 +171,7 @@ export default function Dashboard() {
       trend: { value: collectionRate >= 85 ? 2 : -5, label: 'vs last month' },
       icon: Receipt,
       color: 'orange' as const,
+      href: '/dashboard/reports/aged-analysis',
     },
     {
       title: 'Collection Rate',
@@ -170,6 +180,7 @@ export default function Dashboard() {
       trend: { value: collectionRate >= 85 ? 3 : -8, label: 'vs last month' },
       icon: PiggyBank,
       color: (collectionRate >= 85 ? 'green' : 'red') as 'green' | 'red',
+      href: '/dashboard/receipts',
     },
     {
       title: 'Overdue Invoices',
@@ -178,6 +189,7 @@ export default function Dashboard() {
       trend: { value: overdueInvoices > 0 ? -overdueInvoices : 0, label: 'items' },
       icon: AlertTriangle,
       color: (overdueInvoices > 0 ? 'red' : 'cyan') as 'red' | 'cyan',
+      href: '/dashboard/invoices',
     },
   ]
 
