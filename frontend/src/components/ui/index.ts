@@ -43,6 +43,9 @@ export { BulkActionsBar } from './BulkActionsBar'
 // Time
 export { TimeAgo } from './TimeAgo'
 
+// Tooltip
+export { Tooltip } from './Tooltip'
+
 // Dialogs
 export { ConfirmDialog } from './ConfirmDialog'
 

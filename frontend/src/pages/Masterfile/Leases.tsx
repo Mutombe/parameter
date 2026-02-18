@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import { leaseApi, tenantApi, unitApi, propertyApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, ConfirmDialog } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, ConfirmDialog, Tooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { showToast, parseApiError } from '../../lib/toast'
@@ -649,6 +649,16 @@ export default function Leases() {
                 const config = statusConfig[lease.status] || statusConfig.draft
                 const StatusIcon = config.icon
                 const isExpiringSoon = lease.status === 'active' && new Date(lease.end_date) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                const statusTooltips: Record<string, string> = {
+                  draft: 'Not yet activated',
+                  active: 'Currently in effect',
+                  expired: 'Past end date',
+                  terminated: 'Ended early',
+                }
+                const startMs = new Date(lease.start_date).getTime()
+                const endMs = new Date(lease.end_date).getTime()
+                const durationDays = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24))
+                const durationMonths = Math.round(durationDays / 30)
 
                 return (
                   <motion.tr
@@ -706,31 +716,38 @@ export default function Leases() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1">
                         <DollarSign className="w-4 h-4 text-gray-400" />
-                        <span className="font-semibold text-gray-900">{formatCurrency(lease.monthly_rent)}</span>
+                        <span className="font-semibold text-gray-900" title={`Monthly rent: ${lease.monthly_rent}`}>{formatCurrency(lease.monthly_rent)}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-gray-400" />
-                        <span className={cn(
-                          'text-sm',
-                          isExpiringSoon ? 'text-amber-600 font-medium' : 'text-gray-600'
-                        )}>
+                        <span
+                          className={cn(
+                            'text-sm',
+                            isExpiringSoon ? 'text-amber-600 font-medium' : 'text-gray-600'
+                          )}
+                          title={`Duration: ${durationMonths} month${durationMonths !== 1 ? 's' : ''} (${durationDays} days)`}
+                        >
                           {formatDate(lease.start_date)} - {formatDate(lease.end_date)}
                         </span>
                         {isExpiringSoon && (
-                          <Badge variant="warning" className="text-xs">Expiring</Badge>
+                          <Tooltip content="Expires within 30 days">
+                            <span><Badge variant="warning" className="text-xs">Expiring</Badge></span>
+                          </Tooltip>
                         )}
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={cn(
-                        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
-                        config.bgColor, config.color
-                      )}>
-                        <StatusIcon className="w-3 h-3" />
-                        {config.label}
-                      </span>
+                      <Tooltip content={statusTooltips[lease.status] || config.label}>
+                        <span className={cn(
+                          'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
+                          config.bgColor, config.color
+                        )}>
+                          <StatusIcon className="w-3 h-3" />
+                          {config.label}
+                        </span>
+                      </Tooltip>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">

@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { unitApi, propertyApi } from '../../services/api'
 import { formatCurrency, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, Tooltip } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import UnitForm from '../../components/forms/UnitForm'
 import { PiBuildingApartmentLight } from "react-icons/pi";
@@ -556,28 +556,36 @@ export default function Units() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={cn(
-                        'px-2.5 py-1 rounded-full text-xs font-medium',
-                        typeConfig.bgColor, typeConfig.color
-                      )}>
-                        {typeConfig.label}
-                      </span>
+                      <Tooltip content={typeConfig.label}>
+                        <span className={cn(
+                          'px-2.5 py-1 rounded-full text-xs font-medium',
+                          typeConfig.bgColor, typeConfig.color
+                        )}>
+                          {typeConfig.label}
+                        </span>
+                      </Tooltip>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-1">
-                        <DollarSign className="w-4 h-4 text-gray-400" />
-                        <span className="font-semibold text-gray-900">{formatCurrency(unit.rental_amount)}</span>
-                      </div>
+                      <Tooltip content={`Rent: ${formatCurrency(unit.rental_amount)} | Deposit: ${formatCurrency(unit.deposit_amount)}`}>
+                        <div className="flex items-center gap-1">
+                          <DollarSign className="w-4 h-4 text-gray-400" />
+                          <span className="font-semibold text-gray-900">{formatCurrency(unit.rental_amount)}</span>
+                        </div>
+                      </Tooltip>
                     </td>
                     <td className="px-6 py-4">
                       {unit.is_occupied ? (
-                        <Badge variant="success" className="gap-1">
-                          <Check className="w-3 h-3" /> Occupied
-                        </Badge>
+                        <Tooltip content="Currently leased to a tenant">
+                          <Badge variant="success" className="gap-1">
+                            <Check className="w-3 h-3" /> Occupied
+                          </Badge>
+                        </Tooltip>
                       ) : (
-                        <Badge variant="danger" className="gap-1">
-                          <X className="w-3 h-3" /> Vacant
-                        </Badge>
+                        <Tooltip content="Available for lease">
+                          <Badge variant="danger" className="gap-1">
+                            <X className="w-3 h-3" /> Vacant
+                          </Badge>
+                        </Tooltip>
                       )}
                     </td>
                     <td className="px-6 py-4">

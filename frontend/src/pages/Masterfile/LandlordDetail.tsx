@@ -37,7 +37,7 @@ import {
 } from 'recharts'
 import { landlordApi, reportsApi } from '../../services/api'
 import { formatCurrency, formatPercent, cn } from '../../lib/utils'
-import { Modal, Button, Input, Select, Textarea } from '../../components/ui'
+import { Modal, Button, Input, Select, Textarea, Tooltip as UiTooltip } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { TbUserSquareRounded } from 'react-icons/tb'
 
@@ -83,6 +83,7 @@ interface StatCardProps {
   icon: React.ElementType
   color: 'blue' | 'green' | 'purple' | 'orange'
   isLoading?: boolean
+  tooltip?: string
 }
 
 const colorConfig = {
@@ -92,7 +93,7 @@ const colorConfig = {
   orange: { bg: 'bg-orange-50', icon: 'bg-orange-500', text: 'text-orange-600' },
 }
 
-function StatCard({ title, value, subtitle, icon: Icon, color, isLoading }: StatCardProps) {
+function StatCard({ title, value, subtitle, icon: Icon, color, isLoading, tooltip }: StatCardProps) {
   const colors = colorConfig[color]
 
   return (
@@ -113,7 +114,13 @@ function StatCard({ title, value, subtitle, icon: Icon, color, isLoading }: Stat
         ) : (
           <h3 className="text-2xl md:text-3xl font-bold text-gray-900 tabular-nums">{value}</h3>
         )}
-        <p className="text-xs md:text-sm text-gray-500 mt-1">{title}</p>
+        {tooltip ? (
+          <UiTooltip content={tooltip}>
+            <p className="text-xs md:text-sm text-gray-500 mt-1 cursor-help">{title}</p>
+          </UiTooltip>
+        ) : (
+          <p className="text-xs md:text-sm text-gray-500 mt-1">{title}</p>
+        )}
         {isLoading ? (
           <div className="h-3 md:h-4 w-16 md:w-20 bg-gray-200 rounded animate-pulse mt-1" />
         ) : subtitle ? (
@@ -463,7 +470,7 @@ export default function LandlordDetail() {
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Percent className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{landlord?.commission_rate}% commission</span>
+                  <span title="Management fee deducted from collected rent">{landlord?.commission_rate}% commission</span>
                 </div>
                 {landlord?.currency && (
                   <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -536,6 +543,7 @@ export default function LandlordDetail() {
           icon={Building2}
           color="blue"
           isLoading={loadingStatement}
+          tooltip="Properties owned by this landlord"
         />
         <StatCard
           title="Occupancy Rate"
@@ -544,6 +552,7 @@ export default function LandlordDetail() {
           icon={Home}
           color="green"
           isLoading={loadingStatement}
+          tooltip="Percentage of landlord's units occupied"
         />
         <StatCard
           title="Total Collected"
@@ -552,6 +561,7 @@ export default function LandlordDetail() {
           icon={Wallet}
           color="purple"
           isLoading={loadingFinancial}
+          tooltip="Total rent collected from tenants"
         />
         <StatCard
           title="Net Payable"
@@ -560,6 +570,7 @@ export default function LandlordDetail() {
           icon={DollarSign}
           color="orange"
           isLoading={loadingFinancial}
+          tooltip="Amount payable to landlord after commission"
         />
       </motion.div>
 

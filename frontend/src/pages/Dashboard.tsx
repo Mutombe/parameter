@@ -39,6 +39,7 @@ import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
 import { LiaUsersSolid } from "react-icons/lia";
 import { PiBuildingApartmentLight } from "react-icons/pi";
+import { Tooltip as UITooltip } from '../components/ui'
 
 const container = {
   hidden: { opacity: 0 },
@@ -62,6 +63,7 @@ interface StatCardProps {
   color: 'blue' | 'green' | 'purple' | 'orange' | 'red' | 'cyan'
   isLoading?: boolean
   href?: string
+  tooltip?: string
 }
 
 const colorConfig = {
@@ -73,7 +75,7 @@ const colorConfig = {
   cyan: { bg: 'bg-cyan-50', icon: 'bg-cyan-500', text: 'text-cyan-600' },
 }
 
-function StatCard({ title, value, subtitle, trend, icon: Icon, color, isLoading, href }: StatCardProps) {
+function StatCard({ title, value, subtitle, trend, icon: Icon, color, isLoading, href, tooltip }: StatCardProps) {
   const navigate = useNavigate()
   const colors = colorConfig[color]
 
@@ -112,7 +114,13 @@ function StatCard({ title, value, subtitle, trend, icon: Icon, color, isLoading,
         ) : (
           <h3 className="text-2xl md:text-3xl font-bold text-gray-900 tabular-nums">{value}</h3>
         )}
-        <p className="text-xs md:text-sm text-gray-500 mt-1">{title}</p>
+        {tooltip ? (
+          <UITooltip content={tooltip}>
+            <span><p className="text-xs md:text-sm text-gray-500 mt-1">{title}</p></span>
+          </UITooltip>
+        ) : (
+          <p className="text-xs md:text-sm text-gray-500 mt-1">{title}</p>
+        )}
         {isLoading ? (
           <div className="h-3 md:h-4 w-16 md:w-20 bg-gray-200 rounded animate-pulse mt-1" />
         ) : subtitle ? (
@@ -145,6 +153,7 @@ export default function Dashboard() {
       icon: PiBuildingApartmentLight,
       color: 'blue' as const,
       href: '/dashboard/properties',
+      tooltip: 'Total managed properties in your portfolio',
     },
     {
       title: 'Occupancy Rate',
@@ -154,6 +163,7 @@ export default function Dashboard() {
       icon: Home,
       color: 'green' as const,
       href: '/dashboard/units',
+      tooltip: 'Percentage of units currently leased',
     },
     {
       title: 'Monthly Revenue',
@@ -163,6 +173,7 @@ export default function Dashboard() {
       icon: Wallet,
       color: 'purple' as const,
       href: '/dashboard/invoices',
+      tooltip: 'Total invoiced amount this month',
     },
     {
       title: 'Outstanding',
@@ -172,6 +183,7 @@ export default function Dashboard() {
       icon: Receipt,
       color: 'orange' as const,
       href: '/dashboard/reports/aged-analysis',
+      tooltip: 'Total unpaid balance across all tenants',
     },
     {
       title: 'Collection Rate',
@@ -181,6 +193,7 @@ export default function Dashboard() {
       icon: PiggyBank,
       color: (collectionRate >= 85 ? 'green' : 'red') as 'green' | 'red',
       href: '/dashboard/receipts',
+      tooltip: 'Percentage of invoiced amounts collected',
     },
     {
       title: 'Overdue Invoices',
@@ -190,6 +203,7 @@ export default function Dashboard() {
       icon: AlertTriangle,
       color: (overdueInvoices > 0 ? 'red' : 'cyan') as 'red' | 'cyan',
       href: '/dashboard/invoices',
+      tooltip: 'Invoices past their due date',
     },
   ]
 
@@ -366,7 +380,7 @@ export default function Dashboard() {
                 {isLoading ? (
                   <div className="h-9 w-16 bg-gray-200 rounded animate-pulse mx-auto" />
                 ) : (
-                  <p className="text-3xl font-bold text-gray-900">{formatPercent(occupancyRate)}</p>
+                  <p className="text-3xl font-bold text-gray-900" title={`${stats?.properties?.units - stats?.properties?.vacant || 0} of ${stats?.properties?.units || 0} units occupied`}>{formatPercent(occupancyRate)}</p>
                 )}
                 <p className="text-xs text-gray-500">Occupied</p>
               </div>
@@ -492,6 +506,7 @@ export default function Dashboard() {
           <div className="space-y-3">
             <button
               onClick={() => navigate('/dashboard/invoices')}
+              title="View all overdue invoices"
               className="w-full flex items-center justify-between p-4 bg-red-50 hover:bg-red-100 rounded-xl transition-colors group"
             >
               <div className="flex items-center gap-3">
@@ -519,6 +534,7 @@ export default function Dashboard() {
 
             <button
               onClick={() => navigate('/dashboard/leases')}
+              title="View leases expiring within 30 days"
               className="w-full flex items-center justify-between p-4 bg-amber-50 hover:bg-amber-100 rounded-xl transition-colors group"
             >
               <div className="flex items-center gap-3">
@@ -555,6 +571,7 @@ export default function Dashboard() {
               <button
                 key={action.label}
                 onClick={() => navigate(action.href)}
+                title={action.label}
                 className={cn(
                   'flex flex-col items-center gap-2 p-4 rounded-xl transition-all hover:scale-105',
                   action.color === 'blue' && 'bg-blue-50 hover:bg-blue-100',

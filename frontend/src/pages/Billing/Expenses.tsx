@@ -27,7 +27,7 @@ import {
 } from 'lucide-react'
 import { expenseApi, landlordApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, Tooltip } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
@@ -554,9 +554,13 @@ export default function Expenses() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold text-gray-900">{expense.expense_number}</h3>
-                        <Badge variant={expense.status === 'paid' ? 'success' : expense.status === 'pending' ? 'warning' : 'default'}>
-                          {config.label}
-                        </Badge>
+                        <Tooltip content={{ pending: 'Awaiting approval', approved: 'Approved, ready for payment', paid: 'Payment completed', cancelled: 'Expense cancelled' }[expense.status]}>
+                          <span>
+                            <Badge variant={expense.status === 'paid' ? 'success' : expense.status === 'pending' ? 'warning' : 'default'}>
+                              {config.label}
+                            </Badge>
+                          </span>
+                        </Tooltip>
                       </div>
                       {expense.payee_id && expense.payee_type === 'landlord' ? (
                         <button
@@ -581,9 +585,13 @@ export default function Expenses() {
                     </div>
 
                     <div className="text-right">
-                      <p className="font-bold text-lg">{formatCurrency(expense.amount, expense.currency)}</p>
+                      <Tooltip content={expenseTypes.find(t => t.value === expense.expense_type)?.label || expense.expense_type}>
+                        <span className="font-bold text-lg">{formatCurrency(expense.amount, expense.currency)}</span>
+                      </Tooltip>
                       {expense.journal_number && (
-                        <p className="text-xs text-gray-500">JRN: {expense.journal_number}</p>
+                        <Tooltip content="Posted to general ledger">
+                          <p className="text-xs text-gray-500">JRN: {expense.journal_number}</p>
+                        </Tooltip>
                       )}
                     </div>
 

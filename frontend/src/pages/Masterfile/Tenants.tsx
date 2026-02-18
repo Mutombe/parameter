@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, FileSpreadsheet } from 'lucide-react'
 import { tenantApi, unitApi, propertyApi, importsApi } from '../../services/api'
 import { useDebounce, formatCurrency, formatDate, cn } from '../../lib/utils'
-import { Pagination, EmptyState, Modal, SelectionCheckbox, BulkActionsBar, ConfirmDialog, SplitButton, Select } from '../../components/ui'
+import { Pagination, EmptyState, Modal, SelectionCheckbox, BulkActionsBar, ConfirmDialog, SplitButton, Select, Tooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
 import { useChainStore } from '../../stores/chainStore'
@@ -444,7 +444,16 @@ export default function Tenants() {
               {tenant.unit_name && (
                 <div className="mt-3 flex items-center gap-2 text-sm bg-blue-50 text-blue-700 px-2 py-1.5 rounded-lg">
                   <Home className="w-4 h-4" />
-                  <span>{tenant.unit_name}</span>
+                  {tenant.unit_id ? (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/units/${tenant.unit_id}`) }}
+                      className="text-blue-800 hover:underline cursor-pointer"
+                    >
+                      {tenant.unit_name}
+                    </button>
+                  ) : (
+                    <span>{tenant.unit_name}</span>
+                  )}
                 </div>
               )}
 
@@ -597,34 +606,42 @@ export default function Tenants() {
                         Billing Summary
                       </h3>
                       <div className="grid grid-cols-4 gap-4">
-                        <div className="bg-gray-50 rounded-lg p-3">
-                          <p className="text-xs text-gray-500">Total Invoiced</p>
-                          <p className="text-lg font-semibold text-gray-900">
-                            {formatCurrency(tenantDetail.billing_summary?.total_invoiced || 0)}
-                          </p>
-                        </div>
-                        <div className="bg-gray-50 rounded-lg p-3">
-                          <p className="text-xs text-gray-500">Total Paid</p>
-                          <p className="text-lg font-semibold text-green-600">
-                            {formatCurrency(tenantDetail.billing_summary?.total_paid || 0)}
-                          </p>
-                        </div>
-                        <div className="bg-gray-50 rounded-lg p-3">
-                          <p className="text-xs text-gray-500">Balance Due</p>
-                          <p className={`text-lg font-semibold ${
-                            tenantDetail.billing_summary?.balance_due > 0 ? 'text-amber-600' : 'text-gray-900'
-                          }`}>
-                            {formatCurrency(tenantDetail.billing_summary?.balance_due || 0)}
-                          </p>
-                        </div>
-                        <div className="bg-gray-50 rounded-lg p-3">
-                          <p className="text-xs text-gray-500">Overdue</p>
-                          <p className={`text-lg font-semibold ${
-                            tenantDetail.billing_summary?.overdue_amount > 0 ? 'text-red-600' : 'text-gray-900'
-                          }`}>
-                            {formatCurrency(tenantDetail.billing_summary?.overdue_amount || 0)}
-                          </p>
-                        </div>
+                        <Tooltip content="Sum of all invoices issued">
+                          <div className="bg-gray-50 rounded-lg p-3">
+                            <p className="text-xs text-gray-500">Total Invoiced</p>
+                            <p className="text-lg font-semibold text-gray-900">
+                              {formatCurrency(tenantDetail.billing_summary?.total_invoiced || 0)}
+                            </p>
+                          </div>
+                        </Tooltip>
+                        <Tooltip content="Total payments received">
+                          <div className="bg-gray-50 rounded-lg p-3">
+                            <p className="text-xs text-gray-500">Total Paid</p>
+                            <p className="text-lg font-semibold text-green-600">
+                              {formatCurrency(tenantDetail.billing_summary?.total_paid || 0)}
+                            </p>
+                          </div>
+                        </Tooltip>
+                        <Tooltip content="Current outstanding amount">
+                          <div className="bg-gray-50 rounded-lg p-3">
+                            <p className="text-xs text-gray-500">Balance Due</p>
+                            <p className={`text-lg font-semibold ${
+                              tenantDetail.billing_summary?.balance_due > 0 ? 'text-amber-600' : 'text-gray-900'
+                            }`}>
+                              {formatCurrency(tenantDetail.billing_summary?.balance_due || 0)}
+                            </p>
+                          </div>
+                        </Tooltip>
+                        <Tooltip content="Amount past due date">
+                          <div className="bg-gray-50 rounded-lg p-3">
+                            <p className="text-xs text-gray-500">Overdue</p>
+                            <p className={`text-lg font-semibold ${
+                              tenantDetail.billing_summary?.overdue_amount > 0 ? 'text-red-600' : 'text-gray-900'
+                            }`}>
+                              {formatCurrency(tenantDetail.billing_summary?.overdue_amount || 0)}
+                            </p>
+                          </div>
+                        </Tooltip>
                       </div>
                     </div>
 
@@ -640,8 +657,41 @@ export default function Tenants() {
                               <div className="flex items-center gap-3">
                                 <Building2 className="w-5 h-5 text-green-600" />
                                 <div>
-                                  <p className="font-medium text-gray-900">{lease.unit}</p>
-                                  <p className="text-xs text-gray-500">{lease.property} • {lease.lease_number}</p>
+                                  <p className="font-medium text-gray-900">
+                                    {lease.unit_id ? (
+                                      <span
+                                        onClick={() => navigate(`/dashboard/units/${lease.unit_id}`)}
+                                        className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer"
+                                      >
+                                        {lease.unit}
+                                      </span>
+                                    ) : (
+                                      lease.unit
+                                    )}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    {lease.property_id ? (
+                                      <span
+                                        onClick={() => navigate(`/dashboard/properties/${lease.property_id}`)}
+                                        className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer"
+                                      >
+                                        {lease.property}
+                                      </span>
+                                    ) : (
+                                      lease.property
+                                    )}
+                                    {' • '}
+                                    {lease.id ? (
+                                      <span
+                                        onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
+                                        className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer"
+                                      >
+                                        {lease.lease_number}
+                                      </span>
+                                    ) : (
+                                      lease.lease_number
+                                    )}
+                                  </p>
                                 </div>
                               </div>
                               <div className="text-right">
@@ -668,13 +718,38 @@ export default function Tenants() {
                         </h3>
                         <div className="space-y-2">
                           {tenantDetail.lease_history.map((lease: any) => (
-                            <div key={lease.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div
+                              key={lease.id}
+                              className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+                              onClick={() => lease.id && navigate(`/dashboard/leases/${lease.id}`)}
+                            >
                               <div className="flex items-center gap-3">
                                 <Building2 className="w-5 h-5 text-gray-400" />
                                 <div>
-                                  <p className="font-medium text-gray-700">{lease.unit}</p>
+                                  <p className="font-medium text-gray-700">
+                                    {lease.unit_id ? (
+                                      <span
+                                        onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/units/${lease.unit_id}`) }}
+                                        className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer"
+                                      >
+                                        {lease.unit}
+                                      </span>
+                                    ) : (
+                                      lease.unit
+                                    )}
+                                  </p>
                                   <p className="text-xs text-gray-500">
-                                    {lease.property} • {formatDate(lease.start_date)} - {formatDate(lease.end_date)}
+                                    {lease.property_id ? (
+                                      <span
+                                        onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/properties/${lease.property_id}`) }}
+                                        className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer"
+                                      >
+                                        {lease.property}
+                                      </span>
+                                    ) : (
+                                      lease.property
+                                    )}
+                                    {' • '}{formatDate(lease.start_date)} - {formatDate(lease.end_date)}
                                   </p>
                                 </div>
                               </div>
@@ -704,7 +779,16 @@ export default function Tenants() {
                             <div key={invoice.id} className="flex items-center justify-between p-2 border border-gray-100 rounded-lg">
                               <div className="flex items-center gap-2">
                                 <FileText className="w-4 h-4 text-gray-400" />
-                                <span className="text-sm font-medium">{invoice.invoice_number}</span>
+                                {invoice.id ? (
+                                  <span
+                                    onClick={() => navigate(`/dashboard/invoices/${invoice.id}`)}
+                                    className="text-sm font-medium text-primary-600 hover:text-primary-700 hover:underline cursor-pointer"
+                                  >
+                                    {invoice.invoice_number}
+                                  </span>
+                                ) : (
+                                  <span className="text-sm font-medium">{invoice.invoice_number}</span>
+                                )}
                                 <span className="text-xs text-gray-500">{formatDate(invoice.date)}</span>
                               </div>
                               <div className="flex items-center gap-2">

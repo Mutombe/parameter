@@ -5,7 +5,7 @@ import { motion } from 'framer-motion'
 import { Search, CreditCard, Plus, Send, Loader2, Eye, X, User, FileText, Download, Printer, BookOpen } from 'lucide-react'
 import { receiptApi, tenantApi, invoiceApi } from '../../services/api'
 import { formatCurrency, formatDate, useDebounce, cn } from '../../lib/utils'
-import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, SelectionCheckbox, BulkActionsBar } from '../../components/ui'
+import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, SelectionCheckbox, BulkActionsBar, Tooltip } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
@@ -420,11 +420,13 @@ export default function Receipts() {
                       <span className="text-gray-600">{receipt.tenant_name}</span>
                     )}
                   </td>
-                  <td className="px-6 py-4 font-medium text-green-600">{formatCurrency(receipt.amount)}</td>
+                  <td className="px-6 py-4 font-medium text-green-600" title={String(receipt.amount)}>{formatCurrency(receipt.amount)}</td>
                   <td className="px-6 py-4">
-                    <span className="px-2 py-1 bg-gray-100 rounded-full text-xs">
-                      {methodLabels[receipt.payment_method] || receipt.payment_method}
-                    </span>
+                    <Tooltip content={`${methodLabels[receipt.payment_method] || receipt.payment_method}${receipt.reference ? ' - Ref: ' + receipt.reference : ''}`}>
+                      <span className="px-2 py-1 bg-gray-100 rounded-full text-xs">
+                        {methodLabels[receipt.payment_method] || receipt.payment_method}
+                      </span>
+                    </Tooltip>
                   </td>
                   <td className="px-6 py-4 text-gray-600">{receipt.reference || '-'}</td>
                   <td className="px-6 py-4 text-gray-600">{formatDate(receipt.date)}</td>
@@ -432,7 +434,9 @@ export default function Receipts() {
                     {receipt._isOptimistic ? (
                       <span className="text-blue-600 text-sm">Processing...</span>
                     ) : receipt.journal ? (
-                      <span className="text-green-600 text-sm">{receipt.journal_number}</span>
+                      <Tooltip content="Posted to general ledger">
+                        <span className="text-green-600 text-sm">{receipt.journal_number}</span>
+                      </Tooltip>
                     ) : (
                       <button
                         onClick={() => handlePost(receipt.id as number)}

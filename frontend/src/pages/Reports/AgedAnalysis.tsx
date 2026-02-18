@@ -16,6 +16,7 @@ import { reportsApi, propertyApi, landlordApi } from '../../services/api'
 import { cn } from '../../lib/utils'
 import { formatCurrency } from '../../lib/utils'
 import { printElement } from '../../lib/printTemplate'
+import { Tooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 
 interface AgedAnalysisSummary {
@@ -193,6 +194,7 @@ export default function AgedAnalysis() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-white rounded-xl border border-gray-200 p-5"
+          title="Sum of all unpaid invoice balances"
         >
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
@@ -212,6 +214,7 @@ export default function AgedAnalysis() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 }}
           className="bg-white rounded-xl border border-gray-200 p-5"
+          title="Number of invoices past due date"
         >
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
@@ -231,6 +234,7 @@ export default function AgedAnalysis() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
           className="bg-white rounded-xl border border-gray-200 p-5"
+          title="Aging bucket with the highest outstanding balance"
         >
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
@@ -265,7 +269,7 @@ export default function AgedAnalysis() {
                 ? (value / summary.total_outstanding) * 100 : 0
 
               return (
-                <div key={bucket.key} className="flex items-center gap-4">
+                <div key={bucket.key} className="flex items-center gap-4" title={`${bucket.label}: ${formatCurrency(value)} (${totalPercentage.toFixed(1)}% of total)`}>
                   <div className="w-32 text-sm text-gray-600 font-medium shrink-0">
                     {bucket.label}
                   </div>

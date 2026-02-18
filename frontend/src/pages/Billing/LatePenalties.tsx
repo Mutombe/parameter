@@ -21,7 +21,7 @@ import {
   Ban,
 } from 'lucide-react'
 import { penaltyApi, propertyApi, tenantApi } from '../../services/api'
-import { PageHeader, Button, Input, Modal, Badge, EmptyState, ConfirmDialog, Select } from '../../components/ui'
+import { PageHeader, Button, Input, Modal, Badge, EmptyState, ConfirmDialog, Select, Tooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import toast from 'react-hot-toast'
 import { cn, formatCurrency } from '../../lib/utils'
@@ -293,6 +293,7 @@ export default function LatePenalties() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             className="bg-white rounded-xl border border-gray-200 p-4"
+            title="Total invoices past due date"
           >
             <div className="flex items-center gap-3">
               <div className="p-2 bg-red-50 rounded-lg">
@@ -309,6 +310,7 @@ export default function LatePenalties() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 }}
             className="bg-white rounded-xl border border-gray-200 p-4"
+            title="Overdue invoices that match penalty rules"
           >
             <div className="flex items-center gap-3">
               <div className="p-2 bg-amber-50 rounded-lg">
@@ -325,6 +327,7 @@ export default function LatePenalties() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
             className="bg-white rounded-xl border border-gray-200 p-4"
+            title="Tenants excluded from penalties"
           >
             <div className="flex items-center gap-3">
               <div className="p-2 bg-emerald-50 rounded-lg">
@@ -341,6 +344,7 @@ export default function LatePenalties() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
             className="bg-white rounded-xl border border-gray-200 p-4"
+            title="Total monetary value of overdue invoices"
           >
             <div className="flex items-center gap-3">
               <div className="p-2 bg-blue-50 rounded-lg">
@@ -421,9 +425,13 @@ export default function LatePenalties() {
                             ? <>Property: <button onClick={() => navigate(`/dashboard/properties/${config.property}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{config.property_name}</button></>
                             : 'System Default'}
                       </h3>
-                      <Badge variant={config.is_enabled ? 'success' : 'secondary'}>
-                        {config.is_enabled ? 'Active' : 'Disabled'}
-                      </Badge>
+                      <Tooltip content={config.is_enabled ? 'Rule is actively applied' : 'Rule is paused'}>
+                        <span>
+                          <Badge variant={config.is_enabled ? 'success' : 'secondary'}>
+                            {config.is_enabled ? 'Active' : 'Disabled'}
+                          </Badge>
+                        </span>
+                      </Tooltip>
                     </div>
                     <p className="text-sm text-gray-500 mt-0.5">
                       {penaltyTypeLabel[config.penalty_type]}

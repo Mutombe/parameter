@@ -29,7 +29,7 @@ import {
 import { Upload, FileSpreadsheet } from 'lucide-react'
 import { propertyApi, landlordApi, propertyManagerApi, usersApi, importsApi } from '../../services/api'
 import { formatPercent, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, ConfirmDialog, Pagination, SelectionCheckbox, BulkActionsBar, SplitButton } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, ConfirmDialog, Pagination, SelectionCheckbox, BulkActionsBar, SplitButton, Tooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
 import { useChainStore } from '../../stores/chainStore'
@@ -653,12 +653,14 @@ export default function Properties() {
                   </div>
 
                   {/* Type Badge */}
-                  <span className={cn(
-                    'hidden sm:inline-flex px-2.5 py-1 rounded-full text-xs font-medium',
-                    config.bgColor, config.color
-                  )}>
-                    {config.label}
-                  </span>
+                  <Tooltip content={config.label}>
+                    <span className={cn(
+                      'hidden sm:inline-flex px-2.5 py-1 rounded-full text-xs font-medium',
+                      config.bgColor, config.color
+                    )}>
+                      {config.label}
+                    </span>
+                  </Tooltip>
 
                   {/* Landlord */}
                   <div className="hidden md:flex items-center gap-2 text-sm min-w-[120px]">
@@ -677,22 +679,26 @@ export default function Properties() {
 
                   {/* Manager */}
                   {property.primary_manager && (
-                    <div className="hidden lg:flex items-center gap-1.5 text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
-                      <Shield className="w-3 h-3" />
-                      <span className="truncate max-w-[80px]">{property.primary_manager.name}</span>
-                    </div>
+                    <Tooltip content={property.primary_manager.name}>
+                      <div className="hidden lg:flex items-center gap-1.5 text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
+                        <Shield className="w-3 h-3" />
+                        <span className="truncate max-w-[80px]">{property.primary_manager.name}</span>
+                      </div>
+                    </Tooltip>
                   )}
 
                   {/* Units */}
-                  <div className="hidden lg:flex items-center gap-4 text-sm">
-                    <div className="text-center min-w-[60px]">
-                      <span className="font-semibold text-gray-900">{property.unit_count || 0}</span>
-                      <span className="text-gray-400 ml-1">units</span>
+                  <Tooltip content={`${property.unit_count || 0} units in this property`}>
+                    <div className="hidden lg:flex items-center gap-4 text-sm">
+                      <div className="text-center min-w-[60px]">
+                        <span className="font-semibold text-gray-900">{property.unit_count || 0}</span>
+                        <span className="text-gray-400 ml-1">units</span>
+                      </div>
                     </div>
-                  </div>
+                  </Tooltip>
 
                   {/* Occupancy Bar */}
-                  <div className="hidden xl:flex flex-col min-w-[100px]">
+                  <div className="hidden xl:flex flex-col min-w-[100px]" title={`${occupancyRate}% occupied`}>
                     <div className="flex justify-between text-xs mb-1">
                       <span className="text-gray-500">Occupancy</span>
                       <span className={cn(

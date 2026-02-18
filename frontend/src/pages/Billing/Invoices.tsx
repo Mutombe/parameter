@@ -30,7 +30,7 @@ import {
 import { invoiceApi, tenantApi, unitApi, leaseApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { printInvoice } from '../../lib/printTemplate'
-import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, SelectionCheckbox, BulkActionsBar } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, SelectionCheckbox, BulkActionsBar, Tooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
 import { exportTableData } from '../../lib/export'
@@ -98,6 +98,15 @@ const statusConfig = {
     borderColor: 'border-gray-200',
     label: 'Cancelled',
   },
+}
+
+const statusTooltips: Record<string, string> = {
+  draft: 'Awaiting review and posting',
+  sent: 'Sent to tenant, awaiting payment',
+  partial: 'Partial payment received',
+  overdue: 'Payment past due date',
+  paid: 'Fully paid',
+  cancelled: 'Invoice cancelled',
 }
 
 function SkeletonInvoices() {
@@ -499,50 +508,56 @@ export default function Invoices() {
 
       {/* Financial Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
-        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-3 sm:p-5 text-white">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-white/80" />
-            <div>
-              <p className="text-blue-100 text-xs sm:text-sm">Total Billed</p>
-              {isLoading ? (
-                <div className="h-6 sm:h-8 w-20 sm:w-24 bg-white/30 rounded animate-pulse mt-1" />
-              ) : (
-                <p className="text-lg sm:text-2xl font-bold">{formatCurrency(totalAmount)}</p>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-3 sm:p-5 text-white">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-white/80" />
-            <div>
-              {isLoading ? (
-                <>
-                  <p className="text-emerald-100 text-xs sm:text-sm">Collected</p>
+        <Tooltip content="Sum of all invoice amounts">
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-3 sm:p-5 text-white">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-white/80" />
+              <div>
+                <p className="text-blue-100 text-xs sm:text-sm">Total Billed</p>
+                {isLoading ? (
                   <div className="h-6 sm:h-8 w-20 sm:w-24 bg-white/30 rounded animate-pulse mt-1" />
-                </>
-              ) : (
-                <>
-                  <p className="text-emerald-100 text-xs sm:text-sm">Collected ({collectionRate.toFixed(0)}%)</p>
-                  <p className="text-lg sm:text-2xl font-bold">{formatCurrency(totalCollected)}</p>
-                </>
-              )}
+                ) : (
+                  <p className="text-lg sm:text-2xl font-bold">{formatCurrency(totalAmount)}</p>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-        <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl p-3 sm:p-5 text-white">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <TrendingDown className="w-6 h-6 sm:w-8 sm:h-8 text-white/80" />
-            <div>
-              <p className="text-rose-100 text-xs sm:text-sm">Outstanding</p>
-              {isLoading ? (
-                <div className="h-6 sm:h-8 w-20 sm:w-24 bg-white/30 rounded animate-pulse mt-1" />
-              ) : (
-                <p className="text-lg sm:text-2xl font-bold">{formatCurrency(totalOutstanding)}</p>
-              )}
+        </Tooltip>
+        <Tooltip content="Total payments received">
+          <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-3 sm:p-5 text-white">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-white/80" />
+              <div>
+                {isLoading ? (
+                  <>
+                    <p className="text-emerald-100 text-xs sm:text-sm">Collected</p>
+                    <div className="h-6 sm:h-8 w-20 sm:w-24 bg-white/30 rounded animate-pulse mt-1" />
+                  </>
+                ) : (
+                  <>
+                    <p className="text-emerald-100 text-xs sm:text-sm">Collected ({collectionRate.toFixed(0)}%)</p>
+                    <p className="text-lg sm:text-2xl font-bold">{formatCurrency(totalCollected)}</p>
+                  </>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        </Tooltip>
+        <Tooltip content="Amount still owed by tenants">
+          <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl p-3 sm:p-5 text-white">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <TrendingDown className="w-6 h-6 sm:w-8 sm:h-8 text-white/80" />
+              <div>
+                <p className="text-rose-100 text-xs sm:text-sm">Outstanding</p>
+                {isLoading ? (
+                  <div className="h-6 sm:h-8 w-20 sm:w-24 bg-white/30 rounded animate-pulse mt-1" />
+                ) : (
+                  <p className="text-lg sm:text-2xl font-bold">{formatCurrency(totalOutstanding)}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </Tooltip>
       </div>
 
       {/* Search and Filter */}
@@ -723,7 +738,7 @@ export default function Invoices() {
                                   <p className={cn(
                                     'font-semibold',
                                     isOptimistic ? 'text-blue-600' : 'text-gray-900'
-                                  )}>
+                                  )} title={!isOptimistic ? `Invoice ${invoice.invoice_number}` : undefined}>
                                     {isOptimistic ? 'Creating...' : invoice.invoice_number}
                                   </p>
                                   {isOptimistic && (
@@ -768,19 +783,21 @@ export default function Invoices() {
                               <span className={cn(
                                 'text-sm',
                                 isOverdue ? 'text-rose-600 font-medium' : 'text-gray-600'
-                              )}>
+                              )} title={`Due: ${formatDate(invoice.due_date)}`}>
                                 {formatDate(invoice.due_date)}
                               </span>
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <span className={cn(
-                              'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
-                              config.bgColor, config.color
-                            )}>
-                              <StatusIcon className="w-3 h-3" />
-                              {config.label}
-                            </span>
+                            <Tooltip content={statusTooltips[invoice.status] || invoice.status}>
+                              <span className={cn(
+                                'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
+                                config.bgColor, config.color
+                              )}>
+                                <StatusIcon className="w-3 h-3" />
+                                {config.label}
+                              </span>
+                            </Tooltip>
                           </td>
                           <td className="px-6 py-4">
                             {isOptimistic ? (
