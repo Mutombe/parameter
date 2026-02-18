@@ -41,6 +41,16 @@ const statusIcons: Record<string, any> = {
   cancelled: XCircle,
 }
 
+const statusTooltips: Record<string, string> = {
+  pending: 'Import is queued and waiting to be processed',
+  validating: 'File is being validated for errors',
+  validated: 'File validated successfully and ready to import',
+  processing: 'Data is currently being imported',
+  completed: 'Import finished successfully',
+  failed: 'Import encountered errors and could not complete',
+  cancelled: 'Import was cancelled before completion',
+}
+
 interface ImportTemplate {
   type: string
   name: string
@@ -316,6 +326,7 @@ export default function DataImport() {
                           ? 'bg-emerald-100 text-emerald-700'
                           : 'bg-rose-100 text-rose-700'
                       }`}
+                      title={uploadResult.validation.valid ? 'All rows passed validation and are ready to import' : `${uploadResult.validation.error_count} validation error(s) found that must be fixed`}
                     >
                       {uploadResult.validation.valid ? 'Valid' : `${uploadResult.validation.error_count} Errors`}
                     </span>
@@ -496,12 +507,15 @@ export default function DataImport() {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg capitalize">
+                          <span className="px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg capitalize" title={`Import type: ${job.import_type}`}>
                             {job.import_type}
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg ${statusColors[job.status]}`}>
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg ${statusColors[job.status]}`}
+                            title={statusTooltips[job.status] || 'Import status'}
+                          >
                             <StatusIcon className={`w-3 h-3 ${isProcessing ? 'animate-spin' : ''}`} />
                             {job.status}
                           </span>
@@ -515,7 +529,7 @@ export default function DataImport() {
                               )}
                             </div>
                           ) : isProcessing ? (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2" title={`Processing: ${job.processed_rows} of ${job.total_rows} rows (${job.progress_percent}%)`}>
                               <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
                                 <div
                                   className="h-full bg-primary-500 transition-all duration-300"
@@ -537,6 +551,7 @@ export default function DataImport() {
                               size="sm"
                               onClick={() => confirmMutation.mutate(job.id)}
                               disabled={confirmMutation.isPending}
+                              title="Start processing the validated import"
                             >
                               Process
                             </Button>
@@ -546,6 +561,7 @@ export default function DataImport() {
                               size="sm"
                               variant="outline"
                               onClick={() => cancelMutation.mutate(job.id)}
+                              title="Cancel this import job"
                             >
                               Cancel
                             </Button>
@@ -554,6 +570,7 @@ export default function DataImport() {
                             <button
                               onClick={() => setSelectedJob(job)}
                               className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                              title="View detailed error information for this import"
                             >
                               View Errors
                             </button>
@@ -579,15 +596,15 @@ export default function DataImport() {
           <div className="space-y-4">
             <div className="p-4 bg-gray-50 rounded-lg">
               <div className="grid grid-cols-3 gap-4 text-sm">
-                <div>
+                <div title="Total number of data rows in the imported file">
                   <p className="text-gray-500">Total Rows</p>
                   <p className="font-semibold text-gray-900">{selectedJob.total_rows}</p>
                 </div>
-                <div>
+                <div title="Number of rows successfully imported">
                   <p className="text-gray-500">Successful</p>
                   <p className="font-semibold text-emerald-600">{selectedJob.success_count}</p>
                 </div>
-                <div>
+                <div title="Number of rows that failed to import">
                   <p className="text-gray-500">Failed</p>
                   <p className="font-semibold text-rose-600">{selectedJob.error_count}</p>
                 </div>

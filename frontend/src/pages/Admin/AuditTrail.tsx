@@ -51,6 +51,25 @@ export default function AuditTrail() {
     bulk_email_sent: 'bg-sky-100 text-sky-700',
   }
 
+  const actionTooltips: Record<string, string> = {
+    journal_posted: 'A journal entry was posted to the general ledger',
+    journal_reversed: 'A previously posted journal entry was reversed',
+    invoice_created: 'A new invoice was created for a tenant',
+    invoice_updated: 'An existing invoice was modified',
+    invoice_payment_applied: 'A payment was applied against an invoice',
+    invoice_marked_overdue: 'An invoice was flagged as overdue',
+    receipt_created: 'A new payment receipt was generated',
+    receipt_updated: 'An existing receipt was modified',
+    account_created: 'A new chart-of-accounts entry was created',
+    account_updated: 'An existing account was modified',
+    fiscal_period_closed: 'A fiscal period was closed for reporting',
+    reconciliation_completed: 'A bank reconciliation was completed',
+    expense_reallocated: 'An expense was reallocated between accounts',
+    uniform_charge_applied: 'A uniform charge was applied to multiple tenants',
+    billing_deleted: 'A billing record was deleted',
+    bulk_email_sent: 'A bulk email was sent to multiple recipients',
+  }
+
   // Reset to page 1 when filters change
   const handleFilterChange = (setter: (val: string) => void, val: string) => {
     setter(val)
@@ -133,6 +152,7 @@ export default function AuditTrail() {
               setPage(1)
             }}
             className="text-sm text-gray-500 hover:text-gray-700 underline pb-2"
+            title="Reset all filters to default"
           >
             Clear filters
           </button>
@@ -141,7 +161,7 @@ export default function AuditTrail() {
 
       {/* Results count */}
       {!isLoading && (
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-gray-500" title="Number of audit log entries matching current filters">
           Showing {auditLogs.length} of {totalCount} entries
           {totalPages > 1 && ` (page ${page} of ${totalPages})`}
         </div>
@@ -198,7 +218,10 @@ export default function AuditTrail() {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${actionColors[log.action] || 'bg-gray-100 text-gray-700'}`}>
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-medium ${actionColors[log.action] || 'bg-gray-100 text-gray-700'}`}
+                      title={actionTooltips[log.action] || log.action?.replace(/_/g, ' ')}
+                    >
                       {log.action?.replace(/_/g, ' ')}
                     </span>
                     <span className="text-sm text-gray-500">{log.model_name} #{log.record_id}</span>
@@ -250,6 +273,7 @@ export default function AuditTrail() {
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={!hasPrev}
               className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Go to previous page"
             >
               <ChevronLeft className="w-4 h-4" />
               Previous
@@ -278,6 +302,7 @@ export default function AuditTrail() {
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
               disabled={!hasNext}
               className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Go to next page"
             >
               Next
               <ChevronRight className="w-4 h-4" />

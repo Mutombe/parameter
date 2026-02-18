@@ -17,7 +17,7 @@ import {
 import { bankReconciliationApi, bankTransactionApi, bankAccountApi } from '../../services/api'
 import { cn, formatCurrency, formatDate } from '../../lib/utils'
 import { showToast, parseApiError } from '../../lib/toast'
-import { Modal, ModalFooter } from '../../components/ui'
+import { Modal, ModalFooter, Tooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 
 interface BankReconciliation {
@@ -224,13 +224,13 @@ export default function BankReconciliation() {
                 </div>
               </div>
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center justify-between text-sm" title="Date of the most recent completed reconciliation">
                   <span className="text-gray-500">Last Reconciled</span>
                   <span className="text-gray-700 font-medium">
                     {summary.last_reconciled ? formatDate(summary.last_reconciled) : 'Never'}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center justify-between text-sm" title="Transactions not yet matched to bank statement entries">
                   <span className="text-gray-500">Pending Transactions</span>
                   <span className={cn(
                     "font-medium",
@@ -239,7 +239,7 @@ export default function BankReconciliation() {
                     {summary.pending_transactions}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center justify-between text-sm" title="Difference between statement balance and book balance">
                   <span className="text-gray-500">Difference</span>
                   <span className={cn(
                     "font-medium",
@@ -319,19 +319,21 @@ export default function BankReconciliation() {
                         {formatCurrency(diff)}
                       </td>
                       <td className="px-6 py-4 text-center">
-                        <span className={cn(
-                          "px-2.5 py-1 text-xs rounded-full font-medium inline-flex items-center gap-1",
-                          rec.status === 'completed'
-                            ? "bg-green-100 text-green-700"
-                            : "bg-amber-100 text-amber-700"
-                        )}>
-                          {rec.status === 'completed' ? (
-                            <CheckCircle2 className="w-3 h-3" />
-                          ) : (
-                            <Clock className="w-3 h-3" />
-                          )}
-                          {rec.status === 'completed' ? 'Completed' : 'Draft'}
-                        </span>
+                        <Tooltip content={rec.status === 'completed' ? "Reconciliation has been finalized" : "Reconciliation is still in progress"}>
+                          <span className={cn(
+                            "px-2.5 py-1 text-xs rounded-full font-medium inline-flex items-center gap-1",
+                            rec.status === 'completed'
+                              ? "bg-green-100 text-green-700"
+                              : "bg-amber-100 text-amber-700"
+                          )}>
+                            {rec.status === 'completed' ? (
+                              <CheckCircle2 className="w-3 h-3" />
+                            ) : (
+                              <Clock className="w-3 h-3" />
+                            )}
+                            {rec.status === 'completed' ? 'Completed' : 'Draft'}
+                          </span>
+                        </Tooltip>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -347,7 +349,7 @@ export default function BankReconciliation() {
                           <button
                             onClick={() => handleExport(rec.id)}
                             className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
-                            title="Export"
+                            title="Export reconciliation"
                           >
                             <Download className="w-4 h-4" />
                           </button>

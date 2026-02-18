@@ -17,7 +17,7 @@ import {
 import { incomeTypeApi, accountApi } from '../../services/api'
 import { cn } from '../../lib/utils'
 import { showToast, parseApiError } from '../../lib/toast'
-import { Modal, ModalFooter, SelectionCheckbox, BulkActionsBar } from '../../components/ui'
+import { Modal, ModalFooter, SelectionCheckbox, BulkActionsBar, Tooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
@@ -316,6 +316,7 @@ export default function IncomeTypes() {
                   <button
                     onClick={() => setDropdownOpen(dropdownOpen === type.id ? null : type.id)}
                     className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                    title="Income type options"
                   >
                     <MoreVertical className="w-4 h-4" />
                   </button>
@@ -357,17 +358,25 @@ export default function IncomeTypes() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">Commissionable</span>
                   {type.is_commissionable ? (
-                    <Check className="w-4 h-4 text-green-500" />
+                    <Tooltip content="Commissionable">
+                      <span><Check className="w-4 h-4 text-green-500" /></span>
+                    </Tooltip>
                   ) : (
-                    <X className="w-4 h-4 text-gray-300" />
+                    <Tooltip content="Not commissionable">
+                      <span><X className="w-4 h-4 text-gray-300" /></span>
+                    </Tooltip>
                   )}
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">VATable</span>
                   {type.is_vatable || type.is_taxable ? (
-                    <Check className="w-4 h-4 text-green-500" />
+                    <Tooltip content="Subject to VAT">
+                      <span><Check className="w-4 h-4 text-green-500" /></span>
+                    </Tooltip>
                   ) : (
-                    <X className="w-4 h-4 text-gray-300" />
+                    <Tooltip content="Not subject to VAT">
+                      <span><X className="w-4 h-4 text-gray-300" /></span>
+                    </Tooltip>
                   )}
                 </div>
                 {type.gl_account_name && (

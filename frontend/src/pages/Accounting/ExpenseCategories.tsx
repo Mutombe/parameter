@@ -18,7 +18,7 @@ import {
 import { expenseCategoryApi, accountApi } from '../../services/api'
 import { cn } from '../../lib/utils'
 import { showToast, parseApiError } from '../../lib/toast'
-import { Modal, ModalFooter, SelectionCheckbox, BulkActionsBar } from '../../components/ui'
+import { Modal, ModalFooter, SelectionCheckbox, BulkActionsBar, Tooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
@@ -307,6 +307,7 @@ export default function ExpenseCategories() {
                   <button
                     onClick={() => setDropdownOpen(dropdownOpen === category.id ? null : category.id)}
                     className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                    title="Category options"
                   >
                     <MoreVertical className="w-4 h-4" />
                   </button>
@@ -356,17 +357,25 @@ export default function ExpenseCategories() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">Deductible</span>
                   {category.is_deductible ? (
-                    <Check className="w-4 h-4 text-green-500" />
+                    <Tooltip content="Tax deductible">
+                      <span><Check className="w-4 h-4 text-green-500" /></span>
+                    </Tooltip>
                   ) : (
-                    <X className="w-4 h-4 text-gray-300" />
+                    <Tooltip content="Not tax deductible">
+                      <span><X className="w-4 h-4 text-gray-300" /></span>
+                    </Tooltip>
                   )}
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">Requires Approval</span>
                   {category.requires_approval ? (
-                    <Check className="w-4 h-4 text-green-500" />
+                    <Tooltip content="Requires approval">
+                      <span><Check className="w-4 h-4 text-green-500" /></span>
+                    </Tooltip>
                   ) : (
-                    <X className="w-4 h-4 text-gray-300" />
+                    <Tooltip content="No approval required">
+                      <span><X className="w-4 h-4 text-gray-300" /></span>
+                    </Tooltip>
                   )}
                 </div>
               </div>

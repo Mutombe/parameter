@@ -770,6 +770,7 @@ export default function Leases() {
                         <button
                           onClick={() => handleEdit(lease)}
                           className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                          title="Edit"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>

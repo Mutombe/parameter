@@ -615,12 +615,14 @@ export default function Units() {
                         <button
                           onClick={() => handleEdit(unit)}
                           className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                          title="Edit"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDelete(unit)}
                           className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>

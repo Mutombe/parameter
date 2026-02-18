@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import { accountApi } from '../../services/api'
 import { formatCurrency, cn } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton, Tooltip } from '../../components/ui'
 import toast from 'react-hot-toast'
 import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
@@ -44,13 +44,14 @@ interface Account {
   children?: Account[]
 }
 
-const accountTypeConfig: Record<string, { icon: any; color: string; bgColor: string; borderColor: string; label: string }> = {
+const accountTypeConfig: Record<string, { icon: any; color: string; bgColor: string; borderColor: string; label: string; tooltip: string }> = {
   asset: {
     icon: Wallet,
     color: 'text-blue-600',
     bgColor: 'bg-blue-50',
     borderColor: 'border-blue-200',
     label: 'Assets',
+    tooltip: 'Resources owned by the organization that have economic value',
   },
   liability: {
     icon: CreditCard,
@@ -58,6 +59,7 @@ const accountTypeConfig: Record<string, { icon: any; color: string; bgColor: str
     bgColor: 'bg-rose-50',
     borderColor: 'border-rose-200',
     label: 'Liabilities',
+    tooltip: 'Obligations or debts owed to external parties',
   },
   equity: {
     icon: Scale,
@@ -65,6 +67,7 @@ const accountTypeConfig: Record<string, { icon: any; color: string; bgColor: str
     bgColor: 'bg-purple-50',
     borderColor: 'border-purple-200',
     label: 'Equity',
+    tooltip: 'Owner\'s residual interest in assets after deducting liabilities',
   },
   revenue: {
     icon: TrendingUp,
@@ -72,6 +75,7 @@ const accountTypeConfig: Record<string, { icon: any; color: string; bgColor: str
     bgColor: 'bg-emerald-50',
     borderColor: 'border-emerald-200',
     label: 'Revenue',
+    tooltip: 'Income earned from normal business operations',
   },
   expense: {
     icon: TrendingDown,
@@ -79,6 +83,7 @@ const accountTypeConfig: Record<string, { icon: any; color: string; bgColor: str
     bgColor: 'bg-amber-50',
     borderColor: 'border-amber-200',
     label: 'Expenses',
+    tooltip: 'Costs incurred in the process of earning revenue',
   },
 }
 
@@ -280,6 +285,7 @@ export default function ChartOfAccounts() {
                     typeFilter === type ? config.borderColor : 'border-gray-200 hover:border-gray-300'
                   )}
                   onClick={() => setTypeFilter(typeFilter === type ? '' : type)}
+                  title={config.tooltip}
                 >
                   <div className="flex items-center gap-3">
                     <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center', config.bgColor)}>
@@ -324,7 +330,7 @@ export default function ChartOfAccounts() {
                 onClick={() => setTypeFilter('')}
               >
                 {accountTypeConfig[typeFilter]?.label}
-                <span className="text-xs">×</span>
+                <span className="text-xs" title="Clear filter">×</span>
               </Badge>
             )}
             <div className="flex items-center gap-3 ml-auto">
@@ -455,24 +461,30 @@ export default function ChartOfAccounts() {
                                 </td>
                                 <td className="px-6 py-4 text-center">
                                   {account.normal_balance === 'debit' ? (
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium">
-                                      <ArrowUpRight className="w-3 h-3" />
-                                      Dr
-                                    </span>
+                                    <Tooltip content="Normal balance is Debit — increases with debits">
+                                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-600 rounded-lg text-xs font-medium">
+                                        <ArrowUpRight className="w-3 h-3" />
+                                        Dr
+                                      </span>
+                                    </Tooltip>
                                   ) : (
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-rose-50 text-rose-600 rounded-lg text-xs font-medium">
-                                      <ArrowDownLeft className="w-3 h-3" />
-                                      Cr
-                                    </span>
+                                    <Tooltip content="Normal balance is Credit — increases with credits">
+                                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-rose-50 text-rose-600 rounded-lg text-xs font-medium">
+                                        <ArrowDownLeft className="w-3 h-3" />
+                                        Cr
+                                      </span>
+                                    </Tooltip>
                                   )}
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                  <span className={cn(
-                                    'font-semibold tabular-nums',
-                                    account.current_balance >= 0 ? 'text-gray-900' : 'text-rose-600'
-                                  )}>
-                                    {formatCurrency(Math.abs(account.current_balance || 0))}
-                                  </span>
+                                  <Tooltip content={`Current balance for ${account.name}`}>
+                                    <span className={cn(
+                                      'font-semibold tabular-nums',
+                                      account.current_balance >= 0 ? 'text-gray-900' : 'text-rose-600'
+                                    )}>
+                                      {formatCurrency(Math.abs(account.current_balance || 0))}
+                                    </span>
+                                  </Tooltip>
                                 </td>
                               </motion.tr>
                             ))}

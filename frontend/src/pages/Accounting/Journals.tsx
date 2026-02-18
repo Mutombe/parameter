@@ -27,7 +27,7 @@ import {
 } from 'lucide-react'
 import { journalApi, accountApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton, Textarea, SelectionCheckbox, BulkActionsBar, TimeAgo } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton, Textarea, SelectionCheckbox, BulkActionsBar, TimeAgo, Tooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
@@ -64,6 +64,7 @@ const statusConfig = {
     bgColor: 'bg-amber-50',
     borderColor: 'border-amber-200',
     label: 'Draft',
+    tooltip: 'Unposted entries',
   },
   posted: {
     icon: CheckCircle2,
@@ -71,6 +72,7 @@ const statusConfig = {
     bgColor: 'bg-emerald-50',
     borderColor: 'border-emerald-200',
     label: 'Posted',
+    tooltip: 'Entries posted to ledger',
   },
   reversed: {
     icon: RotateCcw,
@@ -78,6 +80,7 @@ const statusConfig = {
     bgColor: 'bg-gray-100',
     borderColor: 'border-gray-300',
     label: 'Reversed',
+    tooltip: 'Entries that have been reversed',
   },
 }
 
@@ -295,6 +298,7 @@ export default function Journals() {
         <motion.div
           whileHover={{ y: -2 }}
           className="bg-white rounded-xl border border-gray-200 p-5"
+          title="All journal entries"
         >
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-primary-50 flex items-center justify-center">
@@ -323,6 +327,7 @@ export default function Journals() {
                 'bg-white rounded-xl border p-5 cursor-pointer transition-all',
                 statusFilter === status ? config.borderColor : 'border-gray-200 hover:border-gray-300'
               )}
+              title={config.tooltip}
             >
               <div className="flex items-center gap-4">
                 <div className={cn('w-12 h-12 rounded-xl flex items-center justify-center', config.bgColor)}>
@@ -740,6 +745,7 @@ export default function Journals() {
                             type="button"
                             onClick={() => removeEntry(index)}
                             className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                            title="Remove line"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -760,27 +766,29 @@ export default function Journals() {
             </div>
 
             {/* Balance Indicator */}
-            <div className={cn(
-              'flex items-center gap-2 px-4 py-3 rounded-xl',
-              isBalanced ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-            )}>
-              {isBalanced ? (
-                <>
-                  <CheckCircle2 className="w-5 h-5" />
-                  <span className="font-medium">Journal is balanced</span>
-                </>
-              ) : (
-                <>
-                  <AlertCircle className="w-5 h-5" />
-                  <span className="font-medium">
-                    {totalDebit === 0 && totalCredit === 0
-                      ? 'Enter debit and credit amounts'
-                      : `Out of balance by ${formatCurrency(Math.abs(totalDebit - totalCredit))}`
-                    }
-                  </span>
-                </>
-              )}
-            </div>
+            <Tooltip content={isBalanced ? "Total debits equal total credits — this journal can be posted" : "Total debits must equal total credits before this journal can be posted"}>
+              <div className={cn(
+                'flex items-center gap-2 px-4 py-3 rounded-xl',
+                isBalanced ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+              )}>
+                {isBalanced ? (
+                  <>
+                    <CheckCircle2 className="w-5 h-5" />
+                    <span className="font-medium">Journal is balanced</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-5 h-5" />
+                    <span className="font-medium">
+                      {totalDebit === 0 && totalCredit === 0
+                        ? 'Enter debit and credit amounts'
+                        : `Out of balance by ${formatCurrency(Math.abs(totalDebit - totalCredit))}`
+                      }
+                    </span>
+                  </>
+                )}
+              </div>
+            </Tooltip>
           </div>
 
           <div className="flex gap-3 pt-4">

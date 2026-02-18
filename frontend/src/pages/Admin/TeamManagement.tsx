@@ -43,6 +43,21 @@ const statusColors: Record<string, string> = {
   cancelled: 'bg-rose-100 text-rose-700',
 }
 
+const roleTooltips: Record<string, string> = {
+  admin: 'Full access to all features and settings',
+  accountant: 'Can manage finances, billing, and financial reports',
+  clerk: 'Basic data entry and viewing access',
+  tenant_portal: 'Limited access to tenant-specific portal only',
+  super_admin: 'Platform-wide administrative access',
+}
+
+const statusTooltips: Record<string, string> = {
+  pending: 'Invitation sent and awaiting response',
+  accepted: 'Invitation accepted and account created',
+  expired: 'Invitation has expired and is no longer valid',
+  cancelled: 'Invitation was cancelled before acceptance',
+}
+
 const statusIcons: Record<string, any> = {
   pending: Clock,
   accepted: CheckCircle,
@@ -460,15 +475,21 @@ export default function TeamManagement() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg capitalize">
+                        <span
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg capitalize"
+                          title={roleTooltips[user.role] || 'User role'}
+                        >
                           <Shield className="w-3 h-3" />
                           {user.role?.replace('_', ' ')}
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg ${
-                          user.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
-                        }`}>
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg ${
+                            user.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
+                          }`}
+                          title={user.is_active ? 'User can log in and access the system' : 'User account is deactivated and cannot log in'}
+                        >
                           {user.is_active ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
                           {user.is_active ? 'Active' : 'Inactive'}
                         </span>
@@ -488,6 +509,7 @@ export default function TeamManagement() {
                                 ? 'text-rose-600 hover:text-rose-700'
                                 : 'text-emerald-600 hover:text-emerald-700'
                             }`}
+                            title={user.is_active ? 'Deactivate this user account' : 'Reactivate this user account'}
                           >
                             {user.is_active ? 'Deactivate' : 'Activate'}
                           </button>
@@ -616,13 +638,19 @@ export default function TeamManagement() {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg capitalize">
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg capitalize"
+                            title={roleTooltips[invite.role] || 'Assigned role'}
+                          >
                             <Shield className="w-3 h-3" />
                             {invite.role?.replace('_', ' ')}
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg capitalize ${statusColors[invite.status]}`}>
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg capitalize ${statusColors[invite.status]}`}
+                            title={statusTooltips[invite.status] || 'Invitation status'}
+                          >
                             <StatusIcon className="w-3 h-3" />
                             {invite.status}
                           </span>
@@ -636,6 +664,7 @@ export default function TeamManagement() {
                               <button
                                 onClick={() => resendInvitationMutation.mutate(invite.id)}
                                 className="text-sm font-medium text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                                title="Resend invitation"
                               >
                                 <RefreshCw className="w-3 h-3" />
                                 Resend
@@ -643,6 +672,7 @@ export default function TeamManagement() {
                               <button
                                 onClick={() => cancelInvitationMutation.mutate(invite.id)}
                                 className="text-sm font-medium text-rose-600 hover:text-rose-700 flex items-center gap-1"
+                                title="Cancel invitation"
                               >
                                 <XCircle className="w-3 h-3" />
                                 Cancel

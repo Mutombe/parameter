@@ -17,7 +17,7 @@ import {
 import { bankAccountApi } from '../../services/api'
 import { formatCurrency, cn } from '../../lib/utils'
 import { showToast } from '../../lib/toast'
-import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
+import { SelectionCheckbox, BulkActionsBar, Tooltip } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 
@@ -160,23 +160,23 @@ export default function BankAccounts() {
       {/* Summary Cards */}
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4" title="Combined balance across all USD accounts">
             <p className="text-sm text-gray-500">Total Balance (USD)</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">
               {formatCurrency(summary.total_usd || 0, 'USD')}
             </p>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4" title="Combined balance across all ZWG accounts">
             <p className="text-sm text-gray-500">Total Balance (ZWG)</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">
               {formatCurrency(summary.total_zwg || 0, 'ZWG')}
             </p>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4" title="Number of traditional bank accounts">
             <p className="text-sm text-gray-500">Bank Accounts</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{summary.bank_count || 0}</p>
           </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4" title="Number of mobile money accounts">
             <p className="text-sm text-gray-500">Mobile Money</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{summary.mobile_money_count || 0}</p>
           </div>
@@ -260,7 +260,7 @@ export default function BankAccounts() {
                   <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center", getAccountColor(account.account_type))}>
                     <Icon className="w-6 h-6" />
                   </div>
-                  <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg">
+                  <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg" title="Account options">
                     <MoreVertical className="w-4 h-4" />
                   </button>
                 </div>
@@ -276,12 +276,14 @@ export default function BankAccounts() {
                   </p>
                 </div>
                 <div className="mt-2 flex items-center gap-2">
-                  <span className={cn(
-                    "px-2 py-0.5 text-xs rounded-full",
-                    account.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
-                  )}>
-                    {account.is_active ? 'Active' : 'Inactive'}
-                  </span>
+                  <Tooltip content={account.is_active ? "This account is active and available for transactions" : "This account is inactive and cannot be used for transactions"}>
+                    <span className={cn(
+                      "px-2 py-0.5 text-xs rounded-full",
+                      account.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                    )}>
+                      {account.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </Tooltip>
                   <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded-full">
                     {account.currency}
                   </span>

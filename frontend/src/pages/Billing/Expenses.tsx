@@ -600,6 +600,7 @@ export default function Expenses() {
                         <Button
                           variant="outline"
                           size="sm"
+                          title="Approve"
                           onClick={(e) => {
                             e.stopPropagation()
                             setShowApproveConfirm(expense)
@@ -612,6 +613,7 @@ export default function Expenses() {
                         <Button
                           variant="primary"
                           size="sm"
+                          title="Mark as paid"
                           onClick={(e) => {
                             e.stopPropagation()
                             setShowPayConfirm(expense)

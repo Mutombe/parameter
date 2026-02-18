@@ -302,6 +302,16 @@ export default function SuperAdminDashboard() {
     return <Icon className="w-3.5 h-3.5" />
   }
 
+  const statusTooltips: Record<string, string> = {
+    active: 'Company is active and fully operational',
+    trial: 'Company is on a trial period',
+    pending: 'Invitation is awaiting response',
+    suspended: 'Company has been suspended by an admin',
+    cancelled: 'Subscription or invitation has been cancelled',
+    expired: 'Invitation has expired and is no longer valid',
+    accepted: 'Invitation has been accepted',
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -347,8 +357,8 @@ export default function SuperAdminDashboard() {
           <p className="text-3xl font-bold text-gray-900">{stats?.total_tenants || 0}</p>
           <p className="text-sm text-gray-500 mt-1">Total Companies</p>
           <div className="mt-3 flex items-center gap-4 text-xs">
-            <span className="text-green-600">{stats?.active_tenants || 0} active</span>
-            <span className="text-blue-600">{stats?.demo_tenants || 0} demo</span>
+            <span className="text-green-600" title="Companies with active subscriptions">{stats?.active_tenants || 0} active</span>
+            <span className="text-blue-600" title="Companies in demo mode">{stats?.demo_tenants || 0} demo</span>
           </div>
         </motion.div>
 
@@ -363,7 +373,7 @@ export default function SuperAdminDashboard() {
               <TbUserSquareRounded className="w-6 h-6 text-purple-600" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{stats?.total_users || 0}</p>
+          <p className="text-3xl font-bold text-gray-900" title="Total registered users across all companies">{stats?.total_users || 0}</p>
           <p className="text-sm text-gray-500 mt-1">Total Users</p>
           <div className="mt-3 text-xs text-gray-500">
             Across all companies
@@ -381,7 +391,7 @@ export default function SuperAdminDashboard() {
               <Mail className="w-6 h-6 text-amber-600" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{stats?.pending_invitations || 0}</p>
+          <p className="text-3xl font-bold text-gray-900" title="Invitations that have been sent but not yet accepted">{stats?.pending_invitations || 0}</p>
           <p className="text-sm text-gray-500 mt-1">Pending Invitations</p>
           <div className="mt-3 text-xs text-gray-500">
             Awaiting response
@@ -399,10 +409,10 @@ export default function SuperAdminDashboard() {
               <Database className="w-6 h-6 text-orange-600" />
             </div>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{stats?.storage_used_gb?.toFixed(1) || 0} GB</p>
+          <p className="text-3xl font-bold text-gray-900" title="Total disk storage consumed across all tenants">{stats?.storage_used_gb?.toFixed(1) || 0} GB</p>
           <p className="text-sm text-gray-500 mt-1">Storage Used</p>
           <div className="mt-3 text-xs text-gray-500">
-            {stats?.total_properties || 0} properties managed
+            <span title="Total properties managed across all companies">{stats?.total_properties || 0} properties managed</span>
           </div>
         </motion.div>
       </div>
@@ -411,7 +421,7 @@ export default function SuperAdminDashboard() {
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">System Health</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl">
+          <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl" title="Backend API server health status">
             <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
               <Server className="w-5 h-5 text-green-600" />
             </div>
@@ -420,7 +430,7 @@ export default function SuperAdminDashboard() {
               <p className="text-xs text-green-600">Operational</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl">
+          <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl" title="Database connection and query health">
             <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
               <Database className="w-5 h-5 text-green-600" />
             </div>
@@ -429,7 +439,7 @@ export default function SuperAdminDashboard() {
               <p className="text-xs text-green-600">Operational</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl">
+          <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl" title="Background task processing queue status">
             <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
               <Activity className="w-5 h-5 text-green-600" />
             </div>
@@ -438,7 +448,7 @@ export default function SuperAdminDashboard() {
               <p className="text-xs text-green-600">Operational</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl">
+          <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl" title="Scheduled jobs and cron task status">
             <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
               <Clock className="w-5 h-5 text-green-600" />
             </div>
@@ -555,10 +565,13 @@ export default function SuperAdminDashboard() {
                           <span className="text-sm text-gray-900 capitalize">{tenant.subscription_plan || tenant.plan}</span>
                         </td>
                         <td className="py-4 px-6">
-                          <span className={cn(
-                            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium capitalize",
-                            getStatusBadge(tenant.account_status || tenant.status || 'active')
-                          )}>
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium capitalize",
+                              getStatusBadge(tenant.account_status || tenant.status || 'active')
+                            )}
+                            title={statusTooltips[tenant.account_status || tenant.status || 'active'] || 'Company status'}
+                          >
                             {getStatusIcon(tenant.account_status || tenant.status || 'active')}
                             {tenant.account_status || tenant.status || 'active'}
                           </span>
@@ -568,12 +581,13 @@ export default function SuperAdminDashboard() {
                         <td className="py-4 px-6 text-sm text-gray-500">{tenant.created_at ? <TimeAgo date={tenant.created_at} /> : '-'}</td>
                         <td className="py-4 px-6 text-right">
                           <div className="flex items-center justify-end gap-2 relative">
-                            <button className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors" title="View details">
+                            <button className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors" title="View company details">
                               <Eye className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => setActionMenuOpen(actionMenuOpen === tenant.id ? null : tenant.id)}
                               className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                              title="Company options"
                             >
                               <MoreVertical className="w-4 h-4" />
                             </button>
@@ -713,19 +727,25 @@ export default function SuperAdminDashboard() {
                         </td>
                         <td className="py-4 px-6 text-sm text-gray-600">{invitation.email}</td>
                         <td className="py-4 px-6">
-                          <span className={cn(
-                            "px-2 py-1 rounded-full text-xs font-medium capitalize",
-                            invitation.invitation_type === 'demo' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-                          )}>
+                          <span
+                            className={cn(
+                              "px-2 py-1 rounded-full text-xs font-medium capitalize",
+                              invitation.invitation_type === 'demo' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                            )}
+                            title={invitation.invitation_type === 'demo' ? 'Temporary demo account with limited duration' : 'Full access company account'}
+                          >
                             {invitation.invitation_type}
                           </span>
                         </td>
                         <td className="py-4 px-6 text-sm text-gray-900 capitalize">{invitation.subscription_plan}</td>
                         <td className="py-4 px-6">
-                          <span className={cn(
-                            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium capitalize",
-                            getStatusBadge(invitation.status)
-                          )}>
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium capitalize",
+                              getStatusBadge(invitation.status)
+                            )}
+                            title={statusTooltips[invitation.status] || 'Invitation status'}
+                          >
                             {getStatusIcon(invitation.status)}
                             {invitation.status}
                           </span>
@@ -785,6 +805,7 @@ export default function SuperAdminDashboard() {
               <button
                 onClick={() => setShowInviteModal(false)}
                 className="p-2 text-gray-400 hover:text-gray-600 rounded-lg"
+                title="Close dialog"
               >
                 <X className="w-5 h-5" />
               </button>
