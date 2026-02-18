@@ -649,7 +649,11 @@ export default function PropertyDetail() {
               <tbody className="divide-y divide-gray-100">
                 {units.map((unit: any) => (
                   <tr key={unit.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{unit.unit_number}</td>
+                    <td className="px-6 py-4 text-sm font-medium">
+                      <button onClick={() => navigate(`/dashboard/units/${unit.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                        {unit.unit_number}
+                      </button>
+                    </td>
                     <td className="px-6 py-4 text-sm text-gray-600 capitalize">{unit.unit_type || '-'}</td>
                     <td className="px-6 py-4">
                       <span className={cn(
@@ -710,8 +714,24 @@ export default function PropertyDetail() {
               <tbody className="divide-y divide-gray-100">
                 {leaseChargesTable.map((charge: any, idx: number) => (
                   <tr key={charge.id || idx} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{charge.tenant_name || charge.tenant}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{charge.unit_name || charge.unit}</td>
+                    <td className="px-6 py-4 text-sm font-medium">
+                      {charge.tenant_id ? (
+                        <button onClick={() => navigate(`/dashboard/tenants/${charge.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                          {charge.tenant_name || charge.tenant}
+                        </button>
+                      ) : (
+                        <span className="text-gray-900">{charge.tenant_name || charge.tenant}</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      {charge.unit_id ? (
+                        <button onClick={() => navigate(`/dashboard/units/${charge.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                          {charge.unit_name || charge.unit}
+                        </button>
+                      ) : (
+                        <span className="text-gray-600">{charge.unit_name || charge.unit}</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(charge.monthly_rent || charge.rent || 0)}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(charge.total_charged || charge.charged || 0)}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(charge.total_paid || charge.paid || 0)}</td>

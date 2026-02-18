@@ -313,14 +313,34 @@ export default function TenantDetail() {
               <div className="space-y-1.5">
                 {activeLeases.length > 0 ? (
                   <>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Home className="w-3.5 h-3.5 text-gray-400" />
-                      <span>{activeLeases[0].unit}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <FileText className="w-3.5 h-3.5 text-gray-400" />
-                      <span>{activeLeases[0].property}</span>
-                    </div>
+                    {activeLeases[0].unit_id ? (
+                      <button
+                        onClick={() => navigate(`/dashboard/units/${activeLeases[0].unit_id}`)}
+                        className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
+                      >
+                        <Home className="w-3.5 h-3.5" />
+                        <span>{activeLeases[0].unit}</span>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Home className="w-3.5 h-3.5 text-gray-400" />
+                        <span>{activeLeases[0].unit}</span>
+                      </div>
+                    )}
+                    {activeLeases[0].property_id ? (
+                      <button
+                        onClick={() => navigate(`/dashboard/properties/${activeLeases[0].property_id}`)}
+                        className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>{activeLeases[0].property}</span>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <FileText className="w-3.5 h-3.5 text-gray-400" />
+                        <span>{activeLeases[0].property}</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 text-sm text-gray-600">
                       <Calendar className="w-3.5 h-3.5 text-gray-400" />
                       <span>{formatDate(activeLeases[0].start_date)} - {formatDate(activeLeases[0].end_date)}</span>
@@ -604,7 +624,19 @@ export default function TenantDetail() {
                 {ledger.map((entry: any, idx: number) => (
                   <tr key={entry.id || idx} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-sm text-gray-600">{formatDate(entry.date)}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{entry.reference || entry.ref || '-'}</td>
+                    <td className="px-6 py-4 text-sm font-medium">
+                      {entry.invoice_id ? (
+                        <button onClick={() => navigate(`/dashboard/invoices/${entry.invoice_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                          {entry.reference || entry.ref || '-'}
+                        </button>
+                      ) : entry.receipt_id ? (
+                        <button onClick={() => navigate(`/dashboard/receipts/${entry.receipt_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                          {entry.reference || entry.ref || '-'}
+                        </button>
+                      ) : (
+                        <span className="text-gray-900">{entry.reference || entry.ref || '-'}</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-sm text-gray-600">{entry.description || entry.narration || '-'}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 text-right">{(entry.debit || 0) > 0 ? formatCurrency(entry.debit) : '-'}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 text-right">{(entry.credit || 0) > 0 ? formatCurrency(entry.credit) : '-'}</td>

@@ -198,10 +198,20 @@ export default function ExpenseDetail() {
             <div className="space-y-2">
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Payee</p>
               <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <User className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{expense?.payee_name}</span>
-                </div>
+                {expense?.payee_type === 'landlord' && expense?.payee_id ? (
+                  <button
+                    onClick={() => navigate(`/dashboard/landlords/${expense.payee_id}`)}
+                    className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
+                  >
+                    <User className="w-3.5 h-3.5" />
+                    <span>{expense?.payee_name}</span>
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <User className="w-3.5 h-3.5 text-gray-400" />
+                    <span>{expense?.payee_name}</span>
+                  </div>
+                )}
                 <div className="text-xs text-gray-400 capitalize">{expense?.payee_type?.replace('_', ' ')}</div>
               </div>
             </div>
@@ -304,7 +314,13 @@ export default function ExpenseDetail() {
               </div>
               <div>
                 <p className="text-xs text-gray-500">Payee Name</p>
-                <p className="text-sm font-medium text-gray-900">{expense?.payee_name}</p>
+                {expense?.payee_type === 'landlord' && expense?.payee_id ? (
+                  <button onClick={() => navigate(`/dashboard/landlords/${expense.payee_id}`)} className="text-sm font-medium text-primary-600 hover:text-primary-700 hover:underline">
+                    {expense?.payee_name}
+                  </button>
+                ) : (
+                  <p className="text-sm font-medium text-gray-900">{expense?.payee_name}</p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-gray-500">Payee Type</p>

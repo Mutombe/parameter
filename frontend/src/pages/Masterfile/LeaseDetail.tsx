@@ -271,10 +271,20 @@ export default function LeaseDetail() {
             {/* Unit */}
             <div className="space-y-2">
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Unit</p>
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Home className="w-3.5 h-3.5 text-gray-400" />
-                <span>{lease?.unit_display}</span>
-              </div>
+              {lease?.unit ? (
+                <button
+                  onClick={() => navigate(`/dashboard/units/${lease.unit}`)}
+                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
+                >
+                  <Home className="w-3.5 h-3.5" />
+                  <span>{lease?.unit_display}</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Home className="w-3.5 h-3.5 text-gray-400" />
+                  <span>{lease?.unit_display}</span>
+                </div>
+              )}
             </div>
 
             {/* Financial */}

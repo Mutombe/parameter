@@ -324,7 +324,15 @@ export default function UnitDetail() {
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >
                     <td className="px-6 py-4 text-sm font-medium text-primary-600">{lease.lease_number}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{lease.tenant_name}</td>
+                    <td className="px-6 py-4 text-sm">
+                      {lease.tenant ? (
+                        <button onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${lease.tenant}`) }} className="text-primary-600 hover:text-primary-700 hover:underline">
+                          {lease.tenant_name}
+                        </button>
+                      ) : (
+                        <span className="text-gray-900">{lease.tenant_name}</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-sm text-gray-600">{formatDate(lease.start_date)}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{formatDate(lease.end_date)}</td>
                     <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{formatCurrency(lease.monthly_rent || 0)}</td>
