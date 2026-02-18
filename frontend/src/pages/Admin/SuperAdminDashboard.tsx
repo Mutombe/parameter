@@ -510,7 +510,6 @@ export default function SuperAdminDashboard() {
                   <Select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                     options={[
                       { value: 'all', label: 'All Status' },
                       { value: 'active', label: 'Active' },
@@ -846,7 +845,6 @@ export default function SuperAdminDashboard() {
                   <Select
                     value={inviteForm.invitation_type}
                     onChange={(e) => setInviteForm({ ...inviteForm, invitation_type: e.target.value as 'full' | 'demo' })}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                     options={[
                       { value: 'full', label: 'Full Account' },
                       { value: 'demo', label: 'Demo Account (2 hours)' },
@@ -858,7 +856,6 @@ export default function SuperAdminDashboard() {
                   <Select
                     value={inviteForm.subscription_plan}
                     onChange={(e) => setInviteForm({ ...inviteForm, subscription_plan: e.target.value })}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
                     options={[
                       { value: 'free', label: 'Free Trial' },
                       { value: 'basic', label: 'Basic' },

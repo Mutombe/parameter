@@ -471,7 +471,6 @@ export default function Expenses() {
         <Select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
           placeholder="All Status"
           options={[
             { value: '', label: 'All Status' },
@@ -484,7 +483,6 @@ export default function Expenses() {
         <Select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
-          className="px-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600"
           placeholder="All Types"
           options={[
             { value: '', label: 'All Types' },

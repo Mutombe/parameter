@@ -291,13 +291,13 @@ export default function Tenants() {
           <Select
             value={tenantTypeFilter}
             onChange={(e) => handleFilterChange('tenantType', e.target.value)}
-            className="input min-w-[140px]"
+            className="min-w-[140px]"
             options={tenantTypeOptions}
           />
           <Select
             value={leaseStatusFilter}
             onChange={(e) => handleFilterChange('leaseStatus', e.target.value)}
-            className="input min-w-[160px]"
+            className="min-w-[160px]"
             options={leaseStatusOptions}
           />
           <div className="flex items-center gap-3 ml-auto">
@@ -356,7 +356,6 @@ export default function Tenants() {
                   <Select
                     value={form.tenant_type}
                     onChange={(e) => setForm({ ...form, tenant_type: e.target.value })}
-                    className="input"
                     options={[
                       { value: 'individual', label: 'Individual' },
                       { value: 'company', label: 'Company' },
@@ -368,7 +367,6 @@ export default function Tenants() {
                   <Select
                     value={form.account_type}
                     onChange={(e) => setForm({ ...form, account_type: e.target.value })}
-                    className="input"
                     options={[
                       { value: 'rental', label: 'Rental Tenant' },
                       { value: 'levy', label: 'Levy Account Holder' },
@@ -427,7 +425,6 @@ export default function Tenants() {
                   <Select
                     value={form.id_type}
                     onChange={(e) => setForm({ ...form, id_type: e.target.value })}
-                    className="input"
                     options={[
                       { value: 'national_id', label: 'National ID' },
                       { value: 'passport', label: 'Passport' },

@@ -84,7 +84,7 @@ export default function AuditTrail() {
           <Select
             value={actionFilter}
             onChange={(e) => handleFilterChange(setActionFilter, e.target.value)}
-            className="input w-auto"
+            className="w-auto"
             options={[
               { value: '', label: 'All Actions' },
               { value: 'journal_posted', label: 'Journal Posted' },
