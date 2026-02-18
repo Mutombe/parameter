@@ -82,9 +82,11 @@ function StatCard({ title, value, subtitle, trend, icon: Icon, color, isLoading,
   return (
     <motion.div
       variants={item}
+      whileHover={{ scale: 1.03, y: -4 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
       onClick={href ? () => navigate(href) : undefined}
       className={cn(
-        "bg-white rounded-xl border border-gray-200 p-4 md:p-6 hover:shadow-lg hover:border-gray-300 transition-all duration-300",
+        "bg-white rounded-xl border border-gray-200 p-4 md:p-6 hover:shadow-xl hover:border-gray-300 transition-[box-shadow,border-color] duration-300",
         href && "cursor-pointer"
       )}
     >
@@ -265,7 +267,8 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-white rounded-xl border border-gray-200 p-4 md:p-6 lg:col-span-2"
+          whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
+          className="bg-white rounded-xl border border-gray-200 p-4 md:p-6 lg:col-span-2 hover:shadow-lg transition-shadow duration-300"
         >
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4 md:mb-6">
             <div>
@@ -353,7 +356,8 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="bg-white rounded-xl border border-gray-200 p-6"
+          whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow duration-300"
         >
           <div className="mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Unit Occupancy</h3>
@@ -373,6 +377,18 @@ export default function Dashboard() {
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
+                <Tooltip
+                  formatter={(value: number, name: string) => [
+                    `${value} unit${value !== 1 ? 's' : ''} (${stats?.properties?.units ? ((value / stats.properties.units) * 100).toFixed(1) : 0}%)`,
+                    name
+                  ]}
+                  contentStyle={{
+                    borderRadius: '12px',
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                    fontSize: '13px',
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex items-center justify-center">
@@ -409,7 +425,8 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35 }}
-          className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2"
+          whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
+          className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2 hover:shadow-lg transition-shadow duration-300"
         >
           <h3 className="text-lg font-semibold text-gray-900 mb-1">Monthly Invoiced vs Collected</h3>
           <p className="text-sm text-gray-500 mb-6">Comparison of billed and received amounts</p>
@@ -443,7 +460,8 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="bg-white rounded-xl border border-gray-200 p-6"
+          whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow duration-300"
         >
           <h3 className="text-lg font-semibold text-gray-900 mb-1">Expense Breakdown</h3>
           <p className="text-sm text-gray-500 mb-4">By category</p>
@@ -491,7 +509,8 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="bg-white rounded-xl border border-gray-200 p-6"
+          whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow duration-300"
         >
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Alerts</h3>
@@ -504,10 +523,12 @@ export default function Dashboard() {
             )}
           </div>
           <div className="space-y-3">
-            <button
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
               onClick={() => navigate('/dashboard/invoices')}
               title="View all overdue invoices"
-              className="w-full flex items-center justify-between p-4 bg-red-50 hover:bg-red-100 rounded-xl transition-colors group"
+              className="w-full flex items-center justify-between p-4 bg-red-50 hover:bg-red-100 hover:shadow-md rounded-xl transition-[background-color,box-shadow] group"
             >
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-red-100 rounded-lg">
@@ -530,12 +551,14 @@ export default function Dashboard() {
                 )}
                 <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors" />
               </div>
-            </button>
+            </motion.button>
 
-            <button
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
               onClick={() => navigate('/dashboard/leases')}
               title="View leases expiring within 30 days"
-              className="w-full flex items-center justify-between p-4 bg-amber-50 hover:bg-amber-100 rounded-xl transition-colors group"
+              className="w-full flex items-center justify-between p-4 bg-amber-50 hover:bg-amber-100 hover:shadow-md rounded-xl transition-[background-color,box-shadow] group"
             >
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-amber-100 rounded-lg">
@@ -554,7 +577,7 @@ export default function Dashboard() {
                 )}
                 <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors" />
               </div>
-            </button>
+            </motion.button>
           </div>
         </motion.div>
 
@@ -563,17 +586,21 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
-          className="bg-white rounded-xl border border-gray-200 p-6"
+          whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow duration-300"
         >
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
           <div className="grid grid-cols-2 gap-3">
             {quickActions.map((action) => (
-              <button
+              <motion.button
                 key={action.label}
+                whileHover={{ scale: 1.07, y: -2 }}
+                whileTap={{ scale: 0.97 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
                 onClick={() => navigate(action.href)}
                 title={action.label}
                 className={cn(
-                  'flex flex-col items-center gap-2 p-4 rounded-xl transition-all hover:scale-105',
+                  'flex flex-col items-center gap-2 p-4 rounded-xl transition-[background-color,box-shadow] hover:shadow-md',
                   action.color === 'blue' && 'bg-blue-50 hover:bg-blue-100',
                   action.color === 'green' && 'bg-emerald-50 hover:bg-emerald-100',
                   action.color === 'purple' && 'bg-purple-50 hover:bg-purple-100',
@@ -588,7 +615,7 @@ export default function Dashboard() {
                   action.color === 'orange' && 'text-orange-600',
                 )} />
                 <span className="text-sm font-medium text-gray-700">{action.label}</span>
-              </button>
+              </motion.button>
             ))}
           </div>
         </motion.div>
@@ -598,13 +625,16 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6 }}
-          className="bg-white rounded-xl border border-gray-200 p-6"
+          whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow duration-300"
         >
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Stats</h3>
           <div className="space-y-4">
-            <button
+            <motion.button
+              whileHover={{ x: 4 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
               onClick={() => navigate('/dashboard/landlords')}
-              className="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors group"
+              className="w-full flex items-center justify-between p-3 hover:bg-gray-50 hover:shadow-sm rounded-lg transition-[background-color,box-shadow] group"
             >
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-blue-50 rounded-lg">
@@ -620,11 +650,13 @@ export default function Dashboard() {
                 )}
                 <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
               </div>
-            </button>
+            </motion.button>
 
-            <button
+            <motion.button
+              whileHover={{ x: 4 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
               onClick={() => navigate('/dashboard/tenants')}
-              className="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors group"
+              className="w-full flex items-center justify-between p-3 hover:bg-gray-50 hover:shadow-sm rounded-lg transition-[background-color,box-shadow] group"
             >
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-purple-50 rounded-lg">
@@ -640,11 +672,13 @@ export default function Dashboard() {
                 )}
                 <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
               </div>
-            </button>
+            </motion.button>
 
-            <button
+            <motion.button
+              whileHover={{ x: 4 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
               onClick={() => navigate('/dashboard/leases')}
-              className="w-full flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg transition-colors group"
+              className="w-full flex items-center justify-between p-3 hover:bg-gray-50 hover:shadow-sm rounded-lg transition-[background-color,box-shadow] group"
             >
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-emerald-50 rounded-lg">
@@ -660,7 +694,7 @@ export default function Dashboard() {
                 )}
                 <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
               </div>
-            </button>
+            </motion.button>
           </div>
         </motion.div>
       </div>
