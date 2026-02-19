@@ -203,7 +203,7 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-6 no-scrollbar">
+      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-6 sidebar-scroll">
         {fullNavigation.map((section) => (
           <div key={section.title}>
             <AnimatePresence>
