@@ -33,9 +33,10 @@ import {
   Pie,
   Cell,
 } from 'recharts'
-import { leaseApi, invoiceApi } from '../../services/api'
+import { leaseApi, invoiceApi, receiptApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, getMediaUrl } from '../../lib/utils'
-import { Button, ConfirmDialog, TableFilter } from '../../components/ui'
+import { Button, ConfirmDialog, TableFilter, Modal, Input, Select, Textarea } from '../../components/ui'
+import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
@@ -137,6 +138,30 @@ export default function LeaseDetail() {
   const [showTerminateDialog, setShowTerminateDialog] = useState(false)
   const [terminateReason, setTerminateReason] = useState('')
 
+  // Record Payment modal
+  const [showReceiptModal, setShowReceiptModal] = useState(false)
+  const [receiptForm, setReceiptForm] = useState({
+    tenant: '',
+    invoice: '',
+    date: new Date().toISOString().split('T')[0],
+    amount: '',
+    payment_method: 'bank_transfer',
+    reference: '',
+    description: '',
+  })
+
+  // Create Invoice modal
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false)
+  const [invoiceForm, setInvoiceForm] = useState({
+    tenant: '',
+    lease: '',
+    invoice_type: 'rent',
+    date: new Date().toISOString().split('T')[0],
+    due_date: '',
+    amount: '',
+    description: '',
+  })
+
   // 1. Lease data
   const { data: lease, isLoading: loadingLease } = useQuery({
     queryKey: ['lease', leaseId],
@@ -179,6 +204,43 @@ export default function LeaseDetail() {
       showToast.success('Document uploaded successfully')
     },
     onError: (error) => showToast.error(parseApiError(error, 'Failed to upload document')),
+  })
+
+  // Invoices for receipt form
+  const { data: invoicesForReceipt, isLoading: invoicesFormLoading } = useQuery({
+    queryKey: ['invoices-for-receipt-lease', lease?.tenant],
+    queryFn: () => invoiceApi.list({ tenant: lease?.tenant }).then(r => {
+      const all = r.data.results || r.data
+      return all.filter((inv: any) => ['sent', 'partial', 'overdue'].includes(inv.status) && Number(inv.balance) > 0)
+    }),
+    enabled: showReceiptModal && !!lease?.tenant,
+    staleTime: 30000,
+  })
+
+  const createReceiptMutation = useMutation({
+    mutationFn: (data: any) => receiptApi.create(data),
+    onSuccess: () => {
+      showToast.success('Payment recorded successfully')
+      setShowReceiptModal(false)
+      setReceiptForm({ tenant: '', invoice: '', date: new Date().toISOString().split('T')[0], amount: '', payment_method: 'bank_transfer', reference: '', description: '' })
+      queryClient.invalidateQueries({ queryKey: ['lease'] })
+      queryClient.invalidateQueries({ queryKey: ['receipts'] })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+    },
+    onError: (error) => showToast.error(parseApiError(error, 'Failed to record payment')),
+  })
+
+  const createInvoiceMutation = useMutation({
+    mutationFn: (data: any) => invoiceApi.create(data),
+    onSuccess: () => {
+      showToast.success('Invoice created successfully')
+      setShowInvoiceModal(false)
+      setInvoiceForm({ tenant: '', lease: '', invoice_type: 'rent', date: new Date().toISOString().split('T')[0], due_date: '', amount: '', description: '' })
+      queryClient.invalidateQueries({ queryKey: ['lease'] })
+      queryClient.invalidateQueries({ queryKey: ['lease-invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+    },
+    onError: (error) => showToast.error(parseApiError(error, 'Failed to create invoice')),
   })
 
   const handleDocumentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -326,7 +388,10 @@ export default function LeaseDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => navigate('/dashboard/receipts')} className="gap-2">
+          <Button variant="outline" onClick={() => {
+            setReceiptForm(f => ({ ...f, tenant: String(lease?.tenant || '') }))
+            setShowReceiptModal(true)
+          }} className="gap-2">
             <Plus className="w-4 h-4" />
             Record Payment
           </Button>
@@ -573,14 +638,20 @@ export default function LeaseDetail() {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate('/dashboard/invoices')}
+              onClick={() => {
+                setInvoiceForm(f => ({ ...f, tenant: String(lease?.tenant || ''), lease: String(leaseId || '') }))
+                setShowInvoiceModal(true)
+              }}
               className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
             >
               <Plus className="w-4 h-4" />
               Create Invoice
             </button>
             <button
-              onClick={() => navigate('/dashboard/receipts')}
+              onClick={() => {
+                setReceiptForm(f => ({ ...f, tenant: String(lease?.tenant || '') }))
+                setShowReceiptModal(true)
+              }}
               className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
             >
               <Plus className="w-4 h-4" />
@@ -866,6 +937,64 @@ export default function LeaseDetail() {
         variant="danger"
         loading={terminateMutation.isPending}
       />
+
+      {/* Record Payment Modal */}
+      <Modal
+        open={showReceiptModal}
+        onClose={() => setShowReceiptModal(false)}
+        title="Record Payment"
+        icon={Plus}
+      >
+        <form onSubmit={(e) => { e.preventDefault(); createReceiptMutation.mutate(receiptForm); }} className="space-y-5">
+          <AsyncSelect
+            label="Against Invoice (Optional)"
+            placeholder="Select invoice"
+            value={receiptForm.invoice}
+            onChange={(val) => setReceiptForm({ ...receiptForm, invoice: String(val) })}
+            options={invoicesForReceipt?.map((inv: any) => ({ value: inv.id, label: `${inv.invoice_number} - $${Number(inv.balance).toFixed(2)}` })) || []}
+            isLoading={invoicesFormLoading}
+            searchable
+            clearable
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <Input type="date" label="Date" value={receiptForm.date} onChange={(e) => setReceiptForm({ ...receiptForm, date: e.target.value })} required />
+            <Input type="number" label="Amount" placeholder="0.00" step="0.01" min="0" value={receiptForm.amount} onChange={(e) => setReceiptForm({ ...receiptForm, amount: e.target.value })} required />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Select label="Payment Method" value={receiptForm.payment_method} onChange={(e) => setReceiptForm({ ...receiptForm, payment_method: e.target.value })} options={[{ value: 'cash', label: 'Cash' }, { value: 'bank_transfer', label: 'Bank Transfer' }, { value: 'ecocash', label: 'EcoCash' }, { value: 'card', label: 'Card' }, { value: 'cheque', label: 'Cheque' }]} />
+            <Input label="Reference" placeholder="Bank ref, EcoCash ref..." value={receiptForm.reference} onChange={(e) => setReceiptForm({ ...receiptForm, reference: e.target.value })} />
+          </div>
+          <Textarea label="Description" placeholder="Payment description..." value={receiptForm.description} onChange={(e) => setReceiptForm({ ...receiptForm, description: e.target.value })} rows={2} />
+          <div className="flex gap-3 pt-4">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowReceiptModal(false)}>Cancel</Button>
+            <Button type="submit" className="flex-1" disabled={createReceiptMutation.isPending}>{createReceiptMutation.isPending ? 'Recording...' : 'Record Payment'}</Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Create Invoice Modal */}
+      <Modal
+        open={showInvoiceModal}
+        onClose={() => setShowInvoiceModal(false)}
+        title="Create Invoice"
+        icon={Receipt}
+      >
+        <form onSubmit={(e) => { e.preventDefault(); createInvoiceMutation.mutate(invoiceForm); }} className="space-y-5">
+          <div className="grid grid-cols-2 gap-4">
+            <Select label="Invoice Type" value={invoiceForm.invoice_type} onChange={(e) => setInvoiceForm({ ...invoiceForm, invoice_type: e.target.value })} options={[{ value: 'rent', label: 'Rent' }, { value: 'utilities', label: 'Utilities' }, { value: 'deposit', label: 'Deposit' }, { value: 'other', label: 'Other' }]} />
+            <Input type="date" label="Date" value={invoiceForm.date} onChange={(e) => setInvoiceForm({ ...invoiceForm, date: e.target.value })} required />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input type="date" label="Due Date" value={invoiceForm.due_date} onChange={(e) => setInvoiceForm({ ...invoiceForm, due_date: e.target.value })} required />
+            <Input type="number" label="Amount" placeholder="0.00" step="0.01" min="0" value={invoiceForm.amount} onChange={(e) => setInvoiceForm({ ...invoiceForm, amount: e.target.value })} required />
+          </div>
+          <Textarea label="Description" placeholder="Invoice description..." value={invoiceForm.description} onChange={(e) => setInvoiceForm({ ...invoiceForm, description: e.target.value })} rows={2} />
+          <div className="flex gap-3 pt-4">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowInvoiceModal(false)}>Cancel</Button>
+            <Button type="submit" className="flex-1" disabled={createInvoiceMutation.isPending}>{createInvoiceMutation.isPending ? 'Creating...' : 'Create Invoice'}</Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

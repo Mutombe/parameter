@@ -36,7 +36,9 @@ import {
   Cell,
   Legend,
 } from 'recharts'
-import { landlordApi, reportsApi } from '../../services/api'
+import { landlordApi, reportsApi, propertyApi, leaseApi } from '../../services/api'
+import PropertyForm from '../../components/forms/PropertyForm'
+import LeaseForm from '../../components/forms/LeaseForm'
 import { formatCurrency, formatPercent, cn } from '../../lib/utils'
 import { Modal, Button, Input, Select, Textarea, Tooltip as UiTooltip, TableFilter } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
@@ -182,6 +184,12 @@ export default function LandlordDetail() {
 
   // Edit modal state
   const [showEditModal, setShowEditModal] = useState(false)
+
+  // Property creation modal
+  const [showPropertyModal, setShowPropertyModal] = useState(false)
+
+  // Lease creation modal
+  const [showLeaseModal, setShowLeaseModal] = useState(false)
   const [editForm, setEditForm] = useState({
     name: '',
     landlord_type: 'individual',
@@ -251,6 +259,44 @@ export default function LandlordDetail() {
     },
     onError: (error) => {
       showToast.error(parseApiError(error, 'Failed to update landlord'))
+    },
+  })
+
+  // Create property mutation
+  const createPropertyMutation = useMutation({
+    mutationFn: (data: any) => propertyApi.create(data),
+    onSuccess: () => {
+      showToast.success('Property created successfully')
+      setShowPropertyModal(false)
+      queryClient.invalidateQueries({ queryKey: ['landlord-financial', landlordId] })
+      queryClient.invalidateQueries({ queryKey: ['landlord-statement', landlordId] })
+      queryClient.invalidateQueries({ queryKey: ['properties'] })
+    },
+    onError: (error) => {
+      showToast.error(parseApiError(error, 'Failed to create property'))
+    },
+  })
+
+  // Create lease mutation
+  const createLeaseMutation = useMutation({
+    mutationFn: (data: any) => {
+      const formData = new FormData()
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+          formData.append(key, value as string)
+        }
+      })
+      return leaseApi.create(formData)
+    },
+    onSuccess: () => {
+      showToast.success('Lease created successfully')
+      setShowLeaseModal(false)
+      queryClient.invalidateQueries({ queryKey: ['landlord-lease-charges', landlordId] })
+      queryClient.invalidateQueries({ queryKey: ['landlord-financial', landlordId] })
+      queryClient.invalidateQueries({ queryKey: ['leases'] })
+    },
+    onError: (error) => {
+      showToast.error(parseApiError(error, 'Failed to create lease'))
     },
   })
 
@@ -640,7 +686,7 @@ export default function LandlordDetail() {
             <p className="text-sm text-gray-500">Portfolio overview by property</p>
           </div>
           <button
-            onClick={() => navigate('/dashboard/properties')}
+            onClick={() => setShowPropertyModal(true)}
             className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
           >
             <Plus className="w-4 h-4" />
@@ -810,7 +856,7 @@ export default function LandlordDetail() {
             <p className="text-sm text-gray-500">Tenant charges across all properties</p>
           </div>
           <button
-            onClick={() => navigate('/dashboard/leases')}
+            onClick={() => setShowLeaseModal(true)}
             className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
           >
             <Plus className="w-4 h-4" />
@@ -1298,6 +1344,44 @@ export default function LandlordDetail() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Create Property Modal */}
+      <Modal
+        open={showPropertyModal}
+        onClose={() => setShowPropertyModal(false)}
+        title="Add Property"
+        icon={Plus}
+      >
+        <PropertyForm
+          initialValues={{ landlord: landlordId }}
+          onSubmit={(data) => createPropertyMutation.mutate(data)}
+          isSubmitting={createPropertyMutation.isPending}
+          onCancel={() => setShowPropertyModal(false)}
+        />
+      </Modal>
+
+      {/* Create Lease Modal */}
+      <Modal
+        open={showLeaseModal}
+        onClose={() => setShowLeaseModal(false)}
+        title="Add Lease"
+        icon={Plus}
+      >
+        <LeaseForm
+          initialValues={{}}
+          onSubmit={(data, doc) => {
+            if (doc) {
+              const formData: any = { ...data }
+              formData.document = doc
+              createLeaseMutation.mutate(formData)
+            } else {
+              createLeaseMutation.mutate(data)
+            }
+          }}
+          isSubmitting={createLeaseMutation.isPending}
+          onCancel={() => setShowLeaseModal(false)}
+        />
       </Modal>
     </div>
   )

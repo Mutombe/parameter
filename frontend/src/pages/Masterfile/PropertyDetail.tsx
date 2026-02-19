@@ -26,7 +26,7 @@ import {
   Pie,
   Cell,
 } from 'recharts'
-import { propertyApi, landlordApi, unitApi, reportsApi } from '../../services/api'
+import { propertyApi, landlordApi, unitApi, reportsApi, leaseApi } from '../../services/api'
 import { formatCurrency, formatPercent, cn } from '../../lib/utils'
 import { Modal, Button, Input, Select, TableFilter } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
@@ -34,6 +34,8 @@ import { PiBuildingApartmentLight } from 'react-icons/pi'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { usePagination } from '../../hooks/usePagination'
 import { usePrefetch } from '../../hooks/usePrefetch'
+import UnitForm from '../../components/forms/UnitForm'
+import LeaseForm from '../../components/forms/LeaseForm'
 
 const container = {
   hidden: { opacity: 0 },
@@ -147,6 +149,12 @@ export default function PropertyDetail() {
 
   // Edit modal state
   const [showEditModal, setShowEditModal] = useState(false)
+
+  // Unit creation modal
+  const [showUnitModal, setShowUnitModal] = useState(false)
+
+  // Lease creation modal
+  const [showLeaseModal, setShowLeaseModal] = useState(false)
   const [editForm, setEditForm] = useState({
     landlord: '',
     name: '',
@@ -218,6 +226,44 @@ export default function PropertyDetail() {
     },
     onError: (error) => {
       showToast.error(parseApiError(error, 'Failed to update property'))
+    },
+  })
+
+  // Create unit mutation
+  const createUnitMutation = useMutation({
+    mutationFn: (data: any) => unitApi.create(data),
+    onSuccess: () => {
+      showToast.success('Unit created successfully')
+      setShowUnitModal(false)
+      queryClient.invalidateQueries({ queryKey: ['property-units'] })
+      queryClient.invalidateQueries({ queryKey: ['property', propertyId] })
+      queryClient.invalidateQueries({ queryKey: ['units'] })
+    },
+    onError: (error) => {
+      showToast.error(parseApiError(error, 'Failed to create unit'))
+    },
+  })
+
+  // Create lease mutation
+  const createLeaseMutation = useMutation({
+    mutationFn: (data: any) => {
+      const formData = new FormData()
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+          formData.append(key, value as string)
+        }
+      })
+      return leaseApi.create(formData)
+    },
+    onSuccess: () => {
+      showToast.success('Lease created successfully')
+      setShowLeaseModal(false)
+      queryClient.invalidateQueries({ queryKey: ['property-lease-charges'] })
+      queryClient.invalidateQueries({ queryKey: ['property-units'] })
+      queryClient.invalidateQueries({ queryKey: ['leases'] })
+    },
+    onError: (error) => {
+      showToast.error(parseApiError(error, 'Failed to create lease'))
     },
   })
 
@@ -531,7 +577,7 @@ export default function PropertyDetail() {
             <p className="text-sm text-gray-500">All units in this property</p>
           </div>
           <button
-            onClick={() => navigate('/dashboard/units')}
+            onClick={() => setShowUnitModal(true)}
             className="flex items-center gap-1 text-primary-600 hover:text-primary-700 text-sm font-medium"
           >
             <Plus className="w-4 h-4" />
@@ -659,7 +705,7 @@ export default function PropertyDetail() {
             <p className="text-sm text-gray-500">Tenant charges for this property</p>
           </div>
           <button
-            onClick={() => navigate('/dashboard/leases')}
+            onClick={() => setShowLeaseModal(true)}
             className="flex items-center gap-1 text-primary-600 hover:text-primary-700 text-sm font-medium"
           >
             <Plus className="w-4 h-4" />
@@ -1020,6 +1066,44 @@ export default function PropertyDetail() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Create Unit Modal */}
+      <Modal
+        open={showUnitModal}
+        onClose={() => setShowUnitModal(false)}
+        title="Add Unit"
+        icon={Plus}
+      >
+        <UnitForm
+          initialValues={{ property: propertyId }}
+          onSubmit={(data) => createUnitMutation.mutate(data)}
+          isSubmitting={createUnitMutation.isPending}
+          onCancel={() => setShowUnitModal(false)}
+        />
+      </Modal>
+
+      {/* Create Lease Modal */}
+      <Modal
+        open={showLeaseModal}
+        onClose={() => setShowLeaseModal(false)}
+        title="Add Lease"
+        icon={Plus}
+      >
+        <LeaseForm
+          initialValues={{ property: propertyId }}
+          onSubmit={(data, doc) => {
+            if (doc) {
+              const formData: any = { ...data }
+              formData.document = doc
+              createLeaseMutation.mutate(formData)
+            } else {
+              createLeaseMutation.mutate(data)
+            }
+          }}
+          isSubmitting={createLeaseMutation.isPending}
+          onCancel={() => setShowLeaseModal(false)}
+        />
       </Modal>
     </div>
   )

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -34,11 +34,13 @@ import {
 } from 'recharts'
 import { unitApi, leaseApi, invoiceApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
-import { Button, TableFilter } from '../../components/ui'
+import { Button, TableFilter, Modal } from '../../components/ui'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
 import { usePagination } from '../../hooks/usePagination'
 import { usePrefetch } from '../../hooks/usePrefetch'
+import LeaseForm from '../../components/forms/LeaseForm'
+import { showToast, parseApiError } from '../../lib/toast'
 
 const container = {
   hidden: { opacity: 0 },
@@ -155,6 +157,10 @@ export default function UnitDetail() {
   const navigate = useNavigate()
   const unitId = Number(id)
   const prefetch = usePrefetch()
+  const queryClient = useQueryClient()
+
+  // Create Lease modal
+  const [showLeaseModal, setShowLeaseModal] = useState(false)
 
   const { data: unit, isLoading: loadingUnit } = useQuery({
     queryKey: ['unit', unitId],
@@ -172,6 +178,28 @@ export default function UnitDetail() {
     queryKey: ['unit-invoices', unitId],
     queryFn: () => invoiceApi.list({ unit: unitId }).then((r) => r.data),
     enabled: !!unitId,
+  })
+
+  const createLeaseMutation = useMutation({
+    mutationFn: (data: any) => {
+      const formData = new FormData()
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+          formData.append(key, value as string)
+        }
+      })
+      return leaseApi.create(formData)
+    },
+    onSuccess: () => {
+      showToast.success('Lease created successfully')
+      setShowLeaseModal(false)
+      queryClient.invalidateQueries({ queryKey: ['unit-leases'] })
+      queryClient.invalidateQueries({ queryKey: ['unit'] })
+      queryClient.invalidateQueries({ queryKey: ['leases'] })
+    },
+    onError: (error) => {
+      showToast.error(parseApiError(error, 'Failed to create lease'))
+    },
   })
 
   const leases = leasesData?.results || leasesData || []
@@ -438,7 +466,7 @@ export default function UnitDetail() {
             <p className="text-sm text-gray-500">Lease agreements for this unit</p>
           </div>
           <button
-            onClick={() => navigate('/dashboard/leases')}
+            onClick={() => setShowLeaseModal(true)}
             className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
           >
             <Plus className="w-4 h-4" />
@@ -862,6 +890,29 @@ export default function UnitDetail() {
           </div>
         </div>
       </motion.div>
+
+      {/* Create Lease Modal */}
+      <Modal
+        open={showLeaseModal}
+        onClose={() => setShowLeaseModal(false)}
+        title="Add Lease"
+        icon={Plus}
+      >
+        <LeaseForm
+          initialValues={{ unit: unitId, property: unit?.property }}
+          onSubmit={(data, doc) => {
+            if (doc) {
+              const formData: any = { ...data }
+              formData.document = doc
+              createLeaseMutation.mutate(formData)
+            } else {
+              createLeaseMutation.mutate(data)
+            }
+          }}
+          isSubmitting={createLeaseMutation.isPending}
+          onCancel={() => setShowLeaseModal(false)}
+        />
+      </Modal>
     </div>
   )
 }
