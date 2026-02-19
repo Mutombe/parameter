@@ -158,7 +158,16 @@ export default function BankAccounts() {
       </div>
 
       {/* Summary Cards */}
-      {summary && (
+      {!summary && isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse">
+              <div className="h-3 w-24 bg-gray-200 rounded mb-2" />
+              <div className="h-7 w-28 bg-gray-200 rounded" />
+            </div>
+          ))}
+        </div>
+      ) : summary && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4" title="Combined balance across all USD accounts">
             <p className="text-sm text-gray-500">Total Balance (USD)</p>
@@ -214,9 +223,21 @@ export default function BankAccounts() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(6)].map((_, i) => (
             <div key={i} className="bg-white rounded-xl border border-gray-200 p-6 animate-pulse">
-              <div className="h-12 w-12 bg-gray-200 rounded-xl mb-4" />
+              <div className="flex items-start justify-between mb-4">
+                <div className="w-12 h-12 bg-gray-200 rounded-xl" />
+                <div className="w-6 h-6 bg-gray-100 rounded-lg" />
+              </div>
               <div className="h-4 w-32 bg-gray-200 rounded mb-2" />
-              <div className="h-3 w-24 bg-gray-200 rounded" />
+              <div className="h-3 w-24 bg-gray-200 rounded mb-1" />
+              <div className="h-3 w-16 bg-gray-100 rounded" />
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <div className="h-3 w-12 bg-gray-200 rounded mb-2" />
+                <div className="h-6 w-28 bg-gray-200 rounded" />
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <div className="h-5 w-14 bg-gray-200 rounded-full" />
+                <div className="h-5 w-10 bg-gray-100 rounded-full" />
+              </div>
             </div>
           ))}
         </div>
