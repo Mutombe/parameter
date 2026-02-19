@@ -16,7 +16,7 @@ export default function Header() {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuthStore()
-  const { toggleAskMe, toggleMobileSidebar, isMobile, theme, setTheme, setCommandPaletteOpen, setShortcutsModalOpen } = useUIStore()
+  const { toggleAskMe, toggleMobileSidebar, isMobile, theme, setTheme, setShortcutsModalOpen } = useUIStore()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
@@ -107,7 +107,7 @@ export default function Header() {
         {/* Search - navigates to dedicated search page */}
         <div className="flex-1 max-w-xl">
           <button
-            onClick={() => setCommandPaletteOpen(true)}
+            onClick={() => navigate('/dashboard/search')}
             className="w-full flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl hover:bg-white hover:border-gray-300 transition-all text-left group"
           >
             <Search className="w-4 h-4 text-gray-400 group-hover:text-primary-500 transition-colors flex-shrink-0" />
@@ -232,7 +232,7 @@ export default function Header() {
 
                   <div className="p-3 bg-gray-50 border-t border-gray-100">
                     <p className="text-xs text-gray-500 text-center">
-                      Press <kbd className="px-1.5 py-0.5 bg-white rounded border text-gray-600">⌘K</kbd> for command palette
+                      Press <kbd className="px-1.5 py-0.5 bg-white rounded border text-gray-600">⌘K</kbd> to search
                     </p>
                   </div>
                 </motion.div>

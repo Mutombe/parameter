@@ -91,8 +91,8 @@ export default function Search() {
   const [activeFilter, setActiveFilter] = useState<string | null>(searchParams.get('type') || null)
   const [recentSearches, setRecentSearches] = useState<string[]>(getRecentSearches())
 
-  // Debounce search query for better performance
-  const debouncedQuery = useDebounce(query, 300)
+  // Debounce search query to avoid firing on every keystroke
+  const debouncedQuery = useDebounce(query, 400)
 
   // Update URL when debounced query changes
   useEffect(() => {
@@ -245,11 +245,11 @@ export default function Search() {
     return results.slice(0, 20)
   }, [useClientSearch, debouncedQuery, activeFilter, landlords, properties, tenants, invoices])
 
-  // Get suggestions for autocomplete
+  // Get suggestions for autocomplete (uses debounced query to avoid per-keystroke calls)
   const { data: suggestionsData } = useQuery({
-    queryKey: ['search-suggestions', query],
-    queryFn: () => searchApi.suggestions(query).then(r => r.data),
-    enabled: query.length >= 1 && query.length < 3 && !useClientSearch,
+    queryKey: ['search-suggestions', debouncedQuery],
+    queryFn: () => searchApi.suggestions(debouncedQuery).then(r => r.data),
+    enabled: debouncedQuery.length >= 1 && debouncedQuery.length < 3 && !useClientSearch,
     staleTime: 10000,
   })
 

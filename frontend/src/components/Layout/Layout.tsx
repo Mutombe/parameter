@@ -3,13 +3,11 @@ import { Outlet, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Sidebar from './Sidebar'
 import Header from './Header'
-import AskMeButton from '../AskMe/AskMeButton'
 import AskMeModal from '../AskMe/AskMeModal'
 import PrintPreviewModal from '../PrintPreviewModal'
 import SessionExpiredModal from '../SessionExpiredModal'
 import DemoExpiryBanner from '../DemoExpiryBanner'
 import ErrorBoundary from '../ErrorBoundary'
-import GlobalSearch from '../Search/GlobalSearch'
 import KeyboardShortcutsModal from '../KeyboardShortcutsModal'
 import ChainedCreationModal from '../ChainedCreationModal'
 import { useUIStore } from '../../stores/uiStore'
@@ -25,11 +23,9 @@ export default function Layout() {
     sidebarOpen,
     mobileSidebarOpen,
     askMeOpen,
-    commandPaletteOpen,
     shortcutsModalOpen,
     isMobile,
     setAskMeOpen,
-    setCommandPaletteOpen,
     setShortcutsModalOpen,
     setIsMobile,
     setMobileSidebarOpen,
@@ -46,13 +42,13 @@ export default function Layout() {
         modifier: 'ctrl',
         handler: (e) => {
           e.preventDefault()
-          setCommandPaletteOpen(!commandPaletteOpen)
+          navigate('/dashboard/search')
         },
       },
       {
         key: '?',
         handler: () => {
-          if (!commandPaletteOpen) setShortcutsModalOpen(!shortcutsModalOpen)
+          setShortcutsModalOpen(!shortcutsModalOpen)
         },
       },
       {
@@ -115,8 +111,10 @@ export default function Layout() {
 
   // Calculate main content margin based on device and sidebar state
   const getMainMargin = () => {
-    if (isMobile) return 'ml-0' // No margin on mobile, sidebar is overlay
-    return sidebarOpen ? 'lg:ml-[280px]' : 'lg:ml-20'
+    if (isMobile) return 'ml-0'
+    const left = sidebarOpen ? 'lg:ml-[280px]' : 'lg:ml-20'
+    const right = askMeOpen ? 'lg:mr-[280px]' : ''
+    return `${left} ${right}`
   }
 
   return (
@@ -172,11 +170,41 @@ export default function Layout() {
         </main>
       </div>
 
-      <AskMeButton />
-      <AskMeModal open={askMeOpen} onClose={() => setAskMeOpen(false)} />
+      {/* Desktop AI Sidebar */}
+      <div className="hidden lg:block">
+        <AnimatePresence>
+          {askMeOpen && (
+            <AskMeModal open={askMeOpen} onClose={() => setAskMeOpen(false)} />
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Mobile AI Sidebar Overlay */}
+      <AnimatePresence>
+        {isMobile && askMeOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setAskMeOpen(false)}
+              className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+            />
+            <motion.div
+              initial={{ x: 280 }}
+              animate={{ x: 0 }}
+              exit={{ x: 280 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="fixed right-0 top-0 h-full z-50 lg:hidden"
+            >
+              <AskMeModal open={true} onClose={() => setAskMeOpen(false)} />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       <PrintPreviewModal />
       <SessionExpiredModal />
-      <GlobalSearch open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
       <KeyboardShortcutsModal open={shortcutsModalOpen} onClose={() => setShortcutsModalOpen(false)} />
       <ChainedCreationModal />
     </div>

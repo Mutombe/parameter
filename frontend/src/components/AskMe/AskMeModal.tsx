@@ -89,169 +89,157 @@ export default function AskMeModal({ open, onClose }: AskMeModalProps) {
 
   const displaySuggestions = suggestions || defaultSuggestions
 
+  if (!open) return null
+
   return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
-            onClick={onClose}
-          />
+    <motion.div
+      initial={{ x: 280 }}
+      animate={{ x: 0 }}
+      exit={{ x: 280 }}
+      transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+      className="fixed right-0 top-0 h-screen w-[280px] z-40 border-l border-gray-200 bg-white flex flex-col"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-purple-600 via-blue-600 to-blue-700">
+        <div className="flex items-center gap-2">
+          <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
+            <RiClaudeFill className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-white text-sm">Parameter AI</h3>
+            <p className="text-[10px] text-white/70">Ask anything about your data</p>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
 
+      {/* Conversation Area */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-3 sidebar-scroll">
+        {conversation.length === 0 ? (
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ type: 'spring', duration: 0.4 }}
-            className="fixed bottom-6 right-6 w-[480px] max-h-[650px] bg-white rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-4"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-purple-600 via-blue-600 to-blue-700">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
-                  <RiClaudeFill className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-white">Parameter AI</h3>
-                  <p className="text-xs text-white/70">Ask anything about your data</p>
-                </div>
+            {/* Welcome */}
+            <div className="text-center py-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-100 to-blue-100 flex items-center justify-center mx-auto mb-3">
+                <Bot className="w-6 h-6 text-purple-600" />
               </div>
-              <button
-                onClick={onClose}
-                className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Conversation Area */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4 min-h-[300px]">
-              {conversation.length === 0 ? (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="space-y-6"
-                >
-                  {/* Welcome */}
-                  <div className="text-center py-4">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-100 to-blue-100 flex items-center justify-center mx-auto mb-4">
-                      <Bot className="w-8 h-8 text-purple-600" />
-                    </div>
-                    <h4 className="font-semibold text-gray-900 mb-1">How can I help you today?</h4>
-                    <p className="text-sm text-gray-500">
-                      Ask questions about your properties, finances, or get insights
-                    </p>
-                  </div>
-
-                  {/* Suggestions Grid */}
-                  <div className="space-y-4">
-                    {displaySuggestions.slice(0, 2).map((category: any, idx: number) => {
-                      const CategoryIcon = category.icon || Lightbulb
-                      return (
-                        <div key={idx}>
-                          <div className="flex items-center gap-2 mb-2">
-                            <CategoryIcon className="w-4 h-4 text-gray-400" />
-                            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                              {category.category}
-                            </span>
-                          </div>
-                          <div className="space-y-2">
-                            {category.questions.slice(0, 2).map((q: string, qIdx: number) => (
-                              <button
-                                key={qIdx}
-                                onClick={() => handleSuggestionClick(q)}
-                                className="w-full text-left px-4 py-3 text-sm bg-gray-50 hover:bg-purple-50 hover:text-purple-700 rounded-xl transition-all duration-200 border border-transparent hover:border-purple-200"
-                              >
-                                <span className="flex items-center gap-2">
-                                  <MessageSquare className="w-4 h-4 text-gray-400" />
-                                  {q}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </motion.div>
-              ) : (
-                <>
-                  {conversation.map((msg, idx) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.05 }}
-                      className={cn('flex', msg.role === 'user' ? 'justify-end' : 'justify-start')}
-                    >
-                      {msg.role === 'ai' && (
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center mr-2 flex-shrink-0">
-                          <Sparkles className="w-4 h-4 text-white" />
-                        </div>
-                      )}
-                      <div
-                        className={cn(
-                          'max-w-[80%] px-4 py-3 rounded-2xl',
-                          msg.role === 'user'
-                            ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-br-md'
-                            : 'bg-gray-100 text-gray-900 rounded-bl-md'
-                        )}
-                      >
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                      </div>
-                    </motion.div>
-                  ))}
-
-                  {askMutation.isPending && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="flex justify-start"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center mr-2 flex-shrink-0">
-                        <Sparkles className="w-4 h-4 text-white" />
-                      </div>
-                      <div className="bg-gray-100 px-4 py-3 rounded-2xl rounded-bl-md">
-                        <div className="flex items-center gap-2">
-                          <Loader2 className="w-4 h-4 text-purple-600 animate-spin" />
-                          <span className="text-sm text-gray-500">Thinking...</span>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                  <div ref={messagesEndRef} />
-                </>
-              )}
-            </div>
-
-            {/* Input */}
-            <div className="p-4 border-t border-gray-100 bg-gray-50/50">
-              <form onSubmit={handleSubmit} className="flex gap-3">
-                <input
-                  type="text"
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
-                  placeholder="Ask about vacancies, revenue, tenants..."
-                  className="flex-1 px-4 py-3 text-sm bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
-                />
-                <button
-                  type="submit"
-                  disabled={!question.trim() || askMutation.isPending}
-                  className="px-4 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-purple-500/25"
-                >
-                  <Send className="w-5 h-5" />
-                </button>
-              </form>
-              <p className="text-xs text-gray-400 text-center mt-2">
-                AI responses are generated based on your account data
+              <h4 className="font-semibold text-gray-900 text-sm mb-1">How can I help you?</h4>
+              <p className="text-xs text-gray-500">
+                Ask about properties, finances, or get insights
               </p>
             </div>
+
+            {/* Suggestions */}
+            <div className="space-y-3">
+              {displaySuggestions.slice(0, 2).map((category: any, idx: number) => {
+                const CategoryIcon = category.icon || Lightbulb
+                return (
+                  <div key={idx}>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <CategoryIcon className="w-3.5 h-3.5 text-gray-400" />
+                      <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                        {category.category}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {category.questions.slice(0, 2).map((q: string, qIdx: number) => (
+                        <button
+                          key={qIdx}
+                          onClick={() => handleSuggestionClick(q)}
+                          className="w-full text-left px-3 py-2 text-xs bg-gray-50 hover:bg-purple-50 hover:text-purple-700 rounded-lg transition-all duration-200 border border-transparent hover:border-purple-200"
+                        >
+                          <span className="flex items-start gap-1.5">
+                            <MessageSquare className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                            {q}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+        ) : (
+          <>
+            {conversation.map((msg, idx) => (
+              <motion.div
+                key={idx}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.05 }}
+                className={cn('flex', msg.role === 'user' ? 'justify-end' : 'justify-start')}
+              >
+                {msg.role === 'ai' && (
+                  <div className="w-6 h-6 rounded-md bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center mr-1.5 flex-shrink-0">
+                    <Sparkles className="w-3 h-3 text-white" />
+                  </div>
+                )}
+                <div
+                  className={cn(
+                    'max-w-[80%] px-3 py-2 rounded-2xl',
+                    msg.role === 'user'
+                      ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-br-md'
+                      : 'bg-gray-100 text-gray-900 rounded-bl-md'
+                  )}
+                >
+                  <p className="text-xs whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                </div>
+              </motion.div>
+            ))}
+
+            {askMutation.isPending && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex justify-start"
+              >
+                <div className="w-6 h-6 rounded-md bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center mr-1.5 flex-shrink-0">
+                  <Sparkles className="w-3 h-3 text-white" />
+                </div>
+                <div className="bg-gray-100 px-3 py-2 rounded-2xl rounded-bl-md">
+                  <div className="flex items-center gap-1.5">
+                    <Loader2 className="w-3.5 h-3.5 text-purple-600 animate-spin" />
+                    <span className="text-xs text-gray-500">Thinking...</span>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+            <div ref={messagesEndRef} />
+          </>
+        )}
+      </div>
+
+      {/* Input */}
+      <div className="p-3 border-t border-gray-100 bg-gray-50/50">
+        <form onSubmit={handleSubmit} className="flex gap-2">
+          <input
+            type="text"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="Ask about your data..."
+            className="flex-1 px-3 py-2 text-xs bg-white border border-gray-200 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
+          />
+          <button
+            type="submit"
+            disabled={!question.trim() || askMutation.isPending}
+            className="px-3 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-purple-500/25"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </form>
+        <p className="text-[10px] text-gray-400 text-center mt-1.5">
+          AI responses based on your account data
+        </p>
+      </div>
+    </motion.div>
   )
 }
