@@ -234,7 +234,7 @@ export default function Tenants() {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => tenantApi.delete(id),
     onMutate: async (id) => {
-      setDeletingId(null)
+      setDeletingId(id)
       await queryClient.cancelQueries({ queryKey: ['tenants'] })
       const previousData = queryClient.getQueryData(['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter])
       queryClient.setQueryData(['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter], (old: any) => {
@@ -245,10 +245,12 @@ export default function Tenants() {
       return { previousData }
     },
     onSuccess: () => {
+      setDeletingId(null)
       showToast.success('Tenant deleted')
       queryClient.invalidateQueries({ queryKey: ['tenants'] })
     },
     onError: (error, _, context) => {
+      setDeletingId(null)
       if (context?.previousData) {
         queryClient.setQueryData(['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter], context.previousData)
       }
@@ -256,9 +258,18 @@ export default function Tenants() {
     },
   })
 
-  const handleDelete = (id: number) => {
-    setDeletingId(id)
-    deleteMutation.mutate(id)
+  const handleDelete = (tenant: any) => {
+    setConfirmDialog({
+      open: true,
+      title: `Delete ${tenant.name}?`,
+      message: tenant.has_active_lease
+        ? 'This tenant has active leases. Deleting may fail if there are related records.'
+        : 'This action cannot be undone. The tenant will be permanently removed.',
+      onConfirm: () => {
+        setConfirmDialog(d => ({ ...d, open: false }))
+        deleteMutation.mutate(tenant.id)
+      },
+    })
   }
 
   const selectableItems = (tenants || []).filter((t: any) => !t._isOptimistic)
@@ -475,12 +486,12 @@ export default function Tenants() {
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => handleDelete(tenant.id)}
-                    disabled={deletingId === tenant.id}
+                    onClick={() => handleDelete(tenant)}
+                    disabled={deleteMutation.isPending}
                     className="text-gray-400 hover:text-red-500 disabled:opacity-50"
                     title="Delete tenant"
                   >
-                    {deletingId === tenant.id ? (
+                    {deleteMutation.isPending && deletingId === tenant.id ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <Trash2 className="w-4 h-4" />
