@@ -24,7 +24,26 @@ from apps.accounting.models import AuditTrail
 logger = logging.getLogger(__name__)
 
 
-class InvoiceViewSet(viewsets.ModelViewSet):
+class ProtectedDeleteMixin:
+    """Mixin to handle ProtectedError on delete gracefully."""
+    def destroy(self, request, *args, **kwargs):
+        from django.db.models import ProtectedError
+        instance = self.get_object()
+        try:
+            self.perform_destroy(instance)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except ProtectedError as e:
+            protected = set()
+            for obj in e.protected_objects:
+                protected.add(type(obj).__name__)
+            names = ', '.join(protected)
+            return Response(
+                {'detail': f'Cannot delete because it has related {names}. Remove them first.'},
+                status=status.HTTP_409_CONFLICT
+            )
+
+
+class InvoiceViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Invoices."""
     queryset = Invoice.objects.select_related(
         'tenant', 'unit', 'lease', 'unit__property', 'created_by', 'journal'
@@ -589,7 +608,7 @@ class BulkMailingViewSet(viewsets.ViewSet):
         })
 
 
-class ReceiptViewSet(viewsets.ModelViewSet):
+class ReceiptViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Receipts."""
     queryset = Receipt.objects.select_related(
         'tenant', 'invoice', 'invoice__unit', 'created_by', 'journal'
@@ -704,7 +723,7 @@ class ReceiptViewSet(viewsets.ModelViewSet):
         })
 
 
-class ExpenseViewSet(viewsets.ModelViewSet):
+class ExpenseViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Expenses."""
     queryset = Expense.objects.select_related(
         'created_by', 'approved_by', 'journal'

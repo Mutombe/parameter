@@ -24,8 +24,8 @@ const PropertyForm = forwardRef<PropertyFormRef, PropertyFormProps>(
       name: '',
       property_type: 'residential',
       address: '',
-      city: 'Harare',
-      total_units: 1,
+      city: '',
+      total_units: '',
       unit_definition: '',
     })
 
@@ -49,12 +49,13 @@ const PropertyForm = forwardRef<PropertyFormRef, PropertyFormProps>(
       onSubmit({
         ...form,
         landlord: parseInt(form.landlord, 10),
+        total_units: parseInt(String(form.total_units), 10) || 0,
       })
     }
 
     useImperativeHandle(ref, () => ({
       submit: () => handleSubmit(),
-      getFormData: () => ({ ...form, landlord: parseInt(form.landlord, 10) }),
+      getFormData: () => ({ ...form, landlord: parseInt(form.landlord, 10), total_units: parseInt(String(form.total_units), 10) || 0 }),
     }))
 
     return (
@@ -94,10 +95,10 @@ const PropertyForm = forwardRef<PropertyFormRef, PropertyFormProps>(
           <Input
             type="number"
             label="Total Units"
-            placeholder="1"
-            min="1"
+            placeholder="0"
+            min="0"
             value={form.total_units}
-            onChange={(e) => setForm({ ...form, total_units: parseInt(e.target.value) || 1 })}
+            onChange={(e) => setForm({ ...form, total_units: e.target.value })}
           />
         </div>
 

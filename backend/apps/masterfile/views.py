@@ -14,7 +14,26 @@ from .serializers import (
 )
 
 
-class LandlordViewSet(viewsets.ModelViewSet):
+class ProtectedDeleteMixin:
+    """Mixin to handle ProtectedError on delete gracefully."""
+    def destroy(self, request, *args, **kwargs):
+        from django.db.models import ProtectedError
+        instance = self.get_object()
+        try:
+            self.perform_destroy(instance)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except ProtectedError as e:
+            protected = set()
+            for obj in e.protected_objects:
+                protected.add(type(obj).__name__)
+            names = ', '.join(protected)
+            return Response(
+                {'detail': f'Cannot delete because it has related {names}. Remove them first.'},
+                status=status.HTTP_409_CONFLICT
+            )
+
+
+class LandlordViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Landlords."""
     queryset = Landlord.objects.prefetch_related('properties', 'properties__units').all()
     serializer_class = LandlordSerializer
@@ -49,7 +68,7 @@ class LandlordViewSet(viewsets.ModelViewSet):
         })
 
 
-class PropertyViewSet(viewsets.ModelViewSet):
+class PropertyViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Properties."""
     queryset = Property.objects.select_related('landlord').prefetch_related('units', 'managers__user').all()
     permission_classes = [IsAuthenticated]
@@ -160,7 +179,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_201_CREATED)
 
 
-class UnitViewSet(viewsets.ModelViewSet):
+class UnitViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Units."""
     queryset = Unit.objects.select_related('property', 'property__landlord').prefetch_related('leases', 'leases__tenant').all()
     serializer_class = UnitSerializer
@@ -192,7 +211,7 @@ class UnitViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class RentalTenantViewSet(viewsets.ModelViewSet):
+class RentalTenantViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Rental Tenants."""
     permission_classes = [IsAuthenticated]
     filterset_fields = ['tenant_type', 'is_active', 'account_type', 'unit', 'unit__property', 'id_type']
@@ -309,7 +328,7 @@ class RentalTenantViewSet(viewsets.ModelViewSet):
         })
 
 
-class LeaseAgreementViewSet(viewsets.ModelViewSet):
+class LeaseAgreementViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Lease Agreements."""
     queryset = LeaseAgreement.objects.select_related(
         'tenant', 'unit', 'unit__property', 'unit__property__landlord', 'created_by'

@@ -28,7 +28,26 @@ from .serializers import (
 )
 
 
-class ChartOfAccountViewSet(viewsets.ModelViewSet):
+class ProtectedDeleteMixin:
+    """Mixin to handle ProtectedError on delete gracefully."""
+    def destroy(self, request, *args, **kwargs):
+        from django.db.models import ProtectedError
+        instance = self.get_object()
+        try:
+            self.perform_destroy(instance)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except ProtectedError as e:
+            protected = set()
+            for obj in e.protected_objects:
+                protected.add(type(obj).__name__)
+            names = ', '.join(protected)
+            return Response(
+                {'detail': f'Cannot delete because it has related {names}. Remove them first.'},
+                status=status.HTTP_409_CONFLICT
+            )
+
+
+class ChartOfAccountViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Chart of Accounts."""
     queryset = ChartOfAccount.objects.select_related('parent').prefetch_related('children').all()
     serializer_class = ChartOfAccountSerializer
@@ -322,7 +341,7 @@ class FiscalPeriodViewSet(viewsets.ModelViewSet):
         return Response(FiscalPeriodSerializer(period).data)
 
 
-class BankAccountViewSet(viewsets.ModelViewSet):
+class BankAccountViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
     """
     CRUD for Bank Accounts.
     Supports FBC Bank, EcoCash, ZB Bank, CABS, Cash with USD/ZWG currencies.
@@ -761,7 +780,7 @@ class BankReconciliationViewSet(viewsets.ModelViewSet):
         return Response(summary)
 
 
-class ExpenseCategoryViewSet(viewsets.ModelViewSet):
+class ExpenseCategoryViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
     """
     CRUD for Expense Categories.
     Allows dynamic creation of expense item types.
@@ -892,7 +911,7 @@ class JournalReallocationViewSet(viewsets.ModelViewSet):
         })
 
 
-class IncomeTypeViewSet(viewsets.ModelViewSet):
+class IncomeTypeViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
     """
     CRUD for Income Types.
     Defines income categories for detailed analysis (Rent, Levy, Special Levy, etc.).

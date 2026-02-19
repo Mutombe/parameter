@@ -127,7 +127,7 @@ class Property(models.Model):
 
     # Details
     year_built = models.PositiveIntegerField(null=True, blank=True)
-    total_units = models.PositiveIntegerField(default=1)
+    total_units = models.PositiveIntegerField(default=0)
     total_floors = models.PositiveIntegerField(default=1)
     parking_spaces = models.PositiveIntegerField(default=0)
     amenities = models.JSONField(default=list, blank=True)

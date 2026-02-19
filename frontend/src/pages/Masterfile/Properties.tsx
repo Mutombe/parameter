@@ -117,8 +117,8 @@ export default function Properties() {
     name: '',
     property_type: 'residential',
     address: '',
-    city: 'Harare',
-    total_units: 1,
+    city: '',
+    total_units: '',
     unit_definition: '',
   })
   const [showGenerateModal, setShowGenerateModal] = useState(false)
@@ -322,8 +322,8 @@ export default function Properties() {
       name: '',
       property_type: 'residential',
       address: '',
-      city: 'Harare',
-      total_units: 1,
+      city: '',
+      total_units: '',
       unit_definition: '',
     })
   }
@@ -336,7 +336,7 @@ export default function Properties() {
       property_type: property.property_type,
       address: property.address,
       city: property.city,
-      total_units: property.total_units,
+      total_units: String(property.total_units),
       unit_definition: property.unit_definition || '',
     })
     setShowForm(true)
@@ -371,10 +371,10 @@ export default function Properties() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    // Convert landlord to integer for the API
     createMutation.mutate({
       ...form,
       landlord: parseInt(form.landlord, 10),
+      total_units: parseInt(String(form.total_units), 10) || 0,
     })
   }
 
@@ -615,8 +615,9 @@ export default function Properties() {
           {filteredProperties.map((property: Property, index: number) => {
             const config = propertyTypeConfig[property.property_type] || propertyTypeConfig.residential
             const TypeIcon = config.icon
-            const occupancyRate = 100 - (property.vacancy_rate || 0)
-            const occupiedUnits = Math.round((property.unit_count || 0) * occupancyRate / 100)
+            const hasUnits = (property.unit_count || 0) > 0
+            const occupancyRate = hasUnits ? 100 - (property.vacancy_rate || 0) : 0
+            const occupiedUnits = hasUnits ? Math.round(property.unit_count * occupancyRate / 100) : 0
 
             return (
               <motion.div
@@ -702,14 +703,15 @@ export default function Properties() {
                   </Tooltip>
 
                   {/* Occupancy Bar */}
-                  <div className="hidden xl:flex flex-col min-w-[100px]" title={`${occupancyRate}% occupied`}>
+                  <div className="hidden xl:flex flex-col min-w-[100px]" title={hasUnits ? `${occupancyRate}% occupied` : 'No units'}>
                     <div className="flex justify-between text-xs mb-1">
                       <span className="text-gray-500">Occupancy</span>
                       <span className={cn(
                         'font-medium',
+                        !hasUnits ? 'text-gray-400' :
                         occupancyRate >= 80 ? 'text-emerald-600' :
                         occupancyRate >= 50 ? 'text-amber-600' : 'text-rose-600'
-                      )}>{formatPercent(occupancyRate)}</span>
+                      )}>{hasUnits ? formatPercent(occupancyRate) : 'N/A'}</span>
                     </div>
                     <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                       <div
@@ -783,8 +785,9 @@ export default function Properties() {
               {(() => {
                 const config = propertyTypeConfig[selectedProperty.property_type] || propertyTypeConfig.residential
                 const TypeIcon = config.icon
-                const occupancyRate = 100 - (selectedProperty.vacancy_rate || 0)
-                const occupiedUnits = Math.round((selectedProperty.unit_count || 0) * occupancyRate / 100)
+                const hasUnits = (selectedProperty.unit_count || 0) > 0
+                const occupancyRate = hasUnits ? 100 - (selectedProperty.vacancy_rate || 0) : 0
+                const occupiedUnits = hasUnits ? Math.round(selectedProperty.unit_count * occupancyRate / 100) : 0
 
                 return (
                   <>
