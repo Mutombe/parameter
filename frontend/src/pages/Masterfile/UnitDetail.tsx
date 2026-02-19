@@ -16,6 +16,7 @@ import {
   Square,
   Layers,
   FileText,
+  Plus,
 } from 'lucide-react'
 import { unitApi, leaseApi, invoiceApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
@@ -295,9 +296,18 @@ export default function UnitDetail() {
         transition={{ delay: 0.2 }}
         className="bg-white rounded-xl border border-gray-200 overflow-hidden"
       >
-        <div className="p-6 border-b border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900">Leases</h3>
-          <p className="text-sm text-gray-500">Lease agreements for this unit</p>
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Leases</h3>
+            <p className="text-sm text-gray-500">Lease agreements for this unit</p>
+          </div>
+          <button
+            onClick={() => navigate('/dashboard/leases')}
+            className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+          >
+            <Plus className="w-4 h-4" />
+            Add Lease
+          </button>
         </div>
         <div className="overflow-x-auto">
           {loadingLeases ? (
@@ -323,7 +333,14 @@ export default function UnitDetail() {
                     onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >
-                    <td className="px-6 py-4 text-sm font-medium text-primary-600">{lease.lease_number}</td>
+                    <td className="px-6 py-4 text-sm font-medium">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/leases/${lease.id}`) }}
+                        className="text-primary-600 hover:text-primary-700 hover:underline"
+                      >
+                        {lease.lease_number}
+                      </button>
+                    </td>
                     <td className="px-6 py-4 text-sm">
                       {lease.tenant ? (
                         <button onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${lease.tenant}`) }} className="text-primary-600 hover:text-primary-700 hover:underline">
@@ -389,7 +406,14 @@ export default function UnitDetail() {
                     onClick={() => navigate(`/dashboard/invoices/${inv.id}`)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >
-                    <td className="px-6 py-4 text-sm font-medium text-primary-600">{inv.invoice_number}</td>
+                    <td className="px-6 py-4 text-sm font-medium">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/invoices/${inv.id}`) }}
+                        className="text-primary-600 hover:text-primary-700 hover:underline"
+                      >
+                        {inv.invoice_number}
+                      </button>
+                    </td>
                     <td className="px-6 py-4 text-sm text-gray-600">{formatDate(inv.date)}</td>
                     <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{formatCurrency(inv.total_amount || 0)}</td>
                     <td className="px-6 py-4 text-sm font-medium text-right">

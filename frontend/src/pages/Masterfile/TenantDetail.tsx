@@ -15,6 +15,7 @@ import {
   Calendar,
   Briefcase,
   Eye,
+  Plus,
 } from 'lucide-react'
 import {
   BarChart,
@@ -515,7 +516,14 @@ export default function TenantDetail() {
                     onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{lease.lease_number}</td>
+                    <td className="px-6 py-4 text-sm font-medium">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/leases/${lease.id}`) }}
+                        className="text-primary-600 hover:text-primary-700 hover:underline"
+                      >
+                        {lease.lease_number}
+                      </button>
+                    </td>
                     <td className="px-6 py-4 text-sm text-gray-600">{lease.unit}</td>
                     <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{lease.currency} {lease.monthly_rent}/mo</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{formatDate(lease.start_date)} - {formatDate(lease.end_date)}</td>
@@ -537,9 +545,27 @@ export default function TenantDetail() {
         transition={{ delay: 0.4 }}
         className="bg-white rounded-xl border border-gray-200 overflow-hidden"
       >
-        <div className="p-6 border-b border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900">Recent Invoices</h3>
-          <p className="text-sm text-gray-500">Latest billing activity</p>
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Recent Invoices</h3>
+            <p className="text-sm text-gray-500">Latest billing activity</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/dashboard/invoices')}
+              className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+            >
+              <Plus className="w-4 h-4" />
+              Create Invoice
+            </button>
+            <button
+              onClick={() => navigate('/dashboard/receipts')}
+              className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+            >
+              <Plus className="w-4 h-4" />
+              Record Payment
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           {loadingDetail ? (
@@ -565,7 +591,14 @@ export default function TenantDetail() {
                     onClick={() => navigate(`/dashboard/invoices/${inv.id}`)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{inv.invoice_number}</td>
+                    <td className="px-6 py-4 text-sm font-medium">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/invoices/${inv.id}`) }}
+                        className="text-primary-600 hover:text-primary-700 hover:underline"
+                      >
+                        {inv.invoice_number}
+                      </button>
+                    </td>
                     <td className="px-6 py-4 text-sm text-gray-600">{formatDate(inv.date)}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{inv.due_date ? formatDate(inv.due_date) : '-'}</td>
                     <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{formatCurrency(inv.amount || inv.total_amount || 0)}</td>

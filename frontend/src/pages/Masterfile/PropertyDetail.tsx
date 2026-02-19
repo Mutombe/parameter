@@ -12,6 +12,7 @@ import {
   Wallet,
   Users,
   Shield,
+  Plus,
 } from 'lucide-react'
 import {
   BarChart,
@@ -331,7 +332,7 @@ export default function PropertyDetail() {
   })()
 
   // Lease charges table
-  const leaseChargesTable = leaseChargesData?.charges || leaseChargesData?.items || (Array.isArray(leaseChargesData) ? leaseChargesData : [])
+  const leaseChargesTable = leaseChargesData?.leases || leaseChargesData?.charges || leaseChargesData?.items || (Array.isArray(leaseChargesData) ? leaseChargesData : [])
 
   return (
     <div className="space-y-6">
@@ -625,9 +626,18 @@ export default function PropertyDetail() {
         transition={{ delay: 0.45 }}
         className="bg-white rounded-xl border border-gray-200 overflow-hidden"
       >
-        <div className="p-6 border-b border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900">Units</h3>
-          <p className="text-sm text-gray-500">All units in this property</p>
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Units</h3>
+            <p className="text-sm text-gray-500">All units in this property</p>
+          </div>
+          <button
+            onClick={() => navigate('/dashboard/units')}
+            className="flex items-center gap-1 text-primary-600 hover:text-primary-700 text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            Add Unit
+          </button>
         </div>
         <div className="overflow-x-auto">
           {loadingUnits ? (
@@ -690,9 +700,18 @@ export default function PropertyDetail() {
         transition={{ delay: 0.5 }}
         className="bg-white rounded-xl border border-gray-200 overflow-hidden"
       >
-        <div className="p-6 border-b border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900">Lease Charges</h3>
-          <p className="text-sm text-gray-500">Tenant charges for this property</p>
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Lease Charges</h3>
+            <p className="text-sm text-gray-500">Tenant charges for this property</p>
+          </div>
+          <button
+            onClick={() => navigate('/dashboard/leases')}
+            className="flex items-center gap-1 text-primary-600 hover:text-primary-700 text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            Add Lease
+          </button>
         </div>
         <div className="overflow-x-auto">
           {loadingLeaseCharges ? (
@@ -703,6 +722,7 @@ export default function PropertyDetail() {
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50">
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Lease #</th>
                   <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Tenant</th>
                   <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Unit</th>
                   <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Monthly Rent</th>
@@ -713,10 +733,22 @@ export default function PropertyDetail() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {leaseChargesTable.map((charge: any, idx: number) => (
-                  <tr key={charge.id || idx} className="hover:bg-gray-50 transition-colors">
+                  <tr key={charge.lease_id || charge.id || idx} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 text-sm font-medium">
+                      {charge.lease_id ? (
+                        <button
+                          onClick={() => navigate(`/dashboard/leases/${charge.lease_id}`)}
+                          className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer"
+                        >
+                          {charge.lease_number || `#${charge.lease_id}`}
+                        </button>
+                      ) : (
+                        <span className="text-gray-900">{charge.lease_number || '-'}</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-sm font-medium">
                       {charge.tenant_id ? (
-                        <button onClick={() => navigate(`/dashboard/tenants/${charge.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                        <button onClick={() => navigate(`/dashboard/tenants/${charge.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer">
                           {charge.tenant_name || charge.tenant}
                         </button>
                       ) : (
@@ -725,7 +757,7 @@ export default function PropertyDetail() {
                     </td>
                     <td className="px-6 py-4 text-sm">
                       {charge.unit_id ? (
-                        <button onClick={() => navigate(`/dashboard/units/${charge.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                        <button onClick={() => navigate(`/dashboard/units/${charge.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer">
                           {charge.unit_name || charge.unit}
                         </button>
                       ) : (

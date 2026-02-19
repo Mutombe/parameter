@@ -17,6 +17,8 @@ import {
   CreditCard,
   Home,
   TrendingUp,
+  Plus,
+  Building2,
 } from 'lucide-react'
 import { invoiceApi, receiptApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
@@ -202,7 +204,14 @@ export default function InvoiceDetail() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/dashboard/receipts')}
+            className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+          >
+            <Plus className="w-4 h-4" />
+            Record Payment
+          </button>
           <Button variant="outline" onClick={handlePrint} className="gap-2">
             <Printer className="w-4 h-4" />
             Print
@@ -227,13 +236,13 @@ export default function InvoiceDetail() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
             {/* Tenant */}
             <div className="space-y-2">
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Tenant</p>
               <button
                 onClick={() => invoice?.tenant && navigate(`/dashboard/tenants/${invoice.tenant}`)}
-                className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
+                className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
               >
                 <TbUserSquareRounded className="w-3.5 h-3.5" />
                 <span>{invoice?.tenant_name}</span>
@@ -246,7 +255,7 @@ export default function InvoiceDetail() {
               {invoice?.unit ? (
                 <button
                   onClick={() => navigate(`/dashboard/units/${invoice.unit}`)}
-                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
+                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
                 >
                   <Home className="w-3.5 h-3.5" />
                   <span>{invoice?.unit_name || '-'}</span>
@@ -255,6 +264,25 @@ export default function InvoiceDetail() {
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Home className="w-3.5 h-3.5 text-gray-400" />
                   <span>{invoice?.unit_name || '-'}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Property */}
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Property</p>
+              {invoice?.property ? (
+                <button
+                  onClick={() => navigate(`/dashboard/properties/${invoice.property}`)}
+                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
+                >
+                  <Building2 className="w-3.5 h-3.5" />
+                  <span>{invoice?.property_name || 'View Property'}</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Building2 className="w-3.5 h-3.5 text-gray-400" />
+                  <span>{invoice?.property_name || '-'}</span>
                 </div>
               )}
             </div>

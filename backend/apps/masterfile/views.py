@@ -312,7 +312,7 @@ class RentalTenantViewSet(viewsets.ModelViewSet):
 class LeaseAgreementViewSet(viewsets.ModelViewSet):
     """CRUD for Lease Agreements."""
     queryset = LeaseAgreement.objects.select_related(
-        'tenant', 'unit', 'unit__property', 'created_by'
+        'tenant', 'unit', 'unit__property', 'unit__property__landlord', 'created_by'
     ).all()
     serializer_class = LeaseAgreementSerializer
     permission_classes = [IsAuthenticated]

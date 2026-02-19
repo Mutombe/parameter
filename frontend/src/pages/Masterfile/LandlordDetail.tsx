@@ -21,6 +21,7 @@ import {
   FileText,
   ArrowUpRight,
   ArrowDownRight,
+  Plus,
 } from 'lucide-react'
 import {
   BarChart,
@@ -833,9 +834,18 @@ export default function LandlordDetail() {
         transition={{ delay: 0.45 }}
         className="bg-white rounded-xl border border-gray-200 overflow-hidden"
       >
-        <div className="p-6 border-b border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900">Properties</h3>
-          <p className="text-sm text-gray-500">Portfolio overview by property</p>
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Properties</h3>
+            <p className="text-sm text-gray-500">Portfolio overview by property</p>
+          </div>
+          <button
+            onClick={() => navigate('/dashboard/properties')}
+            className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+          >
+            <Plus className="w-4 h-4" />
+            Add Property
+          </button>
         </div>
         <div className="overflow-x-auto">
           {loadingFinancial ? (
@@ -939,9 +949,18 @@ export default function LandlordDetail() {
         transition={{ delay: 0.5 }}
         className="bg-white rounded-xl border border-gray-200 overflow-hidden"
       >
-        <div className="p-6 border-b border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900">Lease Charges</h3>
-          <p className="text-sm text-gray-500">Tenant charges across all properties</p>
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Lease Charges</h3>
+            <p className="text-sm text-gray-500">Tenant charges across all properties</p>
+          </div>
+          <button
+            onClick={() => navigate('/dashboard/leases')}
+            className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+          >
+            <Plus className="w-4 h-4" />
+            Add Lease
+          </button>
         </div>
         <div className="overflow-x-auto">
           {loadingLeaseCharges ? (
@@ -956,6 +975,9 @@ export default function LandlordDetail() {
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50">
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
+                    Lease
+                  </th>
                   <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
                     Tenant
                   </th>
@@ -982,6 +1004,18 @@ export default function LandlordDetail() {
               <tbody className="divide-y divide-gray-100">
                 {leaseChargesTable.map((charge: any, idx: number) => (
                   <tr key={charge.id || idx} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 text-sm font-medium">
+                      {charge.lease_id ? (
+                        <button
+                          onClick={() => navigate(`/dashboard/leases/${charge.lease_id}`)}
+                          className="text-primary-600 hover:text-primary-700 hover:underline"
+                        >
+                          {charge.lease_number || charge.lease_ref || `LSE-${charge.lease_id}`}
+                        </button>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-sm font-medium">
                       {charge.tenant_id ? (
                         <button onClick={() => navigate(`/dashboard/tenants/${charge.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">

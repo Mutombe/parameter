@@ -18,12 +18,15 @@ import {
   Upload,
   Download,
   Loader2,
+  Plus,
+  Receipt,
 } from 'lucide-react'
 import { leaseApi, invoiceApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, getMediaUrl } from '../../lib/utils'
 import { Button, ConfirmDialog } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { TbUserSquareRounded } from 'react-icons/tb'
+import { PiBuildingApartmentLight } from 'react-icons/pi'
 
 const container = {
   hidden: { opacity: 0 },
@@ -207,7 +210,10 @@ export default function LeaseDetail() {
               <div className="h-8 w-48 bg-gray-200 rounded animate-pulse" />
             ) : (
               <>
-                <h1 className="text-xl md:text-2xl font-bold text-gray-900">Lease {lease?.lease_number}</h1>
+                <h1 className="text-xl md:text-2xl font-bold text-gray-900">
+                  Lease{' '}
+                  <span className="text-primary-600 font-mono tracking-tight">{lease?.lease_number}</span>
+                </h1>
                 <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium', config.bgColor, config.color)}>
                   <StatusIcon className="w-3 h-3" />
                   {config.label}
@@ -217,6 +223,14 @@ export default function LeaseDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => navigate('/dashboard/receipts')} className="gap-2">
+            <Plus className="w-4 h-4" />
+            Record Payment
+          </Button>
+          <Button variant="outline" onClick={() => navigate('/dashboard/invoices')} className="gap-2">
+            <Receipt className="w-4 h-4" />
+            View Invoices
+          </Button>
           {lease?.status === 'draft' && (
             <>
               <Button variant="outline" onClick={() => setShowActivateDialog(true)} className="gap-2">
@@ -246,8 +260,8 @@ export default function LeaseDetail() {
         className="bg-white rounded-xl border border-gray-200 p-4 md:p-6"
       >
         {loadingLease ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {[...Array(6)].map((_, i) => (
               <div key={i} className="space-y-2 animate-pulse">
                 <div className="h-3 w-16 bg-gray-200 rounded" />
                 <div className="h-4 w-32 bg-gray-200 rounded" />
@@ -255,13 +269,13 @@ export default function LeaseDetail() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
             {/* Tenant */}
             <div className="space-y-2">
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Tenant</p>
               <button
                 onClick={() => lease?.tenant && navigate(`/dashboard/tenants/${lease.tenant}`)}
-                className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
+                className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
               >
                 <TbUserSquareRounded className="w-3.5 h-3.5" />
                 <span>{lease?.tenant_name}</span>
@@ -274,7 +288,7 @@ export default function LeaseDetail() {
               {lease?.unit ? (
                 <button
                   onClick={() => navigate(`/dashboard/units/${lease.unit}`)}
-                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
+                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
                 >
                   <Home className="w-3.5 h-3.5" />
                   <span>{lease?.unit_display}</span>
@@ -283,6 +297,44 @@ export default function LeaseDetail() {
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Home className="w-3.5 h-3.5 text-gray-400" />
                   <span>{lease?.unit_display}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Property */}
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Property</p>
+              {lease?.property_id ? (
+                <button
+                  onClick={() => navigate(`/dashboard/properties/${lease.property_id}`)}
+                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
+                >
+                  <PiBuildingApartmentLight className="w-3.5 h-3.5" />
+                  <span>{lease?.property_name}</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <PiBuildingApartmentLight className="w-3.5 h-3.5 text-gray-400" />
+                  <span>{lease?.property_name || '-'}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Landlord */}
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Landlord</p>
+              {lease?.landlord_id ? (
+                <button
+                  onClick={() => navigate(`/dashboard/landlords/${lease.landlord_id}`)}
+                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
+                >
+                  <TbUserSquareRounded className="w-3.5 h-3.5" />
+                  <span>{lease?.landlord_name}</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <TbUserSquareRounded className="w-3.5 h-3.5 text-gray-400" />
+                  <span>{lease?.landlord_name || '-'}</span>
                 </div>
               )}
             </div>
@@ -407,9 +459,27 @@ export default function LeaseDetail() {
         transition={{ delay: 0.25 }}
         className="bg-white rounded-xl border border-gray-200 overflow-hidden"
       >
-        <div className="p-6 border-b border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900">Invoices</h3>
-          <p className="text-sm text-gray-500">Invoices generated for this lease</p>
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Invoices</h3>
+            <p className="text-sm text-gray-500">Invoices generated for this lease</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/dashboard/invoices')}
+              className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+            >
+              <Plus className="w-4 h-4" />
+              Create Invoice
+            </button>
+            <button
+              onClick={() => navigate('/dashboard/receipts')}
+              className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+            >
+              <Plus className="w-4 h-4" />
+              Record Payment
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           {loadingInvoices ? (

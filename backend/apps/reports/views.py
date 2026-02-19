@@ -1140,9 +1140,12 @@ class LeaseChargeSummaryView(APIView):
                     total_other += Decimal(str(data['total']))
 
             lease_charges.append({
+                'lease_id': lease.id,
                 'lease_number': lease.lease_number,
+                'tenant_id': lease.tenant_id,
                 'tenant_name': lease.tenant.name,
                 'property': lease.unit.property.name,
+                'unit_id': lease.unit_id,
                 'unit': lease.unit.unit_number,
                 'monthly_rent': float(lease.monthly_rent),
                 'charges': charge_breakdown,

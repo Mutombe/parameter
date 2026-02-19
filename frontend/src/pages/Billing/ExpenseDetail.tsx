@@ -15,6 +15,8 @@ import {
   XCircle,
   Printer,
   User,
+  Plus,
+  Home,
 } from 'lucide-react'
 import { expenseApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
@@ -160,7 +162,14 @@ export default function ExpenseDetail() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/dashboard/expenses')}
+            className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+          >
+            <Plus className="w-4 h-4" />
+            New Expense
+          </button>
           {expense?.status === 'pending' && (
             <Button onClick={() => setShowApproveConfirm(true)} className="gap-2">
               <Check className="w-4 h-4" />
@@ -193,7 +202,7 @@ export default function ExpenseDetail() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
             {/* Payee */}
             <div className="space-y-2">
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Payee</p>
@@ -201,7 +210,7 @@ export default function ExpenseDetail() {
                 {expense?.payee_type === 'landlord' && expense?.payee_id ? (
                   <button
                     onClick={() => navigate(`/dashboard/landlords/${expense.payee_id}`)}
-                    className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
+                    className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
                   >
                     <User className="w-3.5 h-3.5" />
                     <span>{expense?.payee_name}</span>
@@ -253,10 +262,13 @@ export default function ExpenseDetail() {
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Accounting</p>
               <div className="space-y-1.5">
                 {expense?.journal_number ? (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <FileText className="w-3.5 h-3.5 text-gray-400" />
+                  <button
+                    onClick={() => navigate('/dashboard/accounting/journals')}
+                    className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
                     <span>{expense.journal_number}</span>
-                  </div>
+                  </button>
                 ) : (
                   <p className="text-sm text-gray-400">Not posted</p>
                 )}
@@ -264,6 +276,25 @@ export default function ExpenseDetail() {
                   <div className="text-sm text-gray-600 font-mono">{expense.reference}</div>
                 )}
               </div>
+            </div>
+
+            {/* Property */}
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Property</p>
+              {expense?.property ? (
+                <button
+                  onClick={() => navigate(`/dashboard/properties/${expense.property}`)}
+                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
+                >
+                  <Home className="w-3.5 h-3.5" />
+                  <span>{expense?.property_name || 'View Property'}</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Home className="w-3.5 h-3.5 text-gray-400" />
+                  <span>{expense?.property_name || '-'}</span>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -347,7 +378,12 @@ export default function ExpenseDetail() {
               {expense?.journal_number && (
                 <div>
                   <p className="text-xs text-gray-500">Journal Number</p>
-                  <p className="text-sm font-medium text-emerald-600">{expense.journal_number}</p>
+                  <button
+                    onClick={() => navigate('/dashboard/accounting/journals')}
+                    className="text-sm font-medium text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
+                  >
+                    {expense.journal_number}
+                  </button>
                 </div>
               )}
             </div>

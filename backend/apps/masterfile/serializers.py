@@ -241,6 +241,9 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
     tenant_name = serializers.CharField(source='tenant.name', read_only=True)
     unit_display = serializers.SerializerMethodField()
     property_name = serializers.SerializerMethodField()
+    property_id = serializers.SerializerMethodField()
+    landlord_name = serializers.SerializerMethodField()
+    landlord_id = serializers.SerializerMethodField()
 
     # Optional fields for auto-creating units
     property = serializers.PrimaryKeyRelatedField(
@@ -258,7 +261,8 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
     class Meta:
         model = LeaseAgreement
         fields = [
-            'id', 'tenant', 'tenant_name', 'unit', 'unit_display', 'property_name',
+            'id', 'tenant', 'tenant_name', 'unit', 'unit_display',
+            'property_name', 'property_id', 'landlord_name', 'landlord_id',
             'property', 'unit_number',  # For auto-creating units
             'lease_number', 'status', 'start_date', 'end_date', 'monthly_rent',
             'currency', 'deposit_amount', 'deposit_paid', 'billing_day',
@@ -278,6 +282,22 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
     def get_property_name(self, obj):
         """Return property name or None if no unit."""
         return obj.unit.property.name if obj.unit else None
+
+    def get_property_id(self, obj):
+        """Return property ID or None if no unit."""
+        return obj.unit.property.id if obj.unit else None
+
+    def get_landlord_name(self, obj):
+        """Return landlord name or None if no unit/property."""
+        if obj.unit and obj.unit.property and obj.unit.property.landlord:
+            return obj.unit.property.landlord.name
+        return None
+
+    def get_landlord_id(self, obj):
+        """Return landlord ID or None if no unit/property."""
+        if obj.unit and obj.unit.property and obj.unit.property.landlord:
+            return obj.unit.property.landlord.id
+        return None
 
     def validate(self, data):
         """Validate that either unit or (property + unit_number) is provided."""
