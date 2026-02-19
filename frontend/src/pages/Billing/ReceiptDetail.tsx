@@ -14,6 +14,7 @@ import { receiptApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { printReceipt } from '../../lib/printTemplate'
 import { Button } from '../../components/ui'
+import { usePrefetch } from '../../hooks/usePrefetch'
 import { TbUserSquareRounded } from 'react-icons/tb'
 
 const container = {
@@ -87,6 +88,7 @@ function StatCard({ title, value, subtitle, icon: Icon, color, isLoading }: Stat
 export default function ReceiptDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const prefetch = usePrefetch()
   const receiptId = Number(id)
 
   const { data: receipt, isLoading } = useQuery({
@@ -160,6 +162,7 @@ export default function ReceiptDetail() {
             <div className="space-y-2">
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Tenant</p>
               <button
+                onMouseEnter={() => receipt?.tenant && prefetch(`/dashboard/tenants/${receipt.tenant}`)}
                 onClick={() => receipt?.tenant && navigate(`/dashboard/tenants/${receipt.tenant}`)}
                 className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
               >
@@ -173,6 +176,7 @@ export default function ReceiptDetail() {
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Invoice</p>
               {receipt?.invoice_number ? (
                 <button
+                  onMouseEnter={() => receipt?.invoice && prefetch(`/dashboard/invoices/${receipt.invoice}`)}
                   onClick={() => receipt?.invoice && navigate(`/dashboard/invoices/${receipt.invoice}`)}
                   className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
                 >
@@ -294,6 +298,7 @@ export default function ReceiptDetail() {
         >
           <h3 className="text-lg font-semibold text-gray-900 mb-3">Related Invoice</h3>
           <button
+            onMouseEnter={() => receipt?.invoice && prefetch(`/dashboard/invoices/${receipt.invoice}`)}
             onClick={() => receipt?.invoice && navigate(`/dashboard/invoices/${receipt.invoice}`)}
             className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors w-full text-left"
           >

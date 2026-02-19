@@ -21,6 +21,7 @@ import {
 import { expenseApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { Button, ConfirmDialog, TimeAgo } from '../../components/ui'
+import { usePrefetch } from '../../hooks/usePrefetch'
 import { showToast, parseApiError } from '../../lib/toast'
 
 const container = {
@@ -101,6 +102,7 @@ function StatCard({ title, value, subtitle, icon: Icon, color, isLoading }: Stat
 export default function ExpenseDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const prefetch = usePrefetch()
   const queryClient = useQueryClient()
   const expenseId = Number(id)
 
@@ -209,6 +211,7 @@ export default function ExpenseDetail() {
               <div className="space-y-1.5">
                 {expense?.payee_type === 'landlord' && expense?.payee_id ? (
                   <button
+                    onMouseEnter={() => prefetch(`/dashboard/landlords/${expense.payee_id}`)}
                     onClick={() => navigate(`/dashboard/landlords/${expense.payee_id}`)}
                     className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
                   >
@@ -283,6 +286,7 @@ export default function ExpenseDetail() {
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Property</p>
               {expense?.property ? (
                 <button
+                  onMouseEnter={() => prefetch(`/dashboard/properties/${expense.property}`)}
                   onClick={() => navigate(`/dashboard/properties/${expense.property}`)}
                   className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
                 >
@@ -346,7 +350,7 @@ export default function ExpenseDetail() {
               <div>
                 <p className="text-xs text-gray-500">Payee Name</p>
                 {expense?.payee_type === 'landlord' && expense?.payee_id ? (
-                  <button onClick={() => navigate(`/dashboard/landlords/${expense.payee_id}`)} className="text-sm font-medium text-primary-600 hover:text-primary-700 hover:underline">
+                  <button onMouseEnter={() => prefetch(`/dashboard/landlords/${expense.payee_id}`)} onClick={() => navigate(`/dashboard/landlords/${expense.payee_id}`)} className="text-sm font-medium text-primary-600 hover:text-primary-700 hover:underline">
                     {expense?.payee_name}
                   </button>
                 ) : (

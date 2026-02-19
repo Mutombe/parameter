@@ -31,6 +31,7 @@ import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
+import { usePrefetch } from '../../hooks/usePrefetch'
 
 const PAGE_SIZE = 12
 
@@ -73,6 +74,7 @@ const landlordTypeConfig = {
 export default function Landlords() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const prefetch = usePrefetch()
   const [searchParams, setSearchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
@@ -583,6 +585,7 @@ export default function Landlords() {
                   {!isOptimistic && !isUpdating ? (
                     <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                       <button
+                        onMouseEnter={() => prefetch(`/dashboard/landlords/${landlord.id}`)}
                         onClick={() => navigate(`/dashboard/landlords/${landlord.id}`)}
                         className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
                         title="View details"

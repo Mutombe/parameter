@@ -51,3 +51,4 @@ export { ConfirmDialog } from './ConfirmDialog'
 
 // Navigation
 export { Pagination, PaginationCompact } from './Pagination'
+export { PrefetchLink } from './PrefetchLink'

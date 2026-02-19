@@ -33,6 +33,7 @@ import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
+import { usePrefetch } from '../../hooks/usePrefetch'
 
 interface Expense {
   id: number | string
@@ -134,6 +135,7 @@ function SkeletonExpenses() {
 export default function Expenses() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const prefetch = usePrefetch()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [typeFilter, setTypeFilter] = useState<string>('')
@@ -536,6 +538,7 @@ export default function Expenses() {
                     expense._isOptimistic && "opacity-60",
                     selection.isSelected(expense.id) && "ring-2 ring-blue-500 border-blue-300"
                   )}
+                  onMouseEnter={() => prefetch(`/dashboard/expenses/${expense.id}`)}
                   onClick={() => navigate(`/dashboard/expenses/${expense.id}`)}
                 >
                   {!expense._isOptimistic && (
@@ -564,6 +567,7 @@ export default function Expenses() {
                       </div>
                       {expense.payee_id && expense.payee_type === 'landlord' ? (
                         <button
+                          onMouseEnter={() => prefetch(`/dashboard/landlords/${expense.payee_id}`)}
                           onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/landlords/${expense.payee_id}`) }}
                           className="text-sm text-primary-600 hover:text-primary-700 hover:underline truncate"
                         >

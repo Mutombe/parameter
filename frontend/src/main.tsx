@@ -9,17 +9,19 @@ import './index.css'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 2 * 60 * 1000, // Data is fresh for 2 minutes (was 5 — too stale for multi-user)
-      gcTime: 10 * 60 * 1000, // Keep unused data in cache for 10 minutes (was 30)
+      staleTime: 5 * 60 * 1000, // 5 minutes — data considered fresh, prevents refetch flicker
+      gcTime: 10 * 60 * 1000, // 10 minutes — keep unused data in cache
       retry: 1,
-      refetchOnWindowFocus: true, // Refetch when window regains focus for fresh data
-      refetchOnMount: 'always', // Always check freshness on mount
+      refetchOnWindowFocus: false, // Don't refetch on tab focus — rely on mutations to invalidate
     },
     mutations: {
       retry: 0, // Don't retry mutations
     },
   },
 })
+
+// Export for use in login prefetch and other non-component contexts
+export { queryClient }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

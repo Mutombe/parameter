@@ -24,6 +24,7 @@ import { invoiceApi, receiptApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { printInvoice } from '../../lib/printTemplate'
 import { Button } from '../../components/ui'
+import { usePrefetch } from '../../hooks/usePrefetch'
 import { TbUserSquareRounded } from 'react-icons/tb'
 
 const container = {
@@ -122,6 +123,7 @@ const methodLabels: Record<string, string> = {
 export default function InvoiceDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const prefetch = usePrefetch()
   const invoiceId = Number(id)
 
   // 1. Invoice data
@@ -241,6 +243,7 @@ export default function InvoiceDetail() {
             <div className="space-y-2">
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Tenant</p>
               <button
+                onMouseEnter={() => invoice?.tenant && prefetch(`/dashboard/tenants/${invoice.tenant}`)}
                 onClick={() => invoice?.tenant && navigate(`/dashboard/tenants/${invoice.tenant}`)}
                 className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
               >
@@ -254,6 +257,7 @@ export default function InvoiceDetail() {
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Unit</p>
               {invoice?.unit ? (
                 <button
+                  onMouseEnter={() => prefetch(`/dashboard/units/${invoice.unit}`)}
                   onClick={() => navigate(`/dashboard/units/${invoice.unit}`)}
                   className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
                 >
@@ -273,6 +277,7 @@ export default function InvoiceDetail() {
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Property</p>
               {invoice?.property ? (
                 <button
+                  onMouseEnter={() => invoice?.property && prefetch(`/dashboard/properties/${invoice.property}`)}
                   onClick={() => navigate(`/dashboard/properties/${invoice.property}`)}
                   className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
                 >
@@ -396,6 +401,7 @@ export default function InvoiceDetail() {
                 {receipts.map((r: any) => (
                   <tr
                     key={r.id}
+                    onMouseEnter={() => prefetch(`/dashboard/receipts/${r.id}`)}
                     onClick={() => navigate(`/dashboard/receipts/${r.id}`)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >

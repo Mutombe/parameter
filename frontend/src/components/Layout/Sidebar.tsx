@@ -32,6 +32,7 @@ import {
 } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useAuthStore } from '../../stores/authStore'
+import { usePrefetch } from '../../hooks/usePrefetch'
 import { cn } from '../../lib/utils'
 import { SiFsecure } from "react-icons/si";
 import { PiUsersFour } from "react-icons/pi";
@@ -124,6 +125,7 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
   const { user } = useAuthStore()
   const location = useLocation()
   const navigate = useNavigate()
+  const prefetch = usePrefetch()
 
   // Add Super Admin section for super_admin users
   const isSuperAdmin = user?.role === 'super_admin'
@@ -231,6 +233,7 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
                   <button
                     key={item.href}
                     onClick={() => handleNavClick(item.href)}
+                    onMouseEnter={() => prefetch(item.href)}
                     className={cn(
                       'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative',
                       isActive
@@ -262,6 +265,7 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
                   <NavLink
                     key={item.href}
                     to={item.href}
+                    onMouseEnter={() => prefetch(item.href)}
                     className={cn(
                       'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative',
                       isActive

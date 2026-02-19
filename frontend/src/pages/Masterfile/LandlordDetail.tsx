@@ -40,6 +40,7 @@ import { landlordApi, reportsApi } from '../../services/api'
 import { formatCurrency, formatPercent, cn } from '../../lib/utils'
 import { Modal, Button, Input, Select, Textarea, Tooltip as UiTooltip } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
+import { usePrefetch } from '../../hooks/usePrefetch'
 import { TbUserSquareRounded } from 'react-icons/tb'
 
 // Animation variants matching Dashboard
@@ -174,6 +175,7 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
 export default function LandlordDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const prefetch = usePrefetch()
   const queryClient = useQueryClient()
   const landlordId = Number(id)
 
@@ -889,6 +891,7 @@ export default function LandlordDetail() {
                   return (
                     <tr
                       key={prop.id || idx}
+                      onMouseEnter={() => prop.id && prefetch(`/dashboard/properties/${prop.id}`)}
                       onClick={() =>
                         prop.id && navigate(`/dashboard/properties/${prop.id}`)
                       }
@@ -1007,6 +1010,7 @@ export default function LandlordDetail() {
                     <td className="px-6 py-4 text-sm font-medium">
                       {charge.lease_id ? (
                         <button
+                          onMouseEnter={() => prefetch(`/dashboard/leases/${charge.lease_id}`)}
                           onClick={() => navigate(`/dashboard/leases/${charge.lease_id}`)}
                           className="text-primary-600 hover:text-primary-700 hover:underline"
                         >
@@ -1018,7 +1022,7 @@ export default function LandlordDetail() {
                     </td>
                     <td className="px-6 py-4 text-sm font-medium">
                       {charge.tenant_id ? (
-                        <button onClick={() => navigate(`/dashboard/tenants/${charge.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                        <button onMouseEnter={() => prefetch(`/dashboard/tenants/${charge.tenant_id}`)} onClick={() => navigate(`/dashboard/tenants/${charge.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
                           {charge.tenant_name || charge.tenant}
                         </button>
                       ) : (
@@ -1027,7 +1031,7 @@ export default function LandlordDetail() {
                     </td>
                     <td className="px-6 py-4 text-sm">
                       {charge.property_id ? (
-                        <button onClick={() => navigate(`/dashboard/properties/${charge.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                        <button onMouseEnter={() => prefetch(`/dashboard/properties/${charge.property_id}`)} onClick={() => navigate(`/dashboard/properties/${charge.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
                           {charge.property_name || charge.property}
                         </button>
                       ) : (
@@ -1036,7 +1040,7 @@ export default function LandlordDetail() {
                     </td>
                     <td className="px-6 py-4 text-sm">
                       {charge.unit_id ? (
-                        <button onClick={() => navigate(`/dashboard/units/${charge.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                        <button onMouseEnter={() => prefetch(`/dashboard/units/${charge.unit_id}`)} onClick={() => navigate(`/dashboard/units/${charge.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
                           {charge.unit_name || charge.unit}
                         </button>
                       ) : (

@@ -36,6 +36,7 @@ import { showToast, parseApiError } from '../../lib/toast'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
+import { usePrefetch } from '../../hooks/usePrefetch'
 import { TbUserSquareRounded } from "react-icons/tb";
 
 interface Invoice {
@@ -158,6 +159,7 @@ function SkeletonInvoices() {
 export default function Invoices() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const prefetch = usePrefetch()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [statusFilter, setStatusFilter] = useState<string>('')
@@ -752,6 +754,7 @@ export default function Invoices() {
                           <td className="px-6 py-4">
                             {invoice.tenant ? (
                               <button
+                                onMouseEnter={() => prefetch(`/dashboard/tenants/${invoice.tenant}`)}
                                 onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${invoice.tenant}`) }}
                                 className="text-primary-600 hover:text-primary-700 hover:underline"
                               >
@@ -825,6 +828,7 @@ export default function Invoices() {
                                   </Button>
                                 )}
                                 <button
+                                  onMouseEnter={() => prefetch(`/dashboard/invoices/${invoice.id}`)}
                                   onClick={() => handleViewDetails(invoice)}
                                   className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                                   title="View Details"

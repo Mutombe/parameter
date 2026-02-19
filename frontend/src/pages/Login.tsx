@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff, Loader2, Building2, Shield, BarChart3, AlertTriangle } from 'lucide-react'
 import { AxiosError } from 'axios'
 import { useAuthStore } from '../stores/authStore'
-import { authApi } from '../services/api'
+import { authApi, reportsApi, propertyApi, landlordApi, tenantApi, invoiceApi } from '../services/api'
 import { useThemeEffect } from '../hooks/useThemeEffect'
 import toast from 'react-hot-toast'
 import { SiFsecure } from "react-icons/si";
@@ -24,6 +25,7 @@ export default function Login() {
   useThemeEffect()
   const navigate = useNavigate()
   const location = useLocation()
+  const queryClient = useQueryClient()
   const { setUser, isAuthenticated, user } = useAuthStore()
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -56,6 +58,16 @@ export default function Login() {
         toast.success('Welcome! Your demo session is active.', { duration: 5000 })
       } else {
         toast.success('Welcome back!')
+      }
+
+      // Prefetch dashboard data immediately so the page loads instantly
+      if (loggedInUser?.role !== 'tenant_portal') {
+        const PREFETCH_STALE = 5 * 60 * 1000
+        queryClient.prefetchQuery({ queryKey: ['dashboard-stats'], queryFn: () => reportsApi.dashboard().then(r => r.data), staleTime: PREFETCH_STALE })
+        queryClient.prefetchQuery({ queryKey: ['properties', '', 1], queryFn: () => propertyApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data), staleTime: PREFETCH_STALE })
+        queryClient.prefetchQuery({ queryKey: ['landlords', '', 1], queryFn: () => landlordApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data), staleTime: PREFETCH_STALE })
+        queryClient.prefetchQuery({ queryKey: ['tenants', '', 1, '', ''], queryFn: () => tenantApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data), staleTime: PREFETCH_STALE })
+        queryClient.prefetchQuery({ queryKey: ['invoices', '', ''], queryFn: () => invoiceApi.list({}).then(r => r.data.results || r.data), staleTime: PREFETCH_STALE })
       }
 
       // Redirect tenant portal users to /portal
