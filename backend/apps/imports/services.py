@@ -1,4 +1,5 @@
 """Services for data import processing."""
+import math
 import pandas as pd
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
@@ -6,6 +7,29 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.masterfile.models import Landlord, Property, Unit, RentalTenant, LeaseAgreement
+
+
+def sanitize_row_dict(d):
+    """
+    Sanitize a pandas row dict for JSON serialization.
+    Replaces NaN, Infinity, and other non-JSON-safe values with None.
+    Converts Decimal, datetime, and date objects to strings.
+    """
+    clean = {}
+    for k, v in d.items():
+        if v is None:
+            clean[k] = None
+        elif isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+            clean[k] = None
+        elif isinstance(v, Decimal):
+            clean[k] = str(v)
+        elif isinstance(v, (datetime,)):
+            clean[k] = v.isoformat()
+        elif hasattr(v, 'isoformat'):
+            clean[k] = v.isoformat()
+        else:
+            clean[k] = v
+    return clean
 
 
 # Column mappings for each entity type
@@ -31,7 +55,7 @@ COLUMN_MAPPINGS = {
         'defaults': {
             'property_type': 'residential',
             'country': 'Zimbabwe',
-            'total_units': 1,
+            'total_units': 0,
             'total_floors': 1,
         }
     },
@@ -233,7 +257,7 @@ def validate_entity(entity_type, df):
 
         # Add to preview (first 10 rows)
         if len(preview_rows) < 10:
-            preview_rows.append(row.to_dict())
+            preview_rows.append(sanitize_row_dict(row.to_dict()))
 
     return {
         'count': len(df),
@@ -301,7 +325,7 @@ def process_import(job, data_frames):
                     sheet_name=entity_type,
                     row_number=row_num,
                     error_message=str(e),
-                    row_data=row.to_dict()
+                    row_data=sanitize_row_dict(row.to_dict())
                 )
 
     job.success_count = total_success
