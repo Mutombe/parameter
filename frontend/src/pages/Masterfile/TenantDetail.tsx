@@ -1,3 +1,4 @@
+import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -28,7 +29,7 @@ import {
 } from 'recharts'
 import { tenantApi, reportsApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
-import { Button } from '../../components/ui'
+import { Button, TableFilter } from '../../components/ui'
 import { useAuthStore } from '../../stores/authStore'
 import { TbUserSquareRounded } from 'react-icons/tb'
 
@@ -191,6 +192,76 @@ export default function TenantDetail() {
     }
     return []
   })()
+
+  // --- Active Leases filter state ---
+  const [leasesSearch, setLeasesSearch] = useState('')
+
+  const filteredActiveLeases = useMemo(() => {
+    let result = activeLeases || []
+    if (leasesSearch) {
+      const q = leasesSearch.toLowerCase()
+      result = result.filter((l: any) =>
+        (l.lease_number || '').toLowerCase().includes(q) ||
+        (l.unit || '').toLowerCase().includes(q)
+      )
+    }
+    return result
+  }, [activeLeases, leasesSearch])
+
+  // --- Recent Invoices filter state ---
+  const [invSearch, setInvSearch] = useState('')
+  const [invDateFrom, setInvDateFrom] = useState('')
+  const [invDateTo, setInvDateTo] = useState('')
+  const [invStatus, setInvStatus] = useState('')
+
+  const filteredInvoices = useMemo(() => {
+    let result = recentInvoices || []
+    if (invSearch) {
+      const q = invSearch.toLowerCase()
+      result = result.filter((inv: any) =>
+        (inv.invoice_number || '').toLowerCase().includes(q)
+      )
+    }
+    if (invDateFrom) {
+      result = result.filter((inv: any) => {
+        const date = inv.date || inv.invoice_date || ''
+        return date >= invDateFrom
+      })
+    }
+    if (invDateTo) {
+      result = result.filter((inv: any) => {
+        const date = inv.date || inv.invoice_date || ''
+        return date <= invDateTo
+      })
+    }
+    if (invStatus) {
+      result = result.filter((inv: any) => inv.status === invStatus)
+    }
+    return result
+  }, [recentInvoices, invSearch, invDateFrom, invDateTo, invStatus])
+
+  // --- Ledger filter state ---
+  const [ledgerSearch, setLedgerSearch] = useState('')
+  const [ledgerDateFrom, setLedgerDateFrom] = useState('')
+  const [ledgerDateTo, setLedgerDateTo] = useState('')
+
+  const filteredLedger = useMemo(() => {
+    let result = ledger || []
+    if (ledgerSearch) {
+      const q = ledgerSearch.toLowerCase()
+      result = result.filter((entry: any) =>
+        (entry.reference || entry.ref || '').toLowerCase().includes(q) ||
+        (entry.description || entry.narration || '').toLowerCase().includes(q)
+      )
+    }
+    if (ledgerDateFrom) {
+      result = result.filter((entry: any) => (entry.date || '') >= ledgerDateFrom)
+    }
+    if (ledgerDateTo) {
+      result = result.filter((entry: any) => (entry.date || '') <= ledgerDateTo)
+    }
+    return result
+  }, [ledger, ledgerSearch, ledgerDateFrom, ledgerDateTo])
 
   // Aged chart
   const agedChartData = (() => {
@@ -493,6 +564,14 @@ export default function TenantDetail() {
           <h3 className="text-lg font-semibold text-gray-900">Active Leases</h3>
           <p className="text-sm text-gray-500">{activeLeases.length} active lease(s)</p>
         </div>
+        {!loadingDetail && activeLeases.length > 0 && (
+          <TableFilter
+            searchPlaceholder="Search by lease number or unit..."
+            searchValue={leasesSearch}
+            onSearchChange={setLeasesSearch}
+            resultCount={filteredActiveLeases.length}
+          />
+        )}
         <div className="overflow-x-auto">
           {loadingDetail ? (
             <div className="p-6"><TableSkeleton rows={3} /></div>
@@ -510,7 +589,7 @@ export default function TenantDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {activeLeases.map((lease: any) => (
+                {filteredActiveLeases.map((lease: any) => (
                   <tr
                     key={lease.id}
                     onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
@@ -567,6 +646,29 @@ export default function TenantDetail() {
             </button>
           </div>
         </div>
+        {!loadingDetail && recentInvoices.length > 0 && (
+          <TableFilter
+            searchPlaceholder="Search by invoice number..."
+            searchValue={invSearch}
+            onSearchChange={setInvSearch}
+            showDateFilter
+            dateFrom={invDateFrom}
+            dateTo={invDateTo}
+            onDateFromChange={setInvDateFrom}
+            onDateToChange={setInvDateTo}
+            showStatusFilter
+            statusOptions={[
+              { value: 'paid', label: 'Paid' },
+              { value: 'partial', label: 'Partial' },
+              { value: 'overdue', label: 'Overdue' },
+              { value: 'sent', label: 'Sent' },
+              { value: 'draft', label: 'Draft' },
+            ]}
+            statusValue={invStatus}
+            onStatusChange={setInvStatus}
+            resultCount={filteredInvoices.length}
+          />
+        )}
         <div className="overflow-x-auto">
           {loadingDetail ? (
             <div className="p-6"><TableSkeleton /></div>
@@ -585,7 +687,7 @@ export default function TenantDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {recentInvoices.map((inv: any) => (
+                {filteredInvoices.map((inv: any) => (
                   <tr
                     key={inv.id}
                     onClick={() => navigate(`/dashboard/invoices/${inv.id}`)}
@@ -636,6 +738,19 @@ export default function TenantDetail() {
           <h3 className="text-lg font-semibold text-gray-900">Ledger</h3>
           <p className="text-sm text-gray-500">Transaction history</p>
         </div>
+        {!loadingLedger && ledger.length > 0 && (
+          <TableFilter
+            searchPlaceholder="Search by reference or description..."
+            searchValue={ledgerSearch}
+            onSearchChange={setLedgerSearch}
+            showDateFilter
+            dateFrom={ledgerDateFrom}
+            dateTo={ledgerDateTo}
+            onDateFromChange={setLedgerDateFrom}
+            onDateToChange={setLedgerDateTo}
+            resultCount={filteredLedger.length}
+          />
+        )}
         <div className="overflow-x-auto">
           {loadingLedger ? (
             <div className="p-6"><TableSkeleton rows={6} /></div>
@@ -654,7 +769,7 @@ export default function TenantDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {ledger.map((entry: any, idx: number) => (
+                {filteredLedger.map((entry: any, idx: number) => (
                   <tr key={entry.id || idx} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-sm text-gray-600">{formatDate(entry.date)}</td>
                     <td className="px-6 py-4 text-sm font-medium">

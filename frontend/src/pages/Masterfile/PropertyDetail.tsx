@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -28,7 +28,7 @@ import {
 } from 'recharts'
 import { propertyApi, landlordApi, unitApi, reportsApi } from '../../services/api'
 import { formatCurrency, formatPercent, cn } from '../../lib/utils'
-import { Modal, Button, Input, Select } from '../../components/ui'
+import { Modal, Button, Input, Select, TableFilter } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
 import { TbUserSquareRounded } from 'react-icons/tb'
@@ -333,6 +333,46 @@ export default function PropertyDetail() {
 
   // Lease charges table
   const leaseChargesTable = leaseChargesData?.leases || leaseChargesData?.charges || leaseChargesData?.items || (Array.isArray(leaseChargesData) ? leaseChargesData : [])
+
+  // --- Units table filter state ---
+  const [unitsSearch, setUnitsSearch] = useState('')
+  const [unitsStatus, setUnitsStatus] = useState('')
+
+  const filteredUnits = useMemo(() => {
+    let result = units || []
+    if (unitsSearch) {
+      const q = unitsSearch.toLowerCase()
+      result = result.filter((u: any) =>
+        (u.unit_number || '').toLowerCase().includes(q) ||
+        (u.current_tenant?.name || '').toLowerCase().includes(q)
+      )
+    }
+    if (unitsStatus) {
+      result = result.filter((u: any) => {
+        const occupied = !!u.current_tenant
+        if (unitsStatus === 'occupied') return occupied
+        if (unitsStatus === 'vacant') return !occupied
+        return true
+      })
+    }
+    return result
+  }, [units, unitsSearch, unitsStatus])
+
+  // --- Lease charges table filter state ---
+  const [chargesSearch, setChargesSearch] = useState('')
+
+  const filteredLeaseCharges = useMemo(() => {
+    let result = leaseChargesTable || []
+    if (chargesSearch) {
+      const q = chargesSearch.toLowerCase()
+      result = result.filter((c: any) =>
+        (c.tenant_name || c.tenant || '').toLowerCase().includes(q) ||
+        (c.unit_name || c.unit || '').toLowerCase().includes(q) ||
+        (c.lease_number || '').toLowerCase().includes(q)
+      )
+    }
+    return result
+  }, [leaseChargesTable, chargesSearch])
 
   return (
     <div className="space-y-6">
@@ -639,6 +679,21 @@ export default function PropertyDetail() {
             Add Unit
           </button>
         </div>
+        {!loadingUnits && units.length > 0 && (
+          <TableFilter
+            searchPlaceholder="Search by unit number or tenant..."
+            searchValue={unitsSearch}
+            onSearchChange={setUnitsSearch}
+            showStatusFilter
+            statusOptions={[
+              { value: 'occupied', label: 'Occupied' },
+              { value: 'vacant', label: 'Vacant' },
+            ]}
+            statusValue={unitsStatus}
+            onStatusChange={setUnitsStatus}
+            resultCount={filteredUnits.length}
+          />
+        )}
         <div className="overflow-x-auto">
           {loadingUnits ? (
             <div className="p-6"><TableSkeleton /></div>
@@ -657,7 +712,7 @@ export default function PropertyDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {units.map((unit: any) => (
+                {filteredUnits.map((unit: any) => (
                   <tr key={unit.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-sm font-medium">
                       <button onClick={() => navigate(`/dashboard/units/${unit.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
@@ -713,6 +768,14 @@ export default function PropertyDetail() {
             Add Lease
           </button>
         </div>
+        {!loadingLeaseCharges && leaseChargesTable.length > 0 && (
+          <TableFilter
+            searchPlaceholder="Search by tenant or unit..."
+            searchValue={chargesSearch}
+            onSearchChange={setChargesSearch}
+            resultCount={filteredLeaseCharges.length}
+          />
+        )}
         <div className="overflow-x-auto">
           {loadingLeaseCharges ? (
             <div className="p-6"><TableSkeleton rows={6} /></div>
@@ -732,7 +795,7 @@ export default function PropertyDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {leaseChargesTable.map((charge: any, idx: number) => (
+                {filteredLeaseCharges.map((charge: any, idx: number) => (
                   <tr key={charge.lease_id || charge.id || idx} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-sm font-medium">
                       {charge.lease_id ? (

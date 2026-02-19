@@ -9,6 +9,7 @@ export { Tabs, TabsList, TabsTrigger, TabsContent, TabCard } from './Tabs'
 
 // Data Display
 export { DataTable, type Column } from './DataTable'
+export { TableFilter } from './TableFilter'
 export { Badge, StatusBadge } from './Badge'
 export { StatsCard, StatsCardCompact } from './StatsCard'
 export {

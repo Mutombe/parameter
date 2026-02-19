@@ -1,3 +1,4 @@
+import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -17,10 +18,23 @@ import {
   Layers,
   FileText,
   Plus,
+  BarChart3,
 } from 'lucide-react'
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts'
 import { unitApi, leaseApi, invoiceApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
-import { Button } from '../../components/ui'
+import { Button, TableFilter } from '../../components/ui'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
 
@@ -112,6 +126,28 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
   )
 }
 
+function ChartSkeleton() {
+  return (
+    <div className="w-full h-full flex flex-col justify-end gap-2 px-4 pb-4">
+      <div className="flex items-end gap-3 h-full">
+        {[40, 55, 65, 50, 70, 60, 75].map((h, i) => (
+          <div key={i} className="flex-1 flex flex-col gap-1 justify-end h-full">
+            <div
+              className="w-full bg-gray-200 rounded-t animate-pulse"
+              style={{ height: `${h}%` }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-between">
+        {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+          <div key={i} className="h-3 w-8 bg-gray-200 rounded animate-pulse" />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function UnitDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -140,6 +176,93 @@ export default function UnitDetail() {
   const activeLease = leases.find((l: any) => l.status === 'active')
   // Derive occupancy from actual lease/tenant data instead of the static is_occupied boolean
   const isOccupied = !!activeLease || !!unit?.current_tenant
+
+  // Process invoices into monthly data for area chart
+  const monthlyData = useMemo(() => {
+    if (!invoices?.length) return []
+    const grouped: Record<string, { month: string; invoiced: number; paid: number }> = {}
+    invoices.forEach((inv: any) => {
+      const month = inv.invoice_date?.slice(0, 7) || inv.date?.slice(0, 7) || 'Unknown'
+      if (!grouped[month]) grouped[month] = { month, invoiced: 0, paid: 0 }
+      grouped[month].invoiced += Number(inv.total_amount || 0)
+      grouped[month].paid += Number(inv.total_amount || 0) - Number(inv.balance || 0)
+    })
+    return Object.values(grouped).sort((a, b) => a.month.localeCompare(b.month))
+  }, [invoices])
+
+  // Invoice status breakdown for pie chart
+  const statusData = useMemo(() => {
+    if (!invoices?.length) return []
+    const counts: Record<string, number> = {}
+    invoices.forEach((inv: any) => {
+      const status = inv.status || 'unknown'
+      counts[status] = (counts[status] || 0) + 1
+    })
+    const colors: Record<string, string> = {
+      paid: '#10b981',
+      partial: '#f59e0b',
+      overdue: '#ef4444',
+      sent: '#3b82f6',
+      draft: '#9ca3af',
+      cancelled: '#6b7280',
+    }
+    return Object.entries(counts).map(([name, value]) => ({
+      name: name.charAt(0).toUpperCase() + name.slice(1),
+      value,
+      color: colors[name] || '#9ca3af',
+    }))
+  }, [invoices])
+
+  // --- Leases table filter state ---
+  const [leasesSearch, setLeasesSearch] = useState('')
+  const [leasesStatus, setLeasesStatus] = useState('')
+
+  const filteredLeases = useMemo(() => {
+    let result = leases || []
+    if (leasesSearch) {
+      const q = leasesSearch.toLowerCase()
+      result = result.filter((l: any) =>
+        (l.lease_number || '').toLowerCase().includes(q) ||
+        (l.tenant_name || '').toLowerCase().includes(q)
+      )
+    }
+    if (leasesStatus) {
+      result = result.filter((l: any) => l.status === leasesStatus)
+    }
+    return result
+  }, [leases, leasesSearch, leasesStatus])
+
+  // --- Invoices table filter state ---
+  const [invSearch, setInvSearch] = useState('')
+  const [invDateFrom, setInvDateFrom] = useState('')
+  const [invDateTo, setInvDateTo] = useState('')
+  const [invStatus, setInvStatus] = useState('')
+
+  const filteredInvoices = useMemo(() => {
+    let result = invoices || []
+    if (invSearch) {
+      const q = invSearch.toLowerCase()
+      result = result.filter((inv: any) =>
+        (inv.invoice_number || '').toLowerCase().includes(q)
+      )
+    }
+    if (invDateFrom) {
+      result = result.filter((inv: any) => {
+        const date = inv.date || inv.invoice_date || ''
+        return date >= invDateFrom
+      })
+    }
+    if (invDateTo) {
+      result = result.filter((inv: any) => {
+        const date = inv.date || inv.invoice_date || ''
+        return date <= invDateTo
+      })
+    }
+    if (invStatus) {
+      result = result.filter((inv: any) => inv.status === invStatus)
+    }
+    return result
+  }, [invoices, invSearch, invDateFrom, invDateTo, invStatus])
 
   return (
     <div className="space-y-6">
@@ -309,6 +432,23 @@ export default function UnitDetail() {
             Add Lease
           </button>
         </div>
+        {!loadingLeases && leases.length > 0 && (
+          <TableFilter
+            searchPlaceholder="Search by lease number or tenant..."
+            searchValue={leasesSearch}
+            onSearchChange={setLeasesSearch}
+            showStatusFilter
+            statusOptions={[
+              { value: 'active', label: 'Active' },
+              { value: 'expired', label: 'Expired' },
+              { value: 'terminated', label: 'Terminated' },
+              { value: 'draft', label: 'Draft' },
+            ]}
+            statusValue={leasesStatus}
+            onStatusChange={setLeasesStatus}
+            resultCount={filteredLeases.length}
+          />
+        )}
         <div className="overflow-x-auto">
           {loadingLeases ? (
             <div className="p-6"><TableSkeleton /></div>
@@ -327,7 +467,7 @@ export default function UnitDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {leases.map((lease: any) => (
+                {filteredLeases.map((lease: any) => (
                   <tr
                     key={lease.id}
                     onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
@@ -383,6 +523,29 @@ export default function UnitDetail() {
           <h3 className="text-lg font-semibold text-gray-900">Recent Invoices</h3>
           <p className="text-sm text-gray-500">Invoices for this unit</p>
         </div>
+        {!loadingInvoices && invoices.length > 0 && (
+          <TableFilter
+            searchPlaceholder="Search by invoice number..."
+            searchValue={invSearch}
+            onSearchChange={setInvSearch}
+            showDateFilter
+            dateFrom={invDateFrom}
+            dateTo={invDateTo}
+            onDateFromChange={setInvDateFrom}
+            onDateToChange={setInvDateTo}
+            showStatusFilter
+            statusOptions={[
+              { value: 'paid', label: 'Paid' },
+              { value: 'partial', label: 'Partial' },
+              { value: 'overdue', label: 'Overdue' },
+              { value: 'sent', label: 'Sent' },
+              { value: 'draft', label: 'Draft' },
+            ]}
+            statusValue={invStatus}
+            onStatusChange={setInvStatus}
+            resultCount={filteredInvoices.length}
+          />
+        )}
         <div className="overflow-x-auto">
           {loadingInvoices ? (
             <div className="p-6"><TableSkeleton /></div>
@@ -400,7 +563,7 @@ export default function UnitDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {invoices.slice(0, 10).map((inv: any) => (
+                {filteredInvoices.slice(0, 10).map((inv: any) => (
                   <tr
                     key={inv.id}
                     onClick={() => navigate(`/dashboard/invoices/${inv.id}`)}
@@ -437,6 +600,175 @@ export default function UnitDetail() {
               </tbody>
             </table>
           )}
+        </div>
+      </motion.div>
+
+      {/* Analytics Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+      >
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 bg-blue-50 rounded-lg">
+            <BarChart3 className="w-5 h-5 text-blue-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Analytics</h3>
+            <p className="text-sm text-gray-500">Payment trends and invoice breakdown</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Invoice Payment Timeline - 2/3 width */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Invoice Payment Timeline</h3>
+                <p className="text-sm text-gray-500">Invoiced vs paid amounts over time</p>
+              </div>
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-blue-500" />
+                  <span className="text-gray-600">Invoiced</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                  <span className="text-gray-600">Paid</span>
+                </div>
+              </div>
+            </div>
+            <div className="h-72">
+              {loadingInvoices ? (
+                <ChartSkeleton />
+              ) : monthlyData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-sm text-gray-400">
+                  No invoice data available to display
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={monthlyData}>
+                    <defs>
+                      <linearGradient id="gradientInvoiced" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="gradientPaid" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <XAxis
+                      dataKey="month"
+                      stroke="#94a3b8"
+                      fontSize={12}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      stroke="#94a3b8"
+                      fontSize={12}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                    />
+                    <RechartsTooltip
+                      formatter={(value: number) => formatCurrency(value)}
+                      contentStyle={{
+                        borderRadius: '12px',
+                        border: '1px solid #e2e8f0',
+                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="invoiced"
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                      fill="url(#gradientInvoiced)"
+                      name="Invoiced"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="paid"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      fill="url(#gradientPaid)"
+                      name="Paid"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+          {/* Invoice Status Breakdown - 1/3 width */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Invoice Status</h3>
+              <p className="text-sm text-gray-500">Breakdown by status</p>
+            </div>
+            <div className="h-48 relative">
+              {loadingInvoices ? (
+                <div className="h-full flex items-center justify-center">
+                  <div className="h-36 w-36 rounded-full border-8 border-gray-200 animate-pulse" />
+                </div>
+              ) : statusData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-sm text-gray-400">
+                  No invoice data available
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={statusData}
+                      innerRadius={40}
+                      outerRadius={65}
+                      paddingAngle={4}
+                      dataKey="value"
+                    >
+                      {statusData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip
+                      contentStyle={{
+                        borderRadius: '12px',
+                        border: '1px solid #e2e8f0',
+                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+              {!loadingInvoices && statusData.length > 0 && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-gray-900">{invoices.length}</p>
+                    <p className="text-xs text-gray-500">Total</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4">
+              {loadingInvoices ? (
+                <div className="flex gap-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-4 w-16 bg-gray-200 rounded animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+                statusData.map((entry) => (
+                  <div key={entry.name} className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
+                    <span className="text-sm text-gray-600">{entry.name}</span>
+                    <span className="text-sm font-semibold text-gray-900">{entry.value}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       </motion.div>
     </div>
