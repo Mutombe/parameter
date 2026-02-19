@@ -68,6 +68,13 @@ class Landlord(models.Model):
         verbose_name = 'Landlord'
         verbose_name_plural = 'Landlords'
         ordering = ['name']
+        indexes = [
+            models.Index(fields=['name']),
+            models.Index(fields=['is_active']),
+            models.Index(fields=['landlord_type', 'is_active']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['email']),
+        ]
 
     def __str__(self):
         return f'{self.code} - {self.name}'
@@ -138,6 +145,13 @@ class Property(models.Model):
         verbose_name = 'Property'
         verbose_name_plural = 'Properties'
         ordering = ['name']
+        indexes = [
+            models.Index(fields=['name']),
+            models.Index(fields=['landlord', 'is_active']),
+            models.Index(fields=['property_type', 'is_active']),
+            models.Index(fields=['city']),
+            models.Index(fields=['created_at']),
+        ]
 
     def __str__(self):
         return f'{self.code} - {self.name}'
@@ -309,6 +323,11 @@ class Unit(models.Model):
         verbose_name_plural = 'Units'
         ordering = ['property', 'unit_number']
         unique_together = ['property', 'unit_number']
+        indexes = [
+            models.Index(fields=['property', 'is_occupied']),
+            models.Index(fields=['is_occupied', 'is_active']),
+            models.Index(fields=['unit_type']),
+        ]
 
     def __str__(self):
         return f'{self.property.name} - Unit {self.unit_number}'
@@ -401,6 +420,14 @@ class RentalTenant(models.Model):
         verbose_name = 'Rental Tenant'
         verbose_name_plural = 'Rental Tenants'
         ordering = ['name']
+        indexes = [
+            models.Index(fields=['name']),
+            models.Index(fields=['is_active']),
+            models.Index(fields=['tenant_type', 'is_active']),
+            models.Index(fields=['account_type']),
+            models.Index(fields=['email']),
+            models.Index(fields=['created_at']),
+        ]
 
     def __str__(self):
         return f'{self.code} - {self.name}'

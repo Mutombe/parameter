@@ -30,9 +30,15 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         'tenant', 'unit', 'lease', 'unit__property', 'created_by', 'journal'
     ).all()
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['tenant', 'unit', 'invoice_type', 'status', 'date', 'currency']
-    search_fields = ['invoice_number', 'tenant__name', 'description']
-    ordering_fields = ['date', 'due_date', 'total_amount']
+    filterset_fields = [
+        'tenant', 'unit', 'unit__property', 'lease', 'invoice_type',
+        'status', 'date', 'due_date', 'currency', 'property',
+    ]
+    search_fields = [
+        'invoice_number', 'tenant__name', 'tenant__code',
+        'description', 'unit__unit_number', 'unit__property__name',
+    ]
+    ordering_fields = ['date', 'due_date', 'total_amount', 'amount_paid', 'balance', 'created_at', 'invoice_number']
     ordering = ['-date', '-created_at']
 
     def get_serializer_class(self):
@@ -589,9 +595,15 @@ class ReceiptViewSet(viewsets.ModelViewSet):
         'tenant', 'invoice', 'invoice__unit', 'created_by', 'journal'
     ).all()
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['tenant', 'invoice', 'payment_method', 'date', 'currency']
-    search_fields = ['receipt_number', 'tenant__name', 'reference']
-    ordering_fields = ['date', 'amount']
+    filterset_fields = [
+        'tenant', 'invoice', 'invoice__unit', 'invoice__unit__property',
+        'payment_method', 'date', 'currency', 'bank_account',
+    ]
+    search_fields = [
+        'receipt_number', 'tenant__name', 'tenant__code',
+        'reference', 'description', 'bank_name',
+    ]
+    ordering_fields = ['date', 'amount', 'created_at', 'receipt_number']
     ordering = ['-date', '-created_at']
 
     def get_serializer_class(self):
@@ -699,9 +711,9 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     ).all()
     serializer_class = ExpenseSerializer
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['expense_type', 'status', 'date', 'currency']
-    search_fields = ['expense_number', 'payee_name', 'description']
-    ordering_fields = ['date', 'amount']
+    filterset_fields = ['expense_type', 'status', 'date', 'currency', 'payee_type']
+    search_fields = ['expense_number', 'payee_name', 'description', 'reference']
+    ordering_fields = ['date', 'amount', 'created_at', 'expense_number', 'status']
     ordering = ['-date', '-created_at']
 
     def perform_create(self, serializer):
@@ -831,7 +843,9 @@ class LatePenaltyConfigViewSet(viewsets.ModelViewSet):
     queryset = LatePenaltyConfig.objects.select_related('property', 'tenant').all()
     serializer_class = LatePenaltyConfigSerializer
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['property', 'tenant', 'penalty_type', 'is_enabled']
+    filterset_fields = ['property', 'tenant', 'penalty_type', 'is_enabled', 'currency']
+    search_fields = ['property__name', 'tenant__name', 'tenant__code']
+    ordering_fields = ['created_at', 'percentage_rate', 'flat_fee']
     ordering = ['-created_at']
 
     @action(detail=False, methods=['get'])
@@ -913,7 +927,9 @@ class LatePenaltyExclusionViewSet(viewsets.ModelViewSet):
     queryset = LatePenaltyExclusion.objects.select_related('tenant', 'excluded_by').all()
     serializer_class = LatePenaltyExclusionSerializer
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['tenant']
+    filterset_fields = ['tenant', 'excluded_by']
+    search_fields = ['tenant__name', 'tenant__code', 'reason']
+    ordering_fields = ['created_at', 'excluded_until']
     ordering = ['-created_at']
 
     def perform_create(self, serializer):

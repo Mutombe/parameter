@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Search, CreditCard, Plus, Send, Loader2, Eye, X, User, FileText, Download, Printer, BookOpen } from 'lucide-react'
 import { receiptApi, tenantApi, invoiceApi } from '../../services/api'
@@ -9,6 +9,7 @@ import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, Se
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
+import { usePrefetch } from '../../hooks/usePrefetch'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { Skeleton, OptimisticItemSkeleton } from '../../components/ui/Skeleton'
 import { showToast, parseApiError } from '../../lib/toast'
@@ -48,6 +49,7 @@ export default function Receipts() {
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null)
   const [postingId, setPostingId] = useState<number | null>(null)
   const selection = useSelection<number | string>({ clearOnChange: [debouncedSearch] })
+  const prefetch = usePrefetch()
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   useHotkeys([
@@ -68,6 +70,7 @@ export default function Receipts() {
   const { data: receiptsData, isLoading } = useQuery({
     queryKey: ['receipts', debouncedSearch],
     queryFn: () => receiptApi.list({ search: debouncedSearch }).then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   // Tenants dropdown - loads when form opens
@@ -412,6 +415,7 @@ export default function Receipts() {
                     {receipt.tenant ? (
                       <button
                         onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${receipt.tenant}`) }}
+                        onMouseEnter={() => prefetch(`/dashboard/tenants/${receipt.tenant}`)}
                         className="text-primary-600 hover:text-primary-700 hover:underline"
                       >
                         {receipt.tenant_name}
@@ -459,6 +463,7 @@ export default function Receipts() {
                     {!receipt._isOptimistic && (
                       <button
                         onClick={() => handleViewDetails(receipt)}
+                        onMouseEnter={() => prefetch(`/dashboard/receipts/${receipt.id}`)}
                         className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                         title="View Details"
                       >

@@ -40,6 +40,7 @@ import { showToast, parseApiError } from '../../lib/toast'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
 import { usePagination } from '../../hooks/usePagination'
+import { usePrefetch } from '../../hooks/usePrefetch'
 
 const container = {
   hidden: { opacity: 0 },
@@ -130,6 +131,7 @@ export default function LeaseDetail() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const leaseId = Number(id)
+  const prefetch = usePrefetch()
 
   const [showActivateDialog, setShowActivateDialog] = useState(false)
   const [showTerminateDialog, setShowTerminateDialog] = useState(false)
@@ -376,6 +378,7 @@ export default function LeaseDetail() {
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Tenant</p>
               <button
                 onClick={() => lease?.tenant && navigate(`/dashboard/tenants/${lease.tenant}`)}
+                onMouseEnter={() => lease?.tenant && prefetch(`/dashboard/tenants/${lease.tenant}`)}
                 className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
               >
                 <TbUserSquareRounded className="w-3.5 h-3.5" />
@@ -389,6 +392,7 @@ export default function LeaseDetail() {
               {lease?.unit ? (
                 <button
                   onClick={() => navigate(`/dashboard/units/${lease.unit}`)}
+                  onMouseEnter={() => prefetch(`/dashboard/units/${lease.unit}`)}
                   className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
                 >
                   <Home className="w-3.5 h-3.5" />
@@ -408,6 +412,7 @@ export default function LeaseDetail() {
               {lease?.property_id ? (
                 <button
                   onClick={() => navigate(`/dashboard/properties/${lease.property_id}`)}
+                  onMouseEnter={() => prefetch(`/dashboard/properties/${lease.property_id}`)}
                   className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
                 >
                   <PiBuildingApartmentLight className="w-3.5 h-3.5" />
@@ -427,6 +432,7 @@ export default function LeaseDetail() {
               {lease?.landlord_id ? (
                 <button
                   onClick={() => navigate(`/dashboard/landlords/${lease.landlord_id}`)}
+                  onMouseEnter={() => prefetch(`/dashboard/landlords/${lease.landlord_id}`)}
                   className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
                 >
                   <TbUserSquareRounded className="w-3.5 h-3.5" />
@@ -628,6 +634,7 @@ export default function LeaseDetail() {
                   <tr
                     key={inv.id}
                     onClick={() => navigate(`/dashboard/invoices/${inv.id}`)}
+                    onMouseEnter={() => prefetch(`/dashboard/invoices/${inv.id}`)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">{inv.invoice_number}</td>

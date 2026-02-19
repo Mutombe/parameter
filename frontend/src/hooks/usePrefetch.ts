@@ -10,6 +10,9 @@ import {
   receiptApi,
   expenseApi,
   reportsApi,
+  journalApi,
+  accountApi,
+  bankAccountApi,
 } from '../services/api'
 
 const PREFETCH_STALE_TIME = 5 * 60 * 1000 // 5 minutes
@@ -22,13 +25,13 @@ const prefetchMap: Record<string, () => { queryKey: unknown[]; queryFn: () => Pr
     { queryKey: ['dashboard-stats'], queryFn: () => reportsApi.dashboard().then(r => r.data) },
   ],
   '/dashboard/properties': () => [
-    { queryKey: ['properties', '', 1], queryFn: () => propertyApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data) },
+    { queryKey: ['properties', '', 1], queryFn: () => propertyApi.list({ search: '', page: 1, page_size: 12 }).then(r => r.data) },
   ],
   '/dashboard/landlords': () => [
-    { queryKey: ['landlords', '', 1], queryFn: () => landlordApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data) },
+    { queryKey: ['landlords', '', 1], queryFn: () => landlordApi.list({ search: '', page: 1, page_size: 12 }).then(r => r.data) },
   ],
   '/dashboard/tenants': () => [
-    { queryKey: ['tenants', '', 1, '', ''], queryFn: () => tenantApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data) },
+    { queryKey: ['tenants', '', 1, '', ''], queryFn: () => tenantApi.list({ search: '', page: 1, page_size: 12 }).then(r => r.data) },
   ],
   '/dashboard/units': () => [
     { queryKey: ['units', '', 'all'], queryFn: () => unitApi.list({ search: '' }).then(r => r.data.results || r.data) },
@@ -44,6 +47,24 @@ const prefetchMap: Record<string, () => { queryKey: unknown[]; queryFn: () => Pr
   ],
   '/dashboard/expenses': () => [
     { queryKey: ['expenses', '', '', ''], queryFn: () => expenseApi.list({}).then(r => r.data.results || r.data) },
+  ],
+  '/dashboard/reports': () => [
+    { queryKey: ['trial-balance'], queryFn: () => reportsApi.trialBalance().then(r => r.data) },
+  ],
+  '/dashboard/reports/aged-analysis': () => {
+    const today = new Date().toISOString().split('T')[0]
+    return [
+      { queryKey: ['aged-analysis', today, '', ''], queryFn: () => reportsApi.agedAnalysis({ as_of_date: today }).then(r => r.data) },
+    ]
+  },
+  '/dashboard/accounting/journals': () => [
+    { queryKey: ['journals', '', ''], queryFn: () => journalApi.list({}).then(r => r.data.results || r.data) },
+  ],
+  '/dashboard/accounting/chart-of-accounts': () => [
+    { queryKey: ['accounts'], queryFn: () => accountApi.list().then(r => r.data.results || r.data) },
+  ],
+  '/dashboard/accounting/bank-accounts': () => [
+    { queryKey: ['bank-accounts'], queryFn: () => bankAccountApi.list().then(r => r.data.results || r.data) },
   ],
 }
 

@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   FileText,
   Plus,
@@ -35,6 +35,7 @@ import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
+import { usePrefetch } from '../../hooks/usePrefetch'
 interface Lease {
   id: number
   lease_number: string
@@ -143,6 +144,7 @@ export default function Leases() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [documentFile, setDocumentFile] = useState<File | null>(null)
   const selection = useSelection<number>({ clearOnChange: [debouncedSearch, statusFilter] })
+  const prefetch = usePrefetch()
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   useHotkeys([
@@ -172,6 +174,7 @@ export default function Leases() {
       if (statusFilter) params.status = statusFilter
       return leaseApi.list(params).then(r => r.data.results || r.data)
     },
+    placeholderData: keepPreviousData,
   })
 
   const { data: tenants, isLoading: tenantsLoading } = useQuery({
@@ -689,6 +692,7 @@ export default function Leases() {
                         {lease.tenant ? (
                           <button
                             onClick={() => navigate(`/dashboard/tenants/${lease.tenant}`)}
+                            onMouseEnter={() => prefetch(`/dashboard/tenants/${lease.tenant}`)}
                             className="text-primary-600 hover:text-primary-700 hover:underline"
                           >
                             {lease.tenant_name}
@@ -704,6 +708,7 @@ export default function Leases() {
                         {lease.unit ? (
                           <button
                             onClick={() => navigate(`/dashboard/units/${lease.unit}`)}
+                            onMouseEnter={() => prefetch(`/dashboard/units/${lease.unit}`)}
                             className="text-primary-600 hover:text-primary-700 hover:underline"
                           >
                             {lease.unit_display}
@@ -753,6 +758,7 @@ export default function Leases() {
                       <div className="flex items-center justify-end gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
+                          onMouseEnter={() => prefetch(`/dashboard/leases/${lease.id}`)}
                           className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
                           title="View details"
                         >

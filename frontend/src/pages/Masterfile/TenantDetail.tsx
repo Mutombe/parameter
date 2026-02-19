@@ -33,6 +33,7 @@ import { Button, TableFilter } from '../../components/ui'
 import { useAuthStore } from '../../stores/authStore'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { usePagination } from '../../hooks/usePagination'
+import { usePrefetch } from '../../hooks/usePrefetch'
 
 const container = {
   hidden: { opacity: 0 },
@@ -129,6 +130,7 @@ export default function TenantDetail() {
   const navigate = useNavigate()
   const { startImpersonation } = useAuthStore()
   const tenantId = Number(id)
+  const prefetch = usePrefetch()
 
   // 1. Tenant profile
   const { data: tenant, isLoading: loadingProfile } = useQuery({
@@ -401,6 +403,7 @@ export default function TenantDetail() {
                     {activeLeases[0].unit_id ? (
                       <button
                         onClick={() => navigate(`/dashboard/units/${activeLeases[0].unit_id}`)}
+                        onMouseEnter={() => prefetch(`/dashboard/units/${activeLeases[0].unit_id}`)}
                         className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
                       >
                         <Home className="w-3.5 h-3.5" />
@@ -415,6 +418,7 @@ export default function TenantDetail() {
                     {activeLeases[0].property_id ? (
                       <button
                         onClick={() => navigate(`/dashboard/properties/${activeLeases[0].property_id}`)}
+                        onMouseEnter={() => prefetch(`/dashboard/properties/${activeLeases[0].property_id}`)}
                         className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
                       >
                         <FileText className="w-3.5 h-3.5" />
@@ -532,6 +536,7 @@ export default function TenantDetail() {
                   <tr
                     key={lease.id}
                     onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
+                    onMouseEnter={() => prefetch(`/dashboard/leases/${lease.id}`)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >
                     <td className="px-6 py-4 text-sm font-medium">
@@ -668,6 +673,7 @@ export default function TenantDetail() {
                   <tr
                     key={inv.id}
                     onClick={() => navigate(`/dashboard/invoices/${inv.id}`)}
+                    onMouseEnter={() => prefetch(`/dashboard/invoices/${inv.id}`)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >
                     <td className="px-6 py-4 text-sm font-medium">
@@ -789,11 +795,11 @@ export default function TenantDetail() {
                     <td className="px-6 py-4 text-sm text-gray-600">{formatDate(entry.date)}</td>
                     <td className="px-6 py-4 text-sm font-medium">
                       {entry.invoice_id ? (
-                        <button onClick={() => navigate(`/dashboard/invoices/${entry.invoice_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                        <button onClick={() => navigate(`/dashboard/invoices/${entry.invoice_id}`)} onMouseEnter={() => prefetch(`/dashboard/invoices/${entry.invoice_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
                           {entry.reference || entry.ref || '-'}
                         </button>
                       ) : entry.receipt_id ? (
-                        <button onClick={() => navigate(`/dashboard/receipts/${entry.receipt_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                        <button onClick={() => navigate(`/dashboard/receipts/${entry.receipt_id}`)} onMouseEnter={() => prefetch(`/dashboard/receipts/${entry.receipt_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
                           {entry.reference || entry.ref || '-'}
                         </button>
                       ) : (

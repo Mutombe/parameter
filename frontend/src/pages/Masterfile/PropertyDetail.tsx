@@ -33,6 +33,7 @@ import { showToast, parseApiError } from '../../lib/toast'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { usePagination } from '../../hooks/usePagination'
+import { usePrefetch } from '../../hooks/usePrefetch'
 
 const container = {
   hidden: { opacity: 0 },
@@ -142,6 +143,7 @@ export default function PropertyDetail() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const propertyId = Number(id)
+  const prefetch = usePrefetch()
 
   // Edit modal state
   const [showEditModal, setShowEditModal] = useState(false)
@@ -463,6 +465,7 @@ export default function PropertyDetail() {
               <div className="space-y-1.5">
                 <button
                   onClick={() => property?.landlord && navigate(`/dashboard/landlords/${property.landlord}`)}
+                  onMouseEnter={() => property?.landlord && prefetch(`/dashboard/landlords/${property.landlord}`)}
                   className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
                 >
                   <TbUserSquareRounded className="w-3.5 h-3.5" />
@@ -571,7 +574,7 @@ export default function PropertyDetail() {
                 {paginatedUnits.map((unit: any) => (
                   <tr key={unit.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-sm font-medium">
-                      <button onClick={() => navigate(`/dashboard/units/${unit.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                      <button onClick={() => navigate(`/dashboard/units/${unit.id}`)} onMouseEnter={() => prefetch(`/dashboard/units/${unit.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
                         {unit.unit_number}
                       </button>
                     </td>
@@ -588,6 +591,7 @@ export default function PropertyDetail() {
                       {unit.current_tenant ? (
                         <button
                           onClick={() => unit.current_tenant?.id && navigate(`/dashboard/tenants/${unit.current_tenant.id}`)}
+                          onMouseEnter={() => unit.current_tenant?.id && prefetch(`/dashboard/tenants/${unit.current_tenant.id}`)}
                           className="text-primary-600 hover:text-primary-700"
                         >
                           {unit.current_tenant.name}
@@ -695,6 +699,7 @@ export default function PropertyDetail() {
                       {charge.lease_id ? (
                         <button
                           onClick={() => navigate(`/dashboard/leases/${charge.lease_id}`)}
+                          onMouseEnter={() => prefetch(`/dashboard/leases/${charge.lease_id}`)}
                           className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer"
                         >
                           {charge.lease_number || `#${charge.lease_id}`}
@@ -705,7 +710,7 @@ export default function PropertyDetail() {
                     </td>
                     <td className="px-6 py-4 text-sm font-medium">
                       {charge.tenant_id ? (
-                        <button onClick={() => navigate(`/dashboard/tenants/${charge.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer">
+                        <button onClick={() => navigate(`/dashboard/tenants/${charge.tenant_id}`)} onMouseEnter={() => prefetch(`/dashboard/tenants/${charge.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer">
                           {charge.tenant_name || charge.tenant}
                         </button>
                       ) : (
@@ -714,7 +719,7 @@ export default function PropertyDetail() {
                     </td>
                     <td className="px-6 py-4 text-sm">
                       {charge.unit_id ? (
-                        <button onClick={() => navigate(`/dashboard/units/${charge.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer">
+                        <button onClick={() => navigate(`/dashboard/units/${charge.unit_id}`)} onMouseEnter={() => prefetch(`/dashboard/units/${charge.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer">
                           {charge.unit_name || charge.unit}
                         </button>
                       ) : (

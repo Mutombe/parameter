@@ -38,6 +38,7 @@ import { Button, TableFilter } from '../../components/ui'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
 import { usePagination } from '../../hooks/usePagination'
+import { usePrefetch } from '../../hooks/usePrefetch'
 
 const container = {
   hidden: { opacity: 0 },
@@ -153,6 +154,7 @@ export default function UnitDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const unitId = Number(id)
+  const prefetch = usePrefetch()
 
   const { data: unit, isLoading: loadingUnit } = useQuery({
     queryKey: ['unit', unitId],
@@ -333,6 +335,7 @@ export default function UnitDetail() {
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Property</p>
               <button
                 onClick={() => unit?.property && navigate(`/dashboard/properties/${unit.property}`)}
+                onMouseEnter={() => unit?.property && prefetch(`/dashboard/properties/${unit.property}`)}
                 className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
               >
                 <PiBuildingApartmentLight className="w-3.5 h-3.5" />
@@ -385,6 +388,7 @@ export default function UnitDetail() {
               {unit?.current_tenant ? (
                 <button
                   onClick={() => navigate(`/dashboard/tenants/${unit.current_tenant.id}`)}
+                  onMouseEnter={() => prefetch(`/dashboard/tenants/${unit.current_tenant.id}`)}
                   className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
                 >
                   <TbUserSquareRounded className="w-3.5 h-3.5" />
@@ -480,6 +484,7 @@ export default function UnitDetail() {
                   <tr
                     key={lease.id}
                     onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
+                    onMouseEnter={() => prefetch(`/dashboard/leases/${lease.id}`)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >
                     <td className="px-6 py-4 text-sm font-medium">
@@ -492,7 +497,7 @@ export default function UnitDetail() {
                     </td>
                     <td className="px-6 py-4 text-sm">
                       {lease.tenant ? (
-                        <button onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${lease.tenant}`) }} className="text-primary-600 hover:text-primary-700 hover:underline">
+                        <button onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${lease.tenant}`) }} onMouseEnter={() => prefetch(`/dashboard/tenants/${lease.tenant}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
                           {lease.tenant_name}
                         </button>
                       ) : (
@@ -614,6 +619,7 @@ export default function UnitDetail() {
                   <tr
                     key={inv.id}
                     onClick={() => navigate(`/dashboard/invoices/${inv.id}`)}
+                    onMouseEnter={() => prefetch(`/dashboard/invoices/${inv.id}`)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >
                     <td className="px-6 py-4 text-sm font-medium">

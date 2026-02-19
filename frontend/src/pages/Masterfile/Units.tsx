@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   DoorOpen,
   Plus,
@@ -31,6 +31,7 @@ import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
+import { usePrefetch } from '../../hooks/usePrefetch'
 
 interface Unit {
   id: number
@@ -143,6 +144,7 @@ export default function Units() {
     is_active: true,
   })
   const selection = useSelection<number>({ clearOnChange: [debouncedSearch, filter] })
+  const prefetch = usePrefetch()
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   useHotkeys([
@@ -159,6 +161,7 @@ export default function Units() {
       if (filter === 'vacant') params.is_occupied = false
       return unitApi.list(params).then(r => r.data.results || r.data)
     },
+    placeholderData: keepPreviousData,
   })
 
   const { data: properties, isLoading: propertiesLoading } = useQuery({
@@ -546,6 +549,7 @@ export default function Units() {
                         {unit.property ? (
                           <button
                             onClick={() => navigate(`/dashboard/properties/${unit.property}`)}
+                            onMouseEnter={() => prefetch(`/dashboard/properties/${unit.property}`)}
                             className="text-primary-600 hover:text-primary-700 hover:underline"
                           >
                             {unit.property_name}
@@ -594,6 +598,7 @@ export default function Units() {
                           <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
                           <button
                             onClick={() => navigate(`/dashboard/tenants/${unit.current_tenant!.id}`)}
+                            onMouseEnter={() => prefetch(`/dashboard/tenants/${unit.current_tenant!.id}`)}
                             className="text-primary-600 hover:text-primary-700 hover:underline"
                           >
                             {unit.current_tenant.name}
@@ -607,6 +612,7 @@ export default function Units() {
                       <div className="flex items-center justify-end gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => navigate(`/dashboard/units/${unit.id}`)}
+                          onMouseEnter={() => prefetch(`/dashboard/units/${unit.id}`)}
                           className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
                           title="View details"
                         >

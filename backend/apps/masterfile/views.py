@@ -19,9 +19,9 @@ class LandlordViewSet(viewsets.ModelViewSet):
     queryset = Landlord.objects.prefetch_related('properties', 'properties__units').all()
     serializer_class = LandlordSerializer
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['landlord_type', 'is_active', 'preferred_currency']
-    search_fields = ['code', 'name', 'email', 'phone']
-    ordering_fields = ['name', 'created_at']
+    filterset_fields = ['landlord_type', 'is_active', 'preferred_currency', 'payment_frequency', 'vat_registered']
+    search_fields = ['code', 'name', 'email', 'phone', 'address', 'bank_name', 'tax_id']
+    ordering_fields = ['name', 'created_at', 'commission_rate', 'code']
     ordering = ['-created_at']  # Default ordering
 
     @action(detail=True, methods=['get'])
@@ -53,9 +53,9 @@ class PropertyViewSet(viewsets.ModelViewSet):
     """CRUD for Properties."""
     queryset = Property.objects.select_related('landlord').prefetch_related('units', 'managers__user').all()
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['landlord', 'property_type', 'city', 'is_active']
-    search_fields = ['code', 'name', 'address', 'city']
-    ordering_fields = ['name', 'created_at']
+    filterset_fields = ['landlord', 'property_type', 'city', 'is_active', 'country']
+    search_fields = ['code', 'name', 'address', 'city', 'suburb', 'landlord__name', 'landlord__code']
+    ordering_fields = ['name', 'created_at', 'code', 'city', 'total_units', 'property_type']
     ordering = ['-created_at']
 
     def get_serializer_class(self):
@@ -165,9 +165,9 @@ class UnitViewSet(viewsets.ModelViewSet):
     queryset = Unit.objects.select_related('property', 'property__landlord').prefetch_related('leases', 'leases__tenant').all()
     serializer_class = UnitSerializer
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['property', 'unit_type', 'is_occupied', 'is_active', 'currency']
-    search_fields = ['code', 'unit_number']
-    ordering_fields = ['unit_number', 'rental_amount']
+    filterset_fields = ['property', 'property__landlord', 'unit_type', 'is_occupied', 'is_active', 'currency']
+    search_fields = ['code', 'unit_number', 'property__name', 'property__code']
+    ordering_fields = ['unit_number', 'rental_amount', 'created_at', 'floor', 'size_sqm']
     ordering = ['unit_number']
 
     @action(detail=False, methods=['get'])
@@ -195,9 +195,9 @@ class UnitViewSet(viewsets.ModelViewSet):
 class RentalTenantViewSet(viewsets.ModelViewSet):
     """CRUD for Rental Tenants."""
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['tenant_type', 'is_active']
-    search_fields = ['code', 'name', 'email', 'phone', 'id_number']
-    ordering_fields = ['name', 'created_at']
+    filterset_fields = ['tenant_type', 'is_active', 'account_type', 'unit', 'unit__property', 'id_type']
+    search_fields = ['code', 'name', 'email', 'phone', 'id_number', 'employer_name', 'occupation']
+    ordering_fields = ['name', 'created_at', 'code', 'email']
     ordering = ['-created_at']
 
     def get_queryset(self):
@@ -317,9 +317,9 @@ class LeaseAgreementViewSet(viewsets.ModelViewSet):
     serializer_class = LeaseAgreementSerializer
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-    filterset_fields = ['tenant', 'unit', 'status']
-    search_fields = ['lease_number', 'tenant__name', 'unit__unit_number']
-    ordering_fields = ['start_date', 'end_date', 'created_at']
+    filterset_fields = ['tenant', 'unit', 'unit__property', 'status', 'lease_type', 'currency']
+    search_fields = ['lease_number', 'tenant__name', 'tenant__code', 'unit__unit_number', 'unit__property__name']
+    ordering_fields = ['start_date', 'end_date', 'created_at', 'monthly_rent', 'lease_number']
     ordering = ['-created_at']
 
     def perform_create(self, serializer):
@@ -585,8 +585,9 @@ class PropertyManagerViewSet(viewsets.ModelViewSet):
     ).all()
     serializer_class = PropertyManagerSerializer
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['property', 'user', 'is_primary']
-    search_fields = ['user__first_name', 'user__last_name', 'user__email', 'property__name']
+    filterset_fields = ['property', 'property__landlord', 'user', 'is_primary']
+    search_fields = ['user__first_name', 'user__last_name', 'user__email', 'property__name', 'property__code']
+    ordering_fields = ['assigned_at', 'is_primary', 'property__name']
     ordering = ['-is_primary', 'assigned_at']
 
     def perform_create(self, serializer):

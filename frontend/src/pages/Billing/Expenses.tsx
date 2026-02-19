@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Receipt,
@@ -166,7 +166,8 @@ export default function Expenses() {
       if (debouncedSearch) params.search = debouncedSearch
       const response = await expenseApi.list(params)
       return response.data.results || response.data
-    }
+    },
+    placeholderData: keepPreviousData,
   })
 
   // Fetch landlords for payee selection

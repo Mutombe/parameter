@@ -114,6 +114,9 @@ class Invoice(models.Model):
             models.Index(fields=['tenant']),
             models.Index(fields=['invoice_type']),
             models.Index(fields=['date']),
+            models.Index(fields=['currency']),
+            models.Index(fields=['property']),
+            models.Index(fields=['status', 'balance']),
         ]
 
     def __str__(self):
@@ -285,6 +288,8 @@ class Receipt(models.Model):
             models.Index(fields=['tenant']),
             models.Index(fields=['invoice']),
             models.Index(fields=['date']),
+            models.Index(fields=['payment_method']),
+            models.Index(fields=['currency']),
         ]
 
     def __str__(self):
@@ -673,6 +678,13 @@ class Expense(models.Model):
         verbose_name = 'Expense'
         verbose_name_plural = 'Expenses'
         ordering = ['-date', '-created_at']
+        indexes = [
+            models.Index(fields=['status', 'date']),
+            models.Index(fields=['expense_type']),
+            models.Index(fields=['date']),
+            models.Index(fields=['payee_type', 'payee_id']),
+            models.Index(fields=['currency']),
+        ]
 
     def __str__(self):
         return f'{self.expense_number} - {self.payee_name}'

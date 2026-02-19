@@ -103,7 +103,10 @@ class ExchangeRateViewSet(viewsets.ModelViewSet):
     queryset = ExchangeRate.objects.all()
     serializer_class = ExchangeRateSerializer
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['from_currency', 'to_currency']
+    filterset_fields = ['from_currency', 'to_currency', 'effective_date']
+    search_fields = ['source']
+    ordering_fields = ['effective_date', 'rate']
+    ordering = ['-effective_date']
 
     @action(detail=False, methods=['get'])
     def latest(self, request):
@@ -287,6 +290,10 @@ class FiscalPeriodViewSet(viewsets.ModelViewSet):
     queryset = FiscalPeriod.objects.all()
     serializer_class = FiscalPeriodSerializer
     permission_classes = [IsAuthenticated]
+    filterset_fields = ['is_closed']
+    search_fields = ['name']
+    ordering_fields = ['start_date', 'end_date', 'name']
+    ordering = ['-start_date']
 
     @action(detail=True, methods=['post'])
     def close_period(self, request, pk=None):
@@ -635,8 +642,9 @@ class BankReconciliationViewSet(viewsets.ModelViewSet):
     ).all()
     serializer_class = BankReconciliationSerializer
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['bank_account', 'status']
-    ordering_fields = ['period_end', 'created_at']
+    filterset_fields = ['bank_account', 'bank_account__currency', 'status']
+    search_fields = ['bank_account__name', 'notes']
+    ordering_fields = ['period_end', 'period_start', 'created_at', 'statement_balance']
     ordering = ['-period_end']
 
     def perform_create(self, serializer):
@@ -828,8 +836,9 @@ class JournalReallocationViewSet(viewsets.ModelViewSet):
     ).all()
     serializer_class = JournalReallocationSerializer
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['from_account', 'to_account']
-    search_fields = ['reason']
+    filterset_fields = ['from_account', 'to_account', 'reallocated_by']
+    search_fields = ['reason', 'from_account__name', 'to_account__name', 'from_account__code', 'to_account__code']
+    ordering_fields = ['created_at', 'amount']
     ordering = ['-created_at']
 
     def get_serializer_class(self):

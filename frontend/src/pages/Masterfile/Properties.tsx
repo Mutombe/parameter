@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   Building2,
   Plus,
@@ -37,6 +37,7 @@ import PropertyForm from '../../components/forms/PropertyForm'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
+import { usePrefetch } from '../../hooks/usePrefetch'
 import { PiBuildingApartmentLight } from "react-icons/pi"
 import { TbUserSquareRounded } from "react-icons/tb"
 
@@ -128,6 +129,7 @@ export default function Properties() {
   })
 
   const selection = useSelection<number>({ clearOnChange: [debouncedSearch, typeFilter] })
+  const prefetch = usePrefetch()
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   useHotkeys([
@@ -150,6 +152,7 @@ export default function Properties() {
       page: currentPage,
       page_size: PAGE_SIZE
     }).then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   // Handle both paginated and non-paginated responses
@@ -668,6 +671,7 @@ export default function Properties() {
                     {property.landlord ? (
                       <button
                         onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/landlords/${property.landlord}`) }}
+                        onMouseEnter={() => prefetch(`/dashboard/landlords/${property.landlord}`)}
                         className="text-primary-600 hover:text-primary-700 hover:underline truncate"
                       >
                         {property.landlord_name}
@@ -723,6 +727,7 @@ export default function Properties() {
                   <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => handleViewDetails(property)}
+                      onMouseEnter={() => prefetch(`/dashboard/properties/${property.id}`)}
                       className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
                       title="View details"
                     >
@@ -817,6 +822,7 @@ export default function Properties() {
                           {selectedProperty.landlord ? (
                             <button
                               onClick={() => navigate(`/dashboard/landlords/${selectedProperty.landlord}`)}
+                              onMouseEnter={() => prefetch(`/dashboard/landlords/${selectedProperty.landlord}`)}
                               className="text-primary-600 hover:text-primary-700 hover:underline"
                             >
                               Owned by {selectedProperty.landlord_name}

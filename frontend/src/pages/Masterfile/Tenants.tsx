@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Plus, Search, Users, Phone, Mail, Trash2, Loader2, Eye, X, FileText, Receipt, Building2, Calendar, DollarSign, AlertCircle, Home, Download, Wand2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, FileSpreadsheet } from 'lucide-react'
@@ -14,6 +14,7 @@ import TenantForm from '../../components/forms/TenantForm'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
+import { usePrefetch } from '../../hooks/usePrefetch'
 import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
 
@@ -47,6 +48,7 @@ export default function Tenants() {
   const [leaseStatusFilter, setLeaseStatusFilter] = useState('')
 
   const selection = useSelection<number>({ clearOnChange: [debouncedSearch, tenantTypeFilter, leaseStatusFilter] })
+  const prefetch = usePrefetch()
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   useHotkeys([
@@ -117,6 +119,7 @@ export default function Tenants() {
       ...(tenantTypeFilter && { tenant_type: tenantTypeFilter }),
       ...(leaseStatusFilter && { lease_status: leaseStatusFilter }),
     }).then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   // Query for tenant detail
@@ -413,6 +416,7 @@ export default function Tenants() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleViewDetails(tenant.id)}
+                    onMouseEnter={() => prefetch(`/dashboard/tenants/${tenant.id}`)}
                     className="text-gray-400 hover:text-primary-600 transition-colors"
                     title="View details"
                   >
@@ -447,6 +451,7 @@ export default function Tenants() {
                   {tenant.unit_id ? (
                     <button
                       onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/units/${tenant.unit_id}`) }}
+                      onMouseEnter={() => prefetch(`/dashboard/units/${tenant.unit_id}`)}
                       className="text-blue-800 hover:underline cursor-pointer"
                     >
                       {tenant.unit_name}
@@ -661,6 +666,7 @@ export default function Tenants() {
                                     {lease.unit_id ? (
                                       <span
                                         onClick={() => navigate(`/dashboard/units/${lease.unit_id}`)}
+                                        onMouseEnter={() => prefetch(`/dashboard/units/${lease.unit_id}`)}
                                         className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer"
                                       >
                                         {lease.unit}
@@ -673,6 +679,7 @@ export default function Tenants() {
                                     {lease.property_id ? (
                                       <span
                                         onClick={() => navigate(`/dashboard/properties/${lease.property_id}`)}
+                                        onMouseEnter={() => prefetch(`/dashboard/properties/${lease.property_id}`)}
                                         className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer"
                                       >
                                         {lease.property}
@@ -684,6 +691,7 @@ export default function Tenants() {
                                     {lease.id ? (
                                       <span
                                         onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
+                                        onMouseEnter={() => prefetch(`/dashboard/leases/${lease.id}`)}
                                         className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer"
                                       >
                                         {lease.lease_number}
@@ -722,6 +730,7 @@ export default function Tenants() {
                               key={lease.id}
                               className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
                               onClick={() => lease.id && navigate(`/dashboard/leases/${lease.id}`)}
+                              onMouseEnter={() => lease.id && prefetch(`/dashboard/leases/${lease.id}`)}
                             >
                               <div className="flex items-center gap-3">
                                 <Building2 className="w-5 h-5 text-gray-400" />
@@ -730,6 +739,7 @@ export default function Tenants() {
                                     {lease.unit_id ? (
                                       <span
                                         onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/units/${lease.unit_id}`) }}
+                                        onMouseEnter={() => prefetch(`/dashboard/units/${lease.unit_id}`)}
                                         className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer"
                                       >
                                         {lease.unit}
@@ -742,6 +752,7 @@ export default function Tenants() {
                                     {lease.property_id ? (
                                       <span
                                         onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/properties/${lease.property_id}`) }}
+                                        onMouseEnter={() => prefetch(`/dashboard/properties/${lease.property_id}`)}
                                         className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer"
                                       >
                                         {lease.property}
@@ -782,6 +793,7 @@ export default function Tenants() {
                                 {invoice.id ? (
                                   <span
                                     onClick={() => navigate(`/dashboard/invoices/${invoice.id}`)}
+                                    onMouseEnter={() => prefetch(`/dashboard/invoices/${invoice.id}`)}
                                     className="text-sm font-medium text-primary-600 hover:text-primary-700 hover:underline cursor-pointer"
                                   >
                                     {invoice.invoice_number}
