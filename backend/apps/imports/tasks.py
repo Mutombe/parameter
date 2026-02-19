@@ -1,6 +1,7 @@
 """Background tasks for import processing."""
 import os
 import tempfile
+from django.db import connection
 from django.utils import timezone
 
 
@@ -10,9 +11,17 @@ def process_import_job(job_id):
 
     This function is called synchronously for now but can be
     converted to use Django-Q async_task for larger imports.
+
+    Uses the current tenant schema from the DB connection. Ensures
+    the schema stays consistent throughout processing even if
+    signal handlers or other code touches the connection.
     """
     from .models import ImportJob
     from .services import parse_file, process_import
+
+    # Capture the current schema so we can restore it after processing
+    # (entity creation signals can sometimes alter the connection state)
+    current_schema = connection.schema_name
 
     try:
         job = ImportJob.objects.get(id=job_id)
@@ -38,6 +47,10 @@ def process_import_job(job_id):
             # Process import
             success_count, error_count = process_import(job, data_frames)
 
+            # Restore schema before final save (signals may have changed it)
+            if connection.schema_name != current_schema:
+                connection.set_schema(current_schema)
+
             # Update job status
             job.status = ImportJob.Status.COMPLETED
             job.completed_at = timezone.now()
@@ -49,6 +62,13 @@ def process_import_job(job_id):
                 os.remove(tmp_path)
 
     except Exception as e:
+        # Restore schema before error save
+        try:
+            if connection.schema_name != current_schema:
+                connection.set_schema(current_schema)
+        except Exception:
+            pass
+
         job.status = ImportJob.Status.FAILED
         job.error_message = str(e)
         job.completed_at = timezone.now()

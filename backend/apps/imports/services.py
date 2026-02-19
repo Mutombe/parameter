@@ -183,8 +183,8 @@ COLUMN_ALIASES = {
     'city_town': 'city',
 
     # Type variations
-    'type': 'property_type',
     'prop_type': 'property_type',
+    'property type': 'property_type',
 
     # Currency variations
     'cur': 'currency',
@@ -586,7 +586,7 @@ def parse_file(file_path, file_name):
         df = None
         for encoding in ['utf-8-sig', 'utf-8', 'latin-1', 'cp1252']:
             try:
-                df = pd.read_csv(file_path, encoding=encoding)
+                df = pd.read_csv(file_path, encoding=encoding, on_bad_lines='skip')
                 break
             except (UnicodeDecodeError, UnicodeError):
                 continue
@@ -599,8 +599,14 @@ def parse_file(file_path, file_name):
         # Drop completely empty rows
         df = df.dropna(how='all').reset_index(drop=True)
 
+        # Store original columns before normalization (for mapping display)
+        original_columns = [str(c).strip() for c in df.columns]
+
         # Normalize columns
         df, _ = normalize_columns(df)
+
+        # Preserve original column names for later mapping display
+        df.attrs['original_columns'] = original_columns
 
         entity_type = detect_entity_type(df.columns.tolist())
         if not entity_type:
@@ -639,8 +645,14 @@ def parse_file(file_path, file_name):
             if len(df) == 0:
                 continue  # Skip empty sheets
 
+            # Store original columns before normalization
+            original_columns = [str(c).strip() for c in df.columns]
+
             # Normalize columns
             df, _ = normalize_columns(df)
+
+            # Preserve original column names for later mapping display
+            df.attrs['original_columns'] = original_columns
 
             if entity_type and entity_type in COLUMN_MAPPINGS:
                 result[entity_type] = df
@@ -760,8 +772,18 @@ def validate_entity(entity_type, df):
     errors = []
     warnings = []
 
-    # Re-normalize columns (they should already be normalized from parse, but be safe)
-    df, column_mappings = normalize_columns(df)
+    # Generate column mappings from original column names (stored by parse_file)
+    original_columns = df.attrs.get('original_columns', [])
+    column_mappings = []
+    if original_columns:
+        for orig, norm in zip(original_columns, df.columns):
+            if orig.lower().replace(' ', '_') != norm:
+                column_mappings.append({'original': orig, 'mapped_to': norm})
+
+    # Re-normalize columns (should already be normalized from parse, but be safe)
+    df, extra_mappings = normalize_columns(df)
+    if extra_mappings and not column_mappings:
+        column_mappings = extra_mappings
 
     # Check required columns exist
     missing_cols = [c for c in mapping['required'] if c not in df.columns]
@@ -1042,7 +1064,16 @@ def process_import(job, data_frames):
 
     Processing order: landlords -> properties -> tenants -> leases
     """
+    from django.db import connection as db_connection
     from .models import ImportError as ImportErrorModel
+
+    # Capture schema — entity creation signals can alter connection state
+    _schema = getattr(db_connection, 'schema_name', None)
+
+    def _ensure_schema():
+        """Restore schema if it was changed by signal handlers."""
+        if _schema and getattr(db_connection, 'schema_name', None) != _schema:
+            db_connection.set_schema(_schema)
 
     # Track created objects for reference resolution
     created_refs = {
@@ -1072,12 +1103,16 @@ def process_import(job, data_frames):
             if is_empty_row(row):
                 continue
 
+            _ensure_schema()
             job.processed_rows += 1
             job.save(update_fields=['processed_rows'])
 
             try:
                 with transaction.atomic():
                     obj = create_entity(entity_type, row, created_refs)
+
+                    # Restore schema after entity creation (signals may change it)
+                    _ensure_schema()
 
                     # Store reference for later use
                     if entity_type == 'landlords':
@@ -1096,6 +1131,7 @@ def process_import(job, data_frames):
                     total_success += 1
 
             except Exception as e:
+                _ensure_schema()
                 total_errors += 1
                 error_msg = str(e)
 
@@ -1131,6 +1167,7 @@ def process_import(job, data_frames):
                     row_data=sanitize_row_dict(row.to_dict())
                 )
 
+    _ensure_schema()
     job.success_count = total_success
     job.error_count = total_errors
     job.save()
