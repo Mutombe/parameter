@@ -433,9 +433,13 @@ class LandlordStatementView(APIView):
             invoices = invoices.filter(date__gte=start_date)
         invoices = invoices.filter(date__lte=end_date)
 
-        # Get receipts
-        total_invoiced = invoices.aggregate(Sum('total_amount'))['total_amount__sum'] or 0
-        total_collected = invoices.aggregate(Sum('amount_paid'))['amount_paid__sum'] or 0
+        # Combine invoice aggregations into a single query
+        invoice_agg = invoices.aggregate(
+            total_invoiced=Sum('total_amount'),
+            total_collected=Sum('amount_paid'),
+        )
+        total_invoiced = invoice_agg['total_invoiced'] or 0
+        total_collected = invoice_agg['total_collected'] or 0
 
         # Calculate commission
         commission_rate = landlord.commission_rate / 100

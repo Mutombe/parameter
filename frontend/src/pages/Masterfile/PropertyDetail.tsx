@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -32,6 +32,7 @@ import { Modal, Button, Input, Select, TableFilter } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
 import { TbUserSquareRounded } from 'react-icons/tb'
+import { usePagination } from '../../hooks/usePagination'
 
 const container = {
   hidden: { opacity: 0 },
@@ -358,6 +359,10 @@ export default function PropertyDetail() {
     return result
   }, [units, unitsSearch, unitsStatus])
 
+  const { paginatedData: paginatedUnits, currentPage: unitsPage, totalPages: unitsTotalPages, setCurrentPage: setUnitsPage, totalItems: unitsTotal, startIndex: unitsStart, endIndex: unitsEnd } = usePagination(filteredUnits, { pageSize: 10 })
+
+  useEffect(() => { setUnitsPage(1) }, [unitsSearch, unitsStatus])
+
   // --- Lease charges table filter state ---
   const [chargesSearch, setChargesSearch] = useState('')
 
@@ -373,6 +378,10 @@ export default function PropertyDetail() {
     }
     return result
   }, [leaseChargesTable, chargesSearch])
+
+  const { paginatedData: paginatedCharges, currentPage: chargesPage, totalPages: chargesTotalPages, setCurrentPage: setChargesPage, totalItems: chargesTotal, startIndex: chargesStart, endIndex: chargesEnd } = usePagination(filteredLeaseCharges, { pageSize: 10 })
+
+  useEffect(() => { setChargesPage(1) }, [chargesSearch])
 
   return (
     <div className="space-y-6">
@@ -559,7 +568,7 @@ export default function PropertyDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredUnits.map((unit: any) => (
+                {paginatedUnits.map((unit: any) => (
                   <tr key={unit.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-sm font-medium">
                       <button onClick={() => navigate(`/dashboard/units/${unit.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
@@ -591,6 +600,44 @@ export default function PropertyDetail() {
                 ))}
               </tbody>
             </table>
+          )}
+          {unitsTotalPages > 1 && (
+            <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+              <span className="text-sm text-gray-500">
+                Showing {unitsStart}-{unitsEnd} of {unitsTotal}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setUnitsPage(Math.max(1, unitsPage - 1))}
+                  disabled={unitsPage === 1}
+                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                {Array.from({ length: Math.min(unitsTotalPages, 5) }, (_, i) => {
+                  const page = unitsTotalPages <= 5 ? i + 1 :
+                    unitsPage <= 3 ? i + 1 :
+                    unitsPage >= unitsTotalPages - 2 ? unitsTotalPages - 4 + i :
+                    unitsPage - 2 + i
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => setUnitsPage(page)}
+                      className={`px-3 py-1 text-sm rounded-lg ${page === unitsPage ? 'bg-primary-600 text-white' : 'border border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      {page}
+                    </button>
+                  )
+                })}
+                <button
+                  onClick={() => setUnitsPage(Math.min(unitsTotalPages, unitsPage + 1))}
+                  disabled={unitsPage === unitsTotalPages}
+                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </motion.div>
@@ -642,7 +689,7 @@ export default function PropertyDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredLeaseCharges.map((charge: any, idx: number) => (
+                {paginatedCharges.map((charge: any, idx: number) => (
                   <tr key={charge.lease_id || charge.id || idx} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-sm font-medium">
                       {charge.lease_id ? (
@@ -686,6 +733,44 @@ export default function PropertyDetail() {
                 ))}
               </tbody>
             </table>
+          )}
+          {chargesTotalPages > 1 && (
+            <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+              <span className="text-sm text-gray-500">
+                Showing {chargesStart}-{chargesEnd} of {chargesTotal}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setChargesPage(Math.max(1, chargesPage - 1))}
+                  disabled={chargesPage === 1}
+                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                {Array.from({ length: Math.min(chargesTotalPages, 5) }, (_, i) => {
+                  const page = chargesTotalPages <= 5 ? i + 1 :
+                    chargesPage <= 3 ? i + 1 :
+                    chargesPage >= chargesTotalPages - 2 ? chargesTotalPages - 4 + i :
+                    chargesPage - 2 + i
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => setChargesPage(page)}
+                      className={`px-3 py-1 text-sm rounded-lg ${page === chargesPage ? 'bg-primary-600 text-white' : 'border border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      {page}
+                    </button>
+                  )
+                })}
+                <button
+                  onClick={() => setChargesPage(Math.min(chargesTotalPages, chargesPage + 1))}
+                  disabled={chargesPage === chargesTotalPages}
+                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </motion.div>

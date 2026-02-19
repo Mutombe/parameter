@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -32,6 +32,7 @@ import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { Button, TableFilter } from '../../components/ui'
 import { useAuthStore } from '../../stores/authStore'
 import { TbUserSquareRounded } from 'react-icons/tb'
+import { usePagination } from '../../hooks/usePagination'
 
 const container = {
   hidden: { opacity: 0 },
@@ -208,6 +209,10 @@ export default function TenantDetail() {
     return result
   }, [activeLeases, leasesSearch])
 
+  const { paginatedData: paginatedLeases, currentPage: leasesPage, totalPages: leasesTotalPages, setCurrentPage: setLeasesPage, totalItems: leasesTotal, startIndex: leasesStart, endIndex: leasesEnd } = usePagination(filteredActiveLeases, { pageSize: 10 })
+
+  useEffect(() => { setLeasesPage(1) }, [leasesSearch])
+
   // --- Recent Invoices filter state ---
   const [invSearch, setInvSearch] = useState('')
   const [invDateFrom, setInvDateFrom] = useState('')
@@ -240,6 +245,10 @@ export default function TenantDetail() {
     return result
   }, [recentInvoices, invSearch, invDateFrom, invDateTo, invStatus])
 
+  const { paginatedData: paginatedInvoices, currentPage: invPage, totalPages: invTotalPages, setCurrentPage: setInvPage, totalItems: invTotal, startIndex: invStart, endIndex: invEnd } = usePagination(filteredInvoices, { pageSize: 10 })
+
+  useEffect(() => { setInvPage(1) }, [invSearch, invDateFrom, invDateTo, invStatus])
+
   // --- Ledger filter state ---
   const [ledgerSearch, setLedgerSearch] = useState('')
   const [ledgerDateFrom, setLedgerDateFrom] = useState('')
@@ -262,6 +271,10 @@ export default function TenantDetail() {
     }
     return result
   }, [ledger, ledgerSearch, ledgerDateFrom, ledgerDateTo])
+
+  const { paginatedData: paginatedLedger, currentPage: ledgerPage, totalPages: ledgerTotalPages, setCurrentPage: setLedgerPage, totalItems: ledgerTotal, startIndex: ledgerStart, endIndex: ledgerEnd } = usePagination(filteredLedger, { pageSize: 10 })
+
+  useEffect(() => { setLedgerPage(1) }, [ledgerSearch, ledgerDateFrom, ledgerDateTo])
 
   // Aged chart
   const agedChartData = (() => {
@@ -515,7 +528,7 @@ export default function TenantDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredActiveLeases.map((lease: any) => (
+                {paginatedLeases.map((lease: any) => (
                   <tr
                     key={lease.id}
                     onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
@@ -539,6 +552,44 @@ export default function TenantDetail() {
                 ))}
               </tbody>
             </table>
+          )}
+          {leasesTotalPages > 1 && (
+            <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+              <span className="text-sm text-gray-500">
+                Showing {leasesStart}-{leasesEnd} of {leasesTotal}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setLeasesPage(Math.max(1, leasesPage - 1))}
+                  disabled={leasesPage === 1}
+                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                {Array.from({ length: Math.min(leasesTotalPages, 5) }, (_, i) => {
+                  const page = leasesTotalPages <= 5 ? i + 1 :
+                    leasesPage <= 3 ? i + 1 :
+                    leasesPage >= leasesTotalPages - 2 ? leasesTotalPages - 4 + i :
+                    leasesPage - 2 + i
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => setLeasesPage(page)}
+                      className={`px-3 py-1 text-sm rounded-lg ${page === leasesPage ? 'bg-primary-600 text-white' : 'border border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      {page}
+                    </button>
+                  )
+                })}
+                <button
+                  onClick={() => setLeasesPage(Math.min(leasesTotalPages, leasesPage + 1))}
+                  disabled={leasesPage === leasesTotalPages}
+                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </motion.div>
@@ -613,7 +664,7 @@ export default function TenantDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredInvoices.map((inv: any) => (
+                {paginatedInvoices.map((inv: any) => (
                   <tr
                     key={inv.id}
                     onClick={() => navigate(`/dashboard/invoices/${inv.id}`)}
@@ -649,6 +700,44 @@ export default function TenantDetail() {
                 ))}
               </tbody>
             </table>
+          )}
+          {invTotalPages > 1 && (
+            <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+              <span className="text-sm text-gray-500">
+                Showing {invStart}-{invEnd} of {invTotal}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setInvPage(Math.max(1, invPage - 1))}
+                  disabled={invPage === 1}
+                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                {Array.from({ length: Math.min(invTotalPages, 5) }, (_, i) => {
+                  const page = invTotalPages <= 5 ? i + 1 :
+                    invPage <= 3 ? i + 1 :
+                    invPage >= invTotalPages - 2 ? invTotalPages - 4 + i :
+                    invPage - 2 + i
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => setInvPage(page)}
+                      className={`px-3 py-1 text-sm rounded-lg ${page === invPage ? 'bg-primary-600 text-white' : 'border border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      {page}
+                    </button>
+                  )
+                })}
+                <button
+                  onClick={() => setInvPage(Math.min(invTotalPages, invPage + 1))}
+                  disabled={invPage === invTotalPages}
+                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </motion.div>
@@ -695,7 +784,7 @@ export default function TenantDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredLedger.map((entry: any, idx: number) => (
+                {paginatedLedger.map((entry: any, idx: number) => (
                   <tr key={entry.id || idx} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-sm text-gray-600">{formatDate(entry.date)}</td>
                     <td className="px-6 py-4 text-sm font-medium">
@@ -723,6 +812,44 @@ export default function TenantDetail() {
                 ))}
               </tbody>
             </table>
+          )}
+          {ledgerTotalPages > 1 && (
+            <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+              <span className="text-sm text-gray-500">
+                Showing {ledgerStart}-{ledgerEnd} of {ledgerTotal}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setLedgerPage(Math.max(1, ledgerPage - 1))}
+                  disabled={ledgerPage === 1}
+                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                {Array.from({ length: Math.min(ledgerTotalPages, 5) }, (_, i) => {
+                  const page = ledgerTotalPages <= 5 ? i + 1 :
+                    ledgerPage <= 3 ? i + 1 :
+                    ledgerPage >= ledgerTotalPages - 2 ? ledgerTotalPages - 4 + i :
+                    ledgerPage - 2 + i
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => setLedgerPage(page)}
+                      className={`px-3 py-1 text-sm rounded-lg ${page === ledgerPage ? 'bg-primary-600 text-white' : 'border border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      {page}
+                    </button>
+                  )
+                })}
+                <button
+                  onClick={() => setLedgerPage(Math.min(ledgerTotalPages, ledgerPage + 1))}
+                  disabled={ledgerPage === ledgerTotalPages}
+                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </motion.div>

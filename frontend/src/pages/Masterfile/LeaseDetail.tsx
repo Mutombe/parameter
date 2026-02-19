@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -39,6 +39,7 @@ import { Button, ConfirmDialog, TableFilter } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
+import { usePagination } from '../../hooks/usePagination'
 
 const container = {
   hidden: { opacity: 0 },
@@ -288,6 +289,10 @@ export default function LeaseDetail() {
     }
     return result
   }, [invoices, invSearch, invDateFrom, invDateTo, invStatus])
+
+  const { paginatedData: paginatedInvoices, currentPage: invPage, totalPages: invTotalPages, setCurrentPage: setInvPage, totalItems: invTotal, startIndex: invStart, endIndex: invEnd } = usePagination(filteredInvoices, { pageSize: 10 })
+
+  useEffect(() => { setInvPage(1) }, [invSearch, invDateFrom, invDateTo, invStatus])
 
   return (
     <div className="space-y-6">
@@ -619,7 +624,7 @@ export default function LeaseDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredInvoices.map((inv: any) => (
+                {paginatedInvoices.map((inv: any) => (
                   <tr
                     key={inv.id}
                     onClick={() => navigate(`/dashboard/invoices/${inv.id}`)}
@@ -650,6 +655,44 @@ export default function LeaseDetail() {
                 ))}
               </tbody>
             </table>
+          )}
+          {invTotalPages > 1 && (
+            <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+              <span className="text-sm text-gray-500">
+                Showing {invStart}-{invEnd} of {invTotal}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setInvPage(Math.max(1, invPage - 1))}
+                  disabled={invPage === 1}
+                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                {Array.from({ length: Math.min(invTotalPages, 5) }, (_, i) => {
+                  const page = invTotalPages <= 5 ? i + 1 :
+                    invPage <= 3 ? i + 1 :
+                    invPage >= invTotalPages - 2 ? invTotalPages - 4 + i :
+                    invPage - 2 + i
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => setInvPage(page)}
+                      className={`px-3 py-1 text-sm rounded-lg ${page === invPage ? 'bg-primary-600 text-white' : 'border border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      {page}
+                    </button>
+                  )
+                })}
+                <button
+                  onClick={() => setInvPage(Math.min(invTotalPages, invPage + 1))}
+                  disabled={invPage === invTotalPages}
+                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </motion.div>
