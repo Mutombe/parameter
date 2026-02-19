@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
-import { Plus, Search, Users, Phone, Mail, Trash2, Loader2, Eye, X, FileText, Receipt, Building2, Calendar, DollarSign, AlertCircle, Home, Download, Wand2 } from 'lucide-react'
+import { Plus, Search, Users, Phone, Mail, Trash2, Loader2, Eye, X, FileText, Receipt, Building2, Calendar, DollarSign, AlertCircle, Home, Download, Wand2, Edit2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, FileSpreadsheet } from 'lucide-react'
 import { tenantApi, unitApi, propertyApi, importsApi } from '../../services/api'
@@ -41,6 +41,7 @@ export default function Tenants() {
   const debouncedSearch = useDebounce(search, 300)
   const [currentPage, setCurrentPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
 
   // Filter state
@@ -148,41 +149,85 @@ export default function Tenants() {
   const totalCount = tenantsData?.count || tenants.length
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
+  const resetForm = () => {
+    setShowForm(false)
+    setEditingId(null)
+    setForm({
+      name: '',
+      tenant_type: 'individual',
+      account_type: 'rental',
+      email: '',
+      phone: '',
+      id_type: 'national_id',
+      id_number: '',
+      property: '',
+      unit: '',
+    })
+  }
+
+  const handleEdit = (tenant: any) => {
+    setEditingId(typeof tenant.id === 'number' ? tenant.id : null)
+    setForm({
+      name: tenant.name || '',
+      tenant_type: tenant.tenant_type || 'individual',
+      account_type: tenant.account_type || 'rental',
+      email: tenant.email || '',
+      phone: tenant.phone || '',
+      id_type: tenant.id_type || 'national_id',
+      id_number: tenant.id_number || '',
+      property: '',
+      unit: '',
+    })
+    setShowForm(true)
+  }
+
   const createMutation = useMutation({
-    mutationFn: (data: typeof form) => tenantApi.create(data),
+    mutationFn: (data: typeof form) =>
+      editingId ? tenantApi.update(editingId, data) : tenantApi.create(data),
     onMutate: async (newData) => {
-      setShowForm(false)
+      const isUpdating = !!editingId
+      resetForm()
       await queryClient.cancelQueries({ queryKey: ['tenants'] })
       const previousData = queryClient.getQueryData(['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter])
 
-      const optimistic = {
-        id: `temp-${Date.now()}`,
-        name: newData.name,
-        tenant_type: newData.tenant_type,
-        account_type: newData.account_type,
-        email: newData.email,
-        phone: newData.phone,
-        has_active_lease: false,
-        lease_count: 0,
-        unit_name: '',
-        created_at: new Date().toISOString(),
-        _isOptimistic: true,
+      if (!isUpdating) {
+        const optimistic = {
+          id: `temp-${Date.now()}`,
+          name: newData.name,
+          tenant_type: newData.tenant_type,
+          account_type: newData.account_type,
+          email: newData.email,
+          phone: newData.phone,
+          has_active_lease: false,
+          lease_count: 0,
+          unit_name: '',
+          created_at: new Date().toISOString(),
+          _isOptimistic: true,
+        }
+        queryClient.setQueryData(['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter], (old: any) => {
+          const items = old?.results || old || []
+          return old?.results ? { ...old, results: [optimistic, ...items] } : [optimistic, ...items]
+        })
+      } else {
+        queryClient.setQueryData(['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter], (old: any) => {
+          const items = old?.results || old || []
+          const updatedItems = items.map((item: any) =>
+            item.id === editingId ? { ...item, ...newData, _isUpdating: true } : item
+          )
+          return old?.results ? { ...old, results: updatedItems } : updatedItems
+        })
       }
-      queryClient.setQueryData(['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter], (old: any) => {
-        const items = old?.results || old || []
-        return old?.results ? { ...old, results: [optimistic, ...items] } : [optimistic, ...items]
-      })
-      return { previousData }
+      return { previousData, isUpdating }
     },
-    onSuccess: () => {
-      showToast.success('Tenant created')
+    onSuccess: (_, __, context) => {
+      showToast.success(context?.isUpdating ? 'Tenant updated' : 'Tenant created')
       queryClient.invalidateQueries({ queryKey: ['tenants'] })
     },
     onError: (error, _, context) => {
       if (context?.previousData) {
         queryClient.setQueryData(['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter], context.previousData)
       }
-      showToast.error(parseApiError(error, 'Failed to create tenant'))
+      showToast.error(parseApiError(error, context?.isUpdating ? 'Failed to update tenant' : 'Failed to create tenant'))
     },
   })
 
@@ -270,7 +315,7 @@ export default function Tenants() {
           <p className="text-gray-500 mt-1">Manage rental tenants</p>
         </div>
         <SplitButton
-          onClick={() => setShowForm(true)}
+          onClick={() => { resetForm(); setShowForm(true) }}
           menuItems={[
             { label: 'Chain Add', icon: Wand2, onClick: () => useChainStore.getState().startChain('tenant') },
             { label: 'Import from File', icon: Upload, onClick: () => navigate('/dashboard/data-import') },
@@ -331,12 +376,12 @@ export default function Tenants() {
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 p-6"
           >
-            <h2 className="text-lg font-semibold mb-4">Add New Tenant</h2>
+            <h2 className="text-lg font-semibold mb-4">{editingId ? 'Edit Tenant' : 'Add New Tenant'}</h2>
             <TenantForm
               initialValues={form}
               onSubmit={(data) => createMutation.mutate(data as typeof form)}
               isSubmitting={createMutation.isPending}
-              onCancel={() => setShowForm(false)}
+              onCancel={resetForm}
             />
           </motion.div>
         </div>
@@ -421,6 +466,13 @@ export default function Tenants() {
                     title="View details"
                   >
                     <Eye className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleEdit(tenant)}
+                    className="text-gray-400 hover:text-primary-600 transition-colors"
+                    title="Edit tenant"
+                  >
+                    <Edit2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleDelete(tenant.id)}
