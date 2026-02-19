@@ -479,80 +479,6 @@ export default function TenantDetail() {
         <StatCard title="Overdue Amount" value={formatCurrency(billing.overdue_amount || 0)} icon={AlertTriangle} color="orange" isLoading={loadingDetail} />
       </motion.div>
 
-      {/* Charts Row - Payment History (2/3) + Aged Outstanding (1/3) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Payment History</h3>
-              <p className="text-sm text-gray-500">Invoiced vs paid monthly</p>
-            </div>
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-blue-500" />
-                <span className="text-gray-600">Invoiced</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                <span className="text-gray-600">Paid</span>
-              </div>
-            </div>
-          </div>
-          <div className="h-72">
-            {loadingAccount ? (
-              <ChartSkeleton />
-            ) : paymentChartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-sm text-gray-400">No payment history available</div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={paymentChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
-                  <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Bar dataKey="invoiced" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Invoiced" />
-                  <Bar dataKey="paid" fill="#10b981" radius={[4, 4, 0, 0]} name="Paid" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-white rounded-xl border border-gray-200 p-6"
-        >
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-900">Aged Outstanding</h3>
-            <p className="text-sm text-gray-500">Receivables aging</p>
-          </div>
-          <div className="h-72">
-            {loadingAged ? (
-              <ChartSkeleton />
-            ) : agedChartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-sm text-gray-400">No aged data available</div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={agedChartData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                  <XAxis type="number" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
-                  <YAxis type="category" dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} width={80} />
-                  <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Bar dataKey="amount" fill="#f59e0b" radius={[0, 4, 4, 0]} name="Outstanding" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </motion.div>
-      </div>
-
       {/* Active Leases Table */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -800,6 +726,80 @@ export default function TenantDetail() {
           )}
         </div>
       </motion.div>
+
+      {/* Charts Row - Payment History (2/3) + Aged Outstanding (1/3) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Payment History</h3>
+              <p className="text-sm text-gray-500">Invoiced vs paid monthly</p>
+            </div>
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-blue-500" />
+                <span className="text-gray-600">Invoiced</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                <span className="text-gray-600">Paid</span>
+              </div>
+            </div>
+          </div>
+          <div className="h-72">
+            {loadingAccount ? (
+              <ChartSkeleton />
+            ) : paymentChartData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-sm text-gray-400">No payment history available</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={paymentChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+                  <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Bar dataKey="invoiced" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Invoiced" />
+                  <Bar dataKey="paid" fill="#10b981" radius={[4, 4, 0, 0]} name="Paid" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="bg-white rounded-xl border border-gray-200 p-6"
+        >
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold text-gray-900">Aged Outstanding</h3>
+            <p className="text-sm text-gray-500">Receivables aging</p>
+          </div>
+          <div className="h-72">
+            {loadingAged ? (
+              <ChartSkeleton />
+            ) : agedChartData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-sm text-gray-400">No aged data available</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={agedChartData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                  <XAxis type="number" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+                  <YAxis type="category" dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} width={80} />
+                  <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Bar dataKey="amount" fill="#f59e0b" radius={[0, 4, 4, 0]} name="Outstanding" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </motion.div>
+      </div>
     </div>
   )
 }

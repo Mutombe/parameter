@@ -618,258 +618,6 @@ export default function LandlordDetail() {
         />
       </motion.div>
 
-      {/* Charts Row 1 - Income vs Expenditure (2/3) + Occupancy Donut (1/3) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Income vs Expenditure */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Income vs Expenditure</h3>
-              <p className="text-sm text-gray-500">Breakdown by category</p>
-            </div>
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                <span className="text-gray-600">Income</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
-                <span className="text-gray-600">Expense</span>
-              </div>
-            </div>
-          </div>
-          <div className="h-72">
-            {loadingIncomeExp ? (
-              <ChartSkeleton />
-            ) : incomeExpChartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-sm text-gray-400">
-                No income/expenditure data available
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={incomeExpChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis
-                    dataKey="name"
-                    stroke="#94a3b8"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    stroke="#94a3b8"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
-                  />
-                  <Tooltip
-                    formatter={(value: number) => formatCurrency(value)}
-                    contentStyle={{
-                      borderRadius: '12px',
-                      border: '1px solid #e2e8f0',
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                    }}
-                  />
-                  <Bar dataKey="income" fill="#10b981" radius={[4, 4, 0, 0]} name="Income" />
-                  <Bar dataKey="expense" fill="#f43f5e" radius={[4, 4, 0, 0]} name="Expense" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Occupancy Donut */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-white rounded-xl border border-gray-200 p-6"
-        >
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Occupancy</h3>
-            <p className="text-sm text-gray-500">Unit status breakdown</p>
-          </div>
-          <div className="h-48 relative">
-            {loadingStatement ? (
-              <div className="h-full flex items-center justify-center">
-                <div className="h-36 w-36 rounded-full border-8 border-gray-200 animate-pulse" />
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={occupancyPieData}
-                    innerRadius={55}
-                    outerRadius={75}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {occupancyPieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-            {!loadingStatement && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <p className="text-3xl font-bold text-gray-900">
-                    {formatPercent(occupancyRate)}
-                  </p>
-                  <p className="text-xs text-gray-500">Occupied</p>
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="flex justify-center gap-6 mt-4">
-            {occupancyPieData.map((entry) => (
-              <div key={entry.name} className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
-                <span className="text-sm text-gray-600">{entry.name}</span>
-                {loadingStatement ? (
-                  <div className="h-4 w-6 bg-gray-200 rounded animate-pulse" />
-                ) : (
-                  <span className="text-sm font-semibold text-gray-900">{entry.value}</span>
-                )}
-              </div>
-            ))}
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Charts Row 2 - Aged Outstanding (1/3) + Commission by Property (2/3) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Aged Outstanding */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35 }}
-          className="bg-white rounded-xl border border-gray-200 p-6"
-        >
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-900">Aged Outstanding</h3>
-            <p className="text-sm text-gray-500">Receivables aging</p>
-          </div>
-          <div className="h-72">
-            {loadingAged ? (
-              <ChartSkeleton />
-            ) : agedChartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-sm text-gray-400">
-                No aged analysis data available
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={agedChartData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                  <XAxis
-                    type="number"
-                    stroke="#94a3b8"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    stroke="#94a3b8"
-                    fontSize={11}
-                    tickLine={false}
-                    axisLine={false}
-                    width={80}
-                  />
-                  <Tooltip
-                    formatter={(value: number) => formatCurrency(value)}
-                    contentStyle={{
-                      borderRadius: '12px',
-                      border: '1px solid #e2e8f0',
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                    }}
-                  />
-                  <Bar dataKey="amount" fill="#f59e0b" radius={[0, 4, 4, 0]} name="Outstanding" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Commission by Property */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Commission by Property</h3>
-              <p className="text-sm text-gray-500">Collected vs commission per property</p>
-            </div>
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-blue-500" />
-                <span className="text-gray-600">Collected</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-purple-500" />
-                <span className="text-gray-600">Commission</span>
-              </div>
-            </div>
-          </div>
-          <div className="h-72">
-            {loadingCommission ? (
-              <ChartSkeleton />
-            ) : commissionChartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-sm text-gray-400">
-                No commission data available
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={commissionChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis
-                    dataKey="name"
-                    stroke="#94a3b8"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    stroke="#94a3b8"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
-                  />
-                  <Tooltip
-                    formatter={(value: number) => formatCurrency(value)}
-                    contentStyle={{
-                      borderRadius: '12px',
-                      border: '1px solid #e2e8f0',
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                    }}
-                  />
-                  <Bar dataKey="collected" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Collected" />
-                  <Bar
-                    dataKey="commission"
-                    fill="#8b5cf6"
-                    radius={[4, 4, 0, 0]}
-                    name="Commission"
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </motion.div>
-      </div>
-
       {/* Properties Table */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -1137,6 +885,258 @@ export default function LandlordDetail() {
           )}
         </div>
       </motion.div>
+
+      {/* Charts Row 1 - Income vs Expenditure (2/3) + Occupancy Donut (1/3) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Income vs Expenditure */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Income vs Expenditure</h3>
+              <p className="text-sm text-gray-500">Breakdown by category</p>
+            </div>
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                <span className="text-gray-600">Income</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-red-500" />
+                <span className="text-gray-600">Expense</span>
+              </div>
+            </div>
+          </div>
+          <div className="h-72">
+            {loadingIncomeExp ? (
+              <ChartSkeleton />
+            ) : incomeExpChartData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-sm text-gray-400">
+                No income/expenditure data available
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={incomeExpChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    stroke="#94a3b8"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    stroke="#94a3b8"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                  />
+                  <Tooltip
+                    formatter={(value: number) => formatCurrency(value)}
+                    contentStyle={{
+                      borderRadius: '12px',
+                      border: '1px solid #e2e8f0',
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                    }}
+                  />
+                  <Bar dataKey="income" fill="#10b981" radius={[4, 4, 0, 0]} name="Income" />
+                  <Bar dataKey="expense" fill="#f43f5e" radius={[4, 4, 0, 0]} name="Expense" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Occupancy Donut */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="bg-white rounded-xl border border-gray-200 p-6"
+        >
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Occupancy</h3>
+            <p className="text-sm text-gray-500">Unit status breakdown</p>
+          </div>
+          <div className="h-48 relative">
+            {loadingStatement ? (
+              <div className="h-full flex items-center justify-center">
+                <div className="h-36 w-36 rounded-full border-8 border-gray-200 animate-pulse" />
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={occupancyPieData}
+                    innerRadius={55}
+                    outerRadius={75}
+                    paddingAngle={4}
+                    dataKey="value"
+                  >
+                    {occupancyPieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+            {!loadingStatement && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center">
+                  <p className="text-3xl font-bold text-gray-900">
+                    {formatPercent(occupancyRate)}
+                  </p>
+                  <p className="text-xs text-gray-500">Occupied</p>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-center gap-6 mt-4">
+            {occupancyPieData.map((entry) => (
+              <div key={entry.name} className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
+                <span className="text-sm text-gray-600">{entry.name}</span>
+                {loadingStatement ? (
+                  <div className="h-4 w-6 bg-gray-200 rounded animate-pulse" />
+                ) : (
+                  <span className="text-sm font-semibold text-gray-900">{entry.value}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Charts Row 2 - Aged Outstanding (1/3) + Commission by Property (2/3) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Aged Outstanding */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+          className="bg-white rounded-xl border border-gray-200 p-6"
+        >
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold text-gray-900">Aged Outstanding</h3>
+            <p className="text-sm text-gray-500">Receivables aging</p>
+          </div>
+          <div className="h-72">
+            {loadingAged ? (
+              <ChartSkeleton />
+            ) : agedChartData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-sm text-gray-400">
+                No aged analysis data available
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={agedChartData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    stroke="#94a3b8"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    stroke="#94a3b8"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                    width={80}
+                  />
+                  <Tooltip
+                    formatter={(value: number) => formatCurrency(value)}
+                    contentStyle={{
+                      borderRadius: '12px',
+                      border: '1px solid #e2e8f0',
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                    }}
+                  />
+                  <Bar dataKey="amount" fill="#f59e0b" radius={[0, 4, 4, 0]} name="Outstanding" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Commission by Property */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Commission by Property</h3>
+              <p className="text-sm text-gray-500">Collected vs commission per property</p>
+            </div>
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-blue-500" />
+                <span className="text-gray-600">Collected</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-purple-500" />
+                <span className="text-gray-600">Commission</span>
+              </div>
+            </div>
+          </div>
+          <div className="h-72">
+            {loadingCommission ? (
+              <ChartSkeleton />
+            ) : commissionChartData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-sm text-gray-400">
+                No commission data available
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={commissionChartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    stroke="#94a3b8"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    stroke="#94a3b8"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                  />
+                  <Tooltip
+                    formatter={(value: number) => formatCurrency(value)}
+                    contentStyle={{
+                      borderRadius: '12px',
+                      border: '1px solid #e2e8f0',
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                    }}
+                  />
+                  <Bar dataKey="collected" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Collected" />
+                  <Bar
+                    dataKey="commission"
+                    fill="#8b5cf6"
+                    radius={[4, 4, 0, 0]}
+                    name="Commission"
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </motion.div>
+      </div>
 
       {/* Edit Landlord Modal */}
       <Modal
