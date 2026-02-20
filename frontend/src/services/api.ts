@@ -730,4 +730,12 @@ export const importsApi = {
     api.get(`/imports/jobs/templates/${templateType}/`, { responseType: 'blob' }),
 }
 
+// Trash API
+export const trashApi = {
+  list: (params?: { type?: string }) => api.get('/trash/', { params }),
+  restore: (data: { type: string; ids: number[] }) => api.post('/trash/restore/', data),
+  purge: (data: { type: string; ids: number[] }) => api.delete('/trash/purge/', { data }),
+  purgeAll: () => api.delete('/trash/purge-all/'),
+}
+
 export default api

@@ -48,6 +48,7 @@ const Settings = lazy(() => import('./pages/Settings'))
 const Search = lazy(() => import('./pages/Search'))
 const Notifications = lazy(() => import('./pages/Notifications'))
 const LatePenalties = lazy(() => import('./pages/Billing/LatePenalties'))
+const Trash = lazy(() => import('./pages/Trash'))
 
 // Tenant Portal
 const TenantPortalLayout = lazy(() => import('./components/TenantPortalLayout'))
@@ -162,6 +163,7 @@ export default function App() {
         <Route path="search" element={<LazyPage><Search /></LazyPage>} />
         <Route path="notifications" element={<LazyPage><Notifications /></LazyPage>} />
         <Route path="late-penalties" element={<LazyPage><LatePenalties /></LazyPage>} />
+        <Route path="trash" element={<LazyPage><Trash /></LazyPage>} />
       </Route>
 
       {/* Tenant Portal Routes */}

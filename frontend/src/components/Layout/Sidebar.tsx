@@ -29,6 +29,7 @@ import {
   AlertTriangle,
   Scale,
   Clock,
+  Trash2,
 } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useAuthStore } from '../../stores/authStore'
@@ -116,6 +117,7 @@ const navigation: NavSection[] = [
       { name: 'Team', href: '/dashboard/team', icon: TbUserSquareRounded },
       { name: 'Data Import', href: '/dashboard/data-import', icon: Upload },
       { name: 'Audit Trail', href: '/dashboard/audit-trail', icon: SiFsecure },
+      { name: 'Trash', href: '/dashboard/trash', icon: Trash2 },
     ],
   },
 ]

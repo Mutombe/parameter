@@ -250,7 +250,9 @@ export default function ChartOfAccounts() {
         }
       />
 
-      {!accounts?.length && !isLoading ? (
+      {isLoading ? (
+        <SkeletonChartOfAccounts />
+      ) : !accounts?.length ? (
         <EmptyState
           icon={BookOpen}
           title="No accounts found"

@@ -53,6 +53,7 @@ TENANT_APPS = [
     'apps.notifications',
     'apps.search',  # Unified search API
     'apps.imports',  # Data import from CSV/Excel
+    'apps.trash',  # Soft-delete trash management
 ]
 
 INSTALLED_APPS = list(SHARED_APPS) + [app for app in TENANT_APPS if app not in SHARED_APPS]

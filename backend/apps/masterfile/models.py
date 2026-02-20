@@ -5,9 +5,10 @@ Landlords, Properties, Units, and Rental Tenants.
 from decimal import Decimal
 from django.db import models
 from django.conf import settings
+from apps.soft_delete import SoftDeleteModel
 
 
-class Landlord(models.Model):
+class Landlord(SoftDeleteModel):
     """Property owner who receives rental income."""
 
     class LandlordType(models.TextChoices):
@@ -86,12 +87,12 @@ class Landlord(models.Model):
 
     @classmethod
     def generate_code(cls):
-        last = cls.objects.order_by('-id').first()
+        last = cls.all_objects.order_by('-id').first()
         num = (last.id + 1) if last else 1
         return f'LL{num:04d}'
 
 
-class Property(models.Model):
+class Property(SoftDeleteModel):
     """Real estate property (building/complex)."""
 
     class PropertyType(models.TextChoices):
@@ -163,7 +164,7 @@ class Property(models.Model):
 
     @classmethod
     def generate_code(cls):
-        last = cls.objects.order_by('-id').first()
+        last = cls.all_objects.order_by('-id').first()
         num = (last.id + 1) if last else 1
         return f'PROP{num:04d}'
 
@@ -271,7 +272,7 @@ class Property(models.Model):
         return created_units
 
 
-class Unit(models.Model):
+class Unit(SoftDeleteModel):
     """Individual rentable unit within a property."""
 
     class UnitType(models.TextChoices):
@@ -338,7 +339,7 @@ class Unit(models.Model):
         super().save(*args, **kwargs)
 
 
-class RentalTenant(models.Model):
+class RentalTenant(SoftDeleteModel):
     """
     Tenant who rents a unit or pays levies.
     Named RentalTenant to avoid confusion with django-tenants.
@@ -439,12 +440,12 @@ class RentalTenant(models.Model):
 
     @classmethod
     def generate_code(cls):
-        last = cls.objects.order_by('-id').first()
+        last = cls.all_objects.order_by('-id').first()
         num = (last.id + 1) if last else 1
         return f'TN{num:04d}'
 
 
-class LeaseAgreement(models.Model):
+class LeaseAgreement(SoftDeleteModel):
     """
     Lease agreement between tenant and unit.
 
@@ -593,7 +594,7 @@ class LeaseAgreement(models.Model):
     def generate_lease_number(cls):
         from django.utils import timezone
         prefix = timezone.now().strftime('LS%Y%m')
-        last = cls.objects.filter(lease_number__startswith=prefix).order_by('-lease_number').first()
+        last = cls.all_objects.filter(lease_number__startswith=prefix).order_by('-lease_number').first()
         if last:
             num = int(last.lease_number[-4:]) + 1
         else:

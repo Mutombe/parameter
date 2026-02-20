@@ -7,9 +7,10 @@ from django.db import models, transaction
 from django.conf import settings
 from apps.masterfile.models import RentalTenant, Unit, LeaseAgreement, Property
 from apps.accounting.models import Journal, JournalEntry, ChartOfAccount, AuditTrail
+from apps.soft_delete import SoftDeleteModel
 
 
-class Invoice(models.Model):
+class Invoice(SoftDeleteModel):
     """
     Rent Invoice - Activity 1: Debt Recognition.
     Creates: Dr Accounts Receivable, Cr Rental Income
@@ -140,7 +141,7 @@ class Invoice(models.Model):
     def generate_invoice_number(cls):
         from django.utils import timezone
         prefix = timezone.now().strftime('INV%Y%m')
-        last = cls.objects.filter(invoice_number__startswith=prefix).order_by('-invoice_number').first()
+        last = cls.all_objects.filter(invoice_number__startswith=prefix).order_by('-invoice_number').first()
         if last:
             num = int(last.invoice_number[-4:]) + 1
         else:
@@ -217,7 +218,7 @@ class Invoice(models.Model):
         return journal
 
 
-class Receipt(models.Model):
+class Receipt(SoftDeleteModel):
     """
     Payment Receipt - Activity 2: Payment Receipt.
     Creates: Dr Cash/Bank, Cr Accounts Receivable
@@ -304,7 +305,7 @@ class Receipt(models.Model):
     def generate_receipt_number(cls):
         from django.utils import timezone
         prefix = timezone.now().strftime('RCT%Y%m')
-        last = cls.objects.filter(receipt_number__startswith=prefix).order_by('-receipt_number').first()
+        last = cls.all_objects.filter(receipt_number__startswith=prefix).order_by('-receipt_number').first()
         if last:
             num = int(last.receipt_number[-4:]) + 1
         else:
@@ -612,7 +613,7 @@ class Receipt(models.Model):
         return journal
 
 
-class Expense(models.Model):
+class Expense(SoftDeleteModel):
     """
     Expense/Payout - Activity 5: Expense Payouts.
     For landlord payments, maintenance, etc.
@@ -698,7 +699,7 @@ class Expense(models.Model):
     def generate_expense_number(cls):
         from django.utils import timezone
         prefix = timezone.now().strftime('EXP%Y%m')
-        last = cls.objects.filter(expense_number__startswith=prefix).order_by('-expense_number').first()
+        last = cls.all_objects.filter(expense_number__startswith=prefix).order_by('-expense_number').first()
         if last:
             num = int(last.expense_number[-4:]) + 1
         else:
