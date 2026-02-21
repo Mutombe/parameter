@@ -169,7 +169,7 @@ class UnitViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
     filterset_fields = ['property', 'property__landlord', 'unit_type', 'is_occupied', 'is_active', 'currency']
     search_fields = ['code', 'unit_number', 'property__name', 'property__code']
     ordering_fields = ['unit_number', 'rental_amount', 'created_at', 'floor', 'size_sqm']
-    ordering = ['unit_number']
+    ordering = ['unit_number', 'id']
 
     @action(detail=False, methods=['get'])
     def vacant(self, request):
