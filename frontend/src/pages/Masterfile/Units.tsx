@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { unitApi, propertyApi } from '../../services/api'
 import { formatCurrency, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, Tooltip } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, Tooltip, Pagination } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import UnitForm from '../../components/forms/UnitForm'
 import { PiBuildingApartmentLight } from "react-icons/pi";
@@ -68,6 +68,8 @@ const unitTypeConfig: Record<string, { label: string; color: string; bgColor: st
   commercial: { label: 'Commercial', color: 'text-gray-600', bgColor: 'bg-gray-100' },
   office: { label: 'Office', color: 'text-indigo-600', bgColor: 'bg-indigo-50' },
 }
+
+const PAGE_SIZE = 25
 
 // Skeleton row component for table - only data cells have skeletons
 function SkeletonTableRow() {
@@ -125,6 +127,7 @@ export default function Units() {
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [filter, setFilter] = useState<'all' | 'occupied' | 'vacant'>('all')
+  const [currentPage, setCurrentPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null)
@@ -153,16 +156,24 @@ export default function Units() {
   ])
   const [bulkConfirm, setBulkConfirm] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
 
-  const { data: units, isLoading } = useQuery({
-    queryKey: ['units', debouncedSearch, filter],
+  const { data: unitsData, isLoading } = useQuery({
+    queryKey: ['units', debouncedSearch, filter, currentPage],
     queryFn: () => {
-      const params: any = { search: debouncedSearch }
+      const params: any = { search: debouncedSearch, page: currentPage, page_size: PAGE_SIZE }
       if (filter === 'occupied') params.is_occupied = true
       if (filter === 'vacant') params.is_occupied = false
-      return unitApi.list(params).then(r => r.data.results || r.data)
+      return unitApi.list(params).then(r => r.data)
     },
     placeholderData: keepPreviousData,
   })
+
+  const units = unitsData?.results || unitsData || []
+  const totalCount = unitsData?.count || units.length
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch, filter])
 
   const { data: properties, isLoading: propertiesLoading } = useQuery({
     queryKey: ['properties-list'],
@@ -176,7 +187,7 @@ export default function Units() {
       const isUpdating = !!editingId
       resetForm()
       await queryClient.cancelQueries({ queryKey: ['units'] })
-      const previousData = queryClient.getQueryData(['units', debouncedSearch, filter])
+      const previousData = queryClient.getQueryData(['units', debouncedSearch, filter, currentPage])
 
       if (!isUpdating) {
         const optimistic = {
@@ -197,12 +208,12 @@ export default function Units() {
           description: newData.description,
           _isOptimistic: true,
         }
-        queryClient.setQueryData(['units', debouncedSearch, filter], (old: any) => {
+        queryClient.setQueryData(['units', debouncedSearch, filter, currentPage], (old: any) => {
           const items = old || []
           return [optimistic, ...items]
         })
       } else {
-        queryClient.setQueryData(['units', debouncedSearch, filter], (old: any) => {
+        queryClient.setQueryData(['units', debouncedSearch, filter, currentPage], (old: any) => {
           const items = old || []
           return items.map((item: any) =>
             item.id === editingId ? { ...item, ...newData, _isOptimistic: true } : item
@@ -217,7 +228,7 @@ export default function Units() {
     },
     onError: (error, _, context) => {
       if (context?.previousData) {
-        queryClient.setQueryData(['units', debouncedSearch, filter], context.previousData)
+        queryClient.setQueryData(['units', debouncedSearch, filter, currentPage], context.previousData)
       }
       showToast.error(parseApiError(error, 'Failed to save unit'))
     },
@@ -228,8 +239,8 @@ export default function Units() {
     onMutate: async (id) => {
       setShowDeleteDialog(false)
       await queryClient.cancelQueries({ queryKey: ['units'] })
-      const previousData = queryClient.getQueryData(['units', debouncedSearch, filter])
-      queryClient.setQueryData(['units', debouncedSearch, filter], (old: any) => {
+      const previousData = queryClient.getQueryData(['units', debouncedSearch, filter, currentPage])
+      queryClient.setQueryData(['units', debouncedSearch, filter, currentPage], (old: any) => {
         const items = old || []
         return items.filter((item: any) => item.id !== id)
       })
@@ -242,7 +253,7 @@ export default function Units() {
     },
     onError: (error, _, context) => {
       if (context?.previousData) {
-        queryClient.setQueryData(['units', debouncedSearch, filter], context.previousData)
+        queryClient.setQueryData(['units', debouncedSearch, filter, currentPage], context.previousData)
       }
       showToast.error(parseApiError(error, 'Failed to delete unit'))
     },
@@ -474,7 +485,7 @@ export default function Units() {
         </div>
 
         <div className="ml-auto text-sm text-gray-500">
-          {units?.length || 0} units
+          {totalCount} units
         </div>
       </div>
 
@@ -640,6 +651,19 @@ export default function Units() {
           </tbody>
         </table>
       </div>
+
+      {totalPages > 1 && (
+        <div className="card overflow-hidden">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+            showPageSize={false}
+          />
+        </div>
+      )}
 
       {/* Create/Edit Modal */}
       <Modal

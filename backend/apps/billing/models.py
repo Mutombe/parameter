@@ -118,6 +118,8 @@ class Invoice(SoftDeleteModel):
             models.Index(fields=['currency']),
             models.Index(fields=['property']),
             models.Index(fields=['status', 'balance']),
+            models.Index(fields=['tenant', 'date']),
+            models.Index(fields=['unit', 'date']),
         ]
 
     def __str__(self):
@@ -291,6 +293,8 @@ class Receipt(SoftDeleteModel):
             models.Index(fields=['date']),
             models.Index(fields=['payment_method']),
             models.Index(fields=['currency']),
+            models.Index(fields=['tenant', 'date']),
+            models.Index(fields=['date', 'invoice']),
         ]
 
     def __str__(self):

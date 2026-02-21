@@ -41,7 +41,7 @@ import { usePrefetch } from '../../hooks/usePrefetch'
 import { PiBuildingApartmentLight } from "react-icons/pi"
 import { TbUserSquareRounded } from "react-icons/tb"
 
-const PAGE_SIZE = 12
+const PAGE_SIZE = 25
 
 interface PropertyManager {
   id: number

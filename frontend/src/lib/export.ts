@@ -209,6 +209,30 @@ export function exportReport(
       ]
       break
 
+    case 'commission-property':
+      exportData = data?.by_property || []
+      columns = [
+        { key: 'rank', header: 'Rank' },
+        { key: 'property_name', header: 'Property' },
+        { key: 'landlord_name', header: 'Landlord' },
+        { key: 'commission_rate', header: 'Rate (%)', format: (v) => `${v}%` },
+        { key: 'collected', header: 'Revenue', format: formatNumber },
+        { key: 'commission', header: 'Commission', format: formatNumber },
+        { key: 'percentage', header: '% of Total', format: (v) => `${v?.toFixed(1)}%` },
+      ]
+      break
+
+    case 'commission-income':
+      exportData = data?.by_income_type || []
+      columns = [
+        { key: 'rank', header: 'Rank' },
+        { key: 'label', header: 'Category' },
+        { key: 'income', header: 'Revenue', format: formatNumber },
+        { key: 'commission', header: 'Commission', format: formatNumber },
+        { key: 'percentage', header: '% of Total', format: (v) => `${v?.toFixed(1)}%` },
+      ]
+      break
+
     default:
       console.warn('Unknown report type:', reportType)
       return

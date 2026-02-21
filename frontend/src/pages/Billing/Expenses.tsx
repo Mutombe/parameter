@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -27,7 +27,7 @@ import {
 } from 'lucide-react'
 import { expenseApi, landlordApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, Tooltip } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, Tooltip, Pagination } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
@@ -103,6 +103,8 @@ const payeeTypes = [
   { value: 'other', label: 'Other' },
 ]
 
+const PAGE_SIZE = 25
+
 function SkeletonExpenses() {
   return (
     <div className="space-y-6">
@@ -145,6 +147,7 @@ export default function Expenses() {
   const [showPayConfirm, setShowPayConfirm] = useState<Expense | null>(null)
 
   const debouncedSearch = useDebounce(searchQuery, 300)
+  const [currentPage, setCurrentPage] = useState(1)
 
   const selection = useSelection<number | string>({ clearOnChange: [debouncedSearch, statusFilter, typeFilter] })
 
@@ -157,18 +160,26 @@ export default function Expenses() {
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
 
   // Fetch expenses
-  const { data: expenses = [], isLoading, error } = useQuery({
-    queryKey: ['expenses', statusFilter, typeFilter, debouncedSearch],
+  const { data: expensesData, isLoading, error } = useQuery({
+    queryKey: ['expenses', statusFilter, typeFilter, debouncedSearch, currentPage],
     queryFn: async () => {
-      const params: Record<string, string> = {}
+      const params: Record<string, string | number> = { page: currentPage, page_size: PAGE_SIZE }
       if (statusFilter) params.status = statusFilter
       if (typeFilter) params.expense_type = typeFilter
       if (debouncedSearch) params.search = debouncedSearch
       const response = await expenseApi.list(params)
-      return response.data.results || response.data
+      return response.data
     },
     placeholderData: keepPreviousData,
   })
+
+  const expenses = expensesData?.results || expensesData || []
+  const totalCount = expensesData?.count || expenses.length
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch, statusFilter, typeFilter])
 
   // Fetch landlords for payee selection
   const { data: landlords = [] } = useQuery({
@@ -185,7 +196,7 @@ export default function Expenses() {
     onMutate: async (newData) => {
       setShowModal(false)
       await queryClient.cancelQueries({ queryKey: ['expenses'] })
-      const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, debouncedSearch])
+      const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage])
 
       const optimistic: Expense = {
         id: `temp-${Date.now()}`,
@@ -202,7 +213,7 @@ export default function Expenses() {
         created_at: new Date().toISOString(),
         _isOptimistic: true,
       }
-      queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch], (old: any) => {
+      queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage], (old: any) => {
         const items = old || []
         return [optimistic, ...items]
       })
@@ -214,7 +225,7 @@ export default function Expenses() {
     },
     onError: (err, _, context) => {
       if (context?.previousData) {
-        queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch], context.previousData)
+        queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage], context.previousData)
       }
       showToast.error(parseApiError(err))
     }
@@ -226,8 +237,8 @@ export default function Expenses() {
     onMutate: async (id) => {
       setShowApproveConfirm(null)
       await queryClient.cancelQueries({ queryKey: ['expenses'] })
-      const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, debouncedSearch])
-      queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch], (old: any) => {
+      const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage])
+      queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage], (old: any) => {
         const items = old || []
         return items.map((item: any) =>
           item.id === id ? { ...item, status: 'approved', _isOptimistic: true } : item
@@ -241,7 +252,7 @@ export default function Expenses() {
     },
     onError: (err, _, context) => {
       if (context?.previousData) {
-        queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch], context.previousData)
+        queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage], context.previousData)
       }
       showToast.error(parseApiError(err))
     }
@@ -253,8 +264,8 @@ export default function Expenses() {
     onMutate: async (id) => {
       setShowPayConfirm(null)
       await queryClient.cancelQueries({ queryKey: ['expenses'] })
-      const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, debouncedSearch])
-      queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch], (old: any) => {
+      const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage])
+      queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage], (old: any) => {
         const items = old || []
         return items.map((item: any) =>
           item.id === id ? { ...item, status: 'paid', _isOptimistic: true } : item
@@ -268,7 +279,7 @@ export default function Expenses() {
     },
     onError: (err, _, context) => {
       if (context?.previousData) {
-        queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch], context.previousData)
+        queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage], context.previousData)
       }
       showToast.error(parseApiError(err))
     }
@@ -386,7 +397,7 @@ export default function Expenses() {
     <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
       <PageHeader
         title="Expenses"
-        subtitle={`${stats.total} total expenses`}
+        subtitle={`${totalCount} total expenses`}
         icon={Receipt}
         actions={
           <Button onClick={() => setShowModal(true)}>
@@ -831,6 +842,19 @@ export default function Expenses() {
         confirmText="Pay & Post"
         isLoading={payMutation.isPending}
       />
+
+      {totalPages > 1 && (
+        <div className="card overflow-hidden">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+            showPageSize={false}
+          />
+        </div>
+      )}
 
       <BulkActionsBar
         selectedCount={selection.selectedCount}

@@ -33,7 +33,7 @@ import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { usePrefetch } from '../../hooks/usePrefetch'
 
-const PAGE_SIZE = 12
+const PAGE_SIZE = 25
 
 interface Landlord {
   id: number | string

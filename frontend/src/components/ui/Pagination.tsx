@@ -15,7 +15,7 @@ interface PaginationProps {
 
 export function Pagination({
   currentPage,
-  totalPages,
+  totalPages: rawTotalPages,
   totalItems,
   pageSize,
   onPageChange,
@@ -24,8 +24,20 @@ export function Pagination({
   pageSizeOptions = [10, 25, 50, 100],
   className,
 }: PaginationProps) {
-  const startItem = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1
-  const endItem = Math.min(currentPage * pageSize, totalItems)
+  // Normalize: ensure totalPages is at least 1, currentPage is within bounds
+  const totalPages = Math.max(1, rawTotalPages)
+  const safePage = Math.max(1, Math.min(currentPage, totalPages))
+
+  const startItem = totalItems === 0 ? 0 : (safePage - 1) * pageSize + 1
+  const endItem = Math.min(safePage * pageSize, totalItems)
+
+  // Safe page change that clamps to valid range
+  const handlePageChange = (page: number) => {
+    const clamped = Math.max(1, Math.min(page, totalPages))
+    if (clamped !== currentPage) {
+      onPageChange(clamped)
+    }
+  }
 
   const getVisiblePages = () => {
     const delta = 2
@@ -36,7 +48,7 @@ export function Pagination({
       if (
         i === 1 ||
         i === totalPages ||
-        (i >= currentPage - delta && i <= currentPage + delta)
+        (i >= safePage - delta && i <= safePage + delta)
       ) {
         range.push(i)
       }
@@ -92,16 +104,16 @@ export function Pagination({
       {totalPages > 1 && (
         <nav className="flex items-center gap-1">
           <button
-            onClick={() => onPageChange(1)}
-            disabled={currentPage === 1}
+            onClick={() => handlePageChange(1)}
+            disabled={safePage === 1}
             className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="First page"
           >
             <ChevronsLeft className="w-4 h-4" />
           </button>
           <button
-            onClick={() => onPageChange(currentPage - 1)}
-            disabled={currentPage === 1}
+            onClick={() => handlePageChange(safePage - 1)}
+            disabled={safePage === 1}
             className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Previous page"
           >
@@ -113,10 +125,10 @@ export function Pagination({
               typeof page === 'number' ? (
                 <button
                   key={index}
-                  onClick={() => onPageChange(page)}
+                  onClick={() => handlePageChange(page)}
                   className={cn(
                     'min-w-[36px] h-9 px-3 text-sm font-medium rounded-lg transition-colors',
-                    page === currentPage
+                    page === safePage
                       ? 'bg-primary-600 text-white'
                       : 'text-gray-600 hover:bg-gray-100'
                   )}
@@ -132,16 +144,16 @@ export function Pagination({
           </div>
 
           <button
-            onClick={() => onPageChange(currentPage + 1)}
-            disabled={currentPage === totalPages}
+            onClick={() => handlePageChange(safePage + 1)}
+            disabled={safePage === totalPages}
             className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Next page"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
           <button
-            onClick={() => onPageChange(totalPages)}
-            disabled={currentPage === totalPages}
+            onClick={() => handlePageChange(totalPages)}
+            disabled={safePage === totalPages}
             className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Last page"
           >
@@ -156,30 +168,40 @@ export function Pagination({
 // Compact pagination for smaller spaces
 export function PaginationCompact({
   currentPage,
-  totalPages,
+  totalPages: rawTotalPages,
   onPageChange,
   className,
 }: Pick<PaginationProps, 'currentPage' | 'totalPages' | 'onPageChange' | 'className'>) {
+  const totalPages = Math.max(1, rawTotalPages)
+  const safePage = Math.max(1, Math.min(currentPage, totalPages))
+
   if (totalPages <= 1) {
     return null
+  }
+
+  const handlePageChange = (page: number) => {
+    const clamped = Math.max(1, Math.min(page, totalPages))
+    if (clamped !== currentPage) {
+      onPageChange(clamped)
+    }
   }
 
   return (
     <div className={cn('flex items-center justify-center gap-2', className)}>
       <button
-        onClick={() => onPageChange(currentPage - 1)}
-        disabled={currentPage === 1}
+        onClick={() => handlePageChange(safePage - 1)}
+        disabled={safePage === 1}
         className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <ChevronLeft className="w-4 h-4" />
       </button>
       <span className="text-sm text-gray-600">
-        Page <span className="font-medium">{currentPage}</span> of{' '}
+        Page <span className="font-medium">{safePage}</span> of{' '}
         <span className="font-medium">{totalPages}</span>
       </span>
       <button
-        onClick={() => onPageChange(currentPage + 1)}
-        disabled={currentPage === totalPages}
+        onClick={() => handlePageChange(safePage + 1)}
+        disabled={safePage === totalPages}
         className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <ChevronRight className="w-4 h-4" />

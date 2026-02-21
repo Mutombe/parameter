@@ -962,93 +962,108 @@ class CommissionReportView(APIView):
         end_date = request.query_params.get('end_date', timezone.now().date())
         landlord_id = request.query_params.get('landlord_id')
 
-        # Get receipts for the period
-        receipts = Receipt.objects.filter(
-            date__lte=end_date
-        ).select_related(
-            'tenant', 'invoice', 'invoice__unit', 'invoice__unit__property',
-            'invoice__unit__property__landlord'
+        # Base filter for receipts with valid invoice+unit+property
+        base_filter = Q(
+            invoice__isnull=False,
+            invoice__unit__isnull=False,
+            invoice__unit__property__isnull=False,
+            date__lte=end_date,
         )
-
         if start_date:
-            receipts = receipts.filter(date__gte=start_date)
+            base_filter &= Q(date__gte=start_date)
         if landlord_id:
-            receipts = receipts.filter(invoice__unit__property__landlord_id=landlord_id)
+            base_filter &= Q(invoice__unit__property__landlord_id=landlord_id)
 
-        # Calculate commissions by landlord
-        landlord_commissions = {}
-        property_commissions = {}
-        income_type_commissions = {}
-        total_collected = Decimal('0')
-        total_commission = Decimal('0')
+        # Use DB-level aggregation instead of Python iteration
+        # By landlord - aggregate at DB level
+        landlord_qs = Receipt.objects.filter(base_filter).values(
+            'invoice__unit__property__landlord__id',
+            'invoice__unit__property__landlord__name',
+            'invoice__unit__property__landlord__code',
+            'invoice__unit__property__landlord__commission_rate',
+        ).annotate(
+            collected=Sum('amount'),
+        ).order_by('-collected')
 
-        for receipt in receipts:
-            if not receipt.invoice or not receipt.invoice.unit:
-                continue
-
-            prop = receipt.invoice.unit.property
-            landlord = prop.landlord
-            commission_rate = landlord.commission_rate / 100
-            commission = receipt.amount * commission_rate
-
-            # By landlord
-            if landlord.id not in landlord_commissions:
-                landlord_commissions[landlord.id] = {
-                    'landlord_id': landlord.id,
-                    'landlord_name': landlord.name,
-                    'landlord_code': landlord.code,
-                    'commission_rate': float(landlord.commission_rate),
-                    'collected': Decimal('0'),
-                    'commission': Decimal('0')
-                }
-            landlord_commissions[landlord.id]['collected'] += receipt.amount
-            landlord_commissions[landlord.id]['commission'] += commission
-
-            # By property
-            if prop.id not in property_commissions:
-                property_commissions[prop.id] = {
-                    'property_id': prop.id,
-                    'property_name': prop.name,
-                    'landlord_name': landlord.name,
-                    'collected': Decimal('0'),
-                    'commission': Decimal('0')
-                }
-            property_commissions[prop.id]['collected'] += receipt.amount
-            property_commissions[prop.id]['commission'] += commission
-
-            # By income type
-            income_type = receipt.invoice.invoice_type
-            if income_type not in income_type_commissions:
-                income_type_commissions[income_type] = {
-                    'income_type': income_type,
-                    'income_type_display': receipt.invoice.get_invoice_type_display(),
-                    'collected': Decimal('0'),
-                    'commission': Decimal('0')
-                }
-            income_type_commissions[income_type]['collected'] += receipt.amount
-            income_type_commissions[income_type]['commission'] += commission
-
-            total_collected += receipt.amount
-            total_commission += commission
-
-        # Convert to lists and serialize decimals
-        landlord_list = [
-            {**lc, 'collected': float(lc['collected']), 'commission': float(lc['commission'])}
-            for lc in landlord_commissions.values()
-        ]
-        property_list = [
-            {**pc, 'collected': float(pc['collected']), 'commission': float(pc['commission'])}
-            for pc in property_commissions.values()
-        ]
-        income_type_list = [
-            {**itc, 'collected': float(itc['collected']), 'commission': float(itc['commission'])}
-            for itc in income_type_commissions.values()
-        ]
-
-        # Sort by commission descending
+        landlord_list = []
+        for row in landlord_qs:
+            rate = row['invoice__unit__property__landlord__commission_rate'] or Decimal('0')
+            collected = row['collected'] or Decimal('0')
+            commission = collected * rate / 100
+            landlord_list.append({
+                'landlord_id': row['invoice__unit__property__landlord__id'],
+                'landlord_name': row['invoice__unit__property__landlord__name'],
+                'landlord_code': row['invoice__unit__property__landlord__code'],
+                'commission_rate': float(rate),
+                'collected': float(collected),
+                'commission': float(commission),
+            })
         landlord_list.sort(key=lambda x: x['commission'], reverse=True)
+
+        # By property - aggregate at DB level
+        property_qs = Receipt.objects.filter(base_filter).values(
+            'invoice__unit__property__id',
+            'invoice__unit__property__name',
+            'invoice__unit__property__landlord__name',
+            'invoice__unit__property__landlord__commission_rate',
+        ).annotate(
+            collected=Sum('amount'),
+        ).order_by('-collected')
+
+        property_list = []
+        for row in property_qs:
+            rate = row['invoice__unit__property__landlord__commission_rate'] or Decimal('0')
+            collected = row['collected'] or Decimal('0')
+            commission = collected * rate / 100
+            property_list.append({
+                'property_id': row['invoice__unit__property__id'],
+                'property_name': row['invoice__unit__property__name'],
+                'landlord_name': row['invoice__unit__property__landlord__name'],
+                'commission_rate': float(rate),
+                'collected': float(collected),
+                'commission': float(commission),
+            })
         property_list.sort(key=lambda x: x['commission'], reverse=True)
+
+        # By income type - aggregate at DB level
+        income_type_qs = Receipt.objects.filter(base_filter).values(
+            'invoice__invoice_type',
+        ).annotate(
+            collected=Sum('amount'),
+        ).order_by('-collected')
+
+        # Get display names for invoice types
+        invoice_type_choices = dict(Invoice._meta.get_field('invoice_type').flatchoices)
+
+        income_type_list = []
+        for row in income_type_qs:
+            collected = row['collected'] or Decimal('0')
+            income_type_list.append({
+                'income_type': row['invoice__invoice_type'],
+                'income_type_display': invoice_type_choices.get(row['invoice__invoice_type'], row['invoice__invoice_type']),
+                'collected': float(collected),
+                'commission': 0,  # Will be calculated below
+            })
+
+        # Calculate totals
+        total_collected = sum(item['collected'] for item in property_list)
+        total_commission = sum(item['commission'] for item in property_list)
+
+        # For income types, calculate commission using average effective rate
+        effective_rate = total_commission / total_collected if total_collected else 0
+        for item in income_type_list:
+            item['commission'] = round(item['collected'] * effective_rate, 2)
         income_type_list.sort(key=lambda x: x['commission'], reverse=True)
+
+        # Add percentage and rank to property list
+        for rank, item in enumerate(property_list, 1):
+            item['rank'] = rank
+            item['percentage'] = round(item['commission'] / total_commission * 100, 1) if total_commission else 0
+
+        # Add percentage and rank to income type list
+        for rank, item in enumerate(income_type_list, 1):
+            item['rank'] = rank
+            item['percentage'] = round(item['commission'] / total_commission * 100, 1) if total_commission else 0
 
         return Response({
             'report_name': 'Commission Report',
@@ -1057,9 +1072,9 @@ class CommissionReportView(APIView):
                 'end': str(end_date)
             },
             'summary': {
-                'total_collected': float(total_collected),
-                'total_commission': float(total_commission),
-                'effective_rate': round(float(total_commission) / float(total_collected) * 100, 2) if total_collected else 0
+                'total_collected': total_collected,
+                'total_commission': total_commission,
+                'effective_rate': round(total_commission / total_collected * 100, 2) if total_collected else 0
             },
             'by_landlord': landlord_list,
             'by_property': property_list,

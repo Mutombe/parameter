@@ -18,7 +18,7 @@ import { usePrefetch } from '../../hooks/usePrefetch'
 import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
 
-const PAGE_SIZE = 12
+const PAGE_SIZE = 25
 
 // Filter options
 const tenantTypeOptions = [

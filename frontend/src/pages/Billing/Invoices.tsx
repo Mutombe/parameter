@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -30,7 +30,7 @@ import {
 import { invoiceApi, tenantApi, unitApi, leaseApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { printInvoice } from '../../lib/printTemplate'
-import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, SelectionCheckbox, BulkActionsBar, Tooltip } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
 import { exportTableData } from '../../lib/export'
@@ -38,6 +38,8 @@ import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { usePrefetch } from '../../hooks/usePrefetch'
 import { TbUserSquareRounded } from "react-icons/tb";
+
+const PAGE_SIZE = 25
 
 interface Invoice {
   id: number | string
@@ -163,6 +165,7 @@ export default function Invoices() {
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [statusFilter, setStatusFilter] = useState<string>('')
+  const [currentPage, setCurrentPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [showGenerateModal, setShowGenerateModal] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
@@ -192,16 +195,24 @@ export default function Invoices() {
     { key: '/', handler: (e) => { e.preventDefault(); searchInputRef.current?.focus() } },
   ])
 
-  const { data: invoices, isLoading } = useQuery({
-    queryKey: ['invoices', debouncedSearch, statusFilter],
+  const { data: invoicesData, isLoading } = useQuery({
+    queryKey: ['invoices', debouncedSearch, statusFilter, currentPage],
     queryFn: () => {
-      const params: any = {}
+      const params: any = { page: currentPage, page_size: PAGE_SIZE }
       if (debouncedSearch) params.search = debouncedSearch
       if (statusFilter) params.status = statusFilter
-      return invoiceApi.list(params).then(r => r.data.results || r.data)
+      return invoiceApi.list(params).then(r => r.data)
     },
     placeholderData: keepPreviousData,
   })
+
+  const invoices = invoicesData?.results || invoicesData || []
+  const totalCount = invoicesData?.count || invoices.length
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch, statusFilter])
 
   const { data: tenants, isLoading: tenantsLoading } = useQuery({
     queryKey: ['tenants-select'],
@@ -242,7 +253,7 @@ export default function Invoices() {
       await queryClient.cancelQueries({ queryKey: ['invoices'] })
 
       // Snapshot previous data
-      const previousInvoices = queryClient.getQueryData(['invoices', debouncedSearch, statusFilter])
+      const previousInvoices = queryClient.getQueryData(['invoices', debouncedSearch, statusFilter, currentPage])
 
       // Optimistically add new invoice with loading state
       const optimisticInvoice: Invoice = {
@@ -262,9 +273,9 @@ export default function Invoices() {
         _isOptimistic: true,
       }
 
-      queryClient.setQueryData(['invoices', debouncedSearch, statusFilter], (old: any) => {
-        const items = old || []
-        return [optimisticInvoice, ...items]
+      queryClient.setQueryData(['invoices', debouncedSearch, statusFilter, currentPage], (old: any) => {
+        const items = old?.results || old || []
+        return { ...old, results: [optimisticInvoice, ...items] }
       })
 
       return { previousInvoices }
@@ -276,7 +287,7 @@ export default function Invoices() {
     onError: (error, _, context) => {
       // Rollback on error
       if (context?.previousInvoices) {
-        queryClient.setQueryData(['invoices', debouncedSearch, statusFilter], context.previousInvoices)
+        queryClient.setQueryData(['invoices', debouncedSearch, statusFilter, currentPage], context.previousInvoices)
       }
       showToast.error(parseApiError(error, 'Failed to create invoice'))
     },
@@ -332,7 +343,7 @@ export default function Invoices() {
 
   // Stats calculations
   const stats = {
-    total: invoices?.length || 0,
+    total: totalCount,
     draft: invoices?.filter((i: Invoice) => i.status === 'draft').length || 0,
     sent: invoices?.filter((i: Invoice) => i.status === 'sent').length || 0,
     overdue: invoices?.filter((i: Invoice) => i.status === 'overdue').length || 0,
@@ -595,7 +606,7 @@ export default function Invoices() {
           {isLoading ? (
             <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
           ) : (
-            <>{invoices?.length || 0} invoices</>
+            <>{totalCount} invoices</>
           )}
         </div>
       </div>
@@ -853,6 +864,19 @@ export default function Invoices() {
                 </table>
               </div>
             </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="card overflow-hidden">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+            showPageSize={false}
+          />
+        </div>
       )}
 
       {/* Create Invoice Modal */}

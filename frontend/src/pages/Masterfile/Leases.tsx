@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import { leaseApi, tenantApi, unitApi, propertyApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, ConfirmDialog, Tooltip } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, ConfirmDialog, Tooltip, Pagination } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { Skeleton } from '../../components/ui/Skeleton'
 import { showToast, parseApiError } from '../../lib/toast'
@@ -72,6 +72,8 @@ interface Property {
   id: number
   name: string
 }
+
+const PAGE_SIZE = 25
 
 const statusConfig: Record<string, { color: string; bgColor: string; icon: any; label: string }> = {
   draft: { color: 'text-gray-600', bgColor: 'bg-gray-100', icon: Clock, label: 'Draft' },
@@ -137,6 +139,7 @@ export default function Leases() {
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [statusFilter, setStatusFilter] = useState<string>('')
+  const [currentPage, setCurrentPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [showActivateDialog, setShowActivateDialog] = useState(false)
@@ -167,15 +170,24 @@ export default function Leases() {
     notes: '',
   })
 
-  const { data: leases, isLoading } = useQuery({
-    queryKey: ['leases', debouncedSearch, statusFilter],
+  const { data: leasesData, isLoading } = useQuery({
+    queryKey: ['leases', debouncedSearch, statusFilter, currentPage],
     queryFn: () => {
-      const params: any = { search: debouncedSearch }
+      const params: any = { search: debouncedSearch, page: currentPage, page_size: PAGE_SIZE }
       if (statusFilter) params.status = statusFilter
-      return leaseApi.list(params).then(r => r.data.results || r.data)
+      return leaseApi.list(params).then(r => r.data)
     },
     placeholderData: keepPreviousData,
   })
+
+  const leases = leasesData?.results || leasesData || []
+  const totalCount = leasesData?.count || leases.length
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
+
+  // Reset to page 1 when search/filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch, statusFilter])
 
   const { data: tenants, isLoading: tenantsLoading } = useQuery({
     queryKey: ['tenants-list'],
@@ -219,7 +231,7 @@ export default function Leases() {
       const savedDoc = documentFile
       resetForm()
       await queryClient.cancelQueries({ queryKey: ['leases'] })
-      const previousData = queryClient.getQueryData(['leases', debouncedSearch, statusFilter])
+      const previousData = queryClient.getQueryData(['leases', debouncedSearch, statusFilter, currentPage])
 
       if (!isUpdating) {
         const optimistic = {
@@ -243,12 +255,12 @@ export default function Leases() {
           created_at: new Date().toISOString(),
           _isOptimistic: true,
         }
-        queryClient.setQueryData(['leases', debouncedSearch, statusFilter], (old: any) => {
+        queryClient.setQueryData(['leases', debouncedSearch, statusFilter, currentPage], (old: any) => {
           const items = old || []
           return [optimistic, ...items]
         })
       } else {
-        queryClient.setQueryData(['leases', debouncedSearch, statusFilter], (old: any) => {
+        queryClient.setQueryData(['leases', debouncedSearch, statusFilter, currentPage], (old: any) => {
           const items = old || []
           return items.map((item: any) =>
             item.id === editingId ? { ...item, ...newData, _isOptimistic: true } : item
@@ -279,7 +291,7 @@ export default function Leases() {
     onError: (error, _, context) => {
       (createMutation as any)._pendingDoc = null
       if (context?.previousData) {
-        queryClient.setQueryData(['leases', debouncedSearch, statusFilter], context.previousData)
+        queryClient.setQueryData(['leases', debouncedSearch, statusFilter, currentPage], context.previousData)
       }
       showToast.error(parseApiError(error, 'Failed to save lease'))
     },
@@ -290,8 +302,8 @@ export default function Leases() {
     onMutate: async (id) => {
       setShowActivateDialog(false)
       await queryClient.cancelQueries({ queryKey: ['leases'] })
-      const previousData = queryClient.getQueryData(['leases', debouncedSearch, statusFilter])
-      queryClient.setQueryData(['leases', debouncedSearch, statusFilter], (old: any) => {
+      const previousData = queryClient.getQueryData(['leases', debouncedSearch, statusFilter, currentPage])
+      queryClient.setQueryData(['leases', debouncedSearch, statusFilter, currentPage], (old: any) => {
         const items = old || []
         return items.map((item: any) =>
           item.id === id ? { ...item, status: 'active', _isOptimistic: true } : item
@@ -307,7 +319,7 @@ export default function Leases() {
     },
     onError: (error, _, context) => {
       if (context?.previousData) {
-        queryClient.setQueryData(['leases', debouncedSearch, statusFilter], context.previousData)
+        queryClient.setQueryData(['leases', debouncedSearch, statusFilter, currentPage], context.previousData)
       }
       showToast.error(parseApiError(error, 'Failed to activate lease'))
     },
@@ -319,8 +331,8 @@ export default function Leases() {
     onMutate: async ({ id }) => {
       setShowDeleteDialog(false)
       await queryClient.cancelQueries({ queryKey: ['leases'] })
-      const previousData = queryClient.getQueryData(['leases', debouncedSearch, statusFilter])
-      queryClient.setQueryData(['leases', debouncedSearch, statusFilter], (old: any) => {
+      const previousData = queryClient.getQueryData(['leases', debouncedSearch, statusFilter, currentPage])
+      queryClient.setQueryData(['leases', debouncedSearch, statusFilter, currentPage], (old: any) => {
         const items = old || []
         return items.map((item: any) =>
           item.id === id ? { ...item, status: 'terminated', _isOptimistic: true } : item
@@ -336,7 +348,7 @@ export default function Leases() {
     },
     onError: (error, _, context) => {
       if (context?.previousData) {
-        queryClient.setQueryData(['leases', debouncedSearch, statusFilter], context.previousData)
+        queryClient.setQueryData(['leases', debouncedSearch, statusFilter, currentPage], context.previousData)
       }
       showToast.error(parseApiError(error, 'Failed to terminate lease'))
     },
@@ -416,7 +428,7 @@ export default function Leases() {
 
   // Stats
   const stats = {
-    total: leases?.length || 0,
+    total: totalCount,
     active: leases?.filter((l: Lease) => l.status === 'active').length || 0,
     draft: leases?.filter((l: Lease) => l.status === 'draft').length || 0,
     expiringSoon: leases?.filter((l: Lease) => {
@@ -604,7 +616,7 @@ export default function Leases() {
         />
 
         <div className="ml-auto text-sm text-gray-500">
-          {leases?.length || 0} leases
+          {totalCount} leases
         </div>
       </div>
 
@@ -845,6 +857,19 @@ export default function Leases() {
         variant="danger"
         loading={terminateMutation.isPending}
       />
+
+      {totalPages > 1 && (
+        <div className="card overflow-hidden">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+            showPageSize={false}
+          />
+        </div>
+      )}
 
       <BulkActionsBar
         selectedCount={selection.selectedCount}

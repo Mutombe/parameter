@@ -1,11 +1,11 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Search, CreditCard, Plus, Send, Loader2, Eye, X, User, FileText, Download, Printer, BookOpen } from 'lucide-react'
 import { receiptApi, tenantApi, invoiceApi } from '../../services/api'
 import { formatCurrency, formatDate, useDebounce, cn } from '../../lib/utils'
-import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, SelectionCheckbox, BulkActionsBar, Tooltip } from '../../components/ui'
+import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
@@ -13,6 +13,8 @@ import { usePrefetch } from '../../hooks/usePrefetch'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { Skeleton, OptimisticItemSkeleton } from '../../components/ui/Skeleton'
 import { showToast, parseApiError } from '../../lib/toast'
+
+const PAGE_SIZE = 25
 
 interface Receipt {
   id: number | string
@@ -44,6 +46,7 @@ export default function Receipts() {
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
+  const [currentPage, setCurrentPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null)
@@ -68,10 +71,18 @@ export default function Receipts() {
   })
 
   const { data: receiptsData, isLoading } = useQuery({
-    queryKey: ['receipts', debouncedSearch],
-    queryFn: () => receiptApi.list({ search: debouncedSearch }).then(r => r.data.results || r.data),
+    queryKey: ['receipts', debouncedSearch, currentPage],
+    queryFn: () => receiptApi.list({ search: debouncedSearch, page: currentPage, page_size: PAGE_SIZE }).then(r => r.data),
     placeholderData: keepPreviousData,
   })
+
+  const receipts = receiptsData?.results || receiptsData || []
+  const totalCount = receiptsData?.count || receipts.length
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch])
 
   // Tenants dropdown - loads when form opens
   const { data: tenants, isLoading: tenantsLoading } = useQuery({
@@ -95,8 +106,6 @@ export default function Receipts() {
     ['sent', 'partial', 'overdue'].includes(inv.status) && Number(inv.balance) > 0
   )
 
-  const receipts = receiptsData || []
-
   // Optimistic create mutation
   const createMutation = useMutation({
     mutationFn: (data: typeof form) => receiptApi.create(data),
@@ -109,7 +118,7 @@ export default function Receipts() {
       await queryClient.cancelQueries({ queryKey: ['receipts'] })
 
       // Snapshot previous data
-      const previousReceipts = queryClient.getQueryData(['receipts', debouncedSearch])
+      const previousReceipts = queryClient.getQueryData(['receipts', debouncedSearch, currentPage])
 
       // Optimistically add new receipt with loading state
       const optimisticReceipt: Receipt = {
@@ -126,7 +135,7 @@ export default function Receipts() {
         _isOptimistic: true,
       }
 
-      queryClient.setQueryData(['receipts', debouncedSearch], (old: any) => {
+      queryClient.setQueryData(['receipts', debouncedSearch, currentPage], (old: any) => {
         const items = old || []
         return [optimisticReceipt, ...items]
       })
@@ -141,7 +150,7 @@ export default function Receipts() {
     onError: (error, _, context) => {
       // Rollback on error
       if (context?.previousReceipts) {
-        queryClient.setQueryData(['receipts', debouncedSearch], context.previousReceipts)
+        queryClient.setQueryData(['receipts', debouncedSearch, currentPage], context.previousReceipts)
       }
       showToast.error(parseApiError(error, 'Failed to record receipt'))
     },
@@ -188,7 +197,7 @@ export default function Receipts() {
 
   // Stats
   const stats = {
-    total: receipts.length,
+    total: totalCount,
     totalAmount: receipts.reduce((sum: number, r: Receipt) => sum + Number(r.amount || 0), 0),
     posted: receipts.filter((r: Receipt) => r.journal).length,
     unposted: receipts.filter((r: Receipt) => !r.journal).length,
@@ -477,6 +486,19 @@ export default function Receipts() {
           </tbody>
         </table>
       </div>
+
+      {totalPages > 1 && (
+        <div className="card overflow-hidden">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+            showPageSize={false}
+          />
+        </div>
+      )}
 
       {/* Create Receipt Modal */}
       <Modal

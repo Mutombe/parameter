@@ -43,6 +43,13 @@ class Command(BaseCommand):
                 'schedule_type': Schedule.DAILY,
                 'repeats': -1,
             },
+            # Report tasks
+            {
+                'name': 'Send Monthly Commission Reports',
+                'func': 'apps.reports.tasks.send_monthly_commission_reports_all_tenants',
+                'schedule_type': Schedule.MONTHLY,
+                'repeats': -1,
+            },
             # Notification tasks
             {
                 'name': 'Cleanup Old Notifications',

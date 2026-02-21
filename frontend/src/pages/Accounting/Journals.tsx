@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState, useEffect } from 'react'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileSpreadsheet,
@@ -27,11 +27,13 @@ import {
 } from 'lucide-react'
 import { journalApi, accountApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton, Textarea, SelectionCheckbox, BulkActionsBar, TimeAgo, Tooltip } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton, Textarea, SelectionCheckbox, BulkActionsBar, TimeAgo, Tooltip, Pagination } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import toast from 'react-hot-toast'
+
+const PAGE_SIZE = 25
 
 interface JournalEntry {
   id?: number
@@ -127,6 +129,7 @@ export default function Journals() {
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [statusFilter, setStatusFilter] = useState<string>('')
+  const [currentPage, setCurrentPage] = useState(1)
   const [expandedJournals, setExpandedJournals] = useState<Set<number>>(new Set())
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [postingId, setPostingId] = useState<number | null>(null)
@@ -143,15 +146,24 @@ export default function Journals() {
     ] as JournalEntry[],
   })
 
-  const { data: journals, isLoading } = useQuery({
-    queryKey: ['journals', debouncedSearch, statusFilter],
+  const { data: journalsData, isLoading } = useQuery({
+    queryKey: ['journals', debouncedSearch, statusFilter, currentPage],
     queryFn: () => {
-      const params: any = {}
+      const params: any = { page: currentPage, page_size: PAGE_SIZE }
       if (debouncedSearch) params.search = debouncedSearch
       if (statusFilter) params.status = statusFilter
-      return journalApi.list(params).then(r => r.data.results || r.data)
+      return journalApi.list(params).then(r => r.data)
     },
+    placeholderData: keepPreviousData,
   })
+
+  const journals = journalsData?.results || journalsData || []
+  const totalCount = journalsData?.count || journals.length
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch, statusFilter])
 
   const { data: accounts } = useQuery({
     queryKey: ['accounts-list'],
@@ -247,7 +259,7 @@ export default function Journals() {
 
   // Stats
   const stats = {
-    total: journals?.length || 0,
+    total: totalCount,
     draft: journals?.filter((j: Journal) => j.status === 'draft').length || 0,
     posted: journals?.filter((j: Journal) => j.status === 'posted').length || 0,
     reversed: journals?.filter((j: Journal) => j.status === 'reversed').length || 0,
@@ -381,7 +393,7 @@ export default function Journals() {
           {isLoading ? (
             <div className="h-4 w-16 bg-gray-200 rounded animate-pulse" />
           ) : (
-            <>{journals?.length || 0} entries</>
+            <>{totalCount} entries</>
           )}
         </div>
       </div>
@@ -860,6 +872,19 @@ export default function Journals() {
           </div>
         </form>
       </Modal>
+
+      {totalPages > 1 && (
+        <div className="card overflow-hidden">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+            showPageSize={false}
+          />
+        </div>
+      )}
 
       <BulkActionsBar
         selectedCount={selection.selectedCount}

@@ -540,6 +540,8 @@ class LeaseAgreement(SoftDeleteModel):
             models.Index(fields=['tenant', 'status']),
             models.Index(fields=['unit', 'status']),
             models.Index(fields=['start_date', 'end_date']),
+            models.Index(fields=['status', 'end_date']),
+            models.Index(fields=['-created_at']),
         ]
 
     def __str__(self):
