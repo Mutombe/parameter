@@ -28,7 +28,6 @@ import {
   Bell,
   AlertTriangle,
   Scale,
-  Clock,
   Trash2,
 } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
@@ -102,7 +101,6 @@ const navigation: NavSection[] = [
     title: 'Analytics',
     items: [
       { name: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
-      { name: 'Aged Analysis', href: '/dashboard/aged-analysis', icon: Clock },
     ],
   },
   {

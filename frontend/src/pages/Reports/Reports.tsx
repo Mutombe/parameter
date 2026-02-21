@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   BarChart3,
@@ -20,6 +21,14 @@ import {
   ArrowDownLeft,
   Banknote,
   ArrowRight,
+  Clock,
+  Users,
+  Receipt,
+  CreditCard,
+  Filter,
+  AlertTriangle,
+  Landmark,
+  ClipboardList,
 } from 'lucide-react'
 import {
   BarChart,
@@ -34,29 +43,75 @@ import {
   Cell,
   Legend,
 } from 'recharts'
-import { reportsApi } from '../../services/api'
+import { reportsApi, tenantApi, landlordApi, propertyApi } from '../../services/api'
 import { formatCurrency, formatPercent, formatDate, cn } from '../../lib/utils'
 import { printElement } from '../../lib/printTemplate'
 import { exportReport } from '../../lib/export'
 import { PageHeader, Button, Badge, Skeleton, EmptyState } from '../../components/ui'
+import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import toast from 'react-hot-toast'
 import { PiBuildingApartmentLight } from "react-icons/pi";
 
-type ReportType = 'trial-balance' | 'income-statement' | 'balance-sheet' | 'cash-flow' | 'vacancy' | 'rent-roll' | 'commission-property' | 'commission-income'
+type ReportType =
+  | 'trial-balance' | 'income-statement' | 'balance-sheet' | 'cash-flow' | 'aged-analysis'
+  | 'vacancy' | 'rent-roll' | 'tenant-account' | 'landlord-account'
+  | 'commission-property' | 'commission-income' | 'bank-to-income'
+  | 'receipts-listing' | 'deposits-listing' | 'lease-charges'
 
 // Store for current report data (for export)
 let currentReportData: any = null
 let currentReportType: ReportType = 'trial-balance'
 
-const reports = [
-  { id: 'trial-balance', name: 'Trial Balance', icon: Scale, desc: 'Verify accounts balance', color: 'text-blue-600', bgColor: 'bg-blue-50' },
-  { id: 'income-statement', name: 'Income Statement', icon: DollarSign, desc: 'Profit & Loss', color: 'text-emerald-600', bgColor: 'bg-emerald-50' },
-  { id: 'balance-sheet', name: 'Balance Sheet', icon: FileText, desc: 'Assets & Liabilities', color: 'text-purple-600', bgColor: 'bg-purple-50' },
-  { id: 'cash-flow', name: 'Cash Flow', icon: Banknote, desc: 'Cash movements', color: 'text-cyan-600', bgColor: 'bg-cyan-50' },
-  { id: 'vacancy', name: 'Vacancy Report', icon: Home, desc: 'Unit occupancy', color: 'text-amber-600', bgColor: 'bg-amber-50' },
-  { id: 'rent-roll', name: 'Rent Roll', icon: Building2, desc: 'Active leases', color: 'text-rose-600', bgColor: 'bg-rose-50' },
-  { id: 'commission-property', name: 'Commission by Property', icon: PiBuildingApartmentLight, desc: 'Property commissions', color: 'text-indigo-600', bgColor: 'bg-indigo-50' },
-  { id: 'commission-income', name: 'Commission by Income', icon: DollarSign, desc: 'Income type commissions', color: 'text-teal-600', bgColor: 'bg-teal-50' },
+interface ReportDef {
+  id: ReportType
+  name: string
+  icon: React.ComponentType<{ className?: string }>
+  desc: string
+  color: string
+  bgColor: string
+}
+
+interface ReportCategory {
+  title: string
+  reports: ReportDef[]
+}
+
+const reportCategories: ReportCategory[] = [
+  {
+    title: 'Financial Reports',
+    reports: [
+      { id: 'balance-sheet', name: 'Balance Sheet', icon: FileText, desc: 'Assets & Liabilities', color: 'text-purple-600', bgColor: 'bg-purple-50' },
+      { id: 'income-statement', name: 'Income Statement', icon: DollarSign, desc: 'Profit & Loss', color: 'text-emerald-600', bgColor: 'bg-emerald-50' },
+      { id: 'cash-flow', name: 'Cash Flow', icon: Banknote, desc: 'Cash movements', color: 'text-cyan-600', bgColor: 'bg-cyan-50' },
+      { id: 'trial-balance', name: 'Trial Balance', icon: Scale, desc: 'Verify accounts balance', color: 'text-blue-600', bgColor: 'bg-blue-50' },
+      { id: 'aged-analysis', name: 'Aged Analysis', icon: Clock, desc: 'Invoice aging', color: 'text-orange-600', bgColor: 'bg-orange-50' },
+    ],
+  },
+  {
+    title: 'Property Management',
+    reports: [
+      { id: 'vacancy', name: 'Vacancy Report', icon: Home, desc: 'Unit occupancy', color: 'text-amber-600', bgColor: 'bg-amber-50' },
+      { id: 'rent-roll', name: 'Rent Roll', icon: Building2, desc: 'Active leases', color: 'text-rose-600', bgColor: 'bg-rose-50' },
+      { id: 'tenant-account', name: 'Tenant Account', icon: Users, desc: 'Tenant transactions', color: 'text-sky-600', bgColor: 'bg-sky-50' },
+      { id: 'landlord-account', name: 'Landlord Account', icon: PiBuildingApartmentLight, desc: 'Landlord statement', color: 'text-violet-600', bgColor: 'bg-violet-50' },
+    ],
+  },
+  {
+    title: 'Comparative Reports',
+    reports: [
+      { id: 'commission-property', name: 'Commission by Property', icon: PiBuildingApartmentLight, desc: 'Property commissions', color: 'text-indigo-600', bgColor: 'bg-indigo-50' },
+      { id: 'commission-income', name: 'Commission by Income', icon: DollarSign, desc: 'Income type commissions', color: 'text-teal-600', bgColor: 'bg-teal-50' },
+      { id: 'bank-to-income', name: 'Bank to Income', icon: Landmark, desc: 'Income by bank account', color: 'text-pink-600', bgColor: 'bg-pink-50' },
+    ],
+  },
+  {
+    title: 'Administrative Reports',
+    reports: [
+      { id: 'receipts-listing', name: 'Receipts Listing', icon: Receipt, desc: 'All receipts', color: 'text-lime-600', bgColor: 'bg-lime-50' },
+      { id: 'deposits-listing', name: 'Deposits Listing', icon: CreditCard, desc: 'Deposit accounts', color: 'text-fuchsia-600', bgColor: 'bg-fuchsia-50' },
+      { id: 'lease-charges', name: 'Lease Charges', icon: ClipboardList, desc: 'Charges summary', color: 'text-stone-600', bgColor: 'bg-stone-50' },
+    ],
+  },
 ]
 
 function SkeletonReport() {
@@ -81,29 +136,46 @@ function SkeletonReport() {
   )
 }
 
+const reportNames: Record<ReportType, string> = {
+  'trial-balance': 'Trial Balance',
+  'income-statement': 'Income Statement',
+  'balance-sheet': 'Balance Sheet',
+  'cash-flow': 'Cash Flow Statement',
+  'aged-analysis': 'Aged Analysis',
+  'vacancy': 'Vacancy Report',
+  'rent-roll': 'Rent Roll',
+  'tenant-account': 'Tenant Account',
+  'landlord-account': 'Landlord Account',
+  'commission-property': 'Commission by Property',
+  'commission-income': 'Commission by Income',
+  'bank-to-income': 'Bank to Income',
+  'receipts-listing': 'Receipts Listing',
+  'deposits-listing': 'Deposits Listing',
+  'lease-charges': 'Lease Charges',
+}
+
 export default function Reports() {
-  const [activeReport, setActiveReport] = useState<ReportType>('trial-balance')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialReport = (searchParams.get('report') as ReportType) || 'trial-balance'
+  const [activeReport, setActiveReport] = useState<ReportType>(initialReport)
   const [dateRange, setDateRange] = useState({
     startDate: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
   })
 
-  const reportNames: Record<ReportType, string> = {
-    'trial-balance': 'Trial Balance',
-    'income-statement': 'Income Statement',
-    'balance-sheet': 'Balance Sheet',
-    'cash-flow': 'Cash Flow Statement',
-    'vacancy': 'Vacancy Report',
-    'rent-roll': 'Rent Roll',
-    'commission-property': 'Commission by Property',
-    'commission-income': 'Commission by Income',
-  }
+  // Deep-linking: read ?report= on mount
+  useEffect(() => {
+    const reportParam = searchParams.get('report') as ReportType | null
+    if (reportParam && reportParam in reportNames) {
+      setActiveReport(reportParam)
+    }
+  }, [searchParams])
 
   const handlePrint = () => {
     printElement('report-content', {
       title: reportNames[activeReport],
       subtitle: `Generated on ${formatDate(new Date())}`,
-      orientation: activeReport === 'rent-roll' ? 'landscape' : 'portrait',
+      orientation: ['rent-roll', 'receipts-listing', 'bank-to-income'].includes(activeReport) ? 'landscape' : 'portrait',
     })
   }
 
@@ -131,7 +203,7 @@ export default function Reports() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Financial Reports"
+        title="Reports"
         subtitle="Accounting and operational reports"
         icon={BarChart3}
         actions={
@@ -152,36 +224,48 @@ export default function Reports() {
         }
       />
 
-      {/* Report Selector */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {reports.map((report) => {
-          const ReportIcon = report.icon
-          const isActive = activeReport === report.id
-          return (
-            <motion.button
-              key={report.id}
-              whileHover={{ y: -2 }}
-              onClick={() => setActiveReport(report.id as ReportType)}
-              className={cn(
-                'p-4 rounded-xl border text-left transition-all',
-                isActive
-                  ? 'bg-white border-primary-300 ring-2 ring-primary-100 shadow-lg'
-                  : 'bg-white border-gray-200 hover:border-gray-300'
-              )}
-            >
-              <div className={cn(
-                'w-10 h-10 rounded-lg flex items-center justify-center mb-3',
-                isActive ? 'bg-primary-100' : report.bgColor
-              )}>
-                <ReportIcon className={cn('w-5 h-5', isActive ? 'text-primary-600' : report.color)} />
-              </div>
-              <h3 className={cn('font-semibold text-sm', isActive ? 'text-primary-700' : 'text-gray-900')}>
-                {report.name}
-              </h3>
-              <p className="text-xs text-gray-500 mt-0.5">{report.desc}</p>
-            </motion.button>
-          )
-        })}
+      {/* Report Selector - Categorized */}
+      <div className="space-y-5">
+        {reportCategories.map(category => (
+          <div key={category.title} className="space-y-2">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">
+              {category.title}
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {category.reports.map((report) => {
+                const ReportIcon = report.icon
+                const isActive = activeReport === report.id
+                return (
+                  <motion.button
+                    key={report.id}
+                    whileHover={{ y: -2 }}
+                    onClick={() => {
+                      setActiveReport(report.id)
+                      setSearchParams({ report: report.id })
+                    }}
+                    className={cn(
+                      'p-3 rounded-xl border text-left transition-all',
+                      isActive
+                        ? 'bg-white border-primary-300 ring-2 ring-primary-100 shadow-lg'
+                        : 'bg-white border-gray-200 hover:border-gray-300'
+                    )}
+                  >
+                    <div className={cn(
+                      'w-9 h-9 rounded-lg flex items-center justify-center mb-2',
+                      isActive ? 'bg-primary-100' : report.bgColor
+                    )}>
+                      <ReportIcon className={cn('w-4 h-4', isActive ? 'text-primary-600' : report.color)} />
+                    </div>
+                    <h3 className={cn('font-semibold text-sm leading-tight', isActive ? 'text-primary-700' : 'text-gray-900')}>
+                      {report.name}
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-0.5">{report.desc}</p>
+                  </motion.button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Report Content */}
@@ -198,10 +282,17 @@ export default function Reports() {
           {activeReport === 'income-statement' && <IncomeStatementReport />}
           {activeReport === 'balance-sheet' && <BalanceSheetReport />}
           {activeReport === 'cash-flow' && <CashFlowReport />}
+          {activeReport === 'aged-analysis' && <AgedAnalysisReport />}
           {activeReport === 'vacancy' && <VacancyReport />}
           {activeReport === 'rent-roll' && <RentRollReport />}
+          {activeReport === 'tenant-account' && <TenantAccountReport />}
+          {activeReport === 'landlord-account' && <LandlordAccountReport />}
           {activeReport === 'commission-property' && <CommissionByPropertyReport />}
           {activeReport === 'commission-income' && <CommissionByIncomeReport />}
+          {activeReport === 'bank-to-income' && <BankToIncomeReport />}
+          {activeReport === 'receipts-listing' && <ReceiptsListingReport />}
+          {activeReport === 'deposits-listing' && <DepositsListingReport />}
+          {activeReport === 'lease-charges' && <LeaseChargeSummaryReport />}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -1444,6 +1535,830 @@ function CommissionByIncomeReport() {
           <p className="text-sm mt-1">Record receipts to see commission by income type</p>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Aged Analysis Report ────────────────────────────────────────────────────
+
+const bucketConfig = [
+  { key: 'current', label: 'Current (0-30)', color: 'bg-green-500', textColor: 'text-green-700', bgLight: 'bg-green-50' },
+  { key: 'days_31_60', label: '31-60 Days', color: 'bg-amber-500', textColor: 'text-amber-700', bgLight: 'bg-amber-50' },
+  { key: 'days_61_90', label: '61-90 Days', color: 'bg-orange-500', textColor: 'text-orange-700', bgLight: 'bg-orange-50' },
+  { key: 'days_91_120', label: '91-120 Days', color: 'bg-red-500', textColor: 'text-red-700', bgLight: 'bg-red-50' },
+  { key: 'days_over_120', label: '120+ Days', color: 'bg-red-800', textColor: 'text-red-900', bgLight: 'bg-red-100' },
+] as const
+
+function AgedAnalysisReport() {
+  const today = new Date().toISOString().split('T')[0]
+  const [asOfDate, setAsOfDate] = useState(today)
+  const [propertyFilter, setPropertyFilter] = useState<string>('')
+  const [landlordFilter, setLandlordFilter] = useState<string>('')
+
+  const { data: analysisData, isLoading, refetch } = useQuery({
+    queryKey: ['aged-analysis', asOfDate, propertyFilter, landlordFilter],
+    queryFn: () => reportsApi.agedAnalysis({
+      as_of_date: asOfDate,
+      ...(propertyFilter ? { property_id: Number(propertyFilter) } : {}),
+      ...(landlordFilter ? { landlord_id: Number(landlordFilter) } : {}),
+    }).then(r => r.data),
+  })
+
+  const { data: propertiesData } = useQuery({
+    queryKey: ['properties-list'],
+    queryFn: () => propertyApi.list().then(r => r.data.results || r.data),
+  })
+
+  const { data: landlordsData } = useQuery({
+    queryKey: ['landlords-list'],
+    queryFn: () => landlordApi.list().then(r => r.data.results || r.data),
+  })
+
+  if (analysisData) currentReportData = analysisData
+
+  const summary = analysisData?.summary || { total_outstanding: 0, total_overdue: 0, overdue_count: 0, current: 0, days_31_60: 0, days_61_90: 0, days_91_120: 0, days_over_120: 0 }
+  // Map backend field names: backend by_tenant returns `31_60`, `61_90` etc — map to `days_31_60` etc.
+  const tenants: any[] = (analysisData?.by_tenant || []).map((t: any) => ({
+    ...t,
+    current: t.current ?? t['0_30'] ?? 0,
+    days_31_60: t.days_31_60 ?? t['31_60'] ?? 0,
+    days_61_90: t.days_61_90 ?? t['61_90'] ?? 0,
+    days_91_120: t.days_91_120 ?? t['91_120'] ?? 0,
+    days_over_120: t.days_over_120 ?? t['over_120'] ?? 0,
+  }))
+  const properties: any[] = Array.isArray(propertiesData) ? propertiesData : []
+  const landlords: any[] = Array.isArray(landlordsData) ? landlordsData : []
+
+  const chartMax = useMemo(() => {
+    const values = bucketConfig.map(b => (summary as any)[b.key] || 0)
+    return Math.max(...values, 1)
+  }, [summary])
+
+  return (
+    <div className="space-y-4">
+      {/* Filters */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-400" />
+            <span className="text-sm font-medium text-gray-600">Filters:</span>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">As of Date</label>
+            <input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" />
+          </div>
+          <AsyncSelect label="Property" placeholder="All Properties" value={propertyFilter} onChange={(val) => setPropertyFilter(String(val))} options={properties.map((p: any) => ({ value: p.id, label: p.name }))} searchable clearable className="min-w-[180px]" />
+          <AsyncSelect label="Landlord" placeholder="All Landlords" value={landlordFilter} onChange={(val) => setLandlordFilter(String(val))} options={landlords.map((l: any) => ({ value: l.id, label: l.name }))} searchable clearable className="min-w-[180px]" />
+          <button onClick={() => refetch()} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors mt-4">
+            <RefreshCw className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center"><TrendingUp className="w-5 h-5 text-blue-600" /></div>
+            <div>
+              <p className="text-sm text-gray-500">Total Outstanding</p>
+              {isLoading ? <div className="h-6 w-28 bg-gray-200 rounded animate-pulse" /> : <p className="text-xl font-bold text-gray-900">{formatCurrency(summary.total_outstanding)}</p>}
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center"><AlertTriangle className="w-5 h-5 text-red-600" /></div>
+            <div>
+              <p className="text-sm text-gray-500">Overdue Invoices</p>
+              {isLoading ? <div className="h-6 w-28 bg-gray-200 rounded animate-pulse" /> : <p className="text-xl font-bold text-gray-900">{summary.overdue_count}</p>}
+            </div>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center"><Clock className="w-5 h-5 text-amber-600" /></div>
+            <div>
+              <p className="text-sm text-gray-500">Total Overdue</p>
+              {isLoading ? <div className="h-6 w-28 bg-gray-200 rounded animate-pulse" /> : <p className="text-xl font-bold text-gray-900">{formatCurrency(summary.total_overdue)}</p>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Aging Buckets Chart */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Aging Buckets</h2>
+        {isLoading ? (
+          <div className="space-y-3">
+            {bucketConfig.map((b, i) => (
+              <div key={i} className="flex items-center gap-4 animate-pulse">
+                <div className="w-32 text-sm text-gray-400 font-medium shrink-0">{b.label}</div>
+                <div className="flex-1 h-8 bg-gray-100 rounded-lg" />
+                <div className="w-28 shrink-0"><div className="h-4 w-20 bg-gray-200 rounded ml-auto" /></div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {bucketConfig.map((bucket) => {
+              const value = (summary as any)[bucket.key] || 0
+              const percentage = chartMax > 0 ? (value / chartMax) * 100 : 0
+              const totalPercentage = summary.total_outstanding > 0 ? (value / summary.total_outstanding) * 100 : 0
+              return (
+                <div key={bucket.key} className="flex items-center gap-4">
+                  <div className="w-32 text-sm text-gray-600 font-medium shrink-0">{bucket.label}</div>
+                  <div className="flex-1 h-8 bg-gray-100 rounded-lg overflow-hidden relative">
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${Math.max(percentage, 0.5)}%` }} transition={{ duration: 0.5, ease: 'easeOut' }} className={cn("h-full rounded-lg", bucket.color)} />
+                  </div>
+                  <div className="w-28 text-right shrink-0">
+                    <span className="text-sm font-semibold text-gray-900">{formatCurrency(value)}</span>
+                    <span className="text-xs text-gray-400 ml-1">({totalPercentage.toFixed(0)}%)</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Tenant Breakdown */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900">Tenant Breakdown {tenants.length > 0 && <span className="text-sm font-normal text-gray-400">({tenants.length})</span>}</h2>
+        </div>
+        {isLoading ? (
+          <div className="p-6 space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-8 bg-gray-100 rounded animate-pulse" />)}
+          </div>
+        ) : tenants.length === 0 ? (
+          <div className="p-12 text-center text-gray-500">
+            <Users className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+            <p className="font-medium">No outstanding balances</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Tenant</th>
+                  {bucketConfig.map(b => <th key={b.key} className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">{b.label}</th>)}
+                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {tenants.sort((a: any, b: any) => b.total - a.total).map((tenant: any, idx: number) => (
+                  <motion.tr key={tenant.tenant_id || idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.02 }} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-3 text-sm font-medium text-gray-900">{tenant.tenant_name}</td>
+                    {bucketConfig.map(bucket => {
+                      const val = tenant[bucket.key] || 0
+                      return (
+                        <td key={bucket.key} className={cn("px-4 py-3 text-sm text-right font-medium", val > 0 ? bucket.textColor : "text-gray-300")}>
+                          {val > 0 ? <span className={cn("px-2 py-0.5 rounded", bucket.bgLight)}>{formatCurrency(val)}</span> : '—'}
+                        </td>
+                      )
+                    })}
+                    <td className="px-6 py-3 text-sm text-right font-bold text-gray-900">{formatCurrency(tenant.total)}</td>
+                  </motion.tr>
+                ))}
+                <tr className="bg-gray-50 font-bold">
+                  <td className="px-6 py-3 text-sm text-gray-900">Total</td>
+                  {bucketConfig.map(bucket => {
+                    const total = tenants.reduce((sum: number, t: any) => sum + (t[bucket.key] || 0), 0)
+                    return <td key={bucket.key} className={cn("px-4 py-3 text-sm text-right", bucket.textColor)}>{formatCurrency(total)}</td>
+                  })}
+                  <td className="px-6 py-3 text-sm text-right text-gray-900">{formatCurrency(summary.total_outstanding)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Tenant Account Report ───────────────────────────────────────────────────
+
+function TenantAccountReport() {
+  const [selectedTenant, setSelectedTenant] = useState<string>('')
+
+  const { data: tenantsData } = useQuery({
+    queryKey: ['tenants-list'],
+    queryFn: () => tenantApi.list().then(r => r.data.results || r.data),
+  })
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['tenant-account', selectedTenant],
+    queryFn: () => reportsApi.tenantAccount({ tenant_id: Number(selectedTenant) }).then(r => r.data),
+    enabled: !!selectedTenant,
+  })
+
+  if (data) currentReportData = data
+
+  const tenantsList: any[] = Array.isArray(tenantsData) ? tenantsData : []
+  const transactions = data?.transactions || []
+  const summary = data?.summary || {}
+
+  return (
+    <div className="space-y-4">
+      {/* Tenant selector */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <AsyncSelect label="Tenant" placeholder="Select a tenant..." value={selectedTenant} onChange={(val) => setSelectedTenant(String(val))} options={tenantsList.map((t: any) => ({ value: t.id, label: `${t.code ? t.code + ' - ' : ''}${t.name}` }))} searchable className="min-w-[280px]" />
+          {selectedTenant && (
+            <button onClick={() => refetch()} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors mt-4">
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {!selectedTenant ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500">
+          <Users className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+          <p className="font-medium">Select a tenant to view their account</p>
+        </div>
+      ) : isLoading ? <SkeletonReport /> : data ? (
+        <>
+          {/* Tenant info + summary */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Total Invoiced</p>
+              <p className="text-xl font-bold text-gray-900">{formatCurrency(summary.total_invoiced || 0)}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Total Paid</p>
+              <p className="text-xl font-bold text-emerald-600">{formatCurrency(summary.total_paid || 0)}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Current Balance</p>
+              <p className="text-xl font-bold text-rose-600">{formatCurrency(summary.current_balance || 0)}</p>
+            </div>
+          </div>
+
+          {/* Transaction table */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-semibold text-gray-900">Transactions <span className="text-sm font-normal text-gray-400">({transactions.length})</span></h2>
+            </div>
+            {transactions.length === 0 ? (
+              <div className="p-12 text-center text-gray-500">
+                <FileText className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+                <p className="font-medium">No transactions found</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Reference</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Description</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Debit</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Credit</th>
+                      <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {transactions.map((txn: any, idx: number) => (
+                      <motion.tr key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.01 }} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-3 text-sm text-gray-600">{txn.date}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={cn('px-2 py-0.5 rounded text-xs font-medium', txn.type === 'invoice' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700')}>
+                            {txn.type}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm font-mono text-primary-600">{txn.reference}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 max-w-[200px] truncate">{txn.description}</td>
+                        <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums">{txn.debit > 0 ? <span className="text-blue-600">{formatCurrency(txn.debit)}</span> : <span className="text-gray-300">-</span>}</td>
+                        <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums">{txn.credit > 0 ? <span className="text-emerald-600">{formatCurrency(txn.credit)}</span> : <span className="text-gray-300">-</span>}</td>
+                        <td className="px-6 py-3 text-sm text-right font-bold tabular-nums text-gray-900">{formatCurrency(txn.balance)}</td>
+                      </motion.tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      ) : null}
+    </div>
+  )
+}
+
+// ─── Landlord Account Report ─────────────────────────────────────────────────
+
+function LandlordAccountReport() {
+  const [selectedLandlord, setSelectedLandlord] = useState<string>('')
+
+  const { data: landlordsData } = useQuery({
+    queryKey: ['landlords-list'],
+    queryFn: () => landlordApi.list().then(r => r.data.results || r.data),
+  })
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['landlord-account', selectedLandlord],
+    queryFn: () => reportsApi.landlordStatement({ landlord_id: Number(selectedLandlord) }).then(r => r.data),
+    enabled: !!selectedLandlord,
+  })
+
+  if (data) currentReportData = data
+
+  const landlordsList: any[] = Array.isArray(landlordsData) ? landlordsData : []
+  const transactions = data?.transactions || []
+  const summary = data?.summary || {}
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <AsyncSelect label="Landlord" placeholder="Select a landlord..." value={selectedLandlord} onChange={(val) => setSelectedLandlord(String(val))} options={landlordsList.map((l: any) => ({ value: l.id, label: `${l.code ? l.code + ' - ' : ''}${l.name}` }))} searchable className="min-w-[280px]" />
+          {selectedLandlord && (
+            <button onClick={() => refetch()} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors mt-4">
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {!selectedLandlord ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500">
+          <PiBuildingApartmentLight className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+          <p className="font-medium">Select a landlord to view their statement</p>
+        </div>
+      ) : isLoading ? <SkeletonReport /> : data ? (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Total Invoiced</p>
+              <p className="text-xl font-bold text-gray-900">{formatCurrency(summary.total_invoiced || 0)}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Total Collected</p>
+              <p className="text-xl font-bold text-emerald-600">{formatCurrency(summary.total_collected || 0)}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Commission ({summary.commission_rate || 0}%)</p>
+              <p className="text-xl font-bold text-indigo-600">{formatCurrency(summary.commission_amount || 0)}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Net Payable</p>
+              <p className="text-xl font-bold text-primary-600">{formatCurrency(summary.net_payable || 0)}</p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-semibold text-gray-900">Transactions <span className="text-sm font-normal text-gray-400">({transactions.length})</span></h2>
+            </div>
+            {transactions.length === 0 ? (
+              <div className="p-12 text-center text-gray-500">
+                <FileText className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+                <p className="font-medium">No transactions found</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Reference</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Property</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Unit</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Tenant</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Debit</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Credit</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {transactions.map((txn: any, idx: number) => (
+                      <motion.tr key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.01 }} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 text-sm text-gray-600">{txn.date}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={cn('px-2 py-0.5 rounded text-xs font-medium', txn.type === 'invoice' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700')}>{txn.type}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm font-mono text-primary-600">{txn.reference}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{txn.property}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{txn.unit}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{txn.tenant}</td>
+                        <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums">{txn.debit > 0 ? <span className="text-blue-600">{formatCurrency(txn.debit)}</span> : <span className="text-gray-300">-</span>}</td>
+                        <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums">{txn.credit > 0 ? <span className="text-emerald-600">{formatCurrency(txn.credit)}</span> : <span className="text-gray-300">-</span>}</td>
+                        <td className="px-4 py-3 text-sm text-right font-bold tabular-nums text-gray-900">{formatCurrency(txn.balance)}</td>
+                      </motion.tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      ) : null}
+    </div>
+  )
+}
+
+// ─── Bank to Income Report ───────────────────────────────────────────────────
+
+function BankToIncomeReport() {
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['bank-to-income'],
+    queryFn: () => reportsApi.incomeItemAnalysis().then(r => r.data),
+  })
+
+  if (data) currentReportData = data
+
+  const matrix = data?.matrix || []
+  const bankColumns = data?.bank_columns || []
+  const totals = data?.totals || {}
+
+  // Find max value for heatmap coloring
+  const maxValue = useMemo(() => {
+    let max = 0
+    matrix.forEach((row: any) => {
+      bankColumns.forEach((col: any) => {
+        const val = row[col.key] || 0
+        if (val > max) max = val
+      })
+    })
+    return max || 1
+  }, [matrix, bankColumns])
+
+  const heatColor = (value: number) => {
+    if (value <= 0) return ''
+    const intensity = Math.min(value / maxValue, 1)
+    if (intensity > 0.7) return 'bg-emerald-100 text-emerald-800'
+    if (intensity > 0.4) return 'bg-emerald-50 text-emerald-700'
+    return 'text-gray-700'
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+      <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-pink-50 flex items-center justify-center"><Landmark className="w-5 h-5 text-pink-600" /></div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Bank to Income Analysis</h2>
+            <p className="text-sm text-gray-500">Income distribution across bank accounts</p>
+          </div>
+        </div>
+        <button onClick={() => refetch()} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"><RefreshCw className="w-5 h-5" /></button>
+      </div>
+
+      {isLoading ? (
+        <div className="p-6 space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />)}
+        </div>
+      ) : matrix.length === 0 ? (
+        <div className="p-12 text-center text-gray-500">
+          <Landmark className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+          <p className="font-medium">No data available</p>
+          <p className="text-sm mt-1">Record receipts to see bank vs income analysis</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Income Type</th>
+                {bankColumns.map((col: any) => (
+                  <th key={col.key} className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">{col.label}</th>
+                ))}
+                <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {matrix.map((row: any, idx: number) => (
+                <motion.tr key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.02 }} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-3 text-sm font-medium text-gray-900">{row.income_type}</td>
+                  {bankColumns.map((col: any) => {
+                    const val = row[col.key] || 0
+                    return (
+                      <td key={col.key} className={cn("px-4 py-3 text-sm text-right font-semibold tabular-nums", heatColor(val))}>
+                        {val > 0 ? formatCurrency(val) : <span className="text-gray-300">-</span>}
+                      </td>
+                    )
+                  })}
+                  <td className="px-6 py-3 text-sm text-right font-bold tabular-nums text-gray-900">{formatCurrency(row.total || 0)}</td>
+                </motion.tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+              <tr className="font-bold">
+                <td className="px-6 py-3 text-sm text-gray-700">Total</td>
+                {bankColumns.map((col: any) => (
+                  <td key={col.key} className="px-4 py-3 text-sm text-right tabular-nums text-gray-900">{formatCurrency(totals[col.key] || 0)}</td>
+                ))}
+                <td className="px-6 py-3 text-sm text-right tabular-nums text-gray-900">{formatCurrency(totals.grand_total || 0)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Receipts Listing Report ─────────────────────────────────────────────────
+
+function ReceiptsListingReport() {
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['receipts-listing'],
+    queryFn: () => reportsApi.receiptListing().then(r => r.data),
+  })
+
+  if (data) currentReportData = data
+
+  const receipts = data?.receipts || []
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+      <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-lime-50 flex items-center justify-center"><Receipt className="w-5 h-5 text-lime-600" /></div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Receipts Listing</h2>
+            {isLoading ? <div className="h-4 w-24 bg-gray-200 rounded animate-pulse mt-1" /> : <p className="text-sm text-gray-500">{receipts.length} receipts</p>}
+          </div>
+        </div>
+        <button onClick={() => refetch()} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"><RefreshCw className="w-5 h-5" /></button>
+      </div>
+
+      {isLoading ? (
+        <div className="p-6 space-y-3">
+          {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-8 bg-gray-100 rounded animate-pulse" />)}
+        </div>
+      ) : receipts.length === 0 ? (
+        <div className="p-12 text-center text-gray-500">
+          <Receipt className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+          <p className="font-medium">No receipts found</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Receipt #</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Tenant</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Property</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Unit</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Income Type</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Bank</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Method</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Reference</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {receipts.map((r: any, idx: number) => (
+                <motion.tr key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.01 }} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3 text-sm text-gray-600">{r.date}</td>
+                  <td className="px-4 py-3 text-sm font-mono text-primary-600">{r.receipt_number}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900">{r.tenant_name || r.tenant}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{r.property_name || r.property}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{r.unit_name || r.unit}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700">{r.income_type}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{r.bank_account || r.bank}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{r.payment_method}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{r.reference}</td>
+                  <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums text-gray-900">{formatCurrency(r.amount)}</td>
+                </motion.tr>
+              ))}
+            </tbody>
+            {data?.summary && (
+              <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+                <tr className="font-bold">
+                  <td colSpan={9} className="px-4 py-3 text-sm text-gray-700">Total</td>
+                  <td className="px-4 py-3 text-sm text-right tabular-nums text-gray-900">{formatCurrency(data.summary.total_amount || 0)}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Deposits Listing Report ─────────────────────────────────────────────────
+
+function DepositsListingReport() {
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['deposits-listing'],
+    queryFn: () => reportsApi.depositSummary().then(r => r.data),
+  })
+
+  if (data) currentReportData = data
+
+  const deposits = data?.deposits || []
+  const summary = data?.summary || {}
+
+  return (
+    <div className="space-y-4">
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <p className="text-sm text-gray-500">Required</p>
+          {isLoading ? <div className="h-6 w-24 bg-gray-200 rounded animate-pulse" /> : <p className="text-xl font-bold text-gray-900">{formatCurrency(summary.total_required || 0)}</p>}
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <p className="text-sm text-gray-500">Paid</p>
+          {isLoading ? <div className="h-6 w-24 bg-gray-200 rounded animate-pulse" /> : <p className="text-xl font-bold text-emerald-600">{formatCurrency(summary.total_paid || 0)}</p>}
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <p className="text-sm text-gray-500">Outstanding</p>
+          {isLoading ? <div className="h-6 w-24 bg-gray-200 rounded animate-pulse" /> : <p className="text-xl font-bold text-rose-600">{formatCurrency(summary.total_outstanding || 0)}</p>}
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <p className="text-sm text-gray-500">Held</p>
+          {isLoading ? <div className="h-6 w-24 bg-gray-200 rounded animate-pulse" /> : <p className="text-xl font-bold text-amber-600">{formatCurrency(summary.total_held || 0)}</p>}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+        <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-fuchsia-50 flex items-center justify-center"><CreditCard className="w-5 h-5 text-fuchsia-600" /></div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Deposits Listing</h2>
+              {!isLoading && <p className="text-sm text-gray-500">{deposits.length} deposits</p>}
+            </div>
+          </div>
+          <button onClick={() => refetch()} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"><RefreshCw className="w-5 h-5" /></button>
+        </div>
+
+        {isLoading ? (
+          <div className="p-6 space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-8 bg-gray-100 rounded animate-pulse" />)}
+          </div>
+        ) : deposits.length === 0 ? (
+          <div className="p-12 text-center text-gray-500">
+            <CreditCard className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+            <p className="font-medium">No deposit records found</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Lease #</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Tenant</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Property</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Unit</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Required</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Paid</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Outstanding</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {deposits.map((d: any, idx: number) => (
+                  <motion.tr key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.02 }} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 text-sm font-mono text-primary-600">{d.lease_number}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{d.tenant_name || d.tenant}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{d.property_name || d.property}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{d.unit_name || d.unit}</td>
+                    <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums text-gray-900">{formatCurrency(d.required || d.deposit_required || 0)}</td>
+                    <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums text-emerald-600">{formatCurrency(d.paid || d.deposit_paid || 0)}</td>
+                    <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums text-rose-600">{formatCurrency(d.outstanding || d.deposit_outstanding || 0)}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <span className={cn('px-2 py-0.5 rounded text-xs font-medium',
+                        d.status === 'paid' || d.status === 'fully_paid' ? 'bg-emerald-50 text-emerald-700' :
+                        d.status === 'partial' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'
+                      )}>{d.status || 'pending'}</span>
+                    </td>
+                  </motion.tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Lease Charge Summary Report ─────────────────────────────────────────────
+
+function LeaseChargeSummaryReport() {
+  const [propertyFilter, setPropertyFilter] = useState<string>('')
+  const [landlordFilter, setLandlordFilter] = useState<string>('')
+
+  const { data: propertiesData } = useQuery({
+    queryKey: ['properties-list'],
+    queryFn: () => propertyApi.list().then(r => r.data.results || r.data),
+  })
+
+  const { data: landlordsData } = useQuery({
+    queryKey: ['landlords-list'],
+    queryFn: () => landlordApi.list().then(r => r.data.results || r.data),
+  })
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['lease-charges', propertyFilter, landlordFilter],
+    queryFn: () => reportsApi.leaseCharges({
+      ...(propertyFilter ? { property_id: Number(propertyFilter) } : {}),
+      ...(landlordFilter ? { landlord_id: Number(landlordFilter) } : {}),
+    }).then(r => r.data),
+  })
+
+  if (data) currentReportData = data
+
+  const leases = data?.leases || []
+  const summary = data?.summary || {}
+  const properties: any[] = Array.isArray(propertiesData) ? propertiesData : []
+  const landlords: any[] = Array.isArray(landlordsData) ? landlordsData : []
+
+  return (
+    <div className="space-y-4">
+      {/* Filters */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-400" />
+            <span className="text-sm font-medium text-gray-600">Filters:</span>
+          </div>
+          <AsyncSelect label="Property" placeholder="All Properties" value={propertyFilter} onChange={(val) => setPropertyFilter(String(val))} options={properties.map((p: any) => ({ value: p.id, label: p.name }))} searchable clearable className="min-w-[180px]" />
+          <AsyncSelect label="Landlord" placeholder="All Landlords" value={landlordFilter} onChange={(val) => setLandlordFilter(String(val))} options={landlords.map((l: any) => ({ value: l.id, label: l.name }))} searchable clearable className="min-w-[180px]" />
+          <button onClick={() => refetch()} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors mt-4"><RefreshCw className="w-5 h-5" /></button>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <p className="text-sm text-gray-500">Total Leases</p>
+          {isLoading ? <div className="h-6 w-16 bg-gray-200 rounded animate-pulse" /> : <p className="text-xl font-bold text-gray-900">{summary.total_leases || leases.length}</p>}
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <p className="text-sm text-gray-500">Total Rent</p>
+          {isLoading ? <div className="h-6 w-24 bg-gray-200 rounded animate-pulse" /> : <p className="text-xl font-bold text-gray-900">{formatCurrency(summary.total_rent || 0)}</p>}
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <p className="text-sm text-gray-500">Other Charges</p>
+          {isLoading ? <div className="h-6 w-24 bg-gray-200 rounded animate-pulse" /> : <p className="text-xl font-bold text-amber-600">{formatCurrency(summary.total_other || 0)}</p>}
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <p className="text-sm text-gray-500">Grand Total</p>
+          {isLoading ? <div className="h-6 w-24 bg-gray-200 rounded animate-pulse" /> : <p className="text-xl font-bold text-primary-600">{formatCurrency(summary.grand_total || 0)}</p>}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+        <div className="p-6 border-b border-gray-100 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-stone-50 flex items-center justify-center"><ClipboardList className="w-5 h-5 text-stone-600" /></div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Lease Charges</h2>
+            {!isLoading && <p className="text-sm text-gray-500">{leases.length} leases</p>}
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="p-6 space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-8 bg-gray-100 rounded animate-pulse" />)}
+          </div>
+        ) : leases.length === 0 ? (
+          <div className="p-12 text-center text-gray-500">
+            <ClipboardList className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+            <p className="font-medium">No lease charges found</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Lease #</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Tenant</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Property</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Unit</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Monthly Rent</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Total Charged</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Paid</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Balance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {leases.map((l: any, idx: number) => (
+                  <motion.tr key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.02 }} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 text-sm font-mono text-primary-600">{l.lease_number}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{l.tenant_name || l.tenant}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{l.property_name || l.property}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{l.unit_name || l.unit}</td>
+                    <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums text-gray-900">{formatCurrency(l.monthly_rent || 0)}</td>
+                    <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums text-gray-900">{formatCurrency(l.total_charged || 0)}</td>
+                    <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums text-emerald-600">{formatCurrency(l.total_paid || l.paid || 0)}</td>
+                    <td className="px-4 py-3 text-sm text-right font-bold tabular-nums text-rose-600">{formatCurrency(l.balance || 0)}</td>
+                  </motion.tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

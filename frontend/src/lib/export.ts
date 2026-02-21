@@ -233,6 +233,118 @@ export function exportReport(
       ]
       break
 
+    case 'aged-analysis':
+      exportData = (data?.by_tenant || []).map((t: any) => ({
+        ...t,
+        current: t.current ?? t['0_30'] ?? 0,
+        days_31_60: t.days_31_60 ?? t['31_60'] ?? 0,
+        days_61_90: t.days_61_90 ?? t['61_90'] ?? 0,
+        days_91_120: t.days_91_120 ?? t['91_120'] ?? 0,
+        days_over_120: t.days_over_120 ?? t['over_120'] ?? 0,
+      }))
+      columns = [
+        { key: 'tenant_code', header: 'Tenant Code' },
+        { key: 'tenant_name', header: 'Tenant Name' },
+        { key: 'current', header: 'Current', format: formatNumber },
+        { key: 'days_31_60', header: '31-60 Days', format: formatNumber },
+        { key: 'days_61_90', header: '61-90 Days', format: formatNumber },
+        { key: 'days_91_120', header: '91-120 Days', format: formatNumber },
+        { key: 'days_over_120', header: '120+ Days', format: formatNumber },
+        { key: 'total', header: 'Total', format: formatNumber },
+      ]
+      break
+
+    case 'tenant-account':
+      exportData = data?.transactions || []
+      columns = [
+        { key: 'date', header: 'Date' },
+        { key: 'type', header: 'Type' },
+        { key: 'reference', header: 'Reference' },
+        { key: 'description', header: 'Description' },
+        { key: 'debit', header: 'Debit', format: formatNumber },
+        { key: 'credit', header: 'Credit', format: formatNumber },
+        { key: 'balance', header: 'Balance', format: formatNumber },
+      ]
+      break
+
+    case 'landlord-account':
+      exportData = data?.transactions || []
+      columns = [
+        { key: 'date', header: 'Date' },
+        { key: 'type', header: 'Type' },
+        { key: 'reference', header: 'Reference' },
+        { key: 'property', header: 'Property' },
+        { key: 'unit', header: 'Unit' },
+        { key: 'tenant', header: 'Tenant' },
+        { key: 'debit', header: 'Debit', format: formatNumber },
+        { key: 'credit', header: 'Credit', format: formatNumber },
+        { key: 'balance', header: 'Balance', format: formatNumber },
+      ]
+      break
+
+    case 'bank-to-income': {
+      const bankCols = data?.bank_columns || []
+      exportData = (data?.matrix || []).map((row: any) => {
+        const flat: any = { income_type: row.income_type }
+        bankCols.forEach((col: any) => { flat[col.key] = row[col.key] || 0 })
+        flat.total = row.total || 0
+        return flat
+      })
+      columns = [
+        { key: 'income_type', header: 'Income Type' },
+        ...bankCols.map((col: any) => ({ key: col.key, header: col.label, format: formatNumber })),
+        { key: 'total', header: 'Total', format: formatNumber },
+      ]
+      break
+    }
+
+    case 'receipts-listing':
+      exportData = data?.receipts || []
+      columns = [
+        { key: 'date', header: 'Date' },
+        { key: 'receipt_number', header: 'Receipt #' },
+        { key: 'tenant_code', header: 'Tenant Code' },
+        { key: 'tenant_name', header: 'Tenant' },
+        { key: 'landlord_name', header: 'Landlord' },
+        { key: 'property_name', header: 'Property' },
+        { key: 'unit_name', header: 'Unit' },
+        { key: 'income_type', header: 'Income Type' },
+        { key: 'bank_account', header: 'Bank' },
+        { key: 'payment_method', header: 'Method' },
+        { key: 'reference', header: 'Reference' },
+        { key: 'currency', header: 'Currency' },
+        { key: 'amount', header: 'Amount', format: formatNumber },
+      ]
+      break
+
+    case 'deposits-listing':
+      exportData = data?.deposits || []
+      columns = [
+        { key: 'lease_number', header: 'Lease #' },
+        { key: 'tenant_name', header: 'Tenant' },
+        { key: 'property_name', header: 'Property' },
+        { key: 'unit_name', header: 'Unit' },
+        { key: 'required', header: 'Required', format: formatNumber },
+        { key: 'paid', header: 'Paid', format: formatNumber },
+        { key: 'outstanding', header: 'Outstanding', format: formatNumber },
+        { key: 'status', header: 'Status' },
+      ]
+      break
+
+    case 'lease-charges':
+      exportData = data?.leases || []
+      columns = [
+        { key: 'lease_number', header: 'Lease #' },
+        { key: 'tenant_name', header: 'Tenant' },
+        { key: 'property_name', header: 'Property' },
+        { key: 'unit_name', header: 'Unit' },
+        { key: 'monthly_rent', header: 'Monthly Rent', format: formatNumber },
+        { key: 'total_charged', header: 'Total Charged', format: formatNumber },
+        { key: 'total_paid', header: 'Paid', format: formatNumber },
+        { key: 'balance', header: 'Balance', format: formatNumber },
+      ]
+      break
+
     default:
       console.warn('Unknown report type:', reportType)
       return

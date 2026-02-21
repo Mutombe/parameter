@@ -446,6 +446,52 @@ class LandlordStatementView(APIView):
         commission = total_collected * commission_rate
         net_payable = total_collected - commission
 
+        # Build transaction list (matching TenantAccountSummaryView pattern)
+        ordered_invoices = invoices.order_by('date').select_related('unit', 'unit__property', 'tenant')
+        receipts = Receipt.objects.filter(invoice__unit__in=units)
+        if start_date:
+            receipts = receipts.filter(date__gte=start_date)
+        receipts = receipts.filter(date__lte=end_date).order_by('date').select_related(
+            'tenant', 'invoice', 'invoice__unit', 'invoice__unit__property'
+        )
+
+        transactions = []
+
+        for inv in ordered_invoices:
+            transactions.append({
+                'date': str(inv.date),
+                'type': 'invoice',
+                'reference': inv.invoice_number,
+                'description': inv.description or f'{inv.get_invoice_type_display()} - {inv.period_start} to {inv.period_end}',
+                'property': inv.unit.property.name if inv.unit else '',
+                'unit': str(inv.unit) if inv.unit else '',
+                'tenant': inv.tenant.name if inv.tenant else '',
+                'debit': float(inv.total_amount),
+                'credit': 0,
+            })
+
+        for rcpt in receipts:
+            transactions.append({
+                'date': str(rcpt.date),
+                'type': 'receipt',
+                'reference': rcpt.receipt_number,
+                'description': rcpt.description or f'Payment - {rcpt.get_payment_method_display()}',
+                'property': rcpt.invoice.unit.property.name if rcpt.invoice and rcpt.invoice.unit else '',
+                'unit': str(rcpt.invoice.unit) if rcpt.invoice and rcpt.invoice.unit else '',
+                'tenant': rcpt.tenant.name if rcpt.tenant else '',
+                'debit': 0,
+                'credit': float(rcpt.amount),
+            })
+
+        # Sort by date
+        transactions.sort(key=lambda x: x['date'])
+
+        # Calculate running balance
+        running_balance = Decimal('0')
+        for txn in transactions:
+            running_balance += Decimal(str(txn['debit'])) - Decimal(str(txn['credit']))
+            txn['balance'] = float(running_balance)
+
         return Response({
             'report_name': 'Landlord Statement',
             'landlord': {
@@ -470,7 +516,9 @@ class LandlordStatementView(APIView):
                     'units': p.unit_count
                 }
                 for p in properties.annotate(unit_count=Count('units'))
-            ]
+            ],
+            'transactions': transactions,
+            'transaction_count': len(transactions)
         })
 
 
