@@ -113,6 +113,15 @@ export default function ReceiptDetail() {
 
   return (
     <div className="space-y-6">
+      {/* Breadcrumb */}
+      <nav className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+        <button onClick={() => navigate('/dashboard')} className="hover:text-gray-900 transition-colors">Dashboard</button>
+        <span>/</span>
+        <button onClick={() => navigate('/dashboard/receipts')} className="hover:text-gray-900 transition-colors">Receipts</button>
+        <span>/</span>
+        <span className="text-gray-900 font-medium">{receipt?.receipt_number || '...'}</span>
+      </nav>
+
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}

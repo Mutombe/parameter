@@ -236,6 +236,10 @@ export default function Receipts() {
         title="Receipts"
         subtitle="Record and manage payment receipts"
         icon={CreditCard}
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Receipts' },
+        ]}
         actions={
           <Button onClick={() => setShowForm(true)} className="gap-2">
             <Plus className="w-4 h-4" />

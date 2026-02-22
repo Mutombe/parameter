@@ -257,6 +257,10 @@ export default function LatePenalties() {
         title="Late Payment Penalties"
         subtitle="Configure automated penalties for overdue invoices"
         icon={AlertTriangle}
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Late Penalties' },
+        ]}
         actions={
           <div className="flex gap-2">
             {hasConfigs && (

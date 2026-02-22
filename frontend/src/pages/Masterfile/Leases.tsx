@@ -484,6 +484,10 @@ export default function Leases() {
         title="Lease Agreements"
         subtitle="Manage rental contracts and lease terms"
         icon={FileText}
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Leases' },
+        ]}
         actions={
           <Button onClick={() => setShowForm(true)} className="gap-2">
             <Plus className="w-4 h-4" />

@@ -297,6 +297,10 @@ export default function Journals() {
         title="Journal Entries"
         subtitle="Double-entry accounting transactions"
         icon={FileSpreadsheet}
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Journals' },
+        ]}
         actions={
           <Button onClick={() => setShowCreateModal(true)} className="gap-2">
             <Plus className="w-4 h-4" />

@@ -229,6 +229,10 @@ export default function Settings() {
         title="Settings"
         subtitle="Configure system preferences and business settings"
         icon={SettingsIcon}
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Settings' },
+        ]}
         actions={
           <Button onClick={handleSave} disabled={saveMutation.isPending}>
             {saveMutation.isPending ? (

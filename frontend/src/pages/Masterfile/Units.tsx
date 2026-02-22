@@ -364,6 +364,10 @@ export default function Units() {
         title="Units"
         subtitle="Manage rentable units across properties"
         icon={DoorOpen}
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Units' },
+        ]}
         actions={
           <Button onClick={() => setShowForm(true)} className="gap-2">
             <Plus className="w-4 h-4" />

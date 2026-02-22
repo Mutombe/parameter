@@ -245,6 +245,10 @@ export default function Notifications() {
         title="Notifications"
         subtitle={`${unreadCount} unread notification${unreadCount !== 1 ? 's' : ''}`}
         icon={Bell}
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Notifications' },
+        ]}
         actions={
           <div className="flex items-center gap-2">
             {unreadCount > 0 && (

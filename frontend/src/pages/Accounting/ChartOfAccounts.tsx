@@ -231,6 +231,10 @@ export default function ChartOfAccounts() {
         title="Chart of Accounts"
         subtitle="Double-entry bookkeeping account structure"
         icon={BookOpen}
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Chart of Accounts' },
+        ]}
         actions={
           <div className="flex items-center gap-3">
             <Button

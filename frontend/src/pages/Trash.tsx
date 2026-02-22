@@ -192,6 +192,10 @@ export default function Trash() {
       <PageHeader
         title="Trash"
         subtitle="Items are permanently deleted after 30 days"
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Trash' },
+        ]}
         actions={
           items.length > 0 ? (
             <Button

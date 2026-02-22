@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
@@ -84,6 +85,7 @@ const emptyForm = {
 }
 
 export default function BankReconciliation() {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState(emptyForm)
@@ -189,6 +191,11 @@ export default function BankReconciliation() {
 
   return (
     <div className="space-y-6">
+      <nav className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+        <button onClick={() => navigate('/dashboard')} className="hover:text-gray-900 transition-colors">Dashboard</button>
+        <span>/</span>
+        <span className="text-gray-900 font-medium">Bank Reconciliation</span>
+      </nav>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

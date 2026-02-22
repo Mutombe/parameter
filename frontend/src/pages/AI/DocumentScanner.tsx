@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { FileText, CreditCard, User, Sparkles, Info, ArrowRight } from 'lucide-react'
 import DocumentUpload from '../../components/OCR/DocumentUpload'
@@ -56,6 +57,7 @@ const categories = [
 ]
 
 export default function DocumentScanner() {
+  const navigate = useNavigate()
   const [selectedCategory, setSelectedCategory] = useState<DocumentCategory | null>(null)
   const [, setExtractedData] = useState<any>(null)
 
@@ -72,6 +74,11 @@ export default function DocumentScanner() {
 
   return (
     <div className="space-y-6">
+      <nav className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+        <button onClick={() => navigate('/dashboard')} className="hover:text-gray-900 transition-colors">Dashboard</button>
+        <span>/</span>
+        <span className="text-gray-900 font-medium">Document Scanner</span>
+      </nav>
       {/* Header */}
       <div>
         <div className="flex items-center gap-3 mb-2">

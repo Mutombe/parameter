@@ -365,6 +365,10 @@ export default function Expenses() {
           title="Expenses"
           subtitle="Manage expenses and payouts"
           icon={Receipt}
+          breadcrumbs={[
+            { label: 'Dashboard', href: '/dashboard' },
+            { label: 'Expenses' },
+          ]}
         />
         <SkeletonExpenses />
       </div>
@@ -378,6 +382,10 @@ export default function Expenses() {
           title="Expenses"
           subtitle="Manage expenses and payouts"
           icon={Receipt}
+          breadcrumbs={[
+            { label: 'Dashboard', href: '/dashboard' },
+            { label: 'Expenses' },
+          ]}
         />
         <EmptyState
           icon={XCircle}
@@ -399,6 +407,10 @@ export default function Expenses() {
         title="Expenses"
         subtitle={`${totalCount} total expenses`}
         icon={Receipt}
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Expenses' },
+        ]}
         actions={
           <Button onClick={() => setShowModal(true)}>
             <Plus className="h-4 w-4 mr-2" />

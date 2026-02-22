@@ -206,6 +206,10 @@ export default function Reports() {
         title="Reports"
         subtitle="Accounting and operational reports"
         icon={BarChart3}
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Reports' },
+        ]}
         actions={
           <div className="flex items-center gap-3">
             <Button variant="outline" className="gap-2" onClick={handlePrint}>

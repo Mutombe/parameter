@@ -339,6 +339,10 @@ export default function Landlords() {
         title="Landlords"
         subtitle="Manage property owners and their portfolios"
         icon={TbUserSquareRounded}
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Landlords' },
+        ]}
         actions={
           <SplitButton
             onClick={() => setShowForm(true)}

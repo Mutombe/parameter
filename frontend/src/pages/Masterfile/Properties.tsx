@@ -452,6 +452,10 @@ export default function Properties() {
         title="Properties"
         subtitle="Manage buildings and property portfolios"
         icon={PiBuildingApartmentLight}
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Properties' },
+        ]}
         actions={
           <SplitButton
             onClick={() => setShowForm(true)}

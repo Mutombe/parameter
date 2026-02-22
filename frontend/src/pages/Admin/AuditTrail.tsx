@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Search, Shield, Clock, ChevronLeft, ChevronRight, Calendar, Monitor, Globe } from 'lucide-react'
 import { auditApi } from '../../services/api'
@@ -7,6 +8,7 @@ import { formatDate, useDebounce } from '../../lib/utils'
 import { TbUserSquareRounded } from "react-icons/tb";
 
 export default function AuditTrail() {
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [actionFilter, setActionFilter] = useState('')
@@ -78,6 +80,11 @@ export default function AuditTrail() {
 
   return (
     <div className="space-y-6">
+      <nav className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+        <button onClick={() => navigate('/dashboard')} className="hover:text-gray-900 transition-colors">Dashboard</button>
+        <span>/</span>
+        <span className="text-gray-900 font-medium">Audit Trail</span>
+      </nav>
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Audit Trail</h1>
         <p className="text-gray-500 mt-1">Immutable log of all financial actions</p>

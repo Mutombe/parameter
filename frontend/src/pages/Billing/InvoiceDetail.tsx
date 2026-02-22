@@ -182,6 +182,15 @@ export default function InvoiceDetail() {
 
   return (
     <div className="space-y-6">
+      {/* Breadcrumb */}
+      <nav className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+        <button onClick={() => navigate('/dashboard')} className="hover:text-gray-900 transition-colors">Dashboard</button>
+        <span>/</span>
+        <button onClick={() => navigate('/dashboard/invoices')} className="hover:text-gray-900 transition-colors">Invoices</button>
+        <span>/</span>
+        <span className="text-gray-900 font-medium">{invoice?.invoice_number || '...'}</span>
+      </nav>
+
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}

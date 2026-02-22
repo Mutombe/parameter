@@ -218,6 +218,10 @@ export default function DataImport() {
         title="Data Import"
         description="Import landlords, properties, tenants, and leases from CSV or Excel"
         icon={TbDatabaseImport}
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Data Import' },
+        ]}
       />
 
       {/* Tabs */}

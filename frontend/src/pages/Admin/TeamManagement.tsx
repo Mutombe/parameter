@@ -352,6 +352,10 @@ export default function TeamManagement() {
         title="Team Management"
         description="Manage users and send invitations"
         icon={TbUserSquareRounded}
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Team' },
+        ]}
         actions={
           canInvite ? (
             <Button onClick={handleOpenInviteModal} className="gap-2">

@@ -453,6 +453,10 @@ export default function Invoices() {
         title="Invoices"
         subtitle="Manage rent and utility invoices"
         icon={Receipt}
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Invoices' },
+        ]}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
             <Button variant="outline" onClick={() => setShowGenerateModal(true)} className="gap-1.5 sm:gap-2 px-2.5 sm:px-4">

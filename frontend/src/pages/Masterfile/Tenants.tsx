@@ -329,6 +329,11 @@ export default function Tenants() {
 
   return (
     <div className="space-y-6">
+      <nav className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+        <button onClick={() => navigate('/dashboard')} className="hover:text-gray-900 transition-colors">Dashboard</button>
+        <span>/</span>
+        <span className="text-gray-900 font-medium">Tenants</span>
+      </nav>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Tenants</h1>
