@@ -43,7 +43,75 @@ class Command(BaseCommand):
                 'schedule_type': Schedule.DAILY,
                 'repeats': -1,
             },
-            # Report tasks
+            # Report tasks — Daily
+            {
+                'name': 'Send Daily Dashboard KPIs',
+                'func': 'apps.reports.tasks.send_daily_dashboard_report_all_tenants',
+                'schedule_type': Schedule.DAILY,
+                'repeats': -1,
+            },
+            {
+                'name': 'Send Daily Aged Analysis',
+                'func': 'apps.reports.tasks.send_daily_aged_analysis_all_tenants',
+                'schedule_type': Schedule.DAILY,
+                'repeats': -1,
+            },
+            {
+                'name': 'Send Daily Vacancy Report',
+                'func': 'apps.reports.tasks.send_daily_vacancy_report_all_tenants',
+                'schedule_type': Schedule.DAILY,
+                'repeats': -1,
+            },
+            # Report tasks — Weekly
+            {
+                'name': 'Send Weekly Rent Roll',
+                'func': 'apps.reports.tasks.send_weekly_rent_roll_all_tenants',
+                'schedule_type': Schedule.WEEKLY,
+                'repeats': -1,
+            },
+            {
+                'name': 'Send Weekly Receipt Listing',
+                'func': 'apps.reports.tasks.send_weekly_receipt_listing_all_tenants',
+                'schedule_type': Schedule.WEEKLY,
+                'repeats': -1,
+            },
+            {
+                'name': 'Send Weekly Bank to Income Analysis',
+                'func': 'apps.reports.tasks.send_weekly_bank_to_income_all_tenants',
+                'schedule_type': Schedule.WEEKLY,
+                'repeats': -1,
+            },
+            # Report tasks — Monthly
+            {
+                'name': 'Send Monthly Trial Balance',
+                'func': 'apps.reports.tasks.send_monthly_trial_balance_all_tenants',
+                'schedule_type': Schedule.MONTHLY,
+                'repeats': -1,
+            },
+            {
+                'name': 'Send Monthly Income Statement',
+                'func': 'apps.reports.tasks.send_monthly_income_statement_all_tenants',
+                'schedule_type': Schedule.MONTHLY,
+                'repeats': -1,
+            },
+            {
+                'name': 'Send Monthly Balance Sheet',
+                'func': 'apps.reports.tasks.send_monthly_balance_sheet_all_tenants',
+                'schedule_type': Schedule.MONTHLY,
+                'repeats': -1,
+            },
+            {
+                'name': 'Send Monthly Cash Flow Statement',
+                'func': 'apps.reports.tasks.send_monthly_cash_flow_all_tenants',
+                'schedule_type': Schedule.MONTHLY,
+                'repeats': -1,
+            },
+            {
+                'name': 'Send Monthly Lease Charge Summary',
+                'func': 'apps.reports.tasks.send_monthly_lease_charge_summary_all_tenants',
+                'schedule_type': Schedule.MONTHLY,
+                'repeats': -1,
+            },
             {
                 'name': 'Send Monthly Commission Reports',
                 'func': 'apps.reports.tasks.send_monthly_commission_reports_all_tenants',
