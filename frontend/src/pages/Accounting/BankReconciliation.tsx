@@ -135,6 +135,7 @@ export default function BankReconciliation() {
   // Workspace local state (for optimistic updates)
   const [localItems, setLocalItems] = useState<ReconciliationItem[]>([])
   const [workspaceData, setWorkspaceData] = useState<WorkspaceData | null>(null)
+  const [workspaceLoading, setWorkspaceLoading] = useState(false)
 
   // ─── Queries ─────────────────────────────────────────────────────────
 
@@ -163,15 +164,20 @@ export default function BankReconciliation() {
   // ─── Workspace loading ──────────────────────────────────────────────
 
   const loadWorkspace = useCallback(async (id: number) => {
+    setWorkspaceLoading(true)
+    setViewMode('workspace')
+    setActiveReconciliationId(id)
     try {
       const res = await bankReconciliationApi.workspace(id)
       const data: WorkspaceData = res.data
       setWorkspaceData(data)
       setLocalItems(data.items)
-      setActiveReconciliationId(id)
-      setViewMode('workspace')
     } catch (error) {
       showToast.error(parseApiError(error))
+      setViewMode('list')
+      setActiveReconciliationId(null)
+    } finally {
+      setWorkspaceLoading(false)
     }
   }, [])
 
@@ -330,6 +336,77 @@ export default function BankReconciliation() {
   }
 
   // ─── Workspace View ─────────────────────────────────────────────────
+
+  if (viewMode === 'workspace' && workspaceLoading) {
+    return (
+      <div className="space-y-4 animate-pulse">
+        {/* Header skeleton */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-gray-200" />
+            <div className="space-y-2">
+              <div className="h-5 w-64 bg-gray-200 rounded" />
+              <div className="h-3 w-32 bg-gray-200 rounded" />
+            </div>
+          </div>
+          <div className="w-9 h-9 rounded-lg bg-gray-200" />
+        </div>
+        {/* Balance cards skeleton */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
+              <div className="h-3 w-24 bg-gray-200 rounded" />
+              <div className="h-6 w-28 bg-gray-200 rounded" />
+            </div>
+          ))}
+        </div>
+        {/* Bulk actions skeleton */}
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-24 bg-gray-200 rounded-lg" />
+          <div className="h-8 w-28 bg-gray-200 rounded-lg" />
+          <div className="flex-1" />
+          <div className="h-8 w-20 bg-gray-200 rounded-lg" />
+          <div className="h-9 w-44 bg-gray-200 rounded-lg" />
+        </div>
+        {/* Table skeleton with checkbox column */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="w-12 px-4 py-3"><div className="h-3.5 w-3.5 bg-gray-200 rounded mx-auto" /></th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Payments</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Receipts</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Reference</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Description</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {[...Array(10)].map((_, i) => (
+                <tr key={i}>
+                  <td className="w-12 px-4 py-3 text-center"><div className="h-4 w-4 border-2 border-gray-200 rounded mx-auto" /></td>
+                  <td className="px-4 py-3"><div className={`h-4 ${i % 3 === 0 ? 'w-20' : 'w-0'} bg-gray-200 rounded ml-auto`} /></td>
+                  <td className="px-4 py-3"><div className={`h-4 ${i % 3 !== 0 ? 'w-20' : 'w-0'} bg-gray-200 rounded ml-auto`} /></td>
+                  <td className="px-4 py-3"><div className="h-4 w-24 bg-gray-200 rounded" /></td>
+                  <td className="px-4 py-3"><div className={`h-4 bg-gray-200 rounded`} style={{ width: `${100 + (i % 4) * 40}px` }} /></td>
+                  <td className="px-4 py-3"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {/* Footer skeleton */}
+        <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 px-6 py-4">
+          <div className="flex items-center gap-6">
+            <div className="h-4 w-28 bg-gray-200 rounded" />
+            <div className="h-4 w-32 bg-gray-200 rounded" />
+            <div className="h-4 w-24 bg-gray-200 rounded" />
+          </div>
+          <div className="h-5 w-28 bg-gray-200 rounded" />
+        </div>
+      </div>
+    )
+  }
 
   if (viewMode === 'workspace' && workspaceData) {
     const isReadOnly = workspaceData.status === 'completed'
