@@ -47,7 +47,7 @@ import { reportsApi, tenantApi, landlordApi, propertyApi } from '../../services/
 import { formatCurrency, formatPercent, formatDate, cn } from '../../lib/utils'
 import { printElement } from '../../lib/printTemplate'
 import { exportReport } from '../../lib/export'
-import { PageHeader, Button, Badge, Skeleton, EmptyState } from '../../components/ui'
+import { PageHeader, Button, Badge, Skeleton, EmptyState, TableFilter, Pagination } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import toast from 'react-hot-toast'
 import { PiBuildingApartmentLight } from "react-icons/pi";
@@ -314,6 +314,28 @@ function TrialBalanceReport() {
 
   const isBalanced = data?.totals?.balanced
 
+  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 25
+
+  const allAccounts = data?.accounts || []
+  const filteredAccounts = useMemo(() => {
+    if (!searchQuery) return allAccounts
+    const q = searchQuery.toLowerCase()
+    return allAccounts.filter((acc: any) =>
+      acc.account_code?.toLowerCase().includes(q) ||
+      acc.account_name?.toLowerCase().includes(q)
+    )
+  }, [allAccounts, searchQuery])
+
+  const totalPages = Math.ceil(filteredAccounts.length / pageSize)
+  const paginatedAccounts = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filteredAccounts.slice(start, start + pageSize)
+  }, [filteredAccounts, currentPage])
+
+  useEffect(() => { setCurrentPage(1) }, [searchQuery])
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
       <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
@@ -390,7 +412,9 @@ function TrialBalanceReport() {
             </tfoot>
           </table>
         </div>
-      ) : data?.accounts?.length > 0 ? (
+      ) : allAccounts.length > 0 ? (
+        <>
+        <TableFilter searchPlaceholder="Search by code or name..." searchValue={searchQuery} onSearchChange={setSearchQuery} resultCount={filteredAccounts.length} />
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -412,7 +436,7 @@ function TrialBalanceReport() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {data?.accounts?.map((acc: any, idx: number) => (
+              {paginatedAccounts.map((acc: any, idx: number) => (
                 <motion.tr
                   key={idx}
                   initial={{ opacity: 0 }}
@@ -450,6 +474,8 @@ function TrialBalanceReport() {
             </tfoot>
           </table>
         </div>
+        <Pagination currentPage={currentPage} totalPages={totalPages} totalItems={filteredAccounts.length} pageSize={pageSize} onPageChange={setCurrentPage} showPageSize={false} />
+        </>
       ) : (
         <div className="p-12 text-center text-gray-500">
           <Scale className="w-12 h-12 mx-auto text-gray-300 mb-4" />
@@ -952,6 +978,28 @@ function VacancyReport() {
 
   const overallVacancy = data?.summary?.overall_vacancy_rate || 0
 
+  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 25
+
+  const allProperties = data?.properties || []
+  const filteredProperties = useMemo(() => {
+    if (!searchQuery) return allProperties
+    const q = searchQuery.toLowerCase()
+    return allProperties.filter((prop: any) =>
+      prop.name?.toLowerCase().includes(q) ||
+      prop.landlord?.toLowerCase().includes(q)
+    )
+  }, [allProperties, searchQuery])
+
+  const totalPages = Math.ceil(filteredProperties.length / pageSize)
+  const paginatedProperties = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filteredProperties.slice(start, start + pageSize)
+  }, [filteredProperties, currentPage])
+
+  useEffect(() => { setCurrentPage(1) }, [searchQuery])
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
       <div className="p-6 border-b border-gray-100">
@@ -1023,7 +1071,9 @@ function VacancyReport() {
             </tbody>
           </table>
         </div>
-      ) : data?.properties?.length > 0 ? (
+      ) : allProperties.length > 0 ? (
+        <>
+        <TableFilter searchPlaceholder="Search by property or landlord..." searchValue={searchQuery} onSearchChange={setSearchQuery} resultCount={filteredProperties.length} />
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -1037,7 +1087,7 @@ function VacancyReport() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {data?.properties?.map((prop: any, idx: number) => (
+              {paginatedProperties.map((prop: any, idx: number) => (
                 <motion.tr
                   key={prop.property_id || idx}
                   initial={{ opacity: 0 }}
@@ -1064,6 +1114,8 @@ function VacancyReport() {
             </tbody>
           </table>
         </div>
+        <Pagination currentPage={currentPage} totalPages={totalPages} totalItems={filteredProperties.length} pageSize={pageSize} onPageChange={setCurrentPage} showPageSize={false} />
+        </>
       ) : (
         <div className="p-12 text-center text-gray-500">
           <Home className="w-12 h-12 mx-auto text-gray-300 mb-4" />
@@ -1083,6 +1135,30 @@ function RentRollReport() {
 
   // Store data for export
   if (data) currentReportData = data
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 25
+
+  const allLeases = data?.leases || []
+  const filteredLeases = useMemo(() => {
+    if (!searchQuery) return allLeases
+    const q = searchQuery.toLowerCase()
+    return allLeases.filter((lease: any) =>
+      lease.tenant?.toLowerCase().includes(q) ||
+      lease.property?.toLowerCase().includes(q) ||
+      lease.unit?.toLowerCase().includes(q) ||
+      lease.lease_number?.toLowerCase().includes(q)
+    )
+  }, [allLeases, searchQuery])
+
+  const totalPages = Math.ceil(filteredLeases.length / pageSize)
+  const paginatedLeases = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filteredLeases.slice(start, start + pageSize)
+  }, [filteredLeases, currentPage])
+
+  useEffect(() => { setCurrentPage(1) }, [searchQuery])
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
@@ -1166,7 +1242,9 @@ function RentRollReport() {
             </tbody>
           </table>
         </div>
-      ) : data?.leases?.length > 0 ? (
+      ) : allLeases.length > 0 ? (
+        <>
+        <TableFilter searchPlaceholder="Search by tenant, property, unit, or lease#..." searchValue={searchQuery} onSearchChange={setSearchQuery} resultCount={filteredLeases.length} />
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -1180,7 +1258,7 @@ function RentRollReport() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {data?.leases?.map((lease: any, idx: number) => (
+              {paginatedLeases.map((lease: any, idx: number) => (
                 <motion.tr
                   key={idx}
                   initial={{ opacity: 0 }}
@@ -1210,6 +1288,8 @@ function RentRollReport() {
             </tbody>
           </table>
         </div>
+        <Pagination currentPage={currentPage} totalPages={totalPages} totalItems={filteredLeases.length} pageSize={pageSize} onPageChange={setCurrentPage} showPageSize={false} />
+        </>
       ) : (
         <div className="p-12 text-center text-gray-500">
           <Building2 className="w-12 h-12 mx-auto text-gray-300 mb-4" />
@@ -1233,6 +1313,27 @@ function CommissionByPropertyReport() {
 
   const totalCommission = data?.summary?.total_commission || 0
   const properties = data?.by_property || []
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 25
+
+  const filteredProperties = useMemo(() => {
+    if (!searchQuery) return properties
+    const q = searchQuery.toLowerCase()
+    return properties.filter((prop: any) =>
+      prop.property_name?.toLowerCase().includes(q) ||
+      prop.landlord_name?.toLowerCase().includes(q)
+    )
+  }, [properties, searchQuery])
+
+  const totalPages = Math.ceil(filteredProperties.length / pageSize)
+  const paginatedProperties = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filteredProperties.slice(start, start + pageSize)
+  }, [filteredProperties, currentPage])
+
+  useEffect(() => { setCurrentPage(1) }, [searchQuery])
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
@@ -1313,6 +1414,8 @@ function CommissionByPropertyReport() {
           </table>
         </div>
       ) : properties.length > 0 ? (
+        <>
+        <TableFilter searchPlaceholder="Search by property or landlord..." searchValue={searchQuery} onSearchChange={setSearchQuery} resultCount={filteredProperties.length} />
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -1327,7 +1430,7 @@ function CommissionByPropertyReport() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {properties.map((prop: any, idx: number) => (
+              {paginatedProperties.map((prop: any, idx: number) => (
                 <motion.tr
                   key={idx}
                   initial={{ opacity: 0 }}
@@ -1370,6 +1473,8 @@ function CommissionByPropertyReport() {
             </tfoot>
           </table>
         </div>
+        <Pagination currentPage={currentPage} totalPages={totalPages} totalItems={filteredProperties.length} pageSize={pageSize} onPageChange={setCurrentPage} showPageSize={false} />
+        </>
       ) : (
         <div className="p-12 text-center text-gray-500">
           <PiBuildingApartmentLight className="w-12 h-12 mx-auto text-gray-300 mb-4" />
@@ -1593,6 +1698,24 @@ function AgedAnalysisReport() {
   const properties: any[] = Array.isArray(propertiesData) ? propertiesData : []
   const landlords: any[] = Array.isArray(landlordsData) ? landlordsData : []
 
+  const [tenantSearch, setTenantSearch] = useState('')
+  const [tenantPage, setTenantPage] = useState(1)
+  const tenantPageSize = 25
+
+  const filteredTenants = useMemo(() => {
+    if (!tenantSearch) return tenants
+    const q = tenantSearch.toLowerCase()
+    return tenants.filter((t: any) => t.tenant_name?.toLowerCase().includes(q))
+  }, [tenants, tenantSearch])
+
+  const tenantTotalPages = Math.ceil(filteredTenants.length / tenantPageSize)
+  const paginatedTenants = useMemo(() => {
+    const start = (tenantPage - 1) * tenantPageSize
+    return filteredTenants.slice(start, start + tenantPageSize)
+  }, [filteredTenants, tenantPage])
+
+  useEffect(() => { setTenantPage(1) }, [tenantSearch])
+
   const chartMax = useMemo(() => {
     const values = bucketConfig.map(b => (summary as any)[b.key] || 0)
     return Math.max(...values, 1)
@@ -1701,6 +1824,8 @@ function AgedAnalysisReport() {
             <p className="font-medium">No outstanding balances</p>
           </div>
         ) : (
+          <>
+          <TableFilter searchPlaceholder="Search by tenant name..." searchValue={tenantSearch} onSearchChange={setTenantSearch} resultCount={filteredTenants.length} />
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -1711,7 +1836,7 @@ function AgedAnalysisReport() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {tenants.sort((a: any, b: any) => b.total - a.total).map((tenant: any, idx: number) => (
+                {paginatedTenants.sort((a: any, b: any) => b.total - a.total).map((tenant: any, idx: number) => (
                   <motion.tr key={tenant.tenant_id || idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.02 }} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-3 text-sm font-medium text-gray-900">{tenant.tenant_name}</td>
                     {bucketConfig.map(bucket => {
@@ -1736,6 +1861,8 @@ function AgedAnalysisReport() {
               </tbody>
             </table>
           </div>
+          <Pagination currentPage={tenantPage} totalPages={tenantTotalPages} totalItems={filteredTenants.length} pageSize={tenantPageSize} onPageChange={setTenantPage} showPageSize={false} />
+          </>
         )}
       </div>
     </div>
@@ -1998,6 +2125,32 @@ function BankToIncomeReport() {
 
   if (data) currentReportData = data
 
+  const [l3Search, setL3Search] = useState('')
+  const [l3Page, setL3Page] = useState(1)
+  const l3PageSize = 25
+
+  const allL3Receipts = l3Data?.receipts || []
+  const filteredL3Receipts = useMemo(() => {
+    if (!l3Search) return allL3Receipts
+    const q = l3Search.toLowerCase()
+    return allL3Receipts.filter((rcpt: any) =>
+      rcpt.tenant?.toLowerCase().includes(q) ||
+      rcpt.property?.toLowerCase().includes(q) ||
+      rcpt.receipt_number?.toLowerCase().includes(q)
+    )
+  }, [allL3Receipts, l3Search])
+
+  const l3TotalPages = Math.ceil(filteredL3Receipts.length / l3PageSize)
+  const paginatedL3Receipts = useMemo(() => {
+    const start = (l3Page - 1) * l3PageSize
+    return filteredL3Receipts.slice(start, start + l3PageSize)
+  }, [filteredL3Receipts, l3Page])
+
+  useEffect(() => { setL3Page(1) }, [l3Search])
+
+  // Reset L3 search/page when drill state changes
+  useEffect(() => { setL3Search(''); setL3Page(1) }, [drillState.incomeType, drillState.bankAccountId])
+
   const matrix = data?.matrix || []
   const bankColumns = data?.bank_columns || []
   const totals = data?.totals || {}
@@ -2123,8 +2276,7 @@ function BankToIncomeReport() {
         {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />)}
       </div>
     )
-    const receipts = l3Data?.receipts || []
-    if (receipts.length === 0) return (
+    if (allL3Receipts.length === 0) return (
       <div className="p-12 text-center text-gray-500">
         <Receipt className="w-12 h-12 mx-auto text-gray-300 mb-4" />
         <p className="font-medium">No receipts found</p>
@@ -2132,6 +2284,8 @@ function BankToIncomeReport() {
       </div>
     )
     return (
+      <>
+      <TableFilter searchPlaceholder="Search by tenant, property, or receipt#..." searchValue={l3Search} onSearchChange={setL3Search} resultCount={filteredL3Receipts.length} />
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
@@ -2145,7 +2299,7 @@ function BankToIncomeReport() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {receipts.map((rcpt: any, idx: number) => (
+            {paginatedL3Receipts.map((rcpt: any, idx: number) => (
               <motion.tr
                 key={idx}
                 initial={{ opacity: 0 }}
@@ -2172,6 +2326,8 @@ function BankToIncomeReport() {
           </tfoot>
         </table>
       </div>
+      <Pagination currentPage={l3Page} totalPages={l3TotalPages} totalItems={filteredL3Receipts.length} pageSize={l3PageSize} onPageChange={setL3Page} showPageSize={false} />
+      </>
     )
   }
 
@@ -2279,6 +2435,30 @@ function ReceiptsListingReport() {
 
   const receipts = data?.receipts || []
 
+  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 25
+
+  const filteredReceipts = useMemo(() => {
+    if (!searchQuery) return receipts
+    const q = searchQuery.toLowerCase()
+    return receipts.filter((r: any) =>
+      r.receipt_number?.toLowerCase().includes(q) ||
+      (r.tenant_name || r.tenant || '').toLowerCase().includes(q) ||
+      (r.property_name || r.property || '').toLowerCase().includes(q) ||
+      (r.bank_account || r.bank || '').toLowerCase().includes(q) ||
+      r.income_type?.toLowerCase().includes(q)
+    )
+  }, [receipts, searchQuery])
+
+  const totalPages = Math.ceil(filteredReceipts.length / pageSize)
+  const paginatedReceipts = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filteredReceipts.slice(start, start + pageSize)
+  }, [filteredReceipts, currentPage])
+
+  useEffect(() => { setCurrentPage(1) }, [searchQuery])
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
       <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
@@ -2302,6 +2482,8 @@ function ReceiptsListingReport() {
           <p className="font-medium">No receipts found</p>
         </div>
       ) : (
+        <>
+        <TableFilter searchPlaceholder="Search by receipt#, tenant, property, bank, income type..." searchValue={searchQuery} onSearchChange={setSearchQuery} resultCount={filteredReceipts.length} />
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -2319,7 +2501,7 @@ function ReceiptsListingReport() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {receipts.map((r: any, idx: number) => (
+              {paginatedReceipts.map((r: any, idx: number) => (
                 <motion.tr key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.01 }} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3 text-sm text-gray-600">{r.date}</td>
                   <td className="px-4 py-3 text-sm font-mono text-primary-600">{r.receipt_number}</td>
@@ -2344,6 +2526,8 @@ function ReceiptsListingReport() {
             )}
           </table>
         </div>
+        <Pagination currentPage={currentPage} totalPages={totalPages} totalItems={filteredReceipts.length} pageSize={pageSize} onPageChange={setCurrentPage} showPageSize={false} />
+        </>
       )}
     </div>
   )
@@ -2361,6 +2545,29 @@ function DepositsListingReport() {
 
   const deposits = data?.deposits || []
   const summary = data?.summary || {}
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 25
+
+  const filteredDeposits = useMemo(() => {
+    if (!searchQuery) return deposits
+    const q = searchQuery.toLowerCase()
+    return deposits.filter((d: any) =>
+      (d.tenant_name || d.tenant || '').toLowerCase().includes(q) ||
+      (d.property_name || d.property || '').toLowerCase().includes(q) ||
+      (d.unit_name || d.unit || '').toLowerCase().includes(q) ||
+      d.lease_number?.toLowerCase().includes(q)
+    )
+  }, [deposits, searchQuery])
+
+  const totalPages = Math.ceil(filteredDeposits.length / pageSize)
+  const paginatedDeposits = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filteredDeposits.slice(start, start + pageSize)
+  }, [filteredDeposits, currentPage])
+
+  useEffect(() => { setCurrentPage(1) }, [searchQuery])
 
   return (
     <div className="space-y-4">
@@ -2406,6 +2613,8 @@ function DepositsListingReport() {
             <p className="font-medium">No deposit records found</p>
           </div>
         ) : (
+          <>
+          <TableFilter searchPlaceholder="Search by tenant, property, unit, or lease#..." searchValue={searchQuery} onSearchChange={setSearchQuery} resultCount={filteredDeposits.length} />
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -2421,7 +2630,7 @@ function DepositsListingReport() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {deposits.map((d: any, idx: number) => (
+                {paginatedDeposits.map((d: any, idx: number) => (
                   <motion.tr key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.02 }} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3 text-sm font-mono text-primary-600">{d.lease_number}</td>
                     <td className="px-4 py-3 text-sm text-gray-900">{d.tenant_name || d.tenant}</td>
@@ -2441,6 +2650,8 @@ function DepositsListingReport() {
               </tbody>
             </table>
           </div>
+          <Pagination currentPage={currentPage} totalPages={totalPages} totalItems={filteredDeposits.length} pageSize={pageSize} onPageChange={setCurrentPage} showPageSize={false} />
+          </>
         )}
       </div>
     </div>
@@ -2477,6 +2688,29 @@ function LeaseChargeSummaryReport() {
   const summary = data?.summary || {}
   const properties: any[] = Array.isArray(propertiesData) ? propertiesData : []
   const landlords: any[] = Array.isArray(landlordsData) ? landlordsData : []
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 25
+
+  const filteredLeases = useMemo(() => {
+    if (!searchQuery) return leases
+    const q = searchQuery.toLowerCase()
+    return leases.filter((l: any) =>
+      (l.tenant_name || l.tenant || '').toLowerCase().includes(q) ||
+      (l.property_name || l.property || '').toLowerCase().includes(q) ||
+      (l.unit_name || l.unit || '').toLowerCase().includes(q) ||
+      l.lease_number?.toLowerCase().includes(q)
+    )
+  }, [leases, searchQuery])
+
+  const totalPages = Math.ceil(filteredLeases.length / pageSize)
+  const paginatedLeases = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filteredLeases.slice(start, start + pageSize)
+  }, [filteredLeases, currentPage])
+
+  useEffect(() => { setCurrentPage(1) }, [searchQuery])
 
   return (
     <div className="space-y-4">
@@ -2532,6 +2766,8 @@ function LeaseChargeSummaryReport() {
             <p className="font-medium">No lease charges found</p>
           </div>
         ) : (
+          <>
+          <TableFilter searchPlaceholder="Search by tenant, property, unit, or lease#..." searchValue={searchQuery} onSearchChange={setSearchQuery} resultCount={filteredLeases.length} />
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -2547,7 +2783,7 @@ function LeaseChargeSummaryReport() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {leases.map((l: any, idx: number) => (
+                {paginatedLeases.map((l: any, idx: number) => (
                   <motion.tr key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.02 }} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3 text-sm font-mono text-primary-600">{l.lease_number}</td>
                     <td className="px-4 py-3 text-sm text-gray-900">{l.tenant_name || l.tenant}</td>
@@ -2562,6 +2798,8 @@ function LeaseChargeSummaryReport() {
               </tbody>
             </table>
           </div>
+          <Pagination currentPage={currentPage} totalPages={totalPages} totalItems={filteredLeases.length} pageSize={pageSize} onPageChange={setCurrentPage} showPageSize={false} />
+          </>
         )}
       </div>
     </div>

@@ -1,5 +1,6 @@
 """Utility functions for pushing notifications via WebSocket and branded HTML emails."""
 import logging
+import re
 import threading
 from html import escape
 
@@ -75,7 +76,7 @@ def build_html_email(subject, body_text, recipient_name=None, company_name=None,
 <tr><td align="center">
 
 <!-- Email container -->
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:{WHITE};border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
+<table role="presentation" width="700" cellpadding="0" cellspacing="0" style="max-width:700px;width:100%;background-color:{WHITE};border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
 
   <!-- Header: white bg with blue logo -->
   <tr>
@@ -122,11 +123,38 @@ def build_html_email(subject, body_text, recipient_name=None, company_name=None,
 </body>
 </html>"""
 
-    return html, body_text
+    # Strip HTML tags from body for the plain-text fallback
+    plain_text = re.sub(r'<[^>]+>', '', body_text)
+    return html, plain_text
 
 
 def _text_to_html(text):
-    """Convert plain-text email body into styled HTML paragraphs."""
+    """Convert plain-text email body into styled HTML paragraphs.
+
+    Supports embedded raw HTML: <table>...</table> and <svg>...</svg> blocks
+    are preserved verbatim. Everything else is processed line-by-line.
+    """
+    # 1. Extract raw HTML blocks (<table…>, <svg…>, and immediately following
+    #    <p> tags from build_email_table truncated messages) — replace with
+    #    placeholders on their own lines so line-by-line processing skips them.
+    raw_blocks = {}
+    counter = 0
+
+    def _extract(match):
+        nonlocal counter
+        key = f'\x00RAW{counter}\x00'
+        raw_blocks[key] = match.group(0)
+        counter += 1
+        return f'\n{key}\n'
+
+    # Extract <table>…</table> possibly followed by a <p>…</p> (truncated msg)
+    text = re.sub(
+        r'<table[\s>].*?</table>(?:\s*<p[^>]*>.*?</p>)*',
+        _extract, text, flags=re.DOTALL | re.IGNORECASE,
+    )
+    text = re.sub(r'<svg[\s>].*?</svg>', _extract, text, flags=re.DOTALL | re.IGNORECASE)
+
+    # 2. Process remaining text line-by-line
     lines = text.strip().split('\n')
     html_parts = []
     in_list = False
@@ -134,7 +162,7 @@ def _text_to_html(text):
     for line in lines:
         stripped = line.strip()
 
-        # Empty line = paragraph break
+        # Skip empty after placeholder insertion
         if not stripped:
             if in_list:
                 in_list = False
@@ -215,7 +243,134 @@ def _text_to_html(text):
             f'{escape(stripped)}</p>'
         )
 
-    return '\n'.join(html_parts)
+    # 3. Join and restore raw HTML blocks via string replacement
+    result = '\n'.join(html_parts)
+    for key, block in raw_blocks.items():
+        result = result.replace(key, block)
+        # Also clean up any escaped version (if placeholder went through escape())
+        result = result.replace(escape(key), block)
+    return result
+
+
+# ─── Email table builder ────────────────────────────────────────────────────
+
+def build_email_table(headers, rows, footer_row=None, truncated_msg=None):
+    """Build an email-safe HTML <table> with inline styles.
+
+    Args:
+        headers: list of column header strings.
+        rows: list of lists (one per row) — values can be str or numeric.
+        footer_row: optional list of footer values (bold, top border).
+        truncated_msg: optional "... and N more" string shown below table.
+
+    Returns:
+        HTML string (raw <table>…</table>).
+    """
+    def _is_numeric(val):
+        if isinstance(val, (int, float)):
+            return True
+        if isinstance(val, str) and val.lstrip('-').replace(',', '').replace('.', '').replace('$', '').strip().isdigit():
+            return True
+        return False
+
+    def _cell_align(val):
+        return 'right' if _is_numeric(val) else 'left'
+
+    hdr_cells = ''.join(
+        f'<th style="padding:8px 10px;text-align:left;color:{WHITE};font-size:12px;'
+        f'font-weight:600;text-transform:uppercase;letter-spacing:0.5px;'
+        f'border-bottom:2px solid {PRIMARY_DARK};">{escape(str(h))}</th>'
+        for h in headers
+    )
+    html = (
+        f'<table cellpadding="0" cellspacing="0" width="100%" '
+        f'style="border-collapse:collapse;margin:12px 0 16px;font-size:13px;'
+        f'line-height:1.5;color:{BLACK};">'
+        f'<thead><tr style="background:{PRIMARY};">{hdr_cells}</tr></thead><tbody>'
+    )
+
+    for idx, row in enumerate(rows):
+        bg = GRAY_LIGHT if idx % 2 == 1 else WHITE
+        cells = ''.join(
+            f'<td style="padding:7px 10px;border-bottom:1px solid {BORDER};'
+            f'text-align:{_cell_align(v)};">{escape(str(v))}</td>'
+            for v in row
+        )
+        html += f'<tr style="background:{bg};">{cells}</tr>'
+
+    if footer_row:
+        fcells = ''.join(
+            f'<td style="padding:8px 10px;font-weight:700;border-top:2px solid {PRIMARY};'
+            f'text-align:{_cell_align(v)};">{escape(str(v))}</td>'
+            for v in footer_row
+        )
+        html += f'<tr style="background:{WHITE};">{fcells}</tr>'
+
+    html += '</tbody></table>'
+
+    if truncated_msg:
+        html += (
+            f'<p style="margin:0 0 12px;color:{GRAY};font-size:12px;font-style:italic;">'
+            f'{escape(truncated_msg)}</p>'
+        )
+
+    return html
+
+
+# ─── HTML bar chart (email-safe, no SVG) ─────────────────────────────────────
+
+CHART_COLORS = [
+    '#0ea5e9', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6',
+    '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#84cc16',
+]
+
+
+def build_svg_bar_chart(items, title='', width=620):
+    """Build an email-safe horizontal bar chart using HTML tables.
+
+    Works in all email clients (Gmail, Outlook, Apple Mail).
+
+    Args:
+        items: list of (label, value) tuples.
+        title: optional chart title.
+        width: ignored (kept for API compat).
+
+    Returns:
+        HTML table string.
+    """
+    if not items:
+        return ''
+
+    max_val = max(v for _, v in items) or 1
+
+    html = (
+        f'<table cellpadding="0" cellspacing="0" width="100%" '
+        f'style="border-collapse:collapse;margin:12px 0 16px;">'
+    )
+
+    if title:
+        html += (
+            f'<tr><td colspan="3" style="padding:0 0 10px;font-size:13px;'
+            f'font-weight:600;color:{BLACK};">{escape(title)}</td></tr>'
+        )
+
+    for i, (label, value) in enumerate(items):
+        pct = max(int(value / max_val * 100), 1)
+        color = CHART_COLORS[i % len(CHART_COLORS)]
+        html += (
+            f'<tr>'
+            f'<td style="padding:3px 8px 3px 0;font-size:12px;color:{GRAY};'
+            f'white-space:nowrap;width:140px;text-align:right;">{escape(str(label)[:24])}</td>'
+            f'<td style="padding:3px 0;width:100%;">'
+            f'<div style="background:{color};width:{pct}%;height:20px;'
+            f'border-radius:3px;min-width:4px;"></div></td>'
+            f'<td style="padding:3px 0 3px 8px;font-size:12px;font-weight:600;'
+            f'color:{BLACK};white-space:nowrap;text-align:left;">{escape(str(value))}</td>'
+            f'</tr>'
+        )
+
+    html += '</table>'
+    return html
 
 
 # ─── WebSocket push ─────────────────────────────────────────────────────────

@@ -36,17 +36,22 @@ def _previous_week_range():
     return start, end, f"{start.strftime('%d %b')} – {end.strftime('%d %b %Y')}"
 
 
+# ─── Formatting helpers ─────────────────────────────────────────────────────
+
+def _fmt(value):
+    """Format a number as $X,XXX.XX."""
+    return f"${value:,.2f}"
+
+
+_NO_DATA_MSG = 'No activity recorded for this reporting period.'
+
+
 # ─── Generic wrapper ────────────────────────────────────────────────────────
 
 def _run_report_for_all_tenants(report_name, generate_fn, build_body_fn, subject_template):
     """
     Generic driver: iterate active tenants, generate data, email staff.
-
-    Args:
-        report_name: Human label for logging / alerts.
-        generate_fn: Callable() -> dict | None. Return None to skip tenant.
-        build_body_fn: Callable(data) -> str plain-text body.
-        subject_template: str with optional {period} placeholder.
+    Always sends — never skips a tenant (no_data flag is passed to formatter).
     """
     TenantModel = get_tenant_model()
     tenants = TenantModel.objects.filter(is_active=True).exclude(schema_name='public')
@@ -57,12 +62,10 @@ def _run_report_for_all_tenants(report_name, generate_fn, build_body_fn, subject
         try:
             with tenant_context(tenant):
                 data = generate_fn()
-                if data is None:
-                    results['skipped'].append(tenant.name)
-                    continue
                 period = data.pop('_period_label', '')
+                no_data = data.pop('_no_data', False)
                 subject = subject_template.format(period=period) if '{period}' in subject_template else subject_template
-                body = build_body_fn(data)
+                body = build_body_fn(data, no_data=no_data)
                 from apps.notifications.utils import send_staff_email
                 send_staff_email(subject, body)
                 results['success'].append(tenant.name)
@@ -88,8 +91,8 @@ def _run_report_for_all_tenants(report_name, generate_fn, build_body_fn, subject
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# DATA GENERATORS — each returns a plain dict (or None to skip tenant).
-# The key '_period_label' is popped by the wrapper for subject formatting.
+# DATA GENERATORS — each always returns a dict (never None).
+# '_no_data' flag indicates empty data; '_period_label' is for subject.
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _generate_dashboard_data():
@@ -97,11 +100,19 @@ def _generate_dashboard_data():
     from apps.billing.models import Invoice, Receipt
     from apps.masterfile.models import Property, Unit, LeaseAgreement, RentalTenant, Landlord
 
-    total_properties = Property.objects.count()
-    if total_properties == 0:
-        return None
-
     today = timezone.now().date()
+    total_properties = Property.objects.count()
+
+    if total_properties == 0:
+        return {
+            '_period_label': today.strftime('%d %b %Y'),
+            '_no_data': True,
+            'total_properties': 0, 'total_units': 0, 'vacant_units': 0,
+            'occupancy_rate': 0, 'monthly_invoiced': 0, 'monthly_collected': 0,
+            'overdue_count': 0, 'overdue_amount': 0, 'active_leases': 0,
+            'expiring_leases': 0, 'landlords': 0, 'tenants': 0,
+        }
+
     month_start = today.replace(day=1)
 
     unit_stats = Unit.objects.aggregate(
@@ -129,6 +140,7 @@ def _generate_dashboard_data():
 
     return {
         '_period_label': today.strftime('%d %b %Y'),
+        '_no_data': False,
         'total_properties': total_properties,
         'total_units': total_units,
         'vacant_units': vacant,
@@ -185,13 +197,12 @@ def _generate_aged_analysis_data():
         tname = inv.tenant.name if inv.tenant else 'Unknown'
         tenant_totals[tname] = tenant_totals.get(tname, Decimal('0')) + bal
 
-    if total_outstanding == 0:
-        return None
-
+    no_data = total_outstanding == 0
     top_debtors = sorted(tenant_totals.items(), key=lambda x: x[1], reverse=True)[:20]
 
     return {
         '_period_label': today.strftime('%d %b %Y'),
+        '_no_data': no_data,
         'total_outstanding': float(total_outstanding),
         'total_invoices': sum(b['count'] for b in buckets.values()),
         'buckets': {k: {'label': v['label'], 'amount': float(v['amount']), 'count': v['count']}
@@ -208,8 +219,14 @@ def _generate_vacancy_data():
         unit_count=Count('units'),
         vacant_count=Count('units', filter=Q(units__is_occupied=False)),
     )
+
     if not properties.exists():
-        return None
+        return {
+            '_period_label': timezone.now().date().strftime('%d %b %Y'),
+            '_no_data': True,
+            'properties': [], 'total_properties': 0,
+            'total_units': 0, 'total_vacant': 0, 'overall_vacancy_rate': 0,
+        }
 
     total_units = 0
     total_vacant = 0
@@ -230,6 +247,7 @@ def _generate_vacancy_data():
 
     return {
         '_period_label': timezone.now().date().strftime('%d %b %Y'),
+        '_no_data': False,
         'properties': rows,
         'total_properties': len(rows),
         'total_units': total_units,
@@ -246,8 +264,15 @@ def _generate_rent_roll_data():
         status='active',
     ).select_related('tenant', 'unit', 'unit__property')
 
+    _, _, period = _previous_week_range()
+
     if not leases.exists():
-        return None
+        return {
+            '_period_label': period,
+            '_no_data': True,
+            'leases': [], 'total_leases': 0,
+            'total_monthly_rent': 0, 'truncated': False,
+        }
 
     total_rent = Decimal('0')
     rows = []
@@ -262,9 +287,9 @@ def _generate_rent_roll_data():
         })
         total_rent += lease.monthly_rent
 
-    _, _, period = _previous_week_range()
     return {
         '_period_label': period,
+        '_no_data': False,
         'leases': rows[:20],
         'total_leases': len(rows),
         'total_monthly_rent': float(total_rent),
@@ -282,7 +307,12 @@ def _generate_receipt_listing_data():
     ).select_related('bank_account', 'invoice')
 
     if not receipts.exists():
-        return None
+        return {
+            '_period_label': period,
+            '_no_data': True,
+            'total_amount': 0, 'total_receipts': 0,
+            'by_bank': {}, 'by_income_type': {},
+        }
 
     total = Decimal('0')
     by_bank = {}
@@ -299,6 +329,7 @@ def _generate_receipt_listing_data():
 
     return {
         '_period_label': period,
+        '_no_data': False,
         'total_amount': float(total),
         'total_receipts': count,
         'by_bank': by_bank,
@@ -307,7 +338,7 @@ def _generate_receipt_listing_data():
 
 
 def _generate_bank_to_income_data():
-    """Matrix: bank account × income type for the previous week."""
+    """Matrix: bank account x income type for the previous week."""
     from apps.billing.models import Receipt
 
     start, end, period = _previous_week_range()
@@ -316,7 +347,12 @@ def _generate_bank_to_income_data():
     ).select_related('bank_account', 'invoice')
 
     if not receipts.exists():
-        return None
+        return {
+            '_period_label': period,
+            '_no_data': True,
+            'banks': [], 'rows': [],
+            'bank_totals': {}, 'grand_total': 0,
+        }
 
     matrix = {}
     banks = set()
@@ -350,6 +386,7 @@ def _generate_bank_to_income_data():
 
     return {
         '_period_label': period,
+        '_no_data': False,
         'banks': bank_list,
         'rows': rows,
         'bank_totals': bank_totals,
@@ -359,11 +396,23 @@ def _generate_bank_to_income_data():
 
 def _generate_trial_balance_data():
     """Debit/credit balances for all active accounts."""
-    from apps.accounting.models import ChartOfAccount
+    _, _, period = _previous_month_range()
+    _empty = {
+        '_period_label': period,
+        '_no_data': True,
+        'accounts': [], 'total_accounts': 0,
+        'total_debits': 0, 'total_credits': 0,
+        'balanced': True, 'difference': 0, 'truncated': False,
+    }
+    try:
+        from apps.accounting.models import ChartOfAccount
+        accounts = list(ChartOfAccount.objects.filter(is_active=True).order_by('code'))
+    except Exception as e:
+        logger.warning(f"[Trial Balance] Could not access accounting tables: {e}")
+        return _empty
 
-    accounts = ChartOfAccount.objects.filter(is_active=True).order_by('code')
-    if not accounts.exists():
-        return None
+    if not accounts:
+        return _empty
 
     rows = []
     total_debits = Decimal('0')
@@ -385,9 +434,9 @@ def _generate_trial_balance_data():
             total_debits += debit
             total_credits += credit
 
-    _, _, period = _previous_month_range()
     return {
         '_period_label': period,
+        '_no_data': len(rows) == 0,
         'accounts': rows[:20],
         'total_accounts': len(rows),
         'total_debits': float(total_debits),
@@ -400,10 +449,22 @@ def _generate_trial_balance_data():
 
 def _generate_income_statement_data():
     """Revenue minus expenses."""
-    from apps.accounting.models import ChartOfAccount
-
-    rev_accounts = ChartOfAccount.objects.filter(account_type='revenue', is_active=True)
-    exp_accounts = ChartOfAccount.objects.filter(account_type='expense', is_active=True)
+    _, _, period = _previous_month_range()
+    _empty = {
+        '_period_label': period,
+        '_no_data': True,
+        'revenue_items': [], 'expense_items': [],
+        'total_revenue': 0, 'total_expenses': 0,
+        'net_income': 0, 'is_profit': True,
+        'truncated_rev': False, 'truncated_exp': False,
+    }
+    try:
+        from apps.accounting.models import ChartOfAccount
+        rev_accounts = list(ChartOfAccount.objects.filter(account_type='revenue', is_active=True))
+        exp_accounts = list(ChartOfAccount.objects.filter(account_type='expense', is_active=True))
+    except Exception as e:
+        logger.warning(f"[Income Statement] Could not access accounting tables: {e}")
+        return _empty
 
     rev_items = [{'code': a.code, 'name': a.name, 'balance': float(a.current_balance)}
                  for a in rev_accounts if a.current_balance]
@@ -412,15 +473,11 @@ def _generate_income_statement_data():
 
     total_rev = sum(i['balance'] for i in rev_items)
     total_exp = sum(i['balance'] for i in exp_items)
-
-    if total_rev == 0 and total_exp == 0:
-        return None
-
     net_income = total_rev - total_exp
-    _, _, period = _previous_month_range()
 
     return {
         '_period_label': period,
+        '_no_data': total_rev == 0 and total_exp == 0,
         'revenue_items': rev_items[:20],
         'expense_items': exp_items[:20],
         'total_revenue': total_rev,
@@ -434,25 +491,36 @@ def _generate_income_statement_data():
 
 def _generate_balance_sheet_data():
     """Assets / liabilities / equity snapshot."""
-    from apps.accounting.models import ChartOfAccount
-
-    def _section(acct_type):
-        accts = ChartOfAccount.objects.filter(account_type=acct_type, is_active=True)
-        items = [{'code': a.code, 'name': a.name, 'balance': float(a.current_balance)}
-                 for a in accts if a.current_balance]
-        total = sum(i['balance'] for i in items)
-        return items[:20], total, len(items) > 20
-
-    asset_items, total_assets, trunc_a = _section('asset')
-    liab_items, total_liab, trunc_l = _section('liability')
-    eq_items, total_eq, trunc_e = _section('equity')
-
-    if not asset_items and not liab_items and not eq_items:
-        return None
-
     _, _, period = _previous_month_range()
+    _empty = {
+        '_period_label': period,
+        '_no_data': True,
+        'asset_items': [], 'liability_items': [], 'equity_items': [],
+        'total_assets': 0, 'total_liabilities': 0, 'total_equity': 0,
+        'balanced': True,
+    }
+    try:
+        from apps.accounting.models import ChartOfAccount
+
+        def _section(acct_type):
+            accts = list(ChartOfAccount.objects.filter(account_type=acct_type, is_active=True))
+            items = [{'code': a.code, 'name': a.name, 'balance': float(a.current_balance)}
+                     for a in accts if a.current_balance]
+            total = sum(i['balance'] for i in items)
+            return items[:20], total, len(items) > 20
+
+        asset_items, total_assets, trunc_a = _section('asset')
+        liab_items, total_liab, trunc_l = _section('liability')
+        eq_items, total_eq, trunc_e = _section('equity')
+    except Exception as e:
+        logger.warning(f"[Balance Sheet] Could not access accounting tables: {e}")
+        return _empty
+
+    no_data = not asset_items and not liab_items and not eq_items
+
     return {
         '_period_label': period,
+        '_no_data': no_data,
         'asset_items': asset_items,
         'liability_items': liab_items,
         'equity_items': eq_items,
@@ -465,62 +533,74 @@ def _generate_balance_sheet_data():
 
 def _generate_cash_flow_data():
     """Operating / investing / financing cash flows."""
-    from apps.billing.models import Receipt
-    from apps.accounting.models import ChartOfAccount, GeneralLedger
-
     start, end, period = _previous_month_range()
-    date_filter = Q(date__gte=start, date__lte=end)
+    try:
+        from apps.billing.models import Receipt
+        from apps.accounting.models import ChartOfAccount, GeneralLedger
 
-    # Operating
-    tenant_receipts = Receipt.objects.filter(date_filter).aggregate(
-        total=Coalesce(Sum('amount'), Decimal('0')),
-    )['total']
+        date_filter = Q(date__gte=start, date__lte=end)
 
-    expense_payments = GeneralLedger.objects.filter(
-        date_filter,
-        account__account_type='expense', account__is_active=True,
-    ).aggregate(total=Coalesce(Sum('debit_amount'), Decimal('0')))['total']
+        # Operating
+        tenant_receipts = Receipt.objects.filter(date_filter).aggregate(
+            total=Coalesce(Sum('amount'), Decimal('0')),
+        )['total']
 
-    landlord_payments = GeneralLedger.objects.filter(
-        date_filter,
-        account__code__startswith='2',
-    ).aggregate(total=Coalesce(Sum('credit_amount'), Decimal('0')))['total']
+        expense_payments = GeneralLedger.objects.filter(
+            date_filter,
+            account__account_type='expense', account__is_active=True,
+        ).aggregate(total=Coalesce(Sum('debit_amount'), Decimal('0')))['total']
 
-    operating_in = tenant_receipts
-    operating_out = expense_payments + landlord_payments
-    net_operating = operating_in - operating_out
+        landlord_payments = GeneralLedger.objects.filter(
+            date_filter,
+            account__code__startswith='2',
+        ).aggregate(total=Coalesce(Sum('credit_amount'), Decimal('0')))['total']
 
-    # Investing
-    asset_txns = GeneralLedger.objects.filter(
-        date_filter,
-        account__account_type='asset', account__is_active=True, account__code__startswith='15',
-    ).aggregate(
-        purchases=Coalesce(Sum('debit_amount'), Decimal('0')),
-        sales=Coalesce(Sum('credit_amount'), Decimal('0')),
-    )
-    net_investing = asset_txns['sales'] - asset_txns['purchases']
+        operating_in = tenant_receipts
+        operating_out = expense_payments + landlord_payments
+        net_operating = operating_in - operating_out
 
-    # Financing
-    equity_txns = GeneralLedger.objects.filter(
-        date_filter,
-        account__account_type='equity', account__is_active=True,
-    ).aggregate(
-        contributions=Coalesce(Sum('credit_amount'), Decimal('0')),
-        withdrawals=Coalesce(Sum('debit_amount'), Decimal('0')),
-    )
-    net_financing = equity_txns['contributions'] - equity_txns['withdrawals']
+        # Investing
+        asset_txns = GeneralLedger.objects.filter(
+            date_filter,
+            account__account_type='asset', account__is_active=True, account__code__startswith='15',
+        ).aggregate(
+            purchases=Coalesce(Sum('debit_amount'), Decimal('0')),
+            sales=Coalesce(Sum('credit_amount'), Decimal('0')),
+        )
+        net_investing = asset_txns['sales'] - asset_txns['purchases']
 
-    net_change = net_operating + net_investing + net_financing
+        # Financing
+        equity_txns = GeneralLedger.objects.filter(
+            date_filter,
+            account__account_type='equity', account__is_active=True,
+        ).aggregate(
+            contributions=Coalesce(Sum('credit_amount'), Decimal('0')),
+            withdrawals=Coalesce(Sum('debit_amount'), Decimal('0')),
+        )
+        net_financing = equity_txns['contributions'] - equity_txns['withdrawals']
 
-    if net_operating == 0 and net_investing == 0 and net_financing == 0:
-        return None
+        net_change = net_operating + net_investing + net_financing
 
-    cash_accounts = ChartOfAccount.objects.filter(code__startswith='1000', is_active=True)
-    ending_cash = sum(a.current_balance for a in cash_accounts)
-    beginning_cash = ending_cash - net_change
+        no_data = net_operating == 0 and net_investing == 0 and net_financing == 0
+
+        cash_accounts = ChartOfAccount.objects.filter(code__startswith='1000', is_active=True)
+        ending_cash = sum(a.current_balance for a in cash_accounts)
+        beginning_cash = ending_cash - net_change
+
+    except Exception as e:
+        logger.warning(f"[Cash Flow] Could not access accounting tables: {e}")
+        return {
+            '_period_label': period,
+            '_no_data': True,
+            'operating_in': 0, 'operating_out': 0, 'net_operating': 0,
+            'investing_in': 0, 'investing_out': 0, 'net_investing': 0,
+            'financing_in': 0, 'financing_out': 0, 'net_financing': 0,
+            'net_change': 0, 'beginning_cash': 0, 'ending_cash': 0,
+        }
 
     return {
         '_period_label': period,
+        '_no_data': no_data,
         'operating_in': float(operating_in),
         'operating_out': float(operating_out),
         'net_operating': float(net_operating),
@@ -547,7 +627,12 @@ def _generate_lease_charge_summary_data():
     ).select_related('tenant', 'unit', 'unit__property')
 
     if not leases.exists():
-        return None
+        return {
+            '_period_label': period,
+            '_no_data': True,
+            'leases': [], 'total_leases': 0,
+            'grand_total': 0, 'truncated': False,
+        }
 
     charge_data = Invoice.objects.filter(
         lease__in=leases, date__gte=start, date__lte=end,
@@ -572,7 +657,7 @@ def _generate_lease_charge_summary_data():
         breakdown = charges_by_lease.get(lease.id, {})
         lease_total = sum(c['total'] for c in breakdown.values())
         lease_paid = sum(c['paid'] for c in breakdown.values())
-        types_str = ', '.join(sorted(breakdown.keys())) or '—'
+        types_str = ', '.join(sorted(breakdown.keys())) or '\u2014'
         rows.append({
             'tenant': lease.tenant.name,
             'property': lease.unit.property.name,
@@ -586,6 +671,7 @@ def _generate_lease_charge_summary_data():
 
     return {
         '_period_label': period,
+        '_no_data': False,
         'leases': rows[:20],
         'total_leases': len(rows),
         'grand_total': grand_total,
@@ -594,11 +680,21 @@ def _generate_lease_charge_summary_data():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# EMAIL BODY FORMATTERS — each returns plain text understood by
-# build_html_email() (=== headers ===, - key: value, etc.)
+# EMAIL BODY FORMATTERS — each returns text (with embedded HTML tables/SVG)
+# understood by build_html_email() via _text_to_html() passthrough.
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _build_dashboard_email_body(data):
+def _build_dashboard_email_body(data, no_data=False):
+    from apps.notifications.utils import build_svg_bar_chart
+    if no_data:
+        return _NO_DATA_MSG
+
+    occupied = data['total_units'] - data['vacant_units']
+    chart = build_svg_bar_chart([
+        ('Occupied', occupied),
+        ('Vacant', data['vacant_units']),
+    ], title='Unit Occupancy', width=620)
+
     lines = [
         '=== Portfolio Overview ===\n',
         f"- Properties: {data['total_properties']}",
@@ -606,13 +702,15 @@ def _build_dashboard_email_body(data):
         f"- Vacant Units: {data['vacant_units']}",
         f"- Occupancy Rate: {data['occupancy_rate']}%",
         '',
+        chart,
+        '',
         '=== Monthly Financial Summary ===\n',
-        f"- Invoiced This Month: ${data['monthly_invoiced']:,.2f}",
-        f"- Collected This Month: ${data['monthly_collected']:,.2f}",
+        f"- Invoiced This Month: {_fmt(data['monthly_invoiced'])}",
+        f"- Collected This Month: {_fmt(data['monthly_collected'])}",
         '',
         '=== Alerts ===\n',
         f"- Overdue Invoices: {data['overdue_count']}",
-        f"- Overdue Amount: ${data['overdue_amount']:,.2f}",
+        f"- Overdue Amount: {_fmt(data['overdue_amount'])}",
         f"- Expiring Leases (30 days): {data['expiring_leases']}",
         '',
         '=== Entity Counts ===\n',
@@ -623,23 +721,51 @@ def _build_dashboard_email_body(data):
     return '\n'.join(lines)
 
 
-def _build_aged_analysis_email_body(data):
+def _build_aged_analysis_email_body(data, no_data=False):
+    from apps.notifications.utils import build_email_table, build_svg_bar_chart
+    if no_data:
+        return _NO_DATA_MSG
+
     lines = [
         '=== Aging Summary ===\n',
-        f"- Total Outstanding: ${data['total_outstanding']:,.2f}",
+        f"- Total Outstanding: {_fmt(data['total_outstanding'])}",
         f"- Total Invoices: {data['total_invoices']}",
         '',
     ]
+
+    # Buckets table
+    bucket_headers = ['Period', 'Amount', 'Invoices']
+    bucket_rows = []
+    chart_items = []
     for key in ('current', '31_60', '61_90', '91_120', 'over_120'):
         b = data['buckets'][key]
-        lines.append(f"- {b['label']}: ${b['amount']:,.2f} ({b['count']} invoices)")
-    lines += ['', '=== Top Debtors ===\n']
-    for d in data['top_debtors']:
-        lines.append(f"- {d['name']}: ${d['balance']:,.2f}")
+        bucket_rows.append([b['label'], _fmt(b['amount']), str(b['count'])])
+        if b['amount'] > 0:
+            chart_items.append((b['label'], b['amount']))
+
+    table = build_email_table(bucket_headers, bucket_rows)
+    lines.append(table)
+
+    # Bar chart for aging distribution
+    if chart_items:
+        chart = build_svg_bar_chart(chart_items, title='Aging Distribution', width=620)
+        lines += ['', chart]
+
+    # Top debtors table
+    if data['top_debtors']:
+        lines += ['', '=== Top Debtors ===\n']
+        debtor_headers = ['Tenant', 'Balance']
+        debtor_rows = [[d['name'], _fmt(d['balance'])] for d in data['top_debtors']]
+        lines.append(build_email_table(debtor_headers, debtor_rows))
+
     return '\n'.join(lines)
 
 
-def _build_vacancy_email_body(data):
+def _build_vacancy_email_body(data, no_data=False):
+    from apps.notifications.utils import build_email_table, build_svg_bar_chart
+    if no_data:
+        return _NO_DATA_MSG
+
     lines = [
         '=== Vacancy Summary ===\n',
         f"- Total Properties: {data['total_properties']}",
@@ -647,164 +773,265 @@ def _build_vacancy_email_body(data):
         f"- Total Vacant: {data['total_vacant']}",
         f"- Overall Vacancy Rate: {data['overall_vacancy_rate']}%",
         '',
-        '=== By Property ===\n',
     ]
-    for p in data['properties'][:20]:
-        lines.append(f"- {p['name']}: {p['vacant']}/{p['total_units']} vacant ({p['vacancy_rate']}%)")
+
+    # Vacancy table
+    headers = ['Property', 'Landlord', 'Units', 'Vacant', 'Rate']
+    rows = [
+        [p['name'], p['landlord'], str(p['total_units']), str(p['vacant']),
+         f"{p['vacancy_rate']}%"]
+        for p in data['properties'][:20]
+    ]
+    footer = ['Total', '', str(data['total_units']), str(data['total_vacant']),
+              f"{data['overall_vacancy_rate']}%"]
+    lines.append(build_email_table(headers, rows, footer_row=footer))
+
+    # Bar chart — vacant units by property (top 10)
+    chart_items = [
+        (p['name'], p['vacant'])
+        for p in sorted(data['properties'], key=lambda x: x['vacant'], reverse=True)[:10]
+        if p['vacant'] > 0
+    ]
+    if chart_items:
+        chart = build_svg_bar_chart(chart_items, title='Vacant Units by Property', width=620)
+        lines += ['', chart]
+
     return '\n'.join(lines)
 
 
-def _build_rent_roll_email_body(data):
+def _build_rent_roll_email_body(data, no_data=False):
+    from apps.notifications.utils import build_email_table
+    if no_data:
+        return _NO_DATA_MSG
+
     lines = [
         '=== Rent Roll Summary ===\n',
         f"- Active Leases: {data['total_leases']}",
-        f"- Total Monthly Rent: ${data['total_monthly_rent']:,.2f}",
+        f"- Total Monthly Rent: {_fmt(data['total_monthly_rent'])}",
         '',
         '=== Lease Details ===\n',
     ]
-    for l in data['leases']:
-        lines.append(
-            f"- {l['tenant']} | {l['property']} - {l['unit']} | "
-            f"${l['monthly_rent']:,.2f} {l['currency']} | Ends: {l['end_date']}"
-        )
-    if data.get('truncated'):
-        lines.append(f"\n... and {data['total_leases'] - 20} more leases")
+
+    headers = ['Tenant', 'Property / Unit', 'Monthly Rent', 'Ends']
+    rows = [
+        [l['tenant'], f"{l['property']} - {l['unit']}",
+         f"{_fmt(l['monthly_rent'])} {l['currency']}", l['end_date']]
+        for l in data['leases']
+    ]
+    footer = ['Total', '', _fmt(data['total_monthly_rent']), '']
+    trunc = f"... and {data['total_leases'] - 20} more leases" if data.get('truncated') else None
+    lines.append(build_email_table(headers, rows, footer_row=footer, truncated_msg=trunc))
+
     return '\n'.join(lines)
 
 
-def _build_receipt_listing_email_body(data):
+def _build_receipt_listing_email_body(data, no_data=False):
+    from apps.notifications.utils import build_email_table
+    if no_data:
+        return _NO_DATA_MSG
+
     lines = [
         '=== Receipt Summary ===\n',
         f"- Total Receipts: {data['total_receipts']}",
-        f"- Total Amount: ${data['total_amount']:,.2f}",
+        f"- Total Amount: {_fmt(data['total_amount'])}",
         '',
-        '=== By Bank Account ===\n',
     ]
-    for bank, amt in sorted(data['by_bank'].items(), key=lambda x: x[1], reverse=True):
-        lines.append(f"- {bank}: ${amt:,.2f}")
-    lines += ['', '=== By Income Type ===\n']
-    for itype, amt in sorted(data['by_income_type'].items(), key=lambda x: x[1], reverse=True):
-        lines.append(f"- {itype}: ${amt:,.2f}")
+
+    # By Bank table
+    if data['by_bank']:
+        lines.append('=== By Bank Account ===\n')
+        bank_sorted = sorted(data['by_bank'].items(), key=lambda x: x[1], reverse=True)
+        bank_rows = [[bank, _fmt(amt)] for bank, amt in bank_sorted]
+        bank_footer = ['Total', _fmt(data['total_amount'])]
+        lines.append(build_email_table(['Bank Account', 'Amount'], bank_rows, footer_row=bank_footer))
+
+    # By Income Type table
+    if data['by_income_type']:
+        lines += ['', '=== By Income Type ===\n']
+        type_sorted = sorted(data['by_income_type'].items(), key=lambda x: x[1], reverse=True)
+        type_rows = [[itype, _fmt(amt)] for itype, amt in type_sorted]
+        type_footer = ['Total', _fmt(data['total_amount'])]
+        lines.append(build_email_table(['Income Type', 'Amount'], type_rows, footer_row=type_footer))
+
     return '\n'.join(lines)
 
 
-def _build_bank_to_income_email_body(data):
+def _build_bank_to_income_email_body(data, no_data=False):
+    from apps.notifications.utils import build_email_table
+    if no_data:
+        return _NO_DATA_MSG
+
     lines = [
         '=== Bank to Income Analysis ===\n',
-        f"- Grand Total: ${data['grand_total']:,.2f}",
+        f"- Grand Total: {_fmt(data['grand_total'])}",
         '',
-        '=== Bank Totals ===\n',
     ]
-    for bank, amt in sorted(data['bank_totals'].items(), key=lambda x: x[1], reverse=True):
-        lines.append(f"- {bank}: ${amt:,.2f}")
-    lines += ['', '=== Income Type Breakdown ===\n']
-    for row in data['rows']:
-        lines.append(f"- {row['income_type']}: ${row['total']:,.2f}")
+
+    banks = data['banks']
+    if banks and data['rows']:
+        headers = ['Income Type'] + banks + ['Total']
+        rows = []
+        for row in data['rows']:
+            r = [row['income_type']]
+            for bank in banks:
+                r.append(_fmt(row.get(bank, 0)))
+            r.append(_fmt(row['total']))
+            rows.append(r)
+
+        footer = ['Total']
+        for bank in banks:
+            footer.append(_fmt(data['bank_totals'].get(bank, 0)))
+        footer.append(_fmt(data['grand_total']))
+        lines.append(build_email_table(headers, rows, footer_row=footer))
+
     return '\n'.join(lines)
 
 
-def _build_trial_balance_email_body(data):
+def _build_trial_balance_email_body(data, no_data=False):
+    from apps.notifications.utils import build_email_table
+    if no_data:
+        return _NO_DATA_MSG
+
     lines = [
         '=== Trial Balance Summary ===\n',
-        f"- Total Debits: ${data['total_debits']:,.2f}",
-        f"- Total Credits: ${data['total_credits']:,.2f}",
+        f"- Total Debits: {_fmt(data['total_debits'])}",
+        f"- Total Credits: {_fmt(data['total_credits'])}",
         f"- Balanced: {'Yes' if data['balanced'] else 'No'}",
     ]
     if not data['balanced']:
-        lines.append(f"- Difference: ${data['difference']:,.2f}")
+        lines.append(f"- Difference: {_fmt(data['difference'])}")
     lines += ['', '=== Account Details ===\n']
-    for a in data['accounts']:
-        lines.append(f"- {a['code']} {a['name']}: Dr ${a['debit']:,.2f} | Cr ${a['credit']:,.2f}")
-    if data.get('truncated'):
-        lines.append(f"\n... and {data['total_accounts'] - 20} more accounts")
+
+    headers = ['Code', 'Account', 'Debit', 'Credit']
+    rows = [
+        [a['code'], a['name'], _fmt(a['debit']), _fmt(a['credit'])]
+        for a in data['accounts']
+    ]
+    footer = ['', 'Total', _fmt(data['total_debits']), _fmt(data['total_credits'])]
+    trunc = f"... and {data['total_accounts'] - 20} more accounts" if data.get('truncated') else None
+    lines.append(build_email_table(headers, rows, footer_row=footer, truncated_msg=trunc))
+
     return '\n'.join(lines)
 
 
-def _build_income_statement_email_body(data):
+def _build_income_statement_email_body(data, no_data=False):
+    from apps.notifications.utils import build_email_table
+    if no_data:
+        return _NO_DATA_MSG
+
     lines = ['=== Revenue ===\n']
-    for a in data['revenue_items']:
-        lines.append(f"- {a['code']} {a['name']}: ${a['balance']:,.2f}")
-    if data.get('truncated_rev'):
-        lines.append('  ... more revenue accounts')
-    lines.append(f"\nTotal Revenue: ${data['total_revenue']:,.2f}")
+    if data['revenue_items']:
+        rev_rows = [[a['code'], a['name'], _fmt(a['balance'])] for a in data['revenue_items']]
+        rev_footer = ['', 'Total Revenue', _fmt(data['total_revenue'])]
+        trunc_rev = '... more revenue accounts' if data.get('truncated_rev') else None
+        lines.append(build_email_table(['Code', 'Account', 'Balance'], rev_rows,
+                                       footer_row=rev_footer, truncated_msg=trunc_rev))
+    else:
+        lines.append(f"Total Revenue: {_fmt(data['total_revenue'])}")
 
     lines += ['', '=== Expenses ===\n']
-    for a in data['expense_items']:
-        lines.append(f"- {a['code']} {a['name']}: ${a['balance']:,.2f}")
-    if data.get('truncated_exp'):
-        lines.append('  ... more expense accounts')
-    lines.append(f"\nTotal Expenses: ${data['total_expenses']:,.2f}")
+    if data['expense_items']:
+        exp_rows = [[a['code'], a['name'], _fmt(a['balance'])] for a in data['expense_items']]
+        exp_footer = ['', 'Total Expenses', _fmt(data['total_expenses'])]
+        trunc_exp = '... more expense accounts' if data.get('truncated_exp') else None
+        lines.append(build_email_table(['Code', 'Account', 'Balance'], exp_rows,
+                                       footer_row=exp_footer, truncated_msg=trunc_exp))
+    else:
+        lines.append(f"Total Expenses: {_fmt(data['total_expenses'])}")
 
     label = 'Net Profit' if data['is_profit'] else 'Net Loss'
-    lines += ['', f"=== {label} ===\n", f"- {label}: ${abs(data['net_income']):,.2f}"]
+    lines += ['', f"=== {label} ===\n", f"- {label}: {_fmt(abs(data['net_income']))}"]
     return '\n'.join(lines)
 
 
-def _build_balance_sheet_email_body(data):
+def _build_balance_sheet_email_body(data, no_data=False):
+    from apps.notifications.utils import build_email_table
+    if no_data:
+        return _NO_DATA_MSG
+
+    acct_headers = ['Code', 'Account', 'Balance']
+
     lines = ['=== Assets ===\n']
-    for a in data['asset_items']:
-        lines.append(f"- {a['code']} {a['name']}: ${a['balance']:,.2f}")
-    lines.append(f"\nTotal Assets: ${data['total_assets']:,.2f}")
+    if data['asset_items']:
+        asset_rows = [[a['code'], a['name'], _fmt(a['balance'])] for a in data['asset_items']]
+        lines.append(build_email_table(acct_headers, asset_rows,
+                                       footer_row=['', 'Total Assets', _fmt(data['total_assets'])]))
+    else:
+        lines.append(f"Total Assets: {_fmt(data['total_assets'])}")
 
     lines += ['', '=== Liabilities ===\n']
-    for a in data['liability_items']:
-        lines.append(f"- {a['code']} {a['name']}: ${a['balance']:,.2f}")
-    lines.append(f"\nTotal Liabilities: ${data['total_liabilities']:,.2f}")
+    if data['liability_items']:
+        liab_rows = [[a['code'], a['name'], _fmt(a['balance'])] for a in data['liability_items']]
+        lines.append(build_email_table(acct_headers, liab_rows,
+                                       footer_row=['', 'Total Liabilities', _fmt(data['total_liabilities'])]))
+    else:
+        lines.append(f"Total Liabilities: {_fmt(data['total_liabilities'])}")
 
     lines += ['', '=== Equity ===\n']
-    for a in data['equity_items']:
-        lines.append(f"- {a['code']} {a['name']}: ${a['balance']:,.2f}")
-    lines.append(f"\nTotal Equity: ${data['total_equity']:,.2f}")
+    if data['equity_items']:
+        eq_rows = [[a['code'], a['name'], _fmt(a['balance'])] for a in data['equity_items']]
+        lines.append(build_email_table(acct_headers, eq_rows,
+                                       footer_row=['', 'Total Equity', _fmt(data['total_equity'])]))
+    else:
+        lines.append(f"Total Equity: {_fmt(data['total_equity'])}")
 
-    lines += [
-        '',
-        '---',
-        f"Balanced: {'Yes' if data['balanced'] else 'No'}",
-    ]
+    lines += ['', '---', f"Balanced: {'Yes' if data['balanced'] else 'No'}"]
     return '\n'.join(lines)
 
 
-def _build_cash_flow_email_body(data):
+def _build_cash_flow_email_body(data, no_data=False):
+    if no_data:
+        return _NO_DATA_MSG
+
     lines = [
         '=== Operating Activities ===\n',
-        f"- Cash Inflows (Tenant Receipts): ${data['operating_in']:,.2f}",
-        f"- Cash Outflows (Expenses + Landlord): ${data['operating_out']:,.2f}",
-        f"- Net Operating Cash Flow: ${data['net_operating']:,.2f}",
+        f"- Cash Inflows (Tenant Receipts): {_fmt(data['operating_in'])}",
+        f"- Cash Outflows (Expenses + Landlord): {_fmt(data['operating_out'])}",
+        f"- Net Operating Cash Flow: {_fmt(data['net_operating'])}",
         '',
         '=== Investing Activities ===\n',
-        f"- Asset Sales: ${data['investing_in']:,.2f}",
-        f"- Asset Purchases: ${data['investing_out']:,.2f}",
-        f"- Net Investing Cash Flow: ${data['net_investing']:,.2f}",
+        f"- Asset Sales: {_fmt(data['investing_in'])}",
+        f"- Asset Purchases: {_fmt(data['investing_out'])}",
+        f"- Net Investing Cash Flow: {_fmt(data['net_investing'])}",
         '',
         '=== Financing Activities ===\n',
-        f"- Owner Contributions: ${data['financing_in']:,.2f}",
-        f"- Owner Withdrawals: ${data['financing_out']:,.2f}",
-        f"- Net Financing Cash Flow: ${data['net_financing']:,.2f}",
+        f"- Owner Contributions: {_fmt(data['financing_in'])}",
+        f"- Owner Withdrawals: {_fmt(data['financing_out'])}",
+        f"- Net Financing Cash Flow: {_fmt(data['net_financing'])}",
         '',
         '=== Cash Summary ===\n',
-        f"- Beginning Cash: ${data['beginning_cash']:,.2f}",
-        f"- Net Change in Cash: ${data['net_change']:,.2f}",
-        f"- Ending Cash: ${data['ending_cash']:,.2f}",
+        f"- Beginning Cash: {_fmt(data['beginning_cash'])}",
+        f"- Net Change in Cash: {_fmt(data['net_change'])}",
+        f"- Ending Cash: {_fmt(data['ending_cash'])}",
     ]
     return '\n'.join(lines)
 
 
-def _build_lease_charge_summary_email_body(data):
+def _build_lease_charge_summary_email_body(data, no_data=False):
+    from apps.notifications.utils import build_email_table
+    if no_data:
+        return _NO_DATA_MSG
+
     lines = [
         '=== Lease Charge Summary ===\n',
         f"- Total Leases: {data['total_leases']}",
-        f"- Grand Total Charged: ${data['grand_total']:,.2f}",
+        f"- Grand Total Charged: {_fmt(data['grand_total'])}",
         '',
         '=== Lease Details ===\n',
     ]
-    for l in data['leases']:
-        lines.append(
-            f"- {l['tenant']} | {l['property']} - {l['unit']} | "
-            f"Charged: ${l['total_charged']:,.2f} | Paid: ${l['total_paid']:,.2f} | "
-            f"Balance: ${l['balance']:,.2f}"
-        )
-    if data.get('truncated'):
-        lines.append(f"\n... and {data['total_leases'] - 20} more leases")
+
+    headers = ['Tenant', 'Property / Unit', 'Charged', 'Paid', 'Balance']
+    rows = [
+        [l['tenant'], f"{l['property']} - {l['unit']}",
+         _fmt(l['total_charged']), _fmt(l['total_paid']), _fmt(l['balance'])]
+        for l in data['leases']
+    ]
+    grand_paid = sum(l['total_paid'] for l in data['leases'])
+    grand_bal = sum(l['balance'] for l in data['leases'])
+    footer = ['Total', '', _fmt(data['grand_total']), _fmt(grand_paid), _fmt(grand_bal)]
+    trunc = f"... and {data['total_leases'] - 20} more leases" if data.get('truncated') else None
+    lines.append(build_email_table(headers, rows, footer_row=footer, truncated_msg=trunc))
+
     return '\n'.join(lines)
 
 

@@ -61,14 +61,11 @@ class Command(BaseCommand):
 
                     try:
                         data = gen_fn()
-                        if data is None:
-                            self.stdout.write(self.style.WARNING(f"  [{key}] Skipped — no data (skip condition met)"))
-                            total_skipped += 1
-                            continue
 
                         period = data.pop('_period_label', '')
+                        no_data = data.pop('_no_data', False)
                         subject = f'{label} — {period}' if period else label
-                        body = build_fn(data)
+                        body = build_fn(data, no_data=no_data)
 
                         if override_email:
                             from apps.notifications.utils import send_email
