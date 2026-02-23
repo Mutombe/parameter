@@ -5,7 +5,8 @@ import {
   Building2, Users, FileText, BarChart3, DollarSign, Receipt,
   BookOpen, ChevronRight, Search, Home, Settings, UserPlus,
   PieChart, Calculator, FileCheck, Bell, Shield, Zap, Link2,
-  ArrowLeft, Menu, X, Phone, Mail, Sun, Moon, Monitor, LayoutDashboard, Keyboard
+  ArrowLeft, Menu, X, Phone, Mail, Sun, Moon, Monitor, LayoutDashboard, Keyboard,
+  Sparkles, User, Upload
 } from 'lucide-react'
 import { useUIStore } from '../stores/uiStore'
 import { useAuthStore } from '../stores/authStore'
@@ -63,6 +64,7 @@ const sections = [
       { id: 'chart-of-accounts', title: 'Chart of Accounts' },
       { id: 'journal-entries', title: 'Journal Entries' },
       { id: 'general-ledger', title: 'General Ledger' },
+      { id: 'bank-reconciliation', title: 'Bank Reconciliation' },
       { id: 'audit-trail', title: 'Audit Trail' },
     ]
   },
@@ -71,9 +73,12 @@ const sections = [
     title: 'Reports & Analytics',
     icon: BarChart3,
     subsections: [
+      { id: 'report-categories', title: 'Report Categories' },
       { id: 'financial-reports', title: 'Financial Reports' },
       { id: 'property-reports', title: 'Property Reports' },
-      { id: 'custom-reports', title: 'Custom Reports' },
+      { id: 'report-search', title: 'Search & Pagination' },
+      { id: 'report-emailing', title: 'Automated Report Emailing' },
+      { id: 'custom-reports', title: 'Exports & Custom Reports' },
     ]
   },
   {
@@ -84,6 +89,16 @@ const sections = [
       { id: 'import-overview', title: 'Import Overview' },
       { id: 'import-formats', title: 'Supported Formats' },
       { id: 'document-scanner', title: 'Document Scanner (AI)' },
+    ]
+  },
+  {
+    id: 'ai',
+    title: 'Parameter AI',
+    icon: Sparkles,
+    subsections: [
+      { id: 'ai-overview', title: 'AI Overview' },
+      { id: 'ai-ask-me', title: 'Ask Me (NLP Queries)' },
+      { id: 'ai-bank-matching', title: 'AI Bank Matching' },
     ]
   },
   {
@@ -102,9 +117,12 @@ const sections = [
     icon: Settings,
     subsections: [
       { id: 'team-management', title: 'Team Management' },
+      { id: 'bulk-invites', title: 'Bulk User Invitations' },
       { id: 'roles-permissions', title: 'Roles & Permissions' },
+      { id: 'impersonation', title: 'Tenant Impersonation' },
+      { id: 'company-settings', title: 'Company Settings & Branding' },
+      { id: 'user-profile', title: 'User Profile & Avatar' },
       { id: 'notifications', title: 'Notifications & Email' },
-      { id: 'settings', title: 'System Settings' },
     ]
   },
 ]
@@ -149,6 +167,14 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
             <li className="flex items-start gap-2">
               <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
               <span><strong>Automated Notifications:</strong> Email alerts for invoices, overdue payments, late penalties, and more</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
+              <span><strong>Parameter AI (Claude-Powered):</strong> Natural language queries, AI document scanning, and intelligent bank reconciliation matching</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
+              <span><strong>15 Built-In Reports:</strong> Financial, property management, comparative, and administrative reports with search, pagination, and automated emailing</span>
             </li>
           </ul>
         </div>
@@ -977,36 +1003,148 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
       </div>
     )
   },
+  'bank-reconciliation': {
+    title: 'Bank Reconciliation',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Bank Reconciliation helps you match bank statement transactions with your book records
+          to ensure accuracy and identify discrepancies.
+        </p>
+        <h4 className="font-semibold text-gray-900">Creating a Reconciliation</h4>
+        <ol className="list-decimal list-inside space-y-2 text-gray-600 ml-4">
+          <li>Navigate to <strong>Accounting → Bank Reconciliation</strong></li>
+          <li>Click <strong>"New Reconciliation"</strong></li>
+          <li>Select the bank account to reconcile</li>
+          <li>Enter the statement period (start and end dates)</li>
+          <li>Enter the statement closing balance from your bank</li>
+          <li>Match transactions or use <strong>AI Auto-Match</strong> for intelligent matching</li>
+          <li>Review and complete the reconciliation</li>
+        </ol>
+        <div className="bg-gray-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Reconciliation Dashboard</h4>
+          <ul className="space-y-2 text-sm text-gray-600">
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Summary View:</strong> See each bank account's last reconciled date, pending transaction count, and balance difference</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>History:</strong> Browse past reconciliations with period, balances, status, and export to Excel</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Unreconciled Transactions:</strong> View pending bank transactions with AI match confidence scores</span>
+            </li>
+          </ul>
+        </div>
+        <div className="bg-primary-50 rounded-xl p-4">
+          <p className="text-sm text-primary-800">
+            <strong>AI-Powered Matching:</strong> The system uses AI to automatically match bank transactions
+            to invoices and tenants — even when references are messy or abbreviated. Each match shows a
+            confidence score (0–100%) so you can quickly verify suggestions.
+          </p>
+        </div>
+      </div>
+    )
+  },
+  'report-categories': {
+    title: 'Report Categories',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Parameter offers 15 built-in reports organized into 4 categories. Access all reports from
+          the <strong>Reports</strong> page and switch between them using the category tabs.
+        </p>
+        <div className="space-y-4">
+          <div className="bg-blue-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Financial Reports (5)</h4>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• <strong>Trial Balance</strong> — All accounts with debit/credit balances</li>
+              <li>• <strong>Income Statement</strong> — Revenue vs expenses for a period</li>
+              <li>• <strong>Balance Sheet</strong> — Assets, liabilities, and equity snapshot</li>
+              <li>• <strong>Cash Flow Statement</strong> — Cash movements by activity</li>
+              <li>• <strong>Bank to Income Analysis</strong> — Matrix of bank accounts vs income types with drill-down</li>
+            </ul>
+          </div>
+          <div className="bg-emerald-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Property Management Reports (4)</h4>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• <strong>Vacancy Report</strong> — Occupancy rates with vacancy chart</li>
+              <li>• <strong>Rent Roll</strong> — All active leases with rent amounts</li>
+              <li>• <strong>Aged Analysis</strong> — Aging buckets (0–30, 31–60, 61–90, 91–120, 120+ days)</li>
+              <li>• <strong>Lease Charge Summary</strong> — Charges breakdown per lease</li>
+            </ul>
+          </div>
+          <div className="bg-amber-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Comparative Reports (3)</h4>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• <strong>Commission by Property</strong> — Commission breakdown per property and landlord</li>
+              <li>• <strong>Commission by Income Type</strong> — Commission by revenue category</li>
+              <li>• <strong>Receipts Listing</strong> — All payments received with bank and income type breakdown</li>
+            </ul>
+          </div>
+          <div className="bg-purple-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Administrative Reports (3)</h4>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• <strong>Deposits Listing</strong> — Security deposit tracking per lease</li>
+              <li>• <strong>Dashboard KPIs</strong> — Key performance indicators summary</li>
+              <li>• <strong>Landlord Statement</strong> — Rent collected and commissions per landlord</li>
+            </ul>
+          </div>
+        </div>
+        <div className="bg-primary-50 rounded-xl p-4">
+          <p className="text-sm text-primary-800">
+            <strong>Tip:</strong> Each report supports date range filtering. Use the period selector at the top
+            of the Reports page to view data for any month or custom range.
+          </p>
+        </div>
+      </div>
+    )
+  },
   'financial-reports': {
     title: 'Financial Reports',
     content: (
       <div className="space-y-6">
         <p className="text-gray-600 leading-relaxed">
-          Parameter provides comprehensive financial reporting tools for business analysis and compliance.
+          Financial reports provide a complete picture of your business's financial health. All reports
+          pull from the double-entry ledger for accuracy.
         </p>
         <div className="space-y-4">
           <div className="bg-gray-50 rounded-xl p-5">
             <h4 className="font-semibold text-gray-900 mb-2">Trial Balance</h4>
             <p className="text-sm text-gray-600">
-              Lists all accounts with their debit and credit balances. Ensures books are balanced.
+              Lists all accounts with their debit and credit balances. Shows whether books are balanced
+              or unbalanced with a visual indicator. Supports search and pagination for large charts of accounts.
             </p>
           </div>
           <div className="bg-gray-50 rounded-xl p-5">
             <h4 className="font-semibold text-gray-900 mb-2">Income Statement</h4>
             <p className="text-sm text-gray-600">
-              Shows revenue and expenses for a period, calculating net income or loss.
+              Shows revenue and expenses for a selected period, calculating net income or loss.
+              Revenue items are grouped by income type, expenses by category.
             </p>
           </div>
           <div className="bg-gray-50 rounded-xl p-5">
             <h4 className="font-semibold text-gray-900 mb-2">Balance Sheet</h4>
             <p className="text-sm text-gray-600">
-              Snapshot of assets, liabilities, and equity at a specific date.
+              Snapshot of assets, liabilities, and equity at a specific date. Automatically balances
+              with the accounting equation (Assets = Liabilities + Equity).
             </p>
           </div>
           <div className="bg-gray-50 rounded-xl p-5">
             <h4 className="font-semibold text-gray-900 mb-2">Cash Flow Statement</h4>
             <p className="text-sm text-gray-600">
-              Tracks cash movements from operating, investing, and financing activities.
+              Tracks cash movements from operating, investing, and financing activities with
+              net cash position summary.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Bank to Income Analysis</h4>
+            <p className="text-sm text-gray-600">
+              A 3-level drill-down report: Level 1 shows a matrix of bank accounts vs income types,
+              Level 2 breaks down by category, and Level 3 shows individual receipts. Search and
+              pagination are available at the receipts level.
             </p>
           </div>
         </div>
@@ -1018,44 +1156,168 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
     content: (
       <div className="space-y-6">
         <p className="text-gray-600 leading-relaxed">
-          Property-specific reports help you analyze portfolio performance and identify opportunities.
+          Property management reports help you analyze portfolio performance, track collections,
+          and identify opportunities across your properties.
         </p>
         <div className="space-y-4">
           <div className="bg-gray-50 rounded-xl p-5">
             <h4 className="font-semibold text-gray-900 mb-2">Vacancy Report</h4>
             <p className="text-sm text-gray-600">
-              Shows current occupancy rates, vacant units, and potential revenue loss.
+              Shows occupancy rates by property with an interactive bar chart. Lists all vacant units
+              with property name, landlord, and potential monthly revenue loss. Search by property or landlord name.
             </p>
           </div>
           <div className="bg-gray-50 rounded-xl p-5">
             <h4 className="font-semibold text-gray-900 mb-2">Rent Roll</h4>
             <p className="text-sm text-gray-600">
-              Complete list of all units with current rent amounts and tenant information.
+              Complete list of all active leases with tenant, property, unit, monthly rent, lease dates,
+              and status. Includes a pie chart showing rent distribution. Search by tenant, property, unit, or lease number.
             </p>
           </div>
           <div className="bg-gray-50 rounded-xl p-5">
-            <h4 className="font-semibold text-gray-900 mb-2">Landlord Statement</h4>
+            <h4 className="font-semibold text-gray-900 mb-2">Aged Analysis</h4>
             <p className="text-sm text-gray-600">
-              Summary of rent collected, commissions, and net amount due to each landlord.
+              Breaks down outstanding balances into aging buckets: Current, 31–60, 61–90, 91–120, and 120+ days.
+              Summary cards show totals per bucket, with a tenant-level breakdown table. Filter by property or landlord.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Lease Charge Summary</h4>
+            <p className="text-sm text-gray-600">
+              Lists all charges per lease including tenant, property, unit, charge types, and amounts.
+              Useful for verifying billing accuracy. Search by tenant, property, or unit.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Commission Reports</h4>
+            <p className="text-sm text-gray-600">
+              Two views: <strong>By Property</strong> shows commission earned per property and landlord.
+              <strong>By Income Type</strong> shows commission breakdown by revenue category. Both include charts.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Receipts & Deposits Listing</h4>
+            <p className="text-sm text-gray-600">
+              <strong>Receipts Listing</strong> shows all payments received with bank account, income type, and tenant details.
+              <strong>Deposits Listing</strong> tracks security deposits per lease. Both support search and pagination.
             </p>
           </div>
         </div>
       </div>
     )
   },
-  'custom-reports': {
-    title: 'Custom Reports',
+  'report-search': {
+    title: 'Search & Pagination',
     content: (
       <div className="space-y-6">
         <p className="text-gray-600 leading-relaxed">
-          Create custom reports by filtering and exporting data to meet specific business needs.
+          Data-heavy reports include built-in search and pagination so you can quickly find specific
+          records without scrolling through hundreds of rows.
+        </p>
+        <div className="bg-gray-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">How It Works</h4>
+          <ul className="space-y-2 text-sm text-gray-600">
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Search Bar:</strong> Type to instantly filter rows by tenant name, property, unit, receipt number, or other key fields</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Result Count:</strong> Shows how many records match your search</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Pagination:</strong> Browse 25 records per page with first/prev/next/last navigation</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Totals Preserved:</strong> Footer totals always reflect the full dataset, not just the current page</span>
+            </li>
+          </ul>
+        </div>
+        <div className="bg-primary-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Reports with Search & Pagination</h4>
+          <div className="grid md:grid-cols-2 gap-2 text-sm text-gray-600">
+            <div>• Trial Balance</div>
+            <div>• Vacancy Report</div>
+            <div>• Rent Roll</div>
+            <div>• Aged Analysis (tenant table)</div>
+            <div>• Receipts Listing</div>
+            <div>• Deposits Listing</div>
+            <div>• Lease Charge Summary</div>
+            <div>• Commission by Property</div>
+            <div>• Bank to Income (Level 3)</div>
+          </div>
+        </div>
+        <div className="bg-amber-50 rounded-xl p-4">
+          <p className="text-sm text-amber-800">
+            <strong>Tip:</strong> Searching automatically resets to page 1 so you always see the most relevant
+            results first. Charts above tables always use the full dataset regardless of search filters.
+          </p>
+        </div>
+      </div>
+    )
+  },
+  'report-emailing': {
+    title: 'Automated Report Emailing',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Parameter automatically generates and emails reports to all admin and accountant staff on
+          daily, weekly, and monthly schedules — no manual action required.
+        </p>
+        <div className="space-y-4">
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Daily Reports</h4>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• <strong>Dashboard KPIs</strong> — Occupancy, collections, alerts, entity counts</li>
+              <li>• <strong>Aged Analysis</strong> — Aging buckets with top debtors</li>
+              <li>• <strong>Vacancy Report</strong> — Vacant units by property</li>
+            </ul>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Weekly Reports</h4>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• <strong>Rent Roll</strong> — Active leases with monthly rent details</li>
+              <li>• <strong>Receipts Listing</strong> — Collections by bank and income type</li>
+              <li>• <strong>Bank to Income Analysis</strong> — Bank accounts vs income type matrix</li>
+            </ul>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Monthly Reports</h4>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• <strong>Trial Balance</strong> — All account balances</li>
+              <li>• <strong>Income Statement</strong> — Revenue and expenses</li>
+              <li>• <strong>Balance Sheet</strong> — Assets, liabilities, equity</li>
+              <li>• <strong>Cash Flow Statement</strong> — Cash movements</li>
+              <li>• <strong>Lease Charge Summary</strong> — Charges per lease</li>
+              <li>• <strong>Commission Reports</strong> — By property and income type</li>
+            </ul>
+          </div>
+        </div>
+        <div className="bg-primary-50 rounded-xl p-4">
+          <p className="text-sm text-primary-800">
+            <strong>How it works:</strong> Reports are generated automatically for each active tenant (company).
+            HTML-formatted emails include tables, charts, and summary metrics. If there's no data for a
+            period, a "no activity" notification is still sent so you know nothing was missed.
+          </p>
+        </div>
+      </div>
+    )
+  },
+  'custom-reports': {
+    title: 'Exports & Custom Reports',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Export report data in multiple formats for external analysis, printing, or sharing with stakeholders.
         </p>
         <div className="bg-primary-50 rounded-xl p-6">
           <h4 className="font-semibold text-gray-900 mb-3">Export Options</h4>
           <ul className="space-y-2 text-sm text-gray-600">
             <li className="flex items-start gap-2">
               <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
-              <span><strong>PDF:</strong> Formatted reports ready for printing or sharing</span>
+              <span><strong>PDF:</strong> Formatted reports with your company logo, ready for printing or sharing</span>
             </li>
             <li className="flex items-start gap-2">
               <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
@@ -1066,6 +1328,13 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
               <span><strong>CSV:</strong> Simple format for importing into other systems</span>
             </li>
           </ul>
+        </div>
+        <div className="bg-gray-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Branding on Exports</h4>
+          <p className="text-sm text-gray-600">
+            PDF exports and printed reports include your company logo and name when configured
+            in <strong>Company Settings</strong>. Toggle logo visibility in the printing settings.
+          </p>
         </div>
       </div>
     )
@@ -1088,6 +1357,64 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
         <div className="bg-gray-50 rounded-xl p-4">
           <p className="text-sm text-gray-600">
             The invitee will receive an email with instructions to create their account and join your company.
+          </p>
+        </div>
+      </div>
+    )
+  },
+  'bulk-invites': {
+    title: 'Bulk User Invitations',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Onboard multiple team members at once using bulk invitations. Three methods are available
+          depending on how many users you need to invite.
+        </p>
+        <div className="space-y-4">
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Single Invite</h4>
+            <p className="text-sm text-gray-600">
+              Enter one email address with optional first/last name and select a role. Best for
+              adding individual team members.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Multiple Emails</h4>
+            <p className="text-sm text-gray-600">
+              Paste multiple email addresses (one per line or comma-separated). All invitees receive
+              the same role. The system auto-detects and counts valid emails as you type.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">CSV Upload</h4>
+            <p className="text-sm text-gray-600">
+              Upload a CSV file with columns: email, first_name, last_name, role. Drag and drop or
+              browse to upload. A preview table shows parsed data before sending. Download the template
+              for the expected format.
+            </p>
+          </div>
+        </div>
+        <div className="bg-gray-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Invitation Management</h4>
+          <ul className="space-y-2 text-sm text-gray-600">
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Track Status:</strong> View pending, accepted, expired, and cancelled invitations</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Resend:</strong> Resend individual or bulk invitations that haven't been accepted</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Cancel:</strong> Revoke pending invitations individually or in bulk</span>
+            </li>
+          </ul>
+        </div>
+        <div className="bg-primary-50 rounded-xl p-4">
+          <p className="text-sm text-primary-800">
+            <strong>Results:</strong> After sending, you'll see a summary showing how many invitations
+            succeeded or failed, with error details for any failures.
           </p>
         </div>
       </div>
@@ -1119,37 +1446,156 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
               Limited access for data entry. Can create records but not post or delete.
             </p>
           </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Tenant Portal</h4>
+            <p className="text-sm text-gray-600">
+              Tenant-facing role with access only to the portal. Can view invoices, payment history,
+              lease details, and submit payment notifications.
+            </p>
+          </div>
         </div>
       </div>
     )
   },
-  settings: {
-    title: 'System Settings',
+  impersonation: {
+    title: 'Tenant Impersonation',
     content: (
       <div className="space-y-6">
         <p className="text-gray-600 leading-relaxed">
-          Configure system-wide settings to customize Parameter for your business needs.
+          Tenant Impersonation allows staff members to view the Tenant Portal as a specific tenant sees it.
+          This is useful for customer support, troubleshooting, and verifying what tenants can access.
         </p>
+        <h4 className="font-semibold text-gray-900">How to Impersonate</h4>
+        <ol className="list-decimal list-inside space-y-2 text-gray-600 ml-4">
+          <li>Navigate to <strong>Masterfile → Tenants</strong></li>
+          <li>Find the tenant you want to view as</li>
+          <li>Click the <strong>"View as Tenant"</strong> action on their profile</li>
+          <li>The system switches to the Tenant Portal view showing their data</li>
+          <li>A banner at the top indicates you are impersonating — click <strong>"Exit"</strong> to return</li>
+        </ol>
         <div className="bg-gray-50 rounded-xl p-6">
-          <h4 className="font-semibold text-gray-900 mb-3">Available Settings</h4>
+          <h4 className="font-semibold text-gray-900 mb-3">What You Can See</h4>
           <ul className="space-y-2 text-sm text-gray-600">
             <li className="flex items-start gap-2">
               <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
-              <span><strong>Default Currency:</strong> Set USD or ZiG as your primary currency</span>
+              <span>The tenant's dashboard with their outstanding balance and recent activity</span>
             </li>
             <li className="flex items-start gap-2">
               <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
-              <span><strong>Notifications:</strong> Configure email alerts for important events</span>
+              <span>Their invoices, payment history, and lease details</span>
             </li>
             <li className="flex items-start gap-2">
               <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
-              <span><strong>Invoice Templates:</strong> Customize invoice appearance</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
-              <span><strong>Exchange Rates:</strong> Manage currency conversion rates</span>
+              <span>Exactly what the tenant sees when they log in to the portal</span>
             </li>
           </ul>
+        </div>
+        <div className="bg-amber-50 rounded-xl p-4">
+          <p className="text-sm text-amber-800">
+            <strong>Access:</strong> Only Admin, Accountant, and Clerk roles can impersonate tenants.
+            Tenant Portal users cannot impersonate other tenants. All impersonation activity is logged
+            in the audit trail.
+          </p>
+        </div>
+      </div>
+    )
+  },
+  'company-settings': {
+    title: 'Company Settings & Branding',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Configure your company profile, branding, and system-wide preferences from the Settings page.
+        </p>
+        <div className="space-y-4">
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Company Logo & Branding</h4>
+            <p className="text-sm text-gray-600">
+              Upload your company logo (PNG or JPG, up to 2MB) which appears on invoices, receipts,
+              statements, and all printed/PDF documents. Toggle logo visibility in Printing Settings.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Company Information</h4>
+            <p className="text-sm text-gray-600">
+              Set your company name, email, phone number, and physical address. This information
+              appears on generated documents and communications.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Currency Settings</h4>
+            <p className="text-sm text-gray-600">
+              Set your primary currency (USD or ZiG), secondary currency, and exchange rate.
+              All transactions default to your primary currency.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Invoicing Settings</h4>
+            <p className="text-sm text-gray-600">
+              Customize the invoice number prefix (e.g., "INV-") and add a footer message that
+              appears on all generated invoices.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Printing & Documents</h4>
+            <p className="text-sm text-gray-600">
+              Choose paper size (A4, Letter, Legal) and toggle whether to show the company logo
+              on printed documents.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Security</h4>
+            <p className="text-sm text-gray-600">
+              Configure session timeout duration (15, 30, 60, or 120 minutes) and enable
+              two-factor authentication for additional security.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  },
+  'user-profile': {
+    title: 'User Profile & Avatar',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Each user can manage their personal profile, upload an avatar, and change their password
+          from the Profile page.
+        </p>
+        <h4 className="font-semibold text-gray-900">Accessing Your Profile</h4>
+        <ol className="list-decimal list-inside space-y-2 text-gray-600 ml-4">
+          <li>Click your name or avatar in the sidebar</li>
+          <li>Select <strong>"Profile"</strong> from the menu</li>
+        </ol>
+        <div className="space-y-4 mt-4">
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Avatar / Profile Picture</h4>
+            <p className="text-sm text-gray-600">
+              Upload a profile picture (JPEG, PNG, GIF, or WebP, up to 5MB). Click the camera icon
+              on your avatar to upload. Hover over your avatar and click the delete icon to remove it.
+              If no avatar is set, your initials are displayed.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Personal Information</h4>
+            <p className="text-sm text-gray-600">
+              Edit your first name, last name, email, and phone number. Click <strong>"Edit"</strong> to
+              enable editing mode, make changes, then <strong>"Save"</strong>.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Change Password</h4>
+            <p className="text-sm text-gray-600">
+              Enter your current password, then your new password (minimum 8 characters) with
+              confirmation. Use the show/hide toggle to verify what you're typing.
+            </p>
+          </div>
+        </div>
+        <div className="bg-primary-50 rounded-xl p-4">
+          <p className="text-sm text-primary-800">
+            <strong>Your Role:</strong> Your role badge (Admin, Accountant, Clerk, or Tenant Portal)
+            is displayed on your profile. Role changes must be made by an Admin from Team Management.
+          </p>
         </div>
       </div>
     )
@@ -1272,6 +1718,143 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
               <span>Always review extracted data before confirming the import</span>
             </li>
           </ul>
+        </div>
+      </div>
+    )
+  },
+  'ai-overview': {
+    title: 'AI Overview',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          Parameter AI is powered by Claude (Anthropic) and brings intelligent automation to your
+          property management workflow. AI features are seamlessly integrated throughout the platform.
+        </p>
+        <div className="bg-primary-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">AI Capabilities</h4>
+          <ul className="space-y-3 text-gray-600">
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
+              <span><strong>Natural Language Queries ("Ask Me"):</strong> Ask questions about your data in plain
+              English — vacancy rates, collection performance, outstanding balances, and more</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
+              <span><strong>Document Scanner (OCR):</strong> Extract structured data from scanned documents,
+              lease agreements, invoices, and ID documents using AI-powered vision</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-1 flex-shrink-0" />
+              <span><strong>Semantic Bank Matching:</strong> AI matches messy bank/EcoCash references to tenant
+              records, understanding abbreviations and reference format variations</span>
+            </li>
+          </ul>
+        </div>
+        <div className="bg-gray-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Data Privacy</h4>
+          <p className="text-sm text-gray-600">
+            All AI queries use tenant-isolated context (RAG). Your data is never shared across companies
+            and is not used to train AI models. Each query only accesses your company's data.
+          </p>
+        </div>
+      </div>
+    )
+  },
+  'ai-ask-me': {
+    title: 'Ask Me (NLP Queries)',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          The "Ask Me" feature lets you query your business data using natural language. Instead of
+          navigating reports and applying filters, simply ask a question and get an instant answer.
+        </p>
+        <h4 className="font-semibold text-gray-900">How to Use</h4>
+        <ol className="list-decimal list-inside space-y-2 text-gray-600 ml-4">
+          <li>Click the <strong>AI assistant button</strong> in the sidebar (or use the sparkle icon)</li>
+          <li>Type a question in natural language, e.g. "What is my vacancy rate?"</li>
+          <li>The AI analyzes your live data and responds with an answer</li>
+          <li>Continue the conversation with follow-up questions</li>
+        </ol>
+        <div className="bg-primary-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">Example Questions</h4>
+          <div className="space-y-3">
+            <div>
+              <h5 className="text-sm font-medium text-gray-800 mb-1">Financial Insights</h5>
+              <ul className="text-sm text-gray-600 space-y-1">
+                <li>• "What is my total outstanding balance?"</li>
+                <li>• "How much revenue did we collect this month?"</li>
+                <li>• "Which tenants have the highest arrears?"</li>
+              </ul>
+            </div>
+            <div>
+              <h5 className="text-sm font-medium text-gray-800 mb-1">Property Analytics</h5>
+              <ul className="text-sm text-gray-600 space-y-1">
+                <li>• "What is my occupancy rate?"</li>
+                <li>• "Which properties have vacant units?"</li>
+                <li>• "Show me leases expiring this month"</li>
+              </ul>
+            </div>
+            <div>
+              <h5 className="text-sm font-medium text-gray-800 mb-1">Performance</h5>
+              <ul className="text-sm text-gray-600 space-y-1">
+                <li>• "What is my collection rate?"</li>
+                <li>• "How does this month compare to last month?"</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div className="bg-amber-50 rounded-xl p-4">
+          <p className="text-sm text-amber-800">
+            <strong>Tip:</strong> You can also select from pre-built suggested questions organized by category
+            for quick access to common insights.
+          </p>
+        </div>
+      </div>
+    )
+  },
+  'ai-bank-matching': {
+    title: 'AI Bank Matching',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          AI Bank Matching uses semantic understanding to automatically match bank statement transactions
+          to tenant records — even when references are messy, abbreviated, or in non-standard formats.
+        </p>
+        <h4 className="font-semibold text-gray-900">How It Works</h4>
+        <ol className="list-decimal list-inside space-y-2 text-gray-600 ml-4">
+          <li>Navigate to <strong>Accounting → Bank Reconciliation</strong></li>
+          <li>View the <strong>Unreconciled Transactions</strong> tab</li>
+          <li>Click <strong>"AI Auto-Match"</strong> to run the matching engine</li>
+          <li>The AI analyzes each transaction's reference, description, and amount</li>
+          <li>Each match is shown with a <strong>confidence score</strong> (0–100%)</li>
+          <li>Review high-confidence matches and confirm or override</li>
+        </ol>
+        <div className="bg-gray-50 rounded-xl p-6">
+          <h4 className="font-semibold text-gray-900 mb-3">What the AI Understands</h4>
+          <ul className="space-y-2 text-sm text-gray-600">
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Name Variations:</strong> "J. MOYO", "JOHN MOYO", "MOYO J" all match the same tenant</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Reference Formats:</strong> EcoCash, bank transfer, and mobile money reference patterns</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Abbreviations:</strong> Property and unit abbreviations in payment descriptions</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+              <span><strong>Amount Correlation:</strong> Matches amounts to expected rent and invoice values</span>
+            </li>
+          </ul>
+        </div>
+        <div className="bg-primary-50 rounded-xl p-4">
+          <p className="text-sm text-primary-800">
+            <strong>Confidence Scores:</strong> Green (80%+) = high confidence, likely correct.
+            Amber (50–79%) = review recommended. Red (&lt;50%) = manual matching suggested.
+          </p>
         </div>
       </div>
     )
