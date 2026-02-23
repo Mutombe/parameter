@@ -21,6 +21,7 @@ import { cn } from '../lib/utils'
 import { useThemeEffect } from '../hooks/useThemeEffect'
 import { useNetworkStatus } from '../hooks/useNetworkStatus'
 import SessionExpiredModal from './SessionExpiredModal'
+import PrintPreviewModal from './PrintPreviewModal'
 import toast from 'react-hot-toast'
 
 const navItems = [
@@ -186,6 +187,7 @@ export default function TenantPortalLayout() {
       </div>
 
       <SessionExpiredModal />
+      <PrintPreviewModal />
     </div>
   )
 }

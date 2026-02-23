@@ -80,36 +80,36 @@ const reportCategories: ReportCategory[] = [
   {
     title: 'Financial Reports',
     reports: [
-      { id: 'balance-sheet', name: 'Balance Sheet', icon: FileText, desc: 'Assets & Liabilities', color: 'text-purple-600', bgColor: 'bg-purple-50' },
-      { id: 'income-statement', name: 'Income Statement', icon: DollarSign, desc: 'Profit & Loss', color: 'text-emerald-600', bgColor: 'bg-emerald-50' },
-      { id: 'cash-flow', name: 'Cash Flow', icon: Banknote, desc: 'Cash movements', color: 'text-cyan-600', bgColor: 'bg-cyan-50' },
-      { id: 'trial-balance', name: 'Trial Balance', icon: Scale, desc: 'Verify accounts balance', color: 'text-blue-600', bgColor: 'bg-blue-50' },
-      { id: 'aged-analysis', name: 'Aged Analysis', icon: Clock, desc: 'Invoice aging', color: 'text-orange-600', bgColor: 'bg-orange-50' },
+      { id: 'balance-sheet', name: 'Balance Sheet', icon: FileText, desc: 'Assets & Liabilities', color: 'text-purple-600', bgColor: 'bg-purple-50 dark:bg-purple-900/30' },
+      { id: 'income-statement', name: 'Income Statement', icon: DollarSign, desc: 'Profit & Loss', color: 'text-emerald-600', bgColor: 'bg-emerald-50 dark:bg-emerald-900/30' },
+      { id: 'cash-flow', name: 'Cash Flow', icon: Banknote, desc: 'Cash movements', color: 'text-cyan-600', bgColor: 'bg-cyan-50 dark:bg-cyan-900/30' },
+      { id: 'trial-balance', name: 'Trial Balance', icon: Scale, desc: 'Verify accounts balance', color: 'text-blue-600', bgColor: 'bg-blue-50 dark:bg-blue-900/30' },
+      { id: 'aged-analysis', name: 'Aged Analysis', icon: Clock, desc: 'Invoice aging', color: 'text-orange-600', bgColor: 'bg-orange-50 dark:bg-orange-900/30' },
     ],
   },
   {
     title: 'Property Management',
     reports: [
-      { id: 'vacancy', name: 'Vacancy Report', icon: Home, desc: 'Unit occupancy', color: 'text-amber-600', bgColor: 'bg-amber-50' },
-      { id: 'rent-roll', name: 'Rent Roll', icon: Building2, desc: 'Active leases', color: 'text-rose-600', bgColor: 'bg-rose-50' },
-      { id: 'tenant-account', name: 'Tenant Account', icon: Users, desc: 'Tenant transactions', color: 'text-sky-600', bgColor: 'bg-sky-50' },
-      { id: 'landlord-account', name: 'Landlord Account', icon: PiBuildingApartmentLight, desc: 'Landlord statement', color: 'text-violet-600', bgColor: 'bg-violet-50' },
+      { id: 'vacancy', name: 'Vacancy Report', icon: Home, desc: 'Unit occupancy', color: 'text-amber-600', bgColor: 'bg-amber-50 dark:bg-amber-900/30' },
+      { id: 'rent-roll', name: 'Rent Roll', icon: Building2, desc: 'Active leases', color: 'text-rose-600', bgColor: 'bg-rose-50 dark:bg-rose-900/30' },
+      { id: 'tenant-account', name: 'Tenant Account', icon: Users, desc: 'Tenant transactions', color: 'text-sky-600', bgColor: 'bg-sky-50 dark:bg-sky-900/30' },
+      { id: 'landlord-account', name: 'Landlord Account', icon: PiBuildingApartmentLight, desc: 'Landlord statement', color: 'text-violet-600', bgColor: 'bg-violet-50 dark:bg-violet-900/30' },
     ],
   },
   {
     title: 'Comparative Reports',
     reports: [
-      { id: 'commission-property', name: 'Commission by Property', icon: PiBuildingApartmentLight, desc: 'Property commissions', color: 'text-indigo-600', bgColor: 'bg-indigo-50' },
-      { id: 'commission-income', name: 'Commission by Income', icon: DollarSign, desc: 'Income type commissions', color: 'text-teal-600', bgColor: 'bg-teal-50' },
-      { id: 'bank-to-income', name: 'Bank to Income', icon: Landmark, desc: 'Income by bank account', color: 'text-pink-600', bgColor: 'bg-pink-50' },
+      { id: 'commission-property', name: 'Commission by Property', icon: PiBuildingApartmentLight, desc: 'Property commissions', color: 'text-indigo-600', bgColor: 'bg-indigo-50 dark:bg-indigo-900/30' },
+      { id: 'commission-income', name: 'Commission by Income', icon: DollarSign, desc: 'Income type commissions', color: 'text-teal-600', bgColor: 'bg-teal-50 dark:bg-teal-900/30' },
+      { id: 'bank-to-income', name: 'Bank to Income', icon: Landmark, desc: 'Income by bank account', color: 'text-pink-600', bgColor: 'bg-pink-50 dark:bg-pink-900/30' },
     ],
   },
   {
     title: 'Administrative Reports',
     reports: [
-      { id: 'receipts-listing', name: 'Receipts Listing', icon: Receipt, desc: 'All receipts', color: 'text-lime-600', bgColor: 'bg-lime-50' },
-      { id: 'deposits-listing', name: 'Deposits Listing', icon: CreditCard, desc: 'Deposit accounts', color: 'text-fuchsia-600', bgColor: 'bg-fuchsia-50' },
-      { id: 'lease-charges', name: 'Lease Charges', icon: ClipboardList, desc: 'Charges summary', color: 'text-stone-600', bgColor: 'bg-stone-50' },
+      { id: 'receipts-listing', name: 'Receipts Listing', icon: Receipt, desc: 'All receipts', color: 'text-lime-600', bgColor: 'bg-lime-50 dark:bg-lime-900/30' },
+      { id: 'deposits-listing', name: 'Deposits Listing', icon: CreditCard, desc: 'Deposit accounts', color: 'text-fuchsia-600', bgColor: 'bg-fuchsia-50 dark:bg-fuchsia-900/30' },
+      { id: 'lease-charges', name: 'Lease Charges', icon: ClipboardList, desc: 'Charges summary', color: 'text-stone-600', bgColor: 'bg-stone-50 dark:bg-stone-900/30' },
     ],
   },
 ]
@@ -341,7 +341,7 @@ function TrialBalanceReport() {
       <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
               <Scale className="w-5 h-5 text-blue-600" />
             </div>
             <div>
@@ -503,7 +503,7 @@ function IncomeStatementReport() {
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
       <div className="p-6 border-b border-gray-100">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center">
             <DollarSign className="w-5 h-5 text-emerald-600" />
           </div>
           <div>
@@ -637,7 +637,7 @@ function BalanceSheetReport() {
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
       <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-lg bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center">
             <FileText className="w-5 h-5 text-purple-600" />
           </div>
           <div>
@@ -756,7 +756,7 @@ function CashFlowReport() {
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
       <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-cyan-50 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-lg bg-cyan-50 dark:bg-cyan-900/30 flex items-center justify-center">
             <Banknote className="w-5 h-5 text-cyan-600" />
           </div>
           <div>
@@ -1006,7 +1006,7 @@ function VacancyReport() {
       <div className="p-6 border-b border-gray-100">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
               <Home className="w-5 h-5 text-amber-600" />
             </div>
             <div>
@@ -1179,7 +1179,7 @@ function RentRollReport() {
       <div className="p-6 border-b border-gray-100">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-rose-50 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-lg bg-rose-50 dark:bg-rose-900/30 flex items-center justify-center">
               <Building2 className="w-5 h-5 text-rose-600" />
             </div>
             <div>
@@ -1376,7 +1376,7 @@ function CommissionByPropertyReport() {
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
       <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
             <PiBuildingApartmentLight className="w-5 h-5 text-indigo-600" />
           </div>
           <div>
@@ -1395,7 +1395,7 @@ function CommissionByPropertyReport() {
             <RefreshCw className="w-5 h-5" />
           </button>
           {!isLoading && (
-            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full font-medium bg-indigo-50 text-indigo-700">
+            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
               <DollarSign className="w-4 h-4" />
               {formatCurrency(totalCommission)}
             </span>
@@ -1550,7 +1550,7 @@ function CommissionByIncomeReport() {
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
       <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-teal-50 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-lg bg-teal-50 dark:bg-teal-900/30 flex items-center justify-center">
             <DollarSign className="w-5 h-5 text-teal-600" />
           </div>
           <div>
@@ -1569,7 +1569,7 @@ function CommissionByIncomeReport() {
             <RefreshCw className="w-5 h-5" />
           </button>
           {!isLoading && (
-            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full font-medium bg-teal-50 text-teal-700">
+            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full font-medium bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300">
               <DollarSign className="w-4 h-4" />
               {formatCurrency(totalCommission)}
             </span>
@@ -1796,7 +1796,7 @@ function AgedAnalysisReport() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center"><TrendingUp className="w-5 h-5 text-blue-600" /></div>
+            <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center"><TrendingUp className="w-5 h-5 text-blue-600" /></div>
             <div>
               <p className="text-sm text-gray-500">Total Outstanding</p>
               {isLoading ? <div className="h-6 w-28 bg-gray-200 rounded animate-pulse" /> : <p className="text-xl font-bold text-gray-900">{formatCurrency(summary.total_outstanding)}</p>}
@@ -1805,7 +1805,7 @@ function AgedAnalysisReport() {
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center"><AlertTriangle className="w-5 h-5 text-red-600" /></div>
+            <div className="w-10 h-10 rounded-lg bg-red-50 dark:bg-red-900/30 flex items-center justify-center"><AlertTriangle className="w-5 h-5 text-red-600" /></div>
             <div>
               <p className="text-sm text-gray-500">Overdue Invoices</p>
               {isLoading ? <div className="h-6 w-28 bg-gray-200 rounded animate-pulse" /> : <p className="text-xl font-bold text-gray-900">{summary.overdue_count}</p>}
@@ -1814,7 +1814,7 @@ function AgedAnalysisReport() {
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center"><Clock className="w-5 h-5 text-amber-600" /></div>
+            <div className="w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center"><Clock className="w-5 h-5 text-amber-600" /></div>
             <div>
               <p className="text-sm text-gray-500">Total Overdue</p>
               {isLoading ? <div className="h-6 w-28 bg-gray-200 rounded animate-pulse" /> : <p className="text-xl font-bold text-gray-900">{formatCurrency(summary.total_overdue)}</p>}
@@ -2486,7 +2486,7 @@ function BankToIncomeReport() {
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
       <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-pink-50 flex items-center justify-center"><Landmark className="w-5 h-5 text-pink-600" /></div>
+          <div className="w-10 h-10 rounded-lg bg-pink-50 dark:bg-pink-900/30 flex items-center justify-center"><Landmark className="w-5 h-5 text-pink-600" /></div>
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Bank to Income Analysis</h2>
             <p className="text-sm text-gray-500">Income distribution across bank accounts</p>
@@ -2545,7 +2545,7 @@ function ReceiptsListingReport() {
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
       <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-lime-50 flex items-center justify-center"><Receipt className="w-5 h-5 text-lime-600" /></div>
+          <div className="w-10 h-10 rounded-lg bg-lime-50 dark:bg-lime-900/30 flex items-center justify-center"><Receipt className="w-5 h-5 text-lime-600" /></div>
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Receipts Listing</h2>
             {isLoading ? <div className="h-4 w-24 bg-gray-200 rounded animate-pulse mt-1" /> : <p className="text-sm text-gray-500">{receipts.length} receipts</p>}
@@ -2701,7 +2701,7 @@ function DepositsListingReport() {
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
         <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-fuchsia-50 flex items-center justify-center"><CreditCard className="w-5 h-5 text-fuchsia-600" /></div>
+            <div className="w-10 h-10 rounded-lg bg-fuchsia-50 dark:bg-fuchsia-900/30 flex items-center justify-center"><CreditCard className="w-5 h-5 text-fuchsia-600" /></div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Deposits Listing</h2>
               {!isLoading && <p className="text-sm text-gray-500">{deposits.length} deposits</p>}
@@ -2881,7 +2881,7 @@ function LeaseChargeSummaryReport() {
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
         <div className="p-6 border-b border-gray-100 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-stone-50 flex items-center justify-center"><ClipboardList className="w-5 h-5 text-stone-600" /></div>
+          <div className="w-10 h-10 rounded-lg bg-stone-50 dark:bg-stone-900/30 flex items-center justify-center"><ClipboardList className="w-5 h-5 text-stone-600" /></div>
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Lease Charges</h2>
             {!isLoading && <p className="text-sm text-gray-500">{leases.length} leases</p>}
