@@ -629,111 +629,153 @@ function IncomeStatementReport() {
         </div>
       </div>
 
-      <div className="p-6 space-y-6">
-        {/* Income vs Expense Chart */}
-        {data && (data?.revenue?.total > 0 || data?.expenses?.total > 0) && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="h-64 mb-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={[
-                ...(data?.revenue?.accounts || []).map((a: any) => ({ name: a.name, Revenue: a.balance, Expense: 0 })),
-                ...(data?.expenses?.accounts || []).map((a: any) => ({ name: a.name, Revenue: 0, Expense: a.balance })),
-              ].slice(0, 10)}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} angle={-20} textAnchor="end" height={60} />
-                <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v/1000}k`} />
-                <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
-                <Bar dataKey="Revenue" fill="#10b981" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Expense" fill="#f43f5e" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </motion.div>
-        )}
-
-        {/* Revenue Section */}
-        <div className="rounded-xl border border-emerald-200 overflow-hidden">
-          <div className="px-5 py-4 bg-emerald-50 border-b border-emerald-200">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-emerald-600" />
-              <h3 className="font-semibold text-emerald-800">Revenue</h3>
+      {isLoading ? (
+        <div className="p-6 space-y-6 animate-pulse">
+          {/* Chart skeleton */}
+          <div className="h-64 bg-gray-100 rounded-xl flex items-end justify-around gap-2 px-8 pb-6 pt-4">
+            {[40, 65, 30, 80, 50, 70, 25, 55].map((h, i) => (
+              <div key={i} className={`rounded-t ${i < 4 ? 'bg-emerald-200' : 'bg-rose-200'}`} style={{ height: `${h}%`, width: '8%' }} />
+            ))}
+          </div>
+          {/* Revenue section skeleton */}
+          <div className="rounded-xl border border-emerald-200 overflow-hidden">
+            <div className="px-5 py-4 bg-emerald-50 border-b border-emerald-200">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-semibold text-emerald-800">Revenue</h3>
+              </div>
+            </div>
+            <div className="divide-y divide-emerald-100">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="px-5 py-3 flex justify-between">
+                  <div className="h-4 bg-gray-200 rounded" style={{ width: `${100 + i * 30}px` }} />
+                  <div className="h-4 w-20 bg-emerald-100 rounded" />
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-4 bg-emerald-100 flex justify-between font-bold text-emerald-800">
+              <span>Total Revenue</span>
+              <div className="h-5 w-24 bg-emerald-200 rounded" />
             </div>
           </div>
-          <div className="divide-y divide-emerald-100">
-            {data?.revenue?.accounts?.map((acc: any, idx: number) => (
-              <div key={idx} className="px-5 py-3 flex justify-between hover:bg-emerald-50/50 transition-colors">
-                <span className="text-gray-700">{acc.name}</span>
-                <span className="font-semibold text-emerald-700 tabular-nums">{formatCurrency(acc.balance)}</span>
+          {/* Expenses section skeleton */}
+          <div className="rounded-xl border border-rose-200 overflow-hidden">
+            <div className="px-5 py-4 bg-rose-50 border-b border-rose-200">
+              <div className="flex items-center gap-2">
+                <TrendingDown className="w-5 h-5 text-rose-600" />
+                <h3 className="font-semibold text-rose-800">Expenses</h3>
               </div>
-            ))}
-            {(!data?.revenue?.accounts || data?.revenue?.accounts?.length === 0) && (
-              <div className="px-5 py-4 text-center text-gray-400 text-sm">No revenue accounts</div>
-            )}
-          </div>
-          <div className="px-5 py-4 bg-emerald-100 flex justify-between font-bold text-emerald-800">
-            <span>Total Revenue</span>
-            {isLoading ? (
-              <div className="h-5 w-24 bg-emerald-200 rounded animate-pulse" />
-            ) : (
-              <span className="tabular-nums">{formatCurrency(data?.revenue?.total || 0)}</span>
-            )}
-          </div>
-        </div>
-
-        {/* Expenses Section */}
-        <div className="rounded-xl border border-rose-200 overflow-hidden">
-          <div className="px-5 py-4 bg-rose-50 border-b border-rose-200">
-            <div className="flex items-center gap-2">
-              <TrendingDown className="w-5 h-5 text-rose-600" />
-              <h3 className="font-semibold text-rose-800">Expenses</h3>
+            </div>
+            <div className="divide-y divide-rose-100">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="px-5 py-3 flex justify-between">
+                  <div className="h-4 bg-gray-200 rounded" style={{ width: `${80 + i * 25}px` }} />
+                  <div className="h-4 w-20 bg-rose-100 rounded" />
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-4 bg-rose-100 flex justify-between font-bold text-rose-800">
+              <span>Total Expenses</span>
+              <div className="h-5 w-24 bg-rose-200 rounded" />
             </div>
           </div>
-          <div className="divide-y divide-rose-100">
-            {data?.expenses?.accounts?.map((acc: any, idx: number) => (
-              <div key={idx} className="px-5 py-3 flex justify-between hover:bg-rose-50/50 transition-colors">
-                <span className="text-gray-700">{acc.name}</span>
-                <span className="font-semibold text-rose-700 tabular-nums">{formatCurrency(acc.balance)}</span>
+          {/* Net Income skeleton */}
+          <div className="rounded-xl p-6 bg-gradient-to-r from-gray-400 to-gray-500">
+            <div className="flex items-center justify-between text-white">
+              <div className="flex items-center gap-3">
+                <TrendingUp className="w-8 h-8" />
+                <span className="text-xl font-semibold">Net Income</span>
               </div>
-            ))}
-            {(!data?.expenses?.accounts || data?.expenses?.accounts?.length === 0) && (
-              <div className="px-5 py-4 text-center text-gray-400 text-sm">No expense accounts</div>
-            )}
-          </div>
-          <div className="px-5 py-4 bg-rose-100 flex justify-between font-bold text-rose-800">
-            <span>Total Expenses</span>
-            {isLoading ? (
-              <div className="h-5 w-24 bg-rose-200 rounded animate-pulse" />
-            ) : (
-              <span className="tabular-nums">{formatCurrency(data?.expenses?.total || 0)}</span>
-            )}
+              <div className="h-9 w-32 bg-white/30 rounded" />
+            </div>
           </div>
         </div>
+      ) : (
+        <div className="p-6 space-y-6">
+          {/* Income vs Expense Chart */}
+          {data && (data?.revenue?.total > 0 || data?.expenses?.total > 0) && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="h-64 mb-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={[
+                  ...(data?.revenue?.accounts || []).map((a: any) => ({ name: a.name, Revenue: a.balance, Expense: 0 })),
+                  ...(data?.expenses?.accounts || []).map((a: any) => ({ name: a.name, Revenue: 0, Expense: a.balance })),
+                ].slice(0, 10)}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} angle={-20} textAnchor="end" height={60} />
+                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v/1000}k`} />
+                  <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
+                  <Bar dataKey="Revenue" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Expense" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </motion.div>
+          )}
 
-        {/* Net Income */}
-        <div className={cn(
-          'rounded-xl p-6',
-          isLoading ? 'bg-gradient-to-r from-gray-400 to-gray-500' : isProfit ? 'bg-gradient-to-r from-emerald-500 to-emerald-600' : 'bg-gradient-to-r from-rose-500 to-rose-600'
-        )}>
-          <div className="flex items-center justify-between text-white">
-            <div className="flex items-center gap-3">
-              {isLoading ? (
-                <>
-                  <TrendingUp className="w-8 h-8" />
-                  <span className="text-xl font-semibold">Net Income</span>
-                </>
-              ) : (
-                <>
-                  {isProfit ? <TrendingUp className="w-8 h-8" /> : <TrendingDown className="w-8 h-8" />}
-                  <span className="text-xl font-semibold">Net {isProfit ? 'Profit' : 'Loss'}</span>
-                </>
+          {/* Revenue Section */}
+          <div className="rounded-xl border border-emerald-200 overflow-hidden">
+            <div className="px-5 py-4 bg-emerald-50 border-b border-emerald-200">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-semibold text-emerald-800">Revenue</h3>
+              </div>
+            </div>
+            <div className="divide-y divide-emerald-100">
+              {data?.revenue?.accounts?.map((acc: any, idx: number) => (
+                <div key={idx} className="px-5 py-3 flex justify-between hover:bg-emerald-50/50 transition-colors">
+                  <span className="text-gray-700">{acc.name}</span>
+                  <span className="font-semibold text-emerald-700 tabular-nums">{formatCurrency(acc.balance)}</span>
+                </div>
+              ))}
+              {(!data?.revenue?.accounts || data?.revenue?.accounts?.length === 0) && (
+                <div className="px-5 py-4 text-center text-gray-400 text-sm">No revenue accounts</div>
               )}
             </div>
-            {isLoading ? (
-              <div className="h-9 w-32 bg-white/30 rounded animate-pulse" />
-            ) : (
+            <div className="px-5 py-4 bg-emerald-100 flex justify-between font-bold text-emerald-800">
+              <span>Total Revenue</span>
+              <span className="tabular-nums">{formatCurrency(data?.revenue?.total || 0)}</span>
+            </div>
+          </div>
+
+          {/* Expenses Section */}
+          <div className="rounded-xl border border-rose-200 overflow-hidden">
+            <div className="px-5 py-4 bg-rose-50 border-b border-rose-200">
+              <div className="flex items-center gap-2">
+                <TrendingDown className="w-5 h-5 text-rose-600" />
+                <h3 className="font-semibold text-rose-800">Expenses</h3>
+              </div>
+            </div>
+            <div className="divide-y divide-rose-100">
+              {data?.expenses?.accounts?.map((acc: any, idx: number) => (
+                <div key={idx} className="px-5 py-3 flex justify-between hover:bg-rose-50/50 transition-colors">
+                  <span className="text-gray-700">{acc.name}</span>
+                  <span className="font-semibold text-rose-700 tabular-nums">{formatCurrency(acc.balance)}</span>
+                </div>
+              ))}
+              {(!data?.expenses?.accounts || data?.expenses?.accounts?.length === 0) && (
+                <div className="px-5 py-4 text-center text-gray-400 text-sm">No expense accounts</div>
+              )}
+            </div>
+            <div className="px-5 py-4 bg-rose-100 flex justify-between font-bold text-rose-800">
+              <span>Total Expenses</span>
+              <span className="tabular-nums">{formatCurrency(data?.expenses?.total || 0)}</span>
+            </div>
+          </div>
+
+          {/* Net Income */}
+          <div className={cn(
+            'rounded-xl p-6',
+            isProfit ? 'bg-gradient-to-r from-emerald-500 to-emerald-600' : 'bg-gradient-to-r from-rose-500 to-rose-600'
+          )}>
+            <div className="flex items-center justify-between text-white">
+              <div className="flex items-center gap-3">
+                {isProfit ? <TrendingUp className="w-8 h-8" /> : <TrendingDown className="w-8 h-8" />}
+                <span className="text-xl font-semibold">Net {isProfit ? 'Profit' : 'Loss'}</span>
+              </div>
               <span className="text-3xl font-bold tabular-nums">{formatCurrency(netIncome)}</span>
-            )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -774,84 +816,156 @@ function BalanceSheetReport() {
         )}
       </div>
 
-      <div className="p-6">
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* Assets */}
-          <div className="rounded-xl border border-blue-200 overflow-hidden">
-            <div className="px-5 py-4 bg-blue-50 border-b border-blue-200">
-              <h3 className="font-semibold text-blue-800">Assets</h3>
+      {isLoading ? (
+        <div className="p-6 animate-pulse">
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Assets skeleton */}
+            <div className="rounded-xl border border-blue-200 overflow-hidden">
+              <div className="px-5 py-4 bg-blue-50 border-b border-blue-200">
+                <h3 className="font-semibold text-blue-800">Assets</h3>
+              </div>
+              <div className="divide-y divide-blue-100">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="px-5 py-3 flex justify-between">
+                    <div className="h-4 bg-gray-200 rounded" style={{ width: `${90 + i * 25}px` }} />
+                    <div className="h-4 w-20 bg-blue-100 rounded" />
+                  </div>
+                ))}
+              </div>
+              <div className="px-5 py-4 bg-blue-100 flex justify-between font-bold text-blue-800">
+                <span>Total Assets</span>
+                <div className="h-5 w-24 bg-blue-200 rounded" />
+              </div>
             </div>
-            <div className="divide-y divide-blue-100">
-              {data?.assets?.accounts?.map((acc: any, idx: number) => (
-                <div key={idx} className="px-5 py-3 flex justify-between hover:bg-blue-50/50 transition-colors">
-                  <span className="text-gray-700">{acc.name}</span>
-                  <span className="font-semibold text-blue-700 tabular-nums">{formatCurrency(acc.balance)}</span>
+
+            {/* Liabilities & Equity skeleton */}
+            <div className="space-y-6">
+              {/* Liabilities skeleton */}
+              <div className="rounded-xl border border-rose-200 overflow-hidden">
+                <div className="px-5 py-4 bg-rose-50 border-b border-rose-200">
+                  <h3 className="font-semibold text-rose-800">Liabilities</h3>
                 </div>
-              ))}
-              {(!data?.assets?.accounts || data?.assets?.accounts?.length === 0) && (
-                <div className="px-5 py-4 text-center text-gray-400 text-sm">No asset accounts</div>
-              )}
-            </div>
-            <div className="px-5 py-4 bg-blue-100 flex justify-between font-bold text-blue-800">
-              <span>Total Assets</span>
-              <span className="tabular-nums">{formatCurrency(data?.assets?.total || 0)}</span>
+                <div className="divide-y divide-rose-100">
+                  {[...Array(3)].map((_, i) => (
+                    <div key={i} className="px-5 py-3 flex justify-between">
+                      <div className="h-4 bg-gray-200 rounded" style={{ width: `${100 + i * 20}px` }} />
+                      <div className="h-4 w-20 bg-rose-100 rounded" />
+                    </div>
+                  ))}
+                </div>
+                <div className="px-5 py-4 bg-rose-100 flex justify-between font-bold text-rose-800">
+                  <span>Total Liabilities</span>
+                  <div className="h-5 w-24 bg-rose-200 rounded" />
+                </div>
+              </div>
+
+              {/* Equity skeleton */}
+              <div className="rounded-xl border border-purple-200 overflow-hidden">
+                <div className="px-5 py-4 bg-purple-50 border-b border-purple-200">
+                  <h3 className="font-semibold text-purple-800">Equity</h3>
+                </div>
+                <div className="divide-y divide-purple-100">
+                  {[...Array(2)].map((_, i) => (
+                    <div key={i} className="px-5 py-3 flex justify-between">
+                      <div className="h-4 bg-gray-200 rounded" style={{ width: `${110 + i * 30}px` }} />
+                      <div className="h-4 w-20 bg-purple-100 rounded" />
+                    </div>
+                  ))}
+                </div>
+                <div className="px-5 py-4 bg-purple-100 flex justify-between font-bold text-purple-800">
+                  <span>Total Equity</span>
+                  <div className="h-5 w-24 bg-purple-200 rounded" />
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Liabilities & Equity */}
-          <div className="space-y-6">
-            {/* Liabilities */}
-            <div className="rounded-xl border border-rose-200 overflow-hidden">
-              <div className="px-5 py-4 bg-rose-50 border-b border-rose-200">
-                <h3 className="font-semibold text-rose-800">Liabilities</h3>
+          {/* Total L+E skeleton */}
+          <div className="mt-6 p-4 bg-gray-100 rounded-xl flex justify-between font-bold text-lg">
+            <span>Total Liabilities + Equity</span>
+            <div className="h-6 w-28 bg-gray-300 rounded" />
+          </div>
+        </div>
+      ) : (
+        <div className="p-6">
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Assets */}
+            <div className="rounded-xl border border-blue-200 overflow-hidden">
+              <div className="px-5 py-4 bg-blue-50 border-b border-blue-200">
+                <h3 className="font-semibold text-blue-800">Assets</h3>
               </div>
-              <div className="divide-y divide-rose-100">
-                {data?.liabilities?.accounts?.map((acc: any, idx: number) => (
-                  <div key={idx} className="px-5 py-3 flex justify-between hover:bg-rose-50/50 transition-colors">
+              <div className="divide-y divide-blue-100">
+                {data?.assets?.accounts?.map((acc: any, idx: number) => (
+                  <div key={idx} className="px-5 py-3 flex justify-between hover:bg-blue-50/50 transition-colors">
                     <span className="text-gray-700">{acc.name}</span>
-                    <span className="font-semibold text-rose-700 tabular-nums">{formatCurrency(acc.balance)}</span>
+                    <span className="font-semibold text-blue-700 tabular-nums">{formatCurrency(acc.balance)}</span>
                   </div>
                 ))}
-                {(!data?.liabilities?.accounts || data?.liabilities?.accounts?.length === 0) && (
-                  <div className="px-5 py-4 text-center text-gray-400 text-sm">No liability accounts</div>
+                {(!data?.assets?.accounts || data?.assets?.accounts?.length === 0) && (
+                  <div className="px-5 py-4 text-center text-gray-400 text-sm">No asset accounts</div>
                 )}
               </div>
-              <div className="px-5 py-4 bg-rose-100 flex justify-between font-bold text-rose-800">
-                <span>Total Liabilities</span>
-                <span className="tabular-nums">{formatCurrency(data?.liabilities?.total || 0)}</span>
+              <div className="px-5 py-4 bg-blue-100 flex justify-between font-bold text-blue-800">
+                <span>Total Assets</span>
+                <span className="tabular-nums">{formatCurrency(data?.assets?.total || 0)}</span>
               </div>
             </div>
 
-            {/* Equity */}
-            <div className="rounded-xl border border-purple-200 overflow-hidden">
-              <div className="px-5 py-4 bg-purple-50 border-b border-purple-200">
-                <h3 className="font-semibold text-purple-800">Equity</h3>
+            {/* Liabilities & Equity */}
+            <div className="space-y-6">
+              {/* Liabilities */}
+              <div className="rounded-xl border border-rose-200 overflow-hidden">
+                <div className="px-5 py-4 bg-rose-50 border-b border-rose-200">
+                  <h3 className="font-semibold text-rose-800">Liabilities</h3>
+                </div>
+                <div className="divide-y divide-rose-100">
+                  {data?.liabilities?.accounts?.map((acc: any, idx: number) => (
+                    <div key={idx} className="px-5 py-3 flex justify-between hover:bg-rose-50/50 transition-colors">
+                      <span className="text-gray-700">{acc.name}</span>
+                      <span className="font-semibold text-rose-700 tabular-nums">{formatCurrency(acc.balance)}</span>
+                    </div>
+                  ))}
+                  {(!data?.liabilities?.accounts || data?.liabilities?.accounts?.length === 0) && (
+                    <div className="px-5 py-4 text-center text-gray-400 text-sm">No liability accounts</div>
+                  )}
+                </div>
+                <div className="px-5 py-4 bg-rose-100 flex justify-between font-bold text-rose-800">
+                  <span>Total Liabilities</span>
+                  <span className="tabular-nums">{formatCurrency(data?.liabilities?.total || 0)}</span>
+                </div>
               </div>
-              <div className="divide-y divide-purple-100">
-                {data?.equity?.accounts?.map((acc: any, idx: number) => (
-                  <div key={idx} className="px-5 py-3 flex justify-between hover:bg-purple-50/50 transition-colors">
-                    <span className="text-gray-700">{acc.name}</span>
-                    <span className="font-semibold text-purple-700 tabular-nums">{formatCurrency(acc.balance)}</span>
-                  </div>
-                ))}
-                {(!data?.equity?.accounts || data?.equity?.accounts?.length === 0) && (
-                  <div className="px-5 py-4 text-center text-gray-400 text-sm">No equity accounts</div>
-                )}
-              </div>
-              <div className="px-5 py-4 bg-purple-100 flex justify-between font-bold text-purple-800">
-                <span>Total Equity</span>
-                <span className="tabular-nums">{formatCurrency(data?.equity?.total || 0)}</span>
+
+              {/* Equity */}
+              <div className="rounded-xl border border-purple-200 overflow-hidden">
+                <div className="px-5 py-4 bg-purple-50 border-b border-purple-200">
+                  <h3 className="font-semibold text-purple-800">Equity</h3>
+                </div>
+                <div className="divide-y divide-purple-100">
+                  {data?.equity?.accounts?.map((acc: any, idx: number) => (
+                    <div key={idx} className="px-5 py-3 flex justify-between hover:bg-purple-50/50 transition-colors">
+                      <span className="text-gray-700">{acc.name}</span>
+                      <span className="font-semibold text-purple-700 tabular-nums">{formatCurrency(acc.balance)}</span>
+                    </div>
+                  ))}
+                  {(!data?.equity?.accounts || data?.equity?.accounts?.length === 0) && (
+                    <div className="px-5 py-4 text-center text-gray-400 text-sm">No equity accounts</div>
+                  )}
+                </div>
+                <div className="px-5 py-4 bg-purple-100 flex justify-between font-bold text-purple-800">
+                  <span>Total Equity</span>
+                  <span className="tabular-nums">{formatCurrency(data?.equity?.total || 0)}</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Total Liabilities + Equity */}
-        <div className="mt-6 p-4 bg-gray-100 rounded-xl flex justify-between font-bold text-lg">
-          <span>Total Liabilities + Equity</span>
-          <span className="tabular-nums">{formatCurrency((data?.liabilities?.total || 0) + (data?.equity?.total || 0))}</span>
+          {/* Total Liabilities + Equity */}
+          <div className="mt-6 p-4 bg-gray-100 rounded-xl flex justify-between font-bold text-lg">
+            <span>Total Liabilities + Equity</span>
+            <span className="tabular-nums">{formatCurrency((data?.liabilities?.total || 0) + (data?.equity?.total || 0))}</span>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
