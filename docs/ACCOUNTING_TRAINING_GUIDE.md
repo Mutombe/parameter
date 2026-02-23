@@ -2,8 +2,8 @@
 
 ## Parameter Real Estate Accounting System
 
-**Document Version:** 1.0
-**Last Updated:** January 2026
+**Document Version:** 2.0
+**Last Updated:** February 2026
 **Audience:** Junior Accountants, Finance Staff
 
 ---
@@ -15,8 +15,12 @@
 3. [Chart of Accounts](#chart-of-accounts)
 4. [Daily Operations](#daily-operations)
 5. [Financial Reports](#financial-reports)
-6. [Best Practices](#best-practices)
-7. [Troubleshooting](#troubleshooting)
+6. [Late Payment Penalties](#late-payment-penalties)
+7. [Bank Reconciliation](#bank-reconciliation)
+8. [Using Parameter AI](#using-parameter-ai)
+9. [Report Search & Pagination](#report-search--pagination)
+10. [Best Practices](#best-practices)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -38,7 +42,14 @@ The Parameter Accounting System is a fully-integrated double-entry bookkeeping s
 | Atomic Transactions | All journal entries are processed completely or not at all |
 | Immutable Audit Trail | All financial actions are permanently recorded |
 | Multi-Currency Support | Handles USD, ZiG, and other currencies |
-| Real-Time Reporting | Instant access to financial statements |
+| Real-Time Reporting | 15 report types with search, pagination, and export |
+| Parameter AI | Natural language queries, OCR document scanning, smart reconciliation (powered by Claude) |
+| Automated Billing | Monthly invoice generation, overdue detection, and late penalty application |
+| Scheduled Report Emails | Receive branded HTML report emails on a schedule |
+| Bank Reconciliation | Match bank statements to book records with AI assistance |
+| Late Payment Penalties | Configurable penalty rules with automated daily application |
+| Tenant Portal | Self-service access for tenants to view invoices, receipts, and statements |
+| Company Branding | Logo and settings appear on all reports, invoices, and exported documents |
 
 ---
 
@@ -387,6 +398,64 @@ Status: BALANCED
 - Total units per property
 - Occupied vs vacant units
 - Vacancy rate percentage
+- Search and pagination (filter by property name or landlord)
+
+### Aged Analysis
+
+**Purpose:** Track overdue amounts by aging bucket
+
+**Navigation:** Reports > Aged Analysis
+
+**Features:**
+- Filter by property, landlord, and as-of date
+- Summary cards: Total Outstanding, Overdue Invoices, Total Overdue
+- Visual aging bucket chart (Current, 31-60, 61-90, 91-120, 120+ days)
+- Tenant breakdown table with search and pagination
+
+**Buckets:**
+
+| Bucket | Age Range | Risk Level |
+|--------|-----------|------------|
+| Current | 0-30 days | Normal |
+| 31-60 days | 31-60 days | Watch |
+| 61-90 days | 61-90 days | Concern |
+| 91-120 days | 91-120 days | High risk |
+| 120+ days | Over 120 days | Critical |
+
+### Commission Reports
+
+**Purpose:** Track management commission earned
+
+**Navigation:** Reports > Commission by Property / Commission by Income
+
+**Shows:**
+- Commission by Property: Property ranking, landlord, rate, revenue, commission amount, percentage of total
+- Commission by Income: Breakdown by income category (Rent, Parking, Levies, etc.)
+- Visual charts (bar chart and pie chart)
+- Search and pagination for large datasets
+
+### Receipts Listing
+
+**Purpose:** View all payment receipts in one place
+
+**Navigation:** Reports > Receipts Listing
+
+**Shows:**
+- Date, receipt number, tenant, property, unit, income type, bank, method, reference, amount
+- Search by receipt number, tenant, property, bank, or income type
+- Pagination (25 per page)
+- Total amount footer
+
+### Bank to Income Analysis
+
+**Purpose:** See how income is distributed across bank accounts
+
+**Navigation:** Reports > Bank to Income
+
+**3-Level Drill-Down:**
+1. **Level 1 (Matrix):** Income types vs bank accounts (heatmap coloring)
+2. **Level 2 (Bank Drill):** Click a bank column to see income categories for that bank
+3. **Level 3 (Receipts):** Click a category to see individual receipts (with search and pagination)
 
 ### Landlord Statement
 
@@ -399,6 +468,171 @@ Status: BALANCED
 - Total rent collected
 - Commission rate and amount
 - Net payable to landlord
+
+### Exporting & Printing Reports
+
+All reports support three output methods:
+
+| Action | Button | Result |
+|--------|--------|--------|
+| **Print** | Printer icon | Opens print dialog with formatted report (portrait or landscape) |
+| **CSV** | CSV button | Downloads a CSV file for spreadsheet use |
+| **Excel** | Excel button | Downloads an Excel (.xlsx) file with formatting |
+
+Reports with wide tables (Rent Roll, Receipts Listing, Bank to Income) automatically use landscape orientation when printing.
+
+### Scheduled Report Emails
+
+Reports can be delivered via email on a schedule. The email includes:
+- Branded HTML header with your company logo
+- Report data rendered as a styled HTML table
+- Period and generation date
+- Professional email template
+
+Contact your administrator to configure scheduled report delivery.
+
+---
+
+## Late Payment Penalties
+
+The system can automatically apply penalties to overdue invoices.
+
+### How Penalties Work
+
+1. An invoice goes past its due date
+2. The grace period expires (if configured)
+3. The system generates a penalty invoice linked to the original
+
+### Configuration
+
+**Navigation:** Billing > Late Penalties
+
+| Setting | Description |
+|---------|-------------|
+| Penalty Type | Percentage of invoice, Flat Fee, or Both |
+| Rate / Amount | e.g. 5% or $50 flat |
+| Grace Period | Days after due date before penalty applies (e.g. 7 days) |
+| Maximum Cap | Maximum penalty amount per invoice |
+| Recurring | Apply penalty once or every period it remains unpaid |
+
+### Overrides
+
+- **Property-level:** Set different rules per property
+- **Tenant-level:** Exclude specific tenants (e.g. tenants on payment plans)
+
+### Automated Penalty Generation
+
+The system runs a daily background job that:
+1. Scans all overdue invoices across all tenants
+2. Checks if the grace period has passed
+3. Checks for exclusions
+4. Creates penalty invoices automatically
+5. Sends notification to the tenant
+
+**Important:** Review the Late Penalties page regularly to ensure penalties are applied correctly. You can adjust or cancel penalty invoices if needed.
+
+---
+
+## Bank Reconciliation
+
+Bank reconciliation matches your book records to actual bank statements.
+
+### Reconciliation Workflow
+
+**Navigation:** Accounting > Bank Reconciliation
+
+**Steps:**
+1. Select the bank account to reconcile
+2. Set the reconciliation period (start and end date)
+3. Enter the bank statement closing balance
+4. Import or manually enter bank transactions
+5. Match bank transactions to receipts/journals:
+   - **Manual match:** Select matching items
+   - **AI match:** Use the AI suggestion button for automatic matching
+6. Review unmatched/outstanding items
+7. Add notes for any variances
+8. Mark reconciliation as Complete
+
+### Transaction Statuses
+
+| Status | Meaning |
+|--------|---------|
+| Unreconciled | Not yet matched to a book entry |
+| Reconciled | Successfully matched |
+| Disputed | Flagged for investigation |
+
+### AI-Powered Matching
+
+If AI reconciliation is enabled for your company, the system can automatically suggest matches by:
+- Analyzing bank reference text against invoice numbers and tenant names
+- Handling messy or abbreviated references
+- Providing a confidence score for each suggestion
+
+Always review AI suggestions before accepting.
+
+---
+
+## Using Parameter AI
+
+Parameter AI is powered by Claude and provides intelligent assistance across several areas. Your company administrator controls which AI features are available.
+
+### Natural Language Queries
+
+**Where:** Reports page (Ask Me input)
+
+Ask questions in plain English about your data:
+- "What is the current vacancy rate?"
+- "Which tenants are most overdue?"
+- "Why are maintenance costs high for Block A?"
+- "What is the total outstanding balance?"
+
+The AI uses only your company's data (tenant isolation is enforced).
+
+### Document Scanner (OCR)
+
+**Navigation:** AI > Document Scanner
+
+Upload documents and the AI will extract structured data:
+
+| Document Type | Extracted Fields |
+|---------------|-----------------|
+| Lease Agreement | Tenant name, property, unit, rent amount, dates, terms |
+| Invoice | Vendor, line items, amounts, VAT, totals |
+| ID Document | Name, ID number, date of birth, nationality |
+
+Each extracted field includes a confidence level (High, Medium, Low). Always review extracted data before importing.
+
+### AI Bank Reconciliation
+
+See the [Bank Reconciliation](#bank-reconciliation) section above. The AI suggests matches between messy bank references and your invoices/tenants.
+
+---
+
+## Report Search & Pagination
+
+Large reports now include search and pagination to make it easy to find specific records.
+
+### How to Use
+
+1. **Search Bar** - Located above the table. Type to filter rows instantly. The result count updates in real-time.
+2. **Pagination** - Located below the table. Shows 25 rows per page with "Showing X to Y of Z" indicator.
+3. **Page Navigation** - First, Previous, page numbers, Next, Last buttons.
+
+### Search Fields by Report
+
+| Report | Searchable Fields |
+|--------|------------------|
+| Trial Balance | Account code, account name |
+| Vacancy | Property name, landlord |
+| Rent Roll | Tenant, property, unit, lease number |
+| Aged Analysis (Tenants) | Tenant name |
+| Receipts Listing | Receipt #, tenant, property, bank, income type |
+| Deposits Listing | Tenant, property, unit, lease number |
+| Lease Charges | Tenant, property, unit, lease number |
+| Commission by Property | Property name, landlord |
+| Bank to Income (L3) | Tenant, property, receipt number |
+
+**Note:** Search filtering only affects the visible table rows. Totals, summary cards, and charts always use the complete dataset.
 
 ---
 
