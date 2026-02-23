@@ -54,7 +54,7 @@ import { PiBuildingApartmentLight } from "react-icons/pi";
 
 type ReportType =
   | 'trial-balance' | 'income-statement' | 'balance-sheet' | 'cash-flow' | 'aged-analysis'
-  | 'vacancy' | 'rent-roll' | 'tenant-account' | 'landlord-account'
+  | 'vacancy' | 'rent-roll' | 'rent-rollover' | 'tenant-account' | 'landlord-account'
   | 'commission-property' | 'commission-income' | 'bank-to-income'
   | 'receipts-listing' | 'deposits-listing' | 'lease-charges'
 
@@ -92,6 +92,7 @@ const reportCategories: ReportCategory[] = [
     reports: [
       { id: 'vacancy', name: 'Vacancy Report', icon: Home, desc: 'Unit occupancy', color: 'text-amber-600', bgColor: 'bg-amber-50 dark:bg-amber-900/30' },
       { id: 'rent-roll', name: 'Rent Roll', icon: Building2, desc: 'Active leases', color: 'text-rose-600', bgColor: 'bg-rose-50 dark:bg-rose-900/30' },
+      { id: 'rent-rollover', name: 'Rent Rollover', icon: ArrowRight, desc: 'Balance rollover', color: 'text-orange-600', bgColor: 'bg-orange-50 dark:bg-orange-900/30' },
       { id: 'tenant-account', name: 'Tenant Account', icon: Users, desc: 'Tenant transactions', color: 'text-sky-600', bgColor: 'bg-sky-50 dark:bg-sky-900/30' },
       { id: 'landlord-account', name: 'Landlord Account', icon: PiBuildingApartmentLight, desc: 'Landlord statement', color: 'text-violet-600', bgColor: 'bg-violet-50 dark:bg-violet-900/30' },
     ],
@@ -144,6 +145,7 @@ const reportNames: Record<ReportType, string> = {
   'aged-analysis': 'Aged Analysis',
   'vacancy': 'Vacancy Report',
   'rent-roll': 'Rent Roll',
+  'rent-rollover': 'Rent Rollover',
   'tenant-account': 'Tenant Account',
   'landlord-account': 'Landlord Account',
   'commission-property': 'Commission by Property',
@@ -175,7 +177,7 @@ export default function Reports() {
     printElement('report-content', {
       title: reportNames[activeReport],
       subtitle: `Generated on ${formatDate(new Date())}`,
-      orientation: ['rent-roll', 'receipts-listing', 'bank-to-income'].includes(activeReport) ? 'landscape' : 'portrait',
+      orientation: ['rent-roll', 'rent-rollover', 'receipts-listing', 'bank-to-income'].includes(activeReport) ? 'landscape' : 'portrait',
     })
   }
 
@@ -289,6 +291,7 @@ export default function Reports() {
           {activeReport === 'aged-analysis' && <AgedAnalysisReport />}
           {activeReport === 'vacancy' && <VacancyReport />}
           {activeReport === 'rent-roll' && <RentRollReport />}
+          {activeReport === 'rent-rollover' && <RentRolloverReport />}
           {activeReport === 'tenant-account' && <TenantAccountReport />}
           {activeReport === 'landlord-account' && <LandlordAccountReport />}
           {activeReport === 'commission-property' && <CommissionByPropertyReport />}
@@ -1337,6 +1340,257 @@ function RentRollReport() {
   )
 }
 
+function RentRolloverReport() {
+  const navigate = useNavigate()
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date()
+    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]
+  })
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0])
+
+  const [drillState, setDrillState] = useState<{
+    level: 1 | 2
+    propertyId?: number
+    propertyName?: string
+    landlordName?: string
+    currency?: string
+  }>({ level: 1 })
+
+  // Level 1 query
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['rent-rollover', startDate, endDate],
+    queryFn: () => reportsApi.rentRollover({ start_date: startDate, end_date: endDate }).then(r => r.data),
+  })
+
+  // Level 2 query
+  const { data: l2Data, isLoading: l2Loading } = useQuery({
+    queryKey: ['rent-rollover-l2', drillState.propertyId, startDate, endDate],
+    queryFn: () => reportsApi.rentRollover({ start_date: startDate, end_date: endDate, property_id: drillState.propertyId! }).then(r => r.data),
+    enabled: drillState.level === 2 && !!drillState.propertyId,
+  })
+
+  if (data) currentReportData = data
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 25
+
+  useEffect(() => { setCurrentPage(1) }, [searchQuery])
+  useEffect(() => { setSearchQuery(''); setCurrentPage(1) }, [drillState.level, drillState.propertyId])
+
+  // Breadcrumb
+  const Breadcrumb = () => {
+    if (drillState.level === 1) return null
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-500 px-6 pt-4">
+        <button onClick={() => setDrillState({ level: 1 })} className="hover:text-gray-900 hover:underline transition-colors">
+          Property Summary
+        </button>
+        <span>/</span>
+        <span className="text-gray-900 font-medium">{drillState.propertyName}</span>
+      </div>
+    )
+  }
+
+  const carriedForwardColor = (value: number) =>
+    value < 0 ? 'text-emerald-600' : value > 0 ? 'text-red-600' : 'text-gray-900'
+
+  // Level 2 rendering
+  const renderLevel2 = () => {
+    if (l2Loading) return (
+      <div className="p-6 space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />)}
+      </div>
+    )
+    const leases = l2Data?.leases || []
+    if (leases.length === 0) return (
+      <div className="p-12 text-center text-gray-500">
+        <Building2 className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+        <p className="font-medium">No lease data found</p>
+        <p className="text-sm mt-1">No active leases for this property in the selected period</p>
+      </div>
+    )
+
+    const filteredLeases = searchQuery
+      ? leases.filter((l: any) =>
+          l.tenant_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          l.lease_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          l.unit_number?.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : leases
+    const totalPages = Math.ceil(filteredLeases.length / pageSize)
+    const paginated = filteredLeases.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+    const summary = l2Data?.summary || {}
+
+    return (
+      <>
+        <div className="px-6 pt-4 pb-2 text-sm text-gray-500">
+          <span className="font-medium text-gray-700">{drillState.landlordName}</span> &middot; {drillState.propertyName} &middot; {l2Data?.currency || ''} &middot; {startDate} to {endDate}
+        </div>
+        <TableFilter searchPlaceholder="Search by tenant, lease#, or unit..." searchValue={searchQuery} onSearchChange={setSearchQuery} resultCount={filteredLeases.length} />
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Lease #</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit</th>
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance B/F</th>
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Charged</th>
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Due</th>
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Paid</th>
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Carried Forward</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {paginated.map((lease: any, idx: number) => (
+                <motion.tr key={lease.lease_id || idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.02 }} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-4">
+                    <button onClick={() => navigate(`/dashboard/leases/${lease.lease_id}`)} className="font-mono text-sm font-semibold text-primary-600 hover:text-primary-700 hover:underline">{lease.lease_number}</button>
+                  </td>
+                  <td className="px-6 py-4 font-medium">
+                    <button onClick={() => navigate(`/dashboard/tenants/${lease.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{lease.tenant_name}</button>
+                  </td>
+                  <td className="px-6 py-4">
+                    <button onClick={() => navigate(`/dashboard/units/${lease.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{lease.unit_number}</button>
+                  </td>
+                  <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(lease.balance_bf)}</td>
+                  <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(lease.amount_charged)}</td>
+                  <td className="px-6 py-4 text-right tabular-nums font-semibold text-gray-900">{formatCurrency(lease.amount_due)}</td>
+                  <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(lease.amount_paid)}</td>
+                  <td className={cn('px-6 py-4 text-right tabular-nums font-semibold', carriedForwardColor(lease.carried_forward))}>{formatCurrency(lease.carried_forward)}</td>
+                </motion.tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+              <tr className="font-bold">
+                <td colSpan={3} className="px-6 py-4 text-gray-700">Total</td>
+                <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(summary.total_balance_bf || 0)}</td>
+                <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(summary.total_charged || 0)}</td>
+                <td className="px-6 py-4 text-right tabular-nums font-semibold text-gray-900">{formatCurrency(summary.total_due || 0)}</td>
+                <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(summary.total_paid || 0)}</td>
+                <td className={cn('px-6 py-4 text-right tabular-nums font-semibold', carriedForwardColor(summary.total_carried_forward || 0))}>{formatCurrency(summary.total_carried_forward || 0)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <Pagination currentPage={currentPage} totalPages={totalPages} totalItems={filteredLeases.length} pageSize={pageSize} onPageChange={setCurrentPage} showPageSize={false} />
+      </>
+    )
+  }
+
+  // Level 1 rendering
+  const properties = data?.properties || []
+  const filteredProperties = useMemo(() => {
+    if (!searchQuery || drillState.level !== 1) return properties
+    const q = searchQuery.toLowerCase()
+    return properties.filter((p: any) =>
+      p.property_name?.toLowerCase().includes(q) ||
+      p.landlord_name?.toLowerCase().includes(q)
+    )
+  }, [properties, searchQuery, drillState.level])
+
+  const l1TotalPages = Math.ceil(filteredProperties.length / pageSize)
+  const paginatedProperties = useMemo(() => {
+    const start = (currentPage - 1) * pageSize
+    return filteredProperties.slice(start, start + pageSize)
+  }, [filteredProperties, currentPage])
+
+  const summary = data?.summary || {}
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+      <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-orange-50 dark:bg-orange-900/30 flex items-center justify-center">
+            <ArrowRight className="w-5 h-5 text-orange-600" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Rent Rollover</h2>
+            <p className="text-sm text-gray-500">Period balance movements</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-500">From</label>
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <label className="text-sm text-gray-500">To</label>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+          </div>
+          <button onClick={() => { setDrillState({ level: 1 }); refetch() }} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+            <RefreshCw className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+
+      <Breadcrumb />
+
+      {drillState.level === 2 ? renderLevel2() : (
+        <>
+          {isLoading ? (
+            <div className="p-6 space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />)}
+            </div>
+          ) : properties.length > 0 ? (
+            <>
+              <TableFilter searchPlaceholder="Search by property or landlord..." searchValue={searchQuery} onSearchChange={setSearchQuery} resultCount={filteredProperties.length} />
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Property</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Landlord</th>
+                      <th className="px-4 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Leases</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance B/F</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Charged</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Due</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Paid</th>
+                      <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Carried Forward</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {paginatedProperties.map((prop: any, idx: number) => (
+                      <motion.tr key={prop.property_id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.02 }} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 font-medium">
+                          <button onClick={() => setDrillState({ level: 2, propertyId: prop.property_id, propertyName: prop.property_name, landlordName: prop.landlord_name, currency: prop.currency })} className="text-primary-600 hover:text-primary-700 hover:underline">{prop.property_name}</button>
+                        </td>
+                        <td className="px-6 py-4 text-gray-600">{prop.landlord_name}</td>
+                        <td className="px-4 py-4 text-right tabular-nums text-gray-600">{prop.lease_count}</td>
+                        <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(prop.balance_bf)}</td>
+                        <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(prop.amount_charged)}</td>
+                        <td className="px-6 py-4 text-right tabular-nums font-semibold text-gray-900">{formatCurrency(prop.amount_due)}</td>
+                        <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(prop.amount_paid)}</td>
+                        <td className={cn('px-6 py-4 text-right tabular-nums font-semibold', carriedForwardColor(prop.carried_forward))}>{formatCurrency(prop.carried_forward)}</td>
+                      </motion.tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+                    <tr className="font-bold">
+                      <td colSpan={3} className="px-6 py-4 text-gray-700">Total</td>
+                      <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(summary.total_balance_bf || 0)}</td>
+                      <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(summary.total_charged || 0)}</td>
+                      <td className="px-6 py-4 text-right tabular-nums font-semibold text-gray-900">{formatCurrency(summary.total_due || 0)}</td>
+                      <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(summary.total_paid || 0)}</td>
+                      <td className={cn('px-6 py-4 text-right tabular-nums font-semibold', carriedForwardColor(summary.total_carried_forward || 0))}>{formatCurrency(summary.total_carried_forward || 0)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              <Pagination currentPage={currentPage} totalPages={l1TotalPages} totalItems={filteredProperties.length} pageSize={pageSize} onPageChange={setCurrentPage} showPageSize={false} />
+            </>
+          ) : (
+            <div className="p-12 text-center text-gray-500">
+              <ArrowRight className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+              <p className="font-medium">No rollover data found</p>
+              <p className="text-sm mt-1">No active leases with invoices in the selected period</p>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#14b8a6', '#3b82f6']
 
 function CommissionByPropertyReport() {
@@ -1355,6 +1609,17 @@ function CommissionByPropertyReport() {
   const [currentPage, setCurrentPage] = useState(1)
   const pageSize = 25
 
+  const [drillState, setDrillState] = useState<{
+    level: 1 | 2; propertyId?: number; propertyName?: string
+  }>({ level: 1 })
+
+  // Level 2 query
+  const { data: l2Data, isLoading: l2Loading } = useQuery({
+    queryKey: ['commission-property-l2', drillState.propertyId],
+    queryFn: () => reportsApi.commissionPropertyDrilldown({ property_id: drillState.propertyId! }).then(r => r.data),
+    enabled: drillState.level === 2 && !!drillState.propertyId,
+  })
+
   const filteredProperties = useMemo(() => {
     if (!searchQuery) return properties
     const q = searchQuery.toLowerCase()
@@ -1371,6 +1636,81 @@ function CommissionByPropertyReport() {
   }, [filteredProperties, currentPage])
 
   useEffect(() => { setCurrentPage(1) }, [searchQuery])
+  useEffect(() => { setSearchQuery(''); setCurrentPage(1) }, [drillState.level, drillState.propertyId])
+
+  // Breadcrumb
+  const Breadcrumb = () => {
+    if (drillState.level === 1) return null
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-500 px-6 pt-4">
+        <button onClick={() => setDrillState({ level: 1 })} className="hover:text-gray-900 hover:underline transition-colors">
+          Commission by Property
+        </button>
+        <span>/</span>
+        <span className="text-gray-900 font-medium">{drillState.propertyName}</span>
+      </div>
+    )
+  }
+
+  // Level 2: Revenue type breakdown
+  const renderLevel2 = () => {
+    if (l2Loading) return (
+      <div className="p-6 space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />)}
+      </div>
+    )
+    const revenueTypes = l2Data?.revenue_types || []
+    if (revenueTypes.length === 0) return (
+      <div className="p-12 text-center text-gray-500">
+        <PiBuildingApartmentLight className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+        <p className="font-medium">No revenue data found</p>
+        <p className="text-sm mt-1">No receipts for this property</p>
+      </div>
+    )
+    const l2Summary = l2Data?.summary || {}
+    return (
+      <>
+        <div className="px-6 pt-4 pb-2 text-sm text-gray-500">
+          <span className="font-medium text-gray-700">{l2Data?.landlord_name}</span> &middot; {l2Data?.property_name} &middot; Commission Rate: <span className="font-medium text-indigo-700">{l2Data?.commission_rate}%</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Revenue Type</th>
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Revenue</th>
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Rate</th>
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Commission</th>
+                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">% of Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {revenueTypes.map((rt: any, idx: number) => (
+                <motion.tr key={rt.revenue_type} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.03 }} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-4 font-medium text-gray-900">{rt.revenue_type_display}</td>
+                  <td className="px-6 py-4 text-right font-semibold text-gray-900 tabular-nums">{formatCurrency(rt.revenue)}</td>
+                  <td className="px-6 py-4 text-right">
+                    <span className="inline-block px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 text-sm font-medium">{rt.commission_rate}%</span>
+                  </td>
+                  <td className="px-6 py-4 text-right font-semibold text-indigo-600 tabular-nums">{formatCurrency(rt.commission)}</td>
+                  <td className="px-6 py-4 text-right text-sm text-gray-600">{rt.percentage?.toFixed(1)}%</td>
+                </motion.tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+              <tr className="font-bold">
+                <td className="px-6 py-4 text-gray-700">Total</td>
+                <td className="px-6 py-4 text-right text-gray-900 tabular-nums">{formatCurrency(l2Summary.total_revenue || 0)}</td>
+                <td className="px-6 py-4 text-right" />
+                <td className="px-6 py-4 text-right text-indigo-700 tabular-nums">{formatCurrency(l2Summary.total_commission || 0)}</td>
+                <td className="px-6 py-4 text-right text-gray-700">100%</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </>
+    )
+  }
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
@@ -1391,7 +1731,7 @@ function CommissionByPropertyReport() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => refetch()} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+          <button onClick={() => { setDrillState({ level: 1 }); refetch() }} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
             <RefreshCw className="w-5 h-5" />
           </button>
           {!isLoading && (
@@ -1403,133 +1743,135 @@ function CommissionByPropertyReport() {
         </div>
       </div>
 
-      {/* Bar Chart */}
-      {!isLoading && properties.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 border-b border-gray-100">
-          <p className="text-sm font-medium text-gray-500 mb-4">Top Properties by Commission</p>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={properties.slice(0, 10)} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                <XAxis type="number" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                <YAxis dataKey="property_name" type="category" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} width={140} />
-                <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
-                <Bar dataKey="commission" fill="#6366f1" radius={[0, 4, 4, 0]} name="Commission" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </motion.div>
-      )}
+      <Breadcrumb />
 
-      {isLoading ? (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Rank</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Property</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Landlord</th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Rate</th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Revenue</th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Commission</th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">% of Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i} className="animate-pulse">
-                  <td className="px-6 py-4"><div className="h-4 w-8 bg-gray-200 rounded" /></td>
-                  <td className="px-6 py-4"><div className="h-4 w-32 bg-gray-200 rounded" /></td>
-                  <td className="px-6 py-4"><div className="h-4 w-28 bg-gray-200 rounded" /></td>
-                  <td className="px-6 py-4 text-right"><div className="h-4 w-12 bg-gray-200 rounded ml-auto" /></td>
-                  <td className="px-6 py-4 text-right"><div className="h-4 w-20 bg-gray-200 rounded ml-auto" /></td>
-                  <td className="px-6 py-4 text-right"><div className="h-4 w-20 bg-gray-200 rounded ml-auto" /></td>
-                  <td className="px-6 py-4 text-right"><div className="h-4 w-12 bg-gray-200 rounded ml-auto" /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : properties.length > 0 ? (
+      {drillState.level === 2 ? renderLevel2() : (
         <>
-        <TableFilter searchPlaceholder="Search by property or landlord..." searchValue={searchQuery} onSearchChange={setSearchQuery} resultCount={filteredProperties.length} />
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Rank</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Property</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Landlord</th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Rate</th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Revenue</th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Commission</th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">% of Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {paginatedProperties.map((prop: any, idx: number) => (
-                <motion.tr
-                  key={idx}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: idx * 0.02 }}
-                  className="hover:bg-gray-50 transition-colors"
-                >
-                  <td className="px-6 py-4">
-                    <span className={cn(
-                      'inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold',
-                      idx === 0 ? 'bg-amber-100 text-amber-700' :
-                      idx === 1 ? 'bg-gray-200 text-gray-700' :
-                      idx === 2 ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-500'
-                    )}>
-                      {prop.rank}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 font-medium">
-                    {prop.property_id ? (
-                      <button onClick={() => navigate(`/dashboard/properties/${prop.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{prop.property_name}</button>
-                    ) : (
-                      <span className="text-gray-900">{prop.property_name}</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    {prop.landlord_id ? (
-                      <button onClick={() => navigate(`/dashboard/landlords/${prop.landlord_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{prop.landlord_name}</button>
-                    ) : (
-                      <span className="text-gray-600">{prop.landlord_name}</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="inline-block px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 text-sm font-medium">
-                      {prop.commission_rate}%
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right font-semibold text-gray-900 tabular-nums">{formatCurrency(prop.collected)}</td>
-                  <td className="px-6 py-4 text-right font-semibold text-indigo-600 tabular-nums">{formatCurrency(prop.commission)}</td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="text-sm text-gray-600">{prop.percentage?.toFixed(1)}%</span>
-                  </td>
-                </motion.tr>
-              ))}
-            </tbody>
-            <tfoot className="bg-gray-50 border-t-2 border-gray-300">
-              <tr className="font-bold">
-                <td colSpan={4} className="px-6 py-4 text-gray-700">Total</td>
-                <td className="px-6 py-4 text-right text-gray-900 tabular-nums">{formatCurrency(data?.summary?.total_collected || 0)}</td>
-                <td className="px-6 py-4 text-right text-indigo-700 tabular-nums">{formatCurrency(totalCommission)}</td>
-                <td className="px-6 py-4 text-right text-gray-700">100%</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-        <Pagination currentPage={currentPage} totalPages={totalPages} totalItems={filteredProperties.length} pageSize={pageSize} onPageChange={setCurrentPage} showPageSize={false} />
+          {/* Bar Chart */}
+          {!isLoading && properties.length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 border-b border-gray-100">
+              <p className="text-sm font-medium text-gray-500 mb-4">Top Properties by Commission</p>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={properties.slice(0, 10)} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                    <XAxis type="number" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                    <YAxis dataKey="property_name" type="category" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} width={140} />
+                    <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
+                    <Bar dataKey="commission" fill="#6366f1" radius={[0, 4, 4, 0]} name="Commission" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+          )}
+
+          {isLoading ? (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Rank</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Property</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Landlord</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Rate</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Revenue</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Commission</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">% of Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i} className="animate-pulse">
+                      <td className="px-6 py-4"><div className="h-4 w-8 bg-gray-200 rounded" /></td>
+                      <td className="px-6 py-4"><div className="h-4 w-32 bg-gray-200 rounded" /></td>
+                      <td className="px-6 py-4"><div className="h-4 w-28 bg-gray-200 rounded" /></td>
+                      <td className="px-6 py-4 text-right"><div className="h-4 w-12 bg-gray-200 rounded ml-auto" /></td>
+                      <td className="px-6 py-4 text-right"><div className="h-4 w-20 bg-gray-200 rounded ml-auto" /></td>
+                      <td className="px-6 py-4 text-right"><div className="h-4 w-20 bg-gray-200 rounded ml-auto" /></td>
+                      <td className="px-6 py-4 text-right"><div className="h-4 w-12 bg-gray-200 rounded ml-auto" /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : properties.length > 0 ? (
+            <>
+            <TableFilter searchPlaceholder="Search by property or landlord..." searchValue={searchQuery} onSearchChange={setSearchQuery} resultCount={filteredProperties.length} />
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Rank</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Property</th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Landlord</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Rate</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Revenue</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Commission</th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">% of Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {paginatedProperties.map((prop: any, idx: number) => (
+                    <motion.tr
+                      key={idx}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: idx * 0.02 }}
+                      className="hover:bg-gray-50 transition-colors"
+                    >
+                      <td className="px-6 py-4">
+                        <span className={cn(
+                          'inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold',
+                          idx === 0 ? 'bg-amber-100 text-amber-700' :
+                          idx === 1 ? 'bg-gray-200 text-gray-700' :
+                          idx === 2 ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-500'
+                        )}>
+                          {prop.rank}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 font-medium">
+                        <button onClick={() => setDrillState({ level: 2, propertyId: prop.property_id, propertyName: prop.property_name })} className="text-primary-600 hover:text-primary-700 hover:underline">{prop.property_name}</button>
+                      </td>
+                      <td className="px-6 py-4">
+                        {prop.landlord_id ? (
+                          <button onClick={() => navigate(`/dashboard/landlords/${prop.landlord_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{prop.landlord_name}</button>
+                        ) : (
+                          <span className="text-gray-600">{prop.landlord_name}</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <span className="inline-block px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 text-sm font-medium">
+                          {prop.commission_rate}%
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right font-semibold text-gray-900 tabular-nums">{formatCurrency(prop.collected)}</td>
+                      <td className="px-6 py-4 text-right font-semibold text-indigo-600 tabular-nums">{formatCurrency(prop.commission)}</td>
+                      <td className="px-6 py-4 text-right">
+                        <span className="text-sm text-gray-600">{prop.percentage?.toFixed(1)}%</span>
+                      </td>
+                    </motion.tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+                  <tr className="font-bold">
+                    <td colSpan={4} className="px-6 py-4 text-gray-700">Total</td>
+                    <td className="px-6 py-4 text-right text-gray-900 tabular-nums">{formatCurrency(data?.summary?.total_collected || 0)}</td>
+                    <td className="px-6 py-4 text-right text-indigo-700 tabular-nums">{formatCurrency(totalCommission)}</td>
+                    <td className="px-6 py-4 text-right text-gray-700">100%</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <Pagination currentPage={currentPage} totalPages={totalPages} totalItems={filteredProperties.length} pageSize={pageSize} onPageChange={setCurrentPage} showPageSize={false} />
+            </>
+          ) : (
+            <div className="p-12 text-center text-gray-500">
+              <PiBuildingApartmentLight className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+              <p className="font-medium">No commission data available</p>
+              <p className="text-sm mt-1">Record receipts to see commission by property</p>
+            </div>
+          )}
         </>
-      ) : (
-        <div className="p-12 text-center text-gray-500">
-          <PiBuildingApartmentLight className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-          <p className="font-medium">No commission data available</p>
-          <p className="text-sm mt-1">Record receipts to see commission by property</p>
-        </div>
       )}
     </div>
   )

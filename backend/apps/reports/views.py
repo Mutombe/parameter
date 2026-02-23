@@ -411,6 +411,164 @@ class RentRollView(APIView):
         })
 
 
+class RentRolloverView(APIView):
+    """Rent Rollover Report — period-based balance movements.
+
+    Level 1 (no property_id): property summary rows.
+    Level 2 (with property_id): individual lease rows for that property.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        property_id = request.query_params.get('property_id')
+
+        if not start_date or not end_date:
+            return Response({'error': 'start_date and end_date required'}, status=400)
+
+        leases = LeaseAgreement.objects.filter(status='active').select_related(
+            'tenant', 'unit', 'unit__property', 'unit__property__landlord'
+        )
+        if property_id:
+            leases = leases.filter(unit__property_id=property_id)
+
+        lease_list = list(leases)
+        lease_ids = [l.id for l in lease_list]
+
+        if not lease_ids:
+            empty_summary = {
+                'total_balance_bf': 0, 'total_charged': 0, 'total_due': 0,
+                'total_paid': 0, 'total_carried_forward': 0,
+            }
+            if property_id:
+                return Response({
+                    'level': 2, 'property_id': int(property_id),
+                    'property_name': '', 'landlord_name': '', 'currency': '',
+                    'period': {'start': start_date, 'end': end_date},
+                    'leases': [], 'summary': empty_summary,
+                })
+            return Response({
+                'level': 1,
+                'period': {'start': start_date, 'end': end_date},
+                'properties': [], 'summary': empty_summary,
+            })
+
+        # Batch queries — invoices/receipts × before/during period
+        inv_before = dict(Invoice.objects.filter(
+            lease_id__in=lease_ids, date__lt=start_date
+        ).values('lease_id').annotate(
+            t=Coalesce(Sum('total_amount'), Decimal('0'))
+        ).values_list('lease_id', 't'))
+
+        rcpt_before = dict(Receipt.objects.filter(
+            invoice__lease_id__in=lease_ids, date__lt=start_date
+        ).values('invoice__lease_id').annotate(
+            t=Coalesce(Sum('amount'), Decimal('0'))
+        ).values_list('invoice__lease_id', 't'))
+
+        inv_period = dict(Invoice.objects.filter(
+            lease_id__in=lease_ids, date__gte=start_date, date__lte=end_date
+        ).values('lease_id').annotate(
+            t=Coalesce(Sum('total_amount'), Decimal('0'))
+        ).values_list('lease_id', 't'))
+
+        rcpt_period = dict(Receipt.objects.filter(
+            invoice__lease_id__in=lease_ids, date__gte=start_date, date__lte=end_date
+        ).values('invoice__lease_id').annotate(
+            t=Coalesce(Sum('amount'), Decimal('0'))
+        ).values_list('invoice__lease_id', 't'))
+
+        # Build per-lease rows
+        lease_rows = []
+        for lease in lease_list:
+            ib = float(inv_before.get(lease.id, Decimal('0')))
+            rb = float(rcpt_before.get(lease.id, Decimal('0')))
+            ip = float(inv_period.get(lease.id, Decimal('0')))
+            rp = float(rcpt_period.get(lease.id, Decimal('0')))
+
+            balance_bf = round(ib - rb, 2)
+            amount_charged = round(ip, 2)
+            amount_due = round(balance_bf + amount_charged, 2)
+            amount_paid = round(rp, 2)
+            carried_forward = round(amount_due - amount_paid, 2)
+
+            lease_rows.append({
+                'lease_id': lease.id,
+                'lease_number': lease.lease_number,
+                'tenant_id': lease.tenant_id,
+                'tenant_name': lease.tenant.name,
+                'unit_id': lease.unit_id,
+                'unit_number': lease.unit.unit_number,
+                'property_id': lease.unit.property_id,
+                'property_name': lease.unit.property.name,
+                'landlord_id': lease.unit.property.landlord_id,
+                'landlord_name': lease.unit.property.landlord.name if lease.unit.property.landlord else '',
+                'currency': lease.currency,
+                'balance_bf': balance_bf,
+                'amount_charged': amount_charged,
+                'amount_due': amount_due,
+                'amount_paid': amount_paid,
+                'carried_forward': carried_forward,
+            })
+
+        def _summary(rows):
+            return {
+                'total_balance_bf': round(sum(r['balance_bf'] for r in rows), 2),
+                'total_charged': round(sum(r['amount_charged'] for r in rows), 2),
+                'total_due': round(sum(r['amount_due'] for r in rows), 2),
+                'total_paid': round(sum(r['amount_paid'] for r in rows), 2),
+                'total_carried_forward': round(sum(r['carried_forward'] for r in rows), 2),
+            }
+
+        if property_id:
+            # Level 2 — individual lease rows
+            first = lease_rows[0] if lease_rows else {}
+            return Response({
+                'level': 2,
+                'property_id': int(property_id),
+                'property_name': first.get('property_name', ''),
+                'landlord_name': first.get('landlord_name', ''),
+                'currency': first.get('currency', ''),
+                'period': {'start': start_date, 'end': end_date},
+                'leases': lease_rows,
+                'summary': _summary(lease_rows),
+            })
+
+        # Level 1 — group by property
+        from collections import defaultdict
+        by_prop = defaultdict(list)
+        for row in lease_rows:
+            by_prop[row['property_id']].append(row)
+
+        properties = []
+        for pid, rows in by_prop.items():
+            first = rows[0]
+            s = _summary(rows)
+            properties.append({
+                'property_id': pid,
+                'property_name': first['property_name'],
+                'landlord_id': first['landlord_id'],
+                'landlord_name': first['landlord_name'],
+                'currency': first['currency'],
+                'lease_count': len(rows),
+                'balance_bf': s['total_balance_bf'],
+                'amount_charged': s['total_charged'],
+                'amount_due': s['total_due'],
+                'amount_paid': s['total_paid'],
+                'carried_forward': s['total_carried_forward'],
+            })
+
+        properties.sort(key=lambda p: p['property_name'])
+
+        return Response({
+            'level': 1,
+            'period': {'start': start_date, 'end': end_date},
+            'properties': properties,
+            'summary': _summary(lease_rows),
+        })
+
+
 class LandlordStatementView(APIView):
     """Landlord Statement - Income and disbursements."""
     permission_classes = [IsAuthenticated]
@@ -1148,6 +1306,78 @@ class CommissionReportView(APIView):
                     'values': [i['commission'] for i in income_type_list]
                 }
             }
+        })
+
+
+class CommissionPropertyDrilldownView(APIView):
+    """Drill-down for a single property's commission by revenue type."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        property_id = request.query_params.get('property_id')
+        if not property_id:
+            return Response({'error': 'property_id is required'}, status=400)
+
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date', str(timezone.now().date()))
+
+        try:
+            prop = Property.objects.select_related('landlord').get(id=property_id)
+        except Property.DoesNotExist:
+            return Response({'error': 'Property not found'}, status=404)
+
+        commission_rate = float(prop.landlord.commission_rate) if prop.landlord and prop.landlord.commission_rate else 0
+
+        # Group receipts by invoice_type for this property
+        rcpt_filter = {
+            'invoice__unit__property_id': property_id,
+            'invoice__isnull': False,
+            'date__lte': end_date,
+        }
+        if start_date:
+            rcpt_filter['date__gte'] = start_date
+
+        invoice_type_choices = dict(Invoice._meta.get_field('invoice_type').flatchoices)
+
+        type_qs = Receipt.objects.filter(**rcpt_filter).values(
+            'invoice__invoice_type'
+        ).annotate(
+            collected=Coalesce(Sum('amount'), Decimal('0'))
+        ).order_by('-collected')
+
+        total_revenue = Decimal('0')
+        revenue_types = []
+        for row in type_qs:
+            collected = float(row['collected'])
+            commission = round(collected * commission_rate / 100, 2)
+            total_revenue += Decimal(str(collected))
+            revenue_types.append({
+                'revenue_type': row['invoice__invoice_type'],
+                'revenue_type_display': invoice_type_choices.get(row['invoice__invoice_type'], row['invoice__invoice_type']),
+                'revenue': collected,
+                'commission_rate': commission_rate,
+                'commission': commission,
+            })
+
+        total_revenue_f = float(total_revenue)
+        total_commission = round(total_revenue_f * commission_rate / 100, 2)
+
+        # Calculate percentage of total for each type
+        for item in revenue_types:
+            item['percentage'] = round(item['revenue'] / total_revenue_f * 100, 1) if total_revenue_f else 0
+
+        return Response({
+            'level': 2,
+            'property_id': int(property_id),
+            'property_name': prop.name,
+            'landlord_name': prop.landlord.name if prop.landlord else '',
+            'commission_rate': commission_rate,
+            'period': {'start': start_date or '', 'end': end_date},
+            'revenue_types': revenue_types,
+            'summary': {
+                'total_revenue': total_revenue_f,
+                'total_commission': total_commission,
+            },
         })
 
 

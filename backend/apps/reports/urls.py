@@ -2,9 +2,11 @@
 from django.urls import path
 from .views import (
     DashboardStatsView, TrialBalanceReportView, IncomeStatementView,
-    BalanceSheetView, VacancyReportView, RentRollView, LandlordStatementView,
+    BalanceSheetView, VacancyReportView, RentRollView, RentRolloverView,
+    LandlordStatementView,
     CashFlowStatementView, AgedAnalysisView, TenantAccountSummaryView,
-    DepositAccountSummaryView, CommissionReportView, LeaseChargeSummaryView,
+    DepositAccountSummaryView, CommissionReportView, CommissionPropertyDrilldownView,
+    LeaseChargeSummaryView,
     ReceiptListingView, CommissionAnalysisView, IncomeItemAnalysisView,
     IncomeItemDrilldownView, IncomeExpenditureReportView,
     DataVisualizationView, StreamingCSVExportView
@@ -21,6 +23,7 @@ urlpatterns = [
     # Property reports
     path('vacancy/', VacancyReportView.as_view(), name='vacancy-report'),
     path('rent-roll/', RentRollView.as_view(), name='rent-roll'),
+    path('rent-rollover/', RentRolloverView.as_view(), name='rent-rollover'),
 
     # Landlord & Tenant reports
     path('landlord-statement/', LandlordStatementView.as_view(), name='landlord-statement'),
@@ -32,6 +35,7 @@ urlpatterns = [
 
     # Commission reports
     path('commission/', CommissionReportView.as_view(), name='commission-report'),
+    path('commission/drilldown/', CommissionPropertyDrilldownView.as_view(), name='commission-property-drilldown'),
     path('commission-analysis/', CommissionAnalysisView.as_view(), name='commission-analysis'),
 
     # Billing reports

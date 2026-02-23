@@ -209,6 +209,18 @@ export function exportReport(
       ]
       break
 
+    case 'rent-rollover':
+      exportData = data?.properties || data?.leases || []
+      columns = [
+        { key: 'property_name', header: 'Property' },
+        { key: 'balance_bf', header: 'Balance B/F', format: formatNumber },
+        { key: 'amount_charged', header: 'Amount Charged', format: formatNumber },
+        { key: 'amount_due', header: 'Amount Due', format: formatNumber },
+        { key: 'amount_paid', header: 'Amount Paid', format: formatNumber },
+        { key: 'carried_forward', header: 'Carried Forward', format: formatNumber },
+      ]
+      break
+
     case 'commission-property':
       exportData = data?.by_property || []
       columns = [

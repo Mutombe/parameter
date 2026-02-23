@@ -201,6 +201,8 @@ export const reportsApi = {
     api.get('/reports/cash-flow/', { params }),
   vacancy: () => api.get('/reports/vacancy/'),
   rentRoll: () => api.get('/reports/rent-roll/'),
+  rentRollover: (params: { start_date: string; end_date: string; property_id?: number }) =>
+    api.get('/reports/rent-rollover/', { params }),
   landlordStatement: (params: { landlord_id: number; start_date?: string; end_date?: string }) =>
     api.get('/reports/landlord-statement/', { params }),
   // New reports
@@ -212,6 +214,8 @@ export const reportsApi = {
     api.get('/reports/deposit-summary/', { params }),
   commission: (params?: { start_date?: string; end_date?: string; landlord_id?: number }) =>
     api.get('/reports/commission/', { params }),
+  commissionPropertyDrilldown: (params: { property_id: number; start_date?: string; end_date?: string }) =>
+    api.get('/reports/commission/drilldown/', { params }),
   commissionAnalysis: (params?: { start_date?: string; end_date?: string }) =>
     api.get('/reports/commission-analysis/', { params }),
   leaseCharges: (params?: { property_id?: number; landlord_id?: number; start_date?: string; end_date?: string }) =>
