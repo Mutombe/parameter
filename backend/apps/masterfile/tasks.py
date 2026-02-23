@@ -227,10 +227,21 @@ def send_landlord_monthly_reports_all_tenants():
     return {'total_reports': total_reports}
 
 
+def _compute_receipt_commission(receipt, landlord):
+    """Compute commission for a single receipt based on income type or landlord rate."""
+    from decimal import Decimal
+    if receipt.income_type and receipt.income_type.is_commissionable:
+        rate = receipt.income_type.default_commission_rate / 100
+    else:
+        rate = landlord.commission_rate / 100
+    return receipt.amount * rate
+
+
 def _send_landlord_monthly_reports():
-    """Send monthly income reports to landlords in the current tenant schema."""
-    from apps.masterfile.models import Landlord, Property
-    from apps.billing.models import Receipt, Invoice, Expense
+    """Send monthly account summary reports to landlords in the current tenant schema."""
+    from decimal import Decimal
+    from apps.masterfile.models import Landlord, Unit
+    from apps.billing.models import Receipt, Expense
     from apps.notifications.utils import send_landlord_email
     from django.db.models import Sum
 
@@ -261,69 +272,99 @@ def _send_landlord_monthly_reports():
         if not properties.exists():
             continue
 
-        property_lines = []
-        total_rent_collected = 0
-        total_invoiced = 0
-        total_expenses = 0
-        total_units = 0
-        total_occupied = 0
+        units = Unit.objects.filter(property__in=properties)
+        cur = landlord.preferred_currency
 
-        for prop in properties:
-            unit_ids = list(prop.units.values_list('id', flat=True))
-            total_units += len(unit_ids)
-            total_occupied += prop.units.filter(is_occupied=True).count()
+        # ── Opening balance (all transactions before period) ──
+        prior_receipts = Receipt.objects.filter(
+            invoice__unit__in=units, date__lt=period_start,
+        ).select_related('income_type')
+        prior_receipts_total = Decimal('0')
+        prior_commissions_total = Decimal('0')
+        for r in prior_receipts:
+            prior_receipts_total += r.amount
+            prior_commissions_total += _compute_receipt_commission(r, landlord)
 
-            # Rent collected (receipts)
-            collected = Receipt.objects.filter(
-                invoice__unit_id__in=unit_ids,
-                date__gte=period_start,
-                date__lte=period_end
-            ).aggregate(total=Sum('amount'))['total'] or 0
+        prior_expenses_total = Expense.objects.filter(
+            payee_type='landlord', payee_id=landlord.id,
+            status='paid', date__lt=period_start,
+        ).aggregate(t=Sum('amount'))['t'] or Decimal('0')
 
-            # Invoiced amount
-            invoiced = Invoice.objects.filter(
-                unit_id__in=unit_ids,
-                period_start__gte=period_start,
-                period_start__lte=period_end,
-                invoice_type='rent'
-            ).aggregate(total=Sum('amount'))['total'] or 0
+        opening_balance = prior_receipts_total - prior_commissions_total - prior_expenses_total
 
-            # Expenses on property
-            expenses = Expense.objects.filter(
-                payee_type='landlord',
-                payee_id=landlord.id,
-                date__gte=period_start,
-                date__lte=period_end,
-                status='paid'
-            ).aggregate(total=Sum('amount'))['total'] or 0
+        # ── Period transactions ──
+        period_receipts = Receipt.objects.filter(
+            invoice__unit__in=units,
+            date__gte=period_start, date__lte=period_end,
+        ).select_related(
+            'tenant', 'invoice', 'invoice__unit', 'invoice__lease', 'income_type',
+        ).order_by('date')
 
-            total_rent_collected += float(collected)
-            total_invoiced += float(invoiced)
-            total_expenses += float(expenses)
+        period_expenses = Expense.objects.filter(
+            payee_type='landlord', payee_id=landlord.id,
+            status='paid',
+            date__gte=period_start, date__lte=period_end,
+        ).order_by('date')
 
-            vacant = prop.units.filter(is_occupied=False).count()
-            property_lines.append(
-                f"  {prop.name}:\n"
-                f"    - Units: {len(unit_ids)} ({len(unit_ids) - vacant} occupied, {vacant} vacant)\n"
-                f"    - Invoiced: {landlord.preferred_currency} {float(invoiced):,.2f}\n"
-                f"    - Collected: {landlord.preferred_currency} {float(collected):,.2f}\n"
-                f"    - Expenses: {landlord.preferred_currency} {float(expenses):,.2f}"
+        total_receipts = Decimal('0')
+        total_commissions = Decimal('0')
+        total_expenses = Decimal('0')
+        transaction_lines = []
+
+        for rcpt in period_receipts:
+            lease_id = rcpt.invoice.lease_id if rcpt.invoice else ''
+            tenant_name = rcpt.tenant.name if rcpt.tenant else ''
+            unit_str = str(rcpt.invoice.unit) if rcpt.invoice and rcpt.invoice.unit else ''
+            ref = rcpt.reference or rcpt.receipt_number
+
+            # Credit line
+            transaction_lines.append(
+                f"  {rcpt.date}  CREDIT  {cur} {float(rcpt.amount):>12,.2f}  "
+                f"Payment Leaseid-{lease_id} -{tenant_name} {unit_str} Ref-{ref}"
             )
+            total_receipts += rcpt.amount
 
-        net_income = total_rent_collected - total_expenses
-        commission = total_rent_collected * float(landlord.commission_rate) / 100
-        net_after_commission = net_income - commission
+            # Commission debit line
+            comm = _compute_receipt_commission(rcpt, landlord)
+            if comm > 0:
+                income_type_name = rcpt.income_type.name if rcpt.income_type else 'Levy'
+                transaction_lines.append(
+                    f"  {rcpt.date}  DEBIT   {cur} {float(comm):>12,.2f}  "
+                    f"{income_type_name} Commission Leaseid-{lease_id} Ref-{ref}"
+                )
+                total_commissions += comm
+
+        for exp in period_expenses:
+            ref_part = f" ref-{exp.reference}" if exp.reference else ''
+            transaction_lines.append(
+                f"  {exp.date}  DEBIT   {cur} {float(exp.amount):>12,.2f}  "
+                f"Journal{ref_part}-{exp.description}"
+            )
+            total_expenses += exp.amount
+
+        total_debits = total_commissions + total_expenses
+        total_credits = total_receipts
+        closing_balance = opening_balance + total_credits - total_debits
+
+        # ── Occupancy stats ──
+        total_units = units.count()
+        total_occupied = units.filter(is_occupied=True).count()
 
         report = f"""Dear {landlord.name},
 
-Here is your monthly income report for {month_name}.
+Here is your Landlord Account Summary for {month_name}.
+Transaction Period: {period_start} - {period_end}
 
-=== SUMMARY ===
-- Total Invoiced: {landlord.preferred_currency} {total_invoiced:,.2f}
-- Total Collected: {landlord.preferred_currency} {total_rent_collected:,.2f}
-- Total Expenses: {landlord.preferred_currency} {total_expenses:,.2f}
-- Management Fee ({landlord.commission_rate}%): {landlord.preferred_currency} {commission:,.2f}
-- Net Income: {landlord.preferred_currency} {net_after_commission:,.2f}
+=== ACCOUNT SUMMARY ===
+- Opening Balance:      {cur} {float(opening_balance):>12,.2f}
+- Total Receipts:       {cur} {float(total_credits):>12,.2f}
+- Total Commissions:    {cur} {float(total_commissions):>12,.2f}
+- Total Expenses:       {cur} {float(total_expenses):>12,.2f}
+- Total Debits:         {cur} {float(total_debits):>12,.2f}
+- Closing Balance:      {cur} {float(closing_balance):>12,.2f}
+
+=== TRANSACTIONS ===
+{chr(10).join(transaction_lines) if transaction_lines else '  No transactions this period.'}
 
 === OCCUPANCY ===
 - Total Units: {total_units}
@@ -331,10 +372,7 @@ Here is your monthly income report for {month_name}.
 - Vacant: {total_units - total_occupied}
 - Occupancy Rate: {(total_occupied / total_units * 100) if total_units > 0 else 0:.0f}%
 
-=== PROPERTY BREAKDOWN ===
-{chr(10).join(property_lines)}
-
-For detailed statements, please contact your property management office.
+For detailed statements, please log in to your property management portal.
 
 Best regards,
 Property Management
@@ -342,7 +380,7 @@ Powered by Parameter.co.zw
 """
 
         try:
-            send_landlord_email(landlord, f'Monthly Income Report - {month_name}', report)
+            send_landlord_email(landlord, f'Landlord Account Summary - {month_name}', report)
             reports_sent += 1
         except Exception as e:
             logger.error(f"Failed to send report to {landlord.name}: {e}")

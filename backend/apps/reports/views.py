@@ -570,13 +570,21 @@ class RentRolloverView(APIView):
 
 
 class LandlordStatementView(APIView):
-    """Landlord Statement - Income and disbursements."""
+    """Landlord Account Summary - receipts, commissions and expenses."""
     permission_classes = [IsAuthenticated]
+
+    def _compute_commission(self, receipt, landlord):
+        """Compute commission for a single receipt."""
+        if receipt.income_type and receipt.income_type.is_commissionable:
+            rate = receipt.income_type.default_commission_rate / 100
+        else:
+            rate = landlord.commission_rate / 100
+        return receipt.amount * rate
 
     def get(self, request):
         landlord_id = request.query_params.get('landlord_id')
         start_date = request.query_params.get('start_date')
-        end_date = request.query_params.get('end_date', timezone.now().date())
+        end_date = request.query_params.get('end_date')
 
         if not landlord_id:
             return Response({'error': 'landlord_id is required'}, status=400)
@@ -586,102 +594,147 @@ class LandlordStatementView(APIView):
         except Landlord.DoesNotExist:
             return Response({'error': 'Landlord not found'}, status=404)
 
-        # Get properties
+        # Default date range: current month
+        today = timezone.now().date()
+        if not end_date:
+            end_date = today
+        else:
+            end_date = date.fromisoformat(str(end_date))
+        if not start_date:
+            start_date = end_date.replace(day=1)
+        else:
+            start_date = date.fromisoformat(str(start_date))
+
+        # Get properties and units
         properties = landlord.properties.all()
         units = Unit.objects.filter(property__in=properties)
 
-        # Get invoices for these units
-        invoices = Invoice.objects.filter(unit__in=units)
-        if start_date:
-            invoices = invoices.filter(date__gte=start_date)
-        invoices = invoices.filter(date__lte=end_date)
+        # ── Opening balance (all transactions before start_date) ──
+        prior_receipts = Receipt.objects.filter(
+            invoice__unit__in=units, date__lt=start_date
+        ).select_related('income_type')
+        prior_receipts_total = Decimal('0')
+        prior_commissions_total = Decimal('0')
+        for r in prior_receipts:
+            prior_receipts_total += r.amount
+            prior_commissions_total += self._compute_commission(r, landlord)
 
-        # Combine invoice aggregations into a single query
-        invoice_agg = invoices.aggregate(
-            total_invoiced=Sum('total_amount'),
-            total_collected=Sum('amount_paid'),
-        )
-        total_invoiced = invoice_agg['total_invoiced'] or 0
-        total_collected = invoice_agg['total_collected'] or 0
+        prior_expenses_total = Expense.objects.filter(
+            payee_type='landlord', payee_id=landlord.id,
+            status='paid', date__lt=start_date,
+        ).aggregate(t=Sum('amount'))['t'] or Decimal('0')
 
-        # Calculate commission
-        commission_rate = landlord.commission_rate / 100
-        commission = total_collected * commission_rate
-        net_payable = total_collected - commission
+        opening_balance = prior_receipts_total - prior_commissions_total - prior_expenses_total
 
-        # Build transaction list (matching TenantAccountSummaryView pattern)
-        ordered_invoices = invoices.order_by('date').select_related('unit', 'unit__property', 'tenant')
-        receipts = Receipt.objects.filter(invoice__unit__in=units)
-        if start_date:
-            receipts = receipts.filter(date__gte=start_date)
-        receipts = receipts.filter(date__lte=end_date).order_by('date').select_related(
-            'tenant', 'invoice', 'invoice__unit', 'invoice__unit__property'
-        )
+        # ── Period transactions ──
+        receipts = Receipt.objects.filter(
+            invoice__unit__in=units,
+            date__gte=start_date, date__lte=end_date,
+        ).select_related(
+            'tenant', 'invoice', 'invoice__unit', 'invoice__unit__property',
+            'invoice__lease', 'income_type',
+        ).order_by('date')
+
+        expenses = Expense.objects.filter(
+            payee_type='landlord', payee_id=landlord.id,
+            status='paid',
+            date__gte=start_date, date__lte=end_date,
+        ).order_by('date')
 
         transactions = []
-
-        for inv in ordered_invoices:
-            transactions.append({
-                'date': str(inv.date),
-                'type': 'invoice',
-                'reference': inv.invoice_number,
-                'description': inv.description or f'{inv.get_invoice_type_display()} - {inv.period_start} to {inv.period_end}',
-                'property': inv.unit.property.name if inv.unit else '',
-                'unit': str(inv.unit) if inv.unit else '',
-                'tenant': inv.tenant.name if inv.tenant else '',
-                'debit': float(inv.total_amount),
-                'credit': 0,
-            })
+        total_receipts = Decimal('0')
+        total_commissions = Decimal('0')
+        total_expenses = Decimal('0')
+        txn_id = 0
 
         for rcpt in receipts:
+            lease_id = rcpt.invoice.lease_id if rcpt.invoice else ''
+            tenant_name = rcpt.tenant.name if rcpt.tenant else ''
+            unit_str = str(rcpt.invoice.unit) if rcpt.invoice and rcpt.invoice.unit else ''
+            ref = rcpt.reference or rcpt.receipt_number
+
+            # Credit: receipt
+            txn_id += 1
             transactions.append({
+                'id': txn_id,
                 'date': str(rcpt.date),
                 'type': 'receipt',
-                'reference': rcpt.receipt_number,
-                'description': rcpt.description or f'Payment - {rcpt.get_payment_method_display()}',
-                'property': rcpt.invoice.unit.property.name if rcpt.invoice and rcpt.invoice.unit else '',
-                'unit': str(rcpt.invoice.unit) if rcpt.invoice and rcpt.invoice.unit else '',
-                'tenant': rcpt.tenant.name if rcpt.tenant else '',
+                'description': f"Payment Leaseid-{lease_id} -{tenant_name} {unit_str} Ref-{ref}",
                 'debit': 0,
                 'credit': float(rcpt.amount),
             })
+            total_receipts += rcpt.amount
 
-        # Sort by date
-        transactions.sort(key=lambda x: x['date'])
+            # Debit: commission for this receipt
+            commission_amt = self._compute_commission(rcpt, landlord)
+            if commission_amt > 0:
+                income_type_name = rcpt.income_type.name if rcpt.income_type else 'Levy'
+                txn_id += 1
+                transactions.append({
+                    'id': txn_id,
+                    'date': str(rcpt.date),
+                    'type': 'commission',
+                    'description': f"{income_type_name} Commission Leaseid-{lease_id} Ref-{ref}",
+                    'debit': float(commission_amt),
+                    'credit': 0,
+                })
+                total_commissions += commission_amt
 
-        # Calculate running balance
-        running_balance = Decimal('0')
+        for exp in expenses:
+            txn_id += 1
+            ref_part = f" ref-{exp.reference}" if exp.reference else ''
+            transactions.append({
+                'id': txn_id,
+                'date': str(exp.date),
+                'type': 'expense',
+                'description': f"Journal{ref_part}-{exp.description}",
+                'debit': float(exp.amount),
+                'credit': 0,
+            })
+            total_expenses += exp.amount
+
+        # Sort all transactions by date, keeping receipt before its commission
+        transactions.sort(key=lambda x: (x['date'], x['id']))
+
+        # Running balance: opening + credits - debits
+        running_balance = opening_balance
         for txn in transactions:
-            running_balance += Decimal(str(txn['debit'])) - Decimal(str(txn['credit']))
+            running_balance += Decimal(str(txn['credit'])) - Decimal(str(txn['debit']))
             txn['balance'] = float(running_balance)
 
+        total_debits = total_commissions + total_expenses
+        total_credits = total_receipts
+
         return Response({
-            'report_name': 'Landlord Statement',
+            'report_name': 'Landlord Account Summary',
             'landlord': {
                 'id': landlord.id,
                 'code': landlord.code,
-                'name': landlord.name
+                'name': landlord.name,
             },
             'period': {
-                'start': start_date,
-                'end': str(end_date)
+                'start': str(start_date),
+                'end': str(end_date),
             },
             'summary': {
-                'total_invoiced': float(total_invoiced),
-                'total_collected': float(total_collected),
+                'opening_balance': float(opening_balance),
+                'total_receipts': float(total_receipts),
+                'total_commissions': float(total_commissions),
+                'total_expenses': float(total_expenses),
+                'total_debits': float(total_debits),
+                'total_credits': float(total_credits),
+                'closing_balance': float(running_balance),
                 'commission_rate': float(landlord.commission_rate),
-                'commission_amount': float(commission),
-                'net_payable': float(net_payable)
             },
             'properties': [
                 {
                     'name': p.name,
-                    'units': p.unit_count
+                    'units': p.unit_count,
                 }
                 for p in properties.annotate(unit_count=Count('units'))
             ],
             'transactions': transactions,
-            'transaction_count': len(transactions)
+            'transaction_count': len(transactions),
         })
 
 

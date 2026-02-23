@@ -2381,6 +2381,10 @@ function TenantAccountReport() {
 
 function LandlordAccountReport() {
   const [selectedLandlord, setSelectedLandlord] = useState<string>('')
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10)
+  })
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10))
 
   const { data: landlordsData } = useQuery({
     queryKey: ['landlords-list'],
@@ -2388,22 +2392,35 @@ function LandlordAccountReport() {
   })
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['landlord-account', selectedLandlord],
-    queryFn: () => reportsApi.landlordStatement({ landlord_id: Number(selectedLandlord) }).then(r => r.data),
+    queryKey: ['landlord-account', selectedLandlord, startDate, endDate],
+    queryFn: () => reportsApi.landlordStatement({ landlord_id: Number(selectedLandlord), start_date: startDate, end_date: endDate }).then(r => r.data),
     enabled: !!selectedLandlord,
   })
 
   if (data) currentReportData = data
 
   const landlordsList: any[] = Array.isArray(landlordsData) ? landlordsData : []
-  const transactions = data?.transactions || []
-  const summary = data?.summary || {}
+  const transactions: any[] = data?.transactions || []
+  const summary: any = data?.summary || {}
+
+  const typeBadge = (type: string) => {
+    if (type === 'receipt') return 'bg-emerald-50 text-emerald-700'
+    if (type === 'commission') return 'bg-amber-50 text-amber-700'
+    return 'bg-red-50 text-red-700'
+  }
+
+  const balanceColor = (val: number) => val < 0 ? 'text-red-600' : 'text-emerald-700'
 
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <div className="flex flex-wrap items-center gap-4">
           <AsyncSelect label="Landlord" placeholder="Select a landlord..." value={selectedLandlord} onChange={(val) => setSelectedLandlord(String(val))} options={landlordsList.map((l: any) => ({ value: l.id, label: `${l.code ? l.code + ' - ' : ''}${l.name}` }))} searchable className="min-w-[280px]" />
+          <div className="flex items-center gap-2 mt-4">
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <span className="text-gray-400 text-sm">to</span>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+          </div>
           {selectedLandlord && (
             <button onClick={() => refetch()} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors mt-4">
               <RefreshCw className="w-5 h-5" />
@@ -2415,74 +2432,82 @@ function LandlordAccountReport() {
       {!selectedLandlord ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500">
           <PiBuildingApartmentLight className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-          <p className="font-medium">Select a landlord to view their statement</p>
+          <p className="font-medium">Select a landlord to view their account summary</p>
         </div>
       ) : isLoading ? <SkeletonReport /> : data ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <p className="text-sm text-gray-500">Total Invoiced</p>
-              <p className="text-xl font-bold text-gray-900">{formatCurrency(summary.total_invoiced || 0)}</p>
+              <p className="text-sm text-gray-500">Opening Balance</p>
+              <p className={cn('text-xl font-bold', balanceColor(summary.opening_balance || 0))}>{formatCurrency(summary.opening_balance || 0)}</p>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <p className="text-sm text-gray-500">Total Collected</p>
-              <p className="text-xl font-bold text-emerald-600">{formatCurrency(summary.total_collected || 0)}</p>
+              <p className="text-sm text-gray-500">Total Receipts</p>
+              <p className="text-xl font-bold text-emerald-600">{formatCurrency(summary.total_credits || 0)}</p>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <p className="text-sm text-gray-500">Commission ({summary.commission_rate || 0}%)</p>
-              <p className="text-xl font-bold text-indigo-600">{formatCurrency(summary.commission_amount || 0)}</p>
+              <p className="text-sm text-gray-500">Total Debits</p>
+              <p className="text-xl font-bold text-red-600">{formatCurrency(summary.total_debits || 0)}</p>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <p className="text-sm text-gray-500">Net Payable</p>
-              <p className="text-xl font-bold text-primary-600">{formatCurrency(summary.net_payable || 0)}</p>
+              <p className="text-sm text-gray-500">Closing Balance</p>
+              <p className={cn('text-xl font-bold', balanceColor(summary.closing_balance || 0))}>{formatCurrency(summary.closing_balance || 0)}</p>
             </div>
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-900">Transactions <span className="text-sm font-normal text-gray-400">({transactions.length})</span></h2>
+              {data.period && <span className="text-xs text-gray-400">Period: {data.period.start} - {data.period.end}</span>}
             </div>
-            {transactions.length === 0 ? (
-              <div className="p-12 text-center text-gray-500">
-                <FileText className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-                <p className="font-medium">No transactions found</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Description</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Debit</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Credit</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {/* Balance brought forward row */}
+                  <tr className="bg-gray-50/50">
+                    <td className="px-4 py-3 text-sm text-gray-600">{data.period?.start}</td>
+                    <td className="px-4 py-3 text-sm"></td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-700">Balance brought forward</td>
+                    <td className="px-4 py-3 text-sm text-right text-gray-300">-</td>
+                    <td className="px-4 py-3 text-sm text-right text-gray-300">-</td>
+                    <td className={cn('px-4 py-3 text-sm text-right font-bold tabular-nums', balanceColor(summary.opening_balance || 0))}>{formatCurrency(summary.opening_balance || 0)}</td>
+                  </tr>
+                  {transactions.map((txn: any, idx: number) => (
+                    <motion.tr key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.01 }} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 text-sm text-gray-600">{txn.date}</td>
+                      <td className="px-4 py-3 text-sm">
+                        <span className={cn('px-2 py-0.5 rounded text-xs font-medium', typeBadge(txn.type))}>{txn.type}</span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{txn.description}</td>
+                      <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums">{txn.debit > 0 ? <span className="text-red-600">{formatCurrency(txn.debit)}</span> : <span className="text-gray-300">-</span>}</td>
+                      <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums">{txn.credit > 0 ? <span className="text-emerald-600">{formatCurrency(txn.credit)}</span> : <span className="text-gray-300">-</span>}</td>
+                      <td className={cn('px-4 py-3 text-sm text-right font-bold tabular-nums', balanceColor(txn.balance))}>{formatCurrency(txn.balance)}</td>
+                    </motion.tr>
+                  ))}
+                </tbody>
+                {/* Totals footer */}
+                {transactions.length > 0 && (
+                  <tfoot className="bg-gray-50 border-t-2 border-gray-300">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Reference</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Property</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Unit</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Tenant</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Debit</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Credit</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Balance</th>
+                      <td className="px-4 py-3 text-sm font-bold text-gray-900" colSpan={3}>Totals</td>
+                      <td className="px-4 py-3 text-sm text-right font-bold tabular-nums text-red-600">{formatCurrency(summary.total_debits || 0)}</td>
+                      <td className="px-4 py-3 text-sm text-right font-bold tabular-nums text-emerald-600">{formatCurrency(summary.total_credits || 0)}</td>
+                      <td className={cn('px-4 py-3 text-sm text-right font-bold tabular-nums', balanceColor(summary.closing_balance || 0))}>{formatCurrency(summary.closing_balance || 0)}</td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {transactions.map((txn: any, idx: number) => (
-                      <motion.tr key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.01 }} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 text-sm text-gray-600">{txn.date}</td>
-                        <td className="px-4 py-3 text-sm">
-                          <span className={cn('px-2 py-0.5 rounded text-xs font-medium', txn.type === 'invoice' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700')}>{txn.type}</span>
-                        </td>
-                        <td className="px-4 py-3 text-sm font-mono text-primary-600">{txn.reference}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{txn.property}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{txn.unit}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{txn.tenant}</td>
-                        <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums">{txn.debit > 0 ? <span className="text-blue-600">{formatCurrency(txn.debit)}</span> : <span className="text-gray-300">-</span>}</td>
-                        <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums">{txn.credit > 0 ? <span className="text-emerald-600">{formatCurrency(txn.credit)}</span> : <span className="text-gray-300">-</span>}</td>
-                        <td className="px-4 py-3 text-sm text-right font-bold tabular-nums text-gray-900">{formatCurrency(txn.balance)}</td>
-                      </motion.tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  </tfoot>
+                )}
+              </table>
+            </div>
           </div>
         </>
       ) : null}
