@@ -1555,7 +1555,7 @@ class IncomeItemAnalysisView(APIView):
         # Build analysis matrix: income_type x bank_account
         matrix = {}
         income_types = set()
-        bank_accounts = set()
+        bank_accounts = {}  # bank_name -> bank_id
         totals_by_type = {}
         totals_by_bank = {}
         grand_total = Decimal('0')
@@ -1563,10 +1563,12 @@ class IncomeItemAnalysisView(APIView):
         for rcpt in receipts:
             inv_type = rcpt.invoice.invoice_type if rcpt.invoice else 'other'
             inv_type_display = rcpt.invoice.get_invoice_type_display() if rcpt.invoice else 'Other'
+            bank_id = rcpt.bank_account_id if rcpt.bank_account else None
             bank_name = rcpt.bank_account.name if rcpt.bank_account else (rcpt.bank_name or 'Cash')
 
             income_types.add((inv_type, inv_type_display))
-            bank_accounts.add(bank_name)
+            if bank_name not in bank_accounts:
+                bank_accounts[bank_name] = bank_id
 
             matrix_key = (inv_type, bank_name)
             if matrix_key not in matrix:
@@ -1584,21 +1586,35 @@ class IncomeItemAnalysisView(APIView):
 
             grand_total += rcpt.amount
 
-        # Build matrix table
-        bank_list = sorted(bank_accounts)
+        # Build structured bank columns with id, key, label
+        bank_list = sorted(bank_accounts.keys())
+        bank_columns = []
+        for bank_name in bank_list:
+            key = f'bank_{bank_accounts[bank_name]}' if bank_accounts[bank_name] else bank_name.lower().replace(' ', '_')
+            bank_columns.append({
+                'key': key,
+                'label': bank_name,
+                'id': bank_accounts[bank_name],
+            })
+
         type_list = sorted(income_types, key=lambda x: x[1])
 
+        # Build flattened matrix rows (amounts at row[col.key])
         matrix_data = []
         for inv_type, inv_type_display in type_list:
             row = {
                 'income_type': inv_type,
                 'income_type_display': inv_type_display,
-                'banks': {},
                 'total': float(totals_by_type.get(inv_type, {}).get('amount', 0))
             }
-            for bank in bank_list:
-                row['banks'][bank] = float(matrix.get((inv_type, bank), 0))
+            for col in bank_columns:
+                row[col['key']] = float(matrix.get((inv_type, col['label']), 0))
             matrix_data.append(row)
+
+        # Build totals keyed by column key
+        totals = {'grand_total': float(grand_total)}
+        for col in bank_columns:
+            totals[col['key']] = float(totals_by_bank.get(col['label'], 0))
 
         return Response({
             'report_name': 'Income Item Analysis',
@@ -1624,7 +1640,8 @@ class IncomeItemAnalysisView(APIView):
                 for k, v in totals_by_bank.items()
             ],
             'matrix': matrix_data,
-            'bank_columns': bank_list,
+            'bank_columns': bank_columns,
+            'totals': totals,
             # Heatmap data for visualization
             'heatmap_data': {
                 'x_labels': bank_list,
@@ -1635,6 +1652,119 @@ class IncomeItemAnalysisView(APIView):
                 ]
             }
         })
+
+
+class IncomeItemDrilldownView(APIView):
+    """
+    Drill-down for Income Item Analysis.
+    Level 2: Income categories for a specific bank account.
+    Level 3: Individual receipts for a bank + income category.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        level = request.query_params.get('level', '2')
+        bank_account_id = request.query_params.get('bank_account_id')
+        income_type = request.query_params.get('income_type')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date', timezone.now().date())
+
+        if not bank_account_id:
+            return Response({'error': 'bank_account_id is required'}, status=400)
+
+        # Base queryset
+        receipts = Receipt.objects.filter(
+            bank_account_id=bank_account_id,
+            date__lte=end_date,
+        )
+        if start_date:
+            receipts = receipts.filter(date__gte=start_date)
+
+        # Get bank account name
+        try:
+            bank_account = BankAccount.objects.get(pk=bank_account_id)
+            bank_account_name = bank_account.name
+        except BankAccount.DoesNotExist:
+            return Response({'error': 'Bank account not found'}, status=404)
+
+        if level == '3':
+            # Level 3: Individual receipts for bank + income type
+            if not income_type:
+                return Response({'error': 'income_type is required for level 3'}, status=400)
+
+            receipts = receipts.filter(
+                invoice__invoice_type=income_type
+            ).select_related(
+                'tenant', 'invoice__property', 'invoice__unit', 'invoice'
+            ).order_by('-date')
+
+            receipt_list = []
+            total = Decimal('0')
+            for rcpt in receipts:
+                prop_name = ''
+                unit_name = ''
+                if rcpt.invoice:
+                    prop_name = rcpt.invoice.property.name if rcpt.invoice.property else ''
+                    unit_name = rcpt.invoice.unit.unit_number if rcpt.invoice.unit else ''
+                receipt_list.append({
+                    'date': str(rcpt.date),
+                    'receipt_number': rcpt.receipt_number,
+                    'property': prop_name,
+                    'unit': unit_name,
+                    'tenant': str(rcpt.tenant) if rcpt.tenant else '',
+                    'amount': float(rcpt.amount),
+                })
+                total += rcpt.amount
+
+            # Get display name for income type
+            income_type_display = income_type
+            for choice_val, choice_label in Invoice.InvoiceType.choices:
+                if choice_val == income_type:
+                    income_type_display = choice_label
+                    break
+
+            return Response({
+                'level': 3,
+                'bank_account_name': bank_account_name,
+                'income_type': income_type,
+                'income_type_display': income_type_display,
+                'receipts': receipt_list,
+                'total': float(total),
+                'transaction_count': len(receipt_list),
+            })
+
+        else:
+            # Level 2: Categories breakdown for a bank
+            receipts = receipts.select_related('invoice')
+            categories = {}
+            grand_total = Decimal('0')
+
+            for rcpt in receipts:
+                inv_type = rcpt.invoice.invoice_type if rcpt.invoice else 'other'
+                inv_type_display = rcpt.invoice.get_invoice_type_display() if rcpt.invoice else 'Other'
+
+                if inv_type not in categories:
+                    categories[inv_type] = {
+                        'income_type': inv_type,
+                        'income_type_display': inv_type_display,
+                        'transaction_count': 0,
+                        'total_amount': Decimal('0'),
+                    }
+                categories[inv_type]['transaction_count'] += 1
+                categories[inv_type]['total_amount'] += rcpt.amount
+                grand_total += rcpt.amount
+
+            cat_list = sorted(categories.values(), key=lambda x: x['income_type_display'])
+            for cat in cat_list:
+                cat['total_amount'] = float(cat['total_amount'])
+
+            return Response({
+                'level': 2,
+                'bank_account_name': bank_account_name,
+                'categories': cat_list,
+                'grand_total': float(grand_total),
+                'total_transactions': sum(c['transaction_count'] for c in cat_list),
+            })
 
 
 class IncomeExpenditureReportView(APIView):

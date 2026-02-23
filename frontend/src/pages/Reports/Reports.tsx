@@ -1968,9 +1968,32 @@ function LandlordAccountReport() {
 // ─── Bank to Income Report ───────────────────────────────────────────────────
 
 function BankToIncomeReport() {
+  const [drillState, setDrillState] = useState<{
+    level: 1 | 2 | 3
+    bankAccountId?: number
+    bankAccountName?: string
+    incomeType?: string
+    incomeTypeDisplay?: string
+  }>({ level: 1 })
+
+  // Level 1 data
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['bank-to-income'],
     queryFn: () => reportsApi.incomeItemAnalysis().then(r => r.data),
+  })
+
+  // Level 2 data
+  const { data: l2Data, isLoading: l2Loading } = useQuery({
+    queryKey: ['bank-to-income-l2', drillState.bankAccountId],
+    queryFn: () => reportsApi.incomeItemDrilldown({ level: 2, bank_account_id: drillState.bankAccountId! }).then(r => r.data),
+    enabled: drillState.level >= 2 && !!drillState.bankAccountId,
+  })
+
+  // Level 3 data
+  const { data: l3Data, isLoading: l3Loading } = useQuery({
+    queryKey: ['bank-to-income-l3', drillState.bankAccountId, drillState.incomeType],
+    queryFn: () => reportsApi.incomeItemDrilldown({ level: 3, bank_account_id: drillState.bankAccountId!, income_type: drillState.incomeType }).then(r => r.data),
+    enabled: drillState.level === 3 && !!drillState.bankAccountId && !!drillState.incomeType,
   })
 
   if (data) currentReportData = data
@@ -1999,6 +2022,229 @@ function BankToIncomeReport() {
     return 'text-gray-700'
   }
 
+  const handleBankClick = (bankId: number, bankName: string) => {
+    setDrillState({ level: 2, bankAccountId: bankId, bankAccountName: bankName })
+  }
+
+  const handleCellClick = (bankId: number, bankName: string, incomeType: string, incomeTypeDisplay: string) => {
+    setDrillState({ level: 3, bankAccountId: bankId, bankAccountName: bankName, incomeType, incomeTypeDisplay })
+  }
+
+  const handleCategoryClick = (incomeType: string, incomeTypeDisplay: string) => {
+    setDrillState(prev => ({ ...prev, level: 3, incomeType, incomeTypeDisplay }))
+  }
+
+  // Breadcrumb
+  const Breadcrumb = () => {
+    if (drillState.level === 1) return null
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-500 px-6 pt-4">
+        <button onClick={() => setDrillState({ level: 1 })} className="hover:text-gray-900 hover:underline transition-colors">
+          Income Source Summary
+        </button>
+        {drillState.level >= 2 && (
+          <>
+            <span>/</span>
+            <button
+              onClick={() => setDrillState({ level: 2, bankAccountId: drillState.bankAccountId, bankAccountName: drillState.bankAccountName })}
+              className={cn(drillState.level === 2 ? 'text-gray-900 font-medium' : 'hover:text-gray-900 hover:underline transition-colors')}
+            >
+              {drillState.bankAccountName}
+            </button>
+          </>
+        )}
+        {drillState.level === 3 && (
+          <>
+            <span>/</span>
+            <span className="text-gray-900 font-medium">{drillState.incomeTypeDisplay}</span>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  // Level 2: Bank drilldown
+  const renderLevel2 = () => {
+    if (l2Loading) return (
+      <div className="p-6 space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />)}
+      </div>
+    )
+    const categories = l2Data?.categories || []
+    if (categories.length === 0) return (
+      <div className="p-12 text-center text-gray-500">
+        <Landmark className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+        <p className="font-medium">No transactions found</p>
+        <p className="text-sm mt-1">No receipts for this bank account in the selected period</p>
+      </div>
+    )
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Income Category</th>
+              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Transactions</th>
+              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Gross Amount</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {categories.map((cat: any, idx: number) => (
+              <motion.tr
+                key={cat.income_type}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: idx * 0.03 }}
+                className="hover:bg-gray-50 transition-colors cursor-pointer"
+                onClick={() => handleCategoryClick(cat.income_type, cat.income_type_display)}
+              >
+                <td className="px-6 py-3 text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline">{cat.income_type_display}</td>
+                <td className="px-4 py-3 text-sm text-right tabular-nums text-gray-600">{cat.transaction_count}</td>
+                <td className="px-6 py-3 text-sm text-right font-semibold tabular-nums text-gray-900">{formatCurrency(cat.total_amount)}</td>
+              </motion.tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+            <tr className="font-bold">
+              <td className="px-6 py-3 text-sm text-gray-700">Total</td>
+              <td className="px-4 py-3 text-sm text-right tabular-nums text-gray-700">{l2Data?.total_transactions || 0}</td>
+              <td className="px-6 py-3 text-sm text-right tabular-nums text-gray-900">{formatCurrency(l2Data?.grand_total || 0)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    )
+  }
+
+  // Level 3: Receipt detail
+  const renderLevel3 = () => {
+    if (l3Loading) return (
+      <div className="p-6 space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />)}
+      </div>
+    )
+    const receipts = l3Data?.receipts || []
+    if (receipts.length === 0) return (
+      <div className="p-12 text-center text-gray-500">
+        <Receipt className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+        <p className="font-medium">No receipts found</p>
+        <p className="text-sm mt-1">No individual receipts match this filter</p>
+      </div>
+    )
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Receipt #</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Property</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Unit</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Tenant</th>
+              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Amount</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {receipts.map((rcpt: any, idx: number) => (
+              <motion.tr
+                key={idx}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: idx * 0.02 }}
+                className="hover:bg-gray-50 transition-colors"
+              >
+                <td className="px-6 py-3 text-sm text-gray-700">{formatDate(rcpt.date)}</td>
+                <td className="px-4 py-3 text-sm text-gray-600 font-mono">{rcpt.receipt_number}</td>
+                <td className="px-4 py-3 text-sm text-gray-700">{rcpt.property || '-'}</td>
+                <td className="px-4 py-3 text-sm text-gray-600">{rcpt.unit || '-'}</td>
+                <td className="px-4 py-3 text-sm text-gray-700">{rcpt.tenant || '-'}</td>
+                <td className="px-6 py-3 text-sm text-right font-semibold tabular-nums text-gray-900">{formatCurrency(rcpt.amount)}</td>
+              </motion.tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+            <tr className="font-bold">
+              <td colSpan={5} className="px-6 py-3 text-sm text-gray-700">
+                Total ({l3Data?.transaction_count || 0} transactions)
+              </td>
+              <td className="px-6 py-3 text-sm text-right tabular-nums text-gray-900">{formatCurrency(l3Data?.total || 0)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    )
+  }
+
+  // Level 1: Matrix table
+  const renderLevel1 = () => {
+    if (isLoading) return (
+      <div className="p-6 space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />)}
+      </div>
+    )
+    if (matrix.length === 0) return (
+      <div className="p-12 text-center text-gray-500">
+        <Landmark className="w-12 h-12 mx-auto text-gray-300 mb-4" />
+        <p className="font-medium">No data available</p>
+        <p className="text-sm mt-1">Record receipts to see bank vs income analysis</p>
+      </div>
+    )
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Income Type</th>
+              {bankColumns.map((col: any) => (
+                <th
+                  key={col.key}
+                  className="px-4 py-3 text-right text-xs font-semibold text-blue-600 uppercase cursor-pointer hover:text-blue-800 hover:underline"
+                  onClick={() => col.id && handleBankClick(col.id, col.label)}
+                >
+                  {col.label}
+                </th>
+              ))}
+              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Total</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {matrix.map((row: any, idx: number) => (
+              <motion.tr key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.02 }} className="hover:bg-gray-50 transition-colors">
+                <td className="px-6 py-3 text-sm font-medium text-gray-900">{row.income_type_display || row.income_type}</td>
+                {bankColumns.map((col: any) => {
+                  const val = row[col.key] || 0
+                  return (
+                    <td
+                      key={col.key}
+                      className={cn(
+                        "px-4 py-3 text-sm text-right font-semibold tabular-nums",
+                        heatColor(val),
+                        val > 0 && col.id ? 'cursor-pointer hover:underline' : ''
+                      )}
+                      onClick={() => val > 0 && col.id && handleCellClick(col.id, col.label, row.income_type, row.income_type_display || row.income_type)}
+                    >
+                      {val > 0 ? formatCurrency(val) : <span className="text-gray-300">-</span>}
+                    </td>
+                  )
+                })}
+                <td className="px-6 py-3 text-sm text-right font-bold tabular-nums text-gray-900">{formatCurrency(row.total || 0)}</td>
+              </motion.tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+            <tr className="font-bold">
+              <td className="px-6 py-3 text-sm text-gray-700">Total</td>
+              {bankColumns.map((col: any) => (
+                <td key={col.key} className="px-4 py-3 text-sm text-right tabular-nums text-gray-900">{formatCurrency(totals[col.key] || 0)}</td>
+              ))}
+              <td className="px-6 py-3 text-sm text-right tabular-nums text-gray-900">{formatCurrency(totals.grand_total || 0)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
       <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-4">
@@ -2009,59 +2255,14 @@ function BankToIncomeReport() {
             <p className="text-sm text-gray-500">Income distribution across bank accounts</p>
           </div>
         </div>
-        <button onClick={() => refetch()} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"><RefreshCw className="w-5 h-5" /></button>
+        <button onClick={() => { setDrillState({ level: 1 }); refetch() }} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"><RefreshCw className="w-5 h-5" /></button>
       </div>
 
-      {isLoading ? (
-        <div className="p-6 space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />)}
-        </div>
-      ) : matrix.length === 0 ? (
-        <div className="p-12 text-center text-gray-500">
-          <Landmark className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-          <p className="font-medium">No data available</p>
-          <p className="text-sm mt-1">Record receipts to see bank vs income analysis</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Income Type</th>
-                {bankColumns.map((col: any) => (
-                  <th key={col.key} className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">{col.label}</th>
-                ))}
-                <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {matrix.map((row: any, idx: number) => (
-                <motion.tr key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.02 }} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-3 text-sm font-medium text-gray-900">{row.income_type}</td>
-                  {bankColumns.map((col: any) => {
-                    const val = row[col.key] || 0
-                    return (
-                      <td key={col.key} className={cn("px-4 py-3 text-sm text-right font-semibold tabular-nums", heatColor(val))}>
-                        {val > 0 ? formatCurrency(val) : <span className="text-gray-300">-</span>}
-                      </td>
-                    )
-                  })}
-                  <td className="px-6 py-3 text-sm text-right font-bold tabular-nums text-gray-900">{formatCurrency(row.total || 0)}</td>
-                </motion.tr>
-              ))}
-            </tbody>
-            <tfoot className="bg-gray-50 border-t-2 border-gray-300">
-              <tr className="font-bold">
-                <td className="px-6 py-3 text-sm text-gray-700">Total</td>
-                {bankColumns.map((col: any) => (
-                  <td key={col.key} className="px-4 py-3 text-sm text-right tabular-nums text-gray-900">{formatCurrency(totals[col.key] || 0)}</td>
-                ))}
-                <td className="px-6 py-3 text-sm text-right tabular-nums text-gray-900">{formatCurrency(totals.grand_total || 0)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
+      <Breadcrumb />
+
+      {drillState.level === 1 && renderLevel1()}
+      {drillState.level === 2 && renderLevel2()}
+      {drillState.level === 3 && renderLevel3()}
     </div>
   )
 }

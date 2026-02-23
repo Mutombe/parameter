@@ -6,7 +6,8 @@ from .views import (
     CashFlowStatementView, AgedAnalysisView, TenantAccountSummaryView,
     DepositAccountSummaryView, CommissionReportView, LeaseChargeSummaryView,
     ReceiptListingView, CommissionAnalysisView, IncomeItemAnalysisView,
-    IncomeExpenditureReportView, DataVisualizationView, StreamingCSVExportView
+    IncomeItemDrilldownView, IncomeExpenditureReportView,
+    DataVisualizationView, StreamingCSVExportView
 )
 
 urlpatterns = [
@@ -39,6 +40,7 @@ urlpatterns = [
 
     # Income reports
     path('income-item-analysis/', IncomeItemAnalysisView.as_view(), name='income-item-analysis'),
+    path('income-item-analysis/drilldown/', IncomeItemDrilldownView.as_view(), name='income-item-drilldown'),
     path('income-expenditure/', IncomeExpenditureReportView.as_view(), name='income-expenditure'),
 
     # Data visualization
