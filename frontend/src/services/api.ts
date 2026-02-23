@@ -438,11 +438,23 @@ export const bankTransactionApi = {
 export const bankReconciliationApi = {
   list: (params?: object) => api.get('/accounting/bank-reconciliations/', { params }),
   get: (id: number) => api.get(`/accounting/bank-reconciliations/${id}/`),
-  create: (data: object) => api.post('/accounting/bank-reconciliations/', data),
-  complete: (id: number) => api.post(`/accounting/bank-reconciliations/${id}/complete/`),
-  exportExcel: (id: number) => api.get(`/accounting/bank-reconciliations/${id}/export_excel/`, {
-    responseType: 'blob'
-  }),
+  create: (data: { bank_account: number; month: number; year: number;
+                    statement_balance: number; notes?: string }) =>
+    api.post('/accounting/bank-reconciliations/', data),
+  workspace: (id: number) =>
+    api.get(`/accounting/bank-reconciliations/${id}/workspace/`),
+  toggleItem: (id: number, itemId: number) =>
+    api.post(`/accounting/bank-reconciliations/${id}/toggle_item/`, { item_id: itemId }),
+  selectAll: (id: number) =>
+    api.post(`/accounting/bank-reconciliations/${id}/select_all/`),
+  deselectAll: (id: number) =>
+    api.post(`/accounting/bank-reconciliations/${id}/deselect_all/`),
+  updateBalance: (id: number, statementBalance: number) =>
+    api.patch(`/accounting/bank-reconciliations/${id}/`, { statement_balance: statementBalance }),
+  complete: (id: number) =>
+    api.post(`/accounting/bank-reconciliations/${id}/complete/`),
+  exportExcel: (id: number) =>
+    api.get(`/accounting/bank-reconciliations/${id}/export_excel/`, { responseType: 'blob' }),
   summary: () => api.get('/accounting/bank-reconciliations/summary/'),
 }
 

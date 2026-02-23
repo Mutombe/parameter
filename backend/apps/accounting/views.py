@@ -14,8 +14,8 @@ from django.utils import timezone
 from .models import (
     ChartOfAccount, ExchangeRate, Journal, JournalEntry,
     GeneralLedger, AuditTrail, FiscalPeriod, BankAccount,
-    BankTransaction, BankReconciliation, ExpenseCategory,
-    JournalReallocation, IncomeType
+    BankTransaction, BankReconciliation, ReconciliationItem,
+    ExpenseCategory, JournalReallocation, IncomeType
 )
 from .serializers import (
     ChartOfAccountSerializer, ExchangeRateSerializer,
@@ -23,6 +23,7 @@ from .serializers import (
     GeneralLedgerSerializer, AuditTrailSerializer, FiscalPeriodSerializer,
     TrialBalanceSerializer, BankAccountSerializer, BankTransactionSerializer,
     BankTransactionUploadSerializer, BankReconciliationSerializer,
+    ReconciliationCreateSerializer, ReconciliationWorkspaceSerializer,
     ExpenseCategorySerializer, JournalReallocationSerializer,
     ReallocationCreateSerializer, IncomeTypeSerializer
 )
@@ -653,8 +654,8 @@ class BankTransactionViewSet(viewsets.ModelViewSet):
 
 class BankReconciliationViewSet(viewsets.ModelViewSet):
     """
-    Bank Reconciliation management.
-    Supports creating, completing, and exporting reconciliations.
+    Sage-style Bank Reconciliation management.
+    Supports creating with auto-populated items, checkbox toggling, and completing.
     """
     queryset = BankReconciliation.objects.select_related(
         'bank_account', 'created_by', 'completed_by'
@@ -666,23 +667,234 @@ class BankReconciliationViewSet(viewsets.ModelViewSet):
     ordering_fields = ['period_end', 'period_start', 'created_at', 'statement_balance']
     ordering = ['-period_end']
 
-    def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return ReconciliationCreateSerializer
+        return BankReconciliationSerializer
+
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        """Create a new Sage-style reconciliation with auto-populated items."""
+        import calendar
+        serializer = ReconciliationCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        bank_account = serializer.validated_data['bank_account']
+        month = serializer.validated_data['month']
+        year = serializer.validated_data['year']
+        statement_balance = serializer.validated_data['statement_balance']
+        notes = serializer.validated_data.get('notes', '')
+
+        # Check no existing DRAFT for same bank+month+year
+        existing = BankReconciliation.objects.filter(
+            bank_account=bank_account, month=month, year=year, status='draft'
+        ).first()
+        if existing:
+            return Response(
+                {'error': f'A draft reconciliation already exists for {calendar.month_name[month]} {year}. Please complete or delete it first.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Compute period_start and period_end
+        _, last_day = calendar.monthrange(year, month)
+        from datetime import date
+        period_start = date(year, month, 1)
+        period_end = date(year, month, last_day)
+
+        # Compute book_balance from GL
+        gl_balance = GeneralLedger.objects.filter(
+            account=bank_account.gl_account,
+            date__lte=period_end
+        ).aggregate(
+            total_debit=Sum('debit_amount'),
+            total_credit=Sum('credit_amount')
+        )
+        total_debit = gl_balance['total_debit'] or Decimal('0')
+        total_credit = gl_balance['total_credit'] or Decimal('0')
+        book_balance = total_debit - total_credit
+
+        # Create the reconciliation
+        recon = BankReconciliation.objects.create(
+            bank_account=bank_account,
+            month=month,
+            year=year,
+            period_start=period_start,
+            period_end=period_end,
+            statement_balance=statement_balance,
+            book_balance=book_balance,
+            notes=notes,
+            created_by=request.user,
+        )
+
+        # Populate ReconciliationItem rows
+        # Receipts (money in)
+        from apps.billing.models import Receipt
+        receipts = Receipt.objects.filter(
+            bank_account=bank_account,
+            date__gte=period_start,
+            date__lte=period_end,
+            journal__isnull=False,
+        ).select_related('tenant', 'invoice')
+
+        receipt_items = []
+        for r in receipts:
+            receipt_items.append(ReconciliationItem(
+                reconciliation=recon,
+                item_type='receipt',
+                receipt=r,
+                date=r.date,
+                reference=r.receipt_number,
+                description=f'{r.tenant.name} - {r.get_payment_method_display()}',
+                amount=r.amount,
+            ))
+        if receipt_items:
+            ReconciliationItem.objects.bulk_create(receipt_items)
+
+        # Payments (money out) — GL credits to bank's GL account
+        gl_payments = GeneralLedger.objects.filter(
+            account=bank_account.gl_account,
+            credit_amount__gt=0,
+            date__gte=period_start,
+            date__lte=period_end,
+        ).select_related('journal_entry', 'journal_entry__journal')
+
+        payment_items = []
+        for gl in gl_payments:
+            journal = gl.journal_entry.journal if gl.journal_entry else None
+            payment_items.append(ReconciliationItem(
+                reconciliation=recon,
+                item_type='payment',
+                gl_entry=gl,
+                date=gl.date,
+                reference=journal.reference if journal else '',
+                description=gl.description,
+                amount=gl.credit_amount,
+            ))
+        if payment_items:
+            ReconciliationItem.objects.bulk_create(payment_items)
+
+        # Return full workspace
+        recon = BankReconciliation.objects.select_related(
+            'bank_account', 'created_by', 'completed_by'
+        ).prefetch_related('items').get(pk=recon.pk)
+        return Response(
+            ReconciliationWorkspaceSerializer(recon).data,
+            status=status.HTTP_201_CREATED
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        """Allow updating statement_balance on DRAFT reconciliations."""
+        recon = self.get_object()
+        if recon.status != 'draft':
+            return Response(
+                {'error': 'Only draft reconciliations can be updated'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        statement_balance = request.data.get('statement_balance')
+        if statement_balance is not None:
+            recon.statement_balance = Decimal(str(statement_balance))
+            recon.save(update_fields=['statement_balance', 'updated_at'])
+        recon = BankReconciliation.objects.select_related(
+            'bank_account',
+        ).prefetch_related('items').get(pk=recon.pk)
+        return Response(ReconciliationWorkspaceSerializer(recon).data)
+
+    @action(detail=True, methods=['post'])
+    def toggle_item(self, request, pk=None):
+        """Toggle a single reconciliation item's is_reconciled state."""
+        reconciliation = self.get_object()
+        if reconciliation.status != 'draft':
+            return Response(
+                {'error': 'Cannot modify a completed reconciliation'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        item_id = request.data.get('item_id')
+        if not item_id:
+            return Response(
+                {'error': 'item_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            item = reconciliation.items.get(id=item_id)
+        except ReconciliationItem.DoesNotExist:
+            return Response(
+                {'error': 'Item not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        item.is_reconciled = not item.is_reconciled
+        item.reconciled_at = timezone.now() if item.is_reconciled else None
+        item.save(update_fields=['is_reconciled', 'reconciled_at'])
+
+        # Recompute summary
+        all_items = list(reconciliation.items.all())
+        reconciled_count = sum(1 for i in all_items if i.is_reconciled)
+        unreconciled_count = sum(1 for i in all_items if not i.is_reconciled)
+
+        unticked_payments = sum(i.amount for i in all_items if i.item_type == 'payment' and not i.is_reconciled)
+        unticked_receipts = sum(i.amount for i in all_items if i.item_type == 'receipt' and not i.is_reconciled)
+        diff = (reconciliation.statement_balance - reconciliation.book_balance) + unticked_payments - unticked_receipts
+
+        return Response({
+            'item_id': item.id,
+            'is_reconciled': item.is_reconciled,
+            'difference': str(diff),
+            'is_balanced': abs(diff) < Decimal('0.01'),
+            'reconciled_count': reconciled_count,
+            'unreconciled_count': unreconciled_count,
+        })
+
+    @action(detail=True, methods=['post'])
+    def select_all(self, request, pk=None):
+        """Mark all items as reconciled."""
+        reconciliation = self.get_object()
+        if reconciliation.status != 'draft':
+            return Response(
+                {'error': 'Cannot modify a completed reconciliation'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        now = timezone.now()
+        reconciliation.items.filter(is_reconciled=False).update(
+            is_reconciled=True, reconciled_at=now
+        )
+        recon = BankReconciliation.objects.select_related(
+            'bank_account',
+        ).prefetch_related('items').get(pk=reconciliation.pk)
+        return Response(ReconciliationWorkspaceSerializer(recon).data)
+
+    @action(detail=True, methods=['post'])
+    def deselect_all(self, request, pk=None):
+        """Mark all items as unreconciled."""
+        reconciliation = self.get_object()
+        if reconciliation.status != 'draft':
+            return Response(
+                {'error': 'Cannot modify a completed reconciliation'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        reconciliation.items.filter(is_reconciled=True).update(
+            is_reconciled=False, reconciled_at=None
+        )
+        recon = BankReconciliation.objects.select_related(
+            'bank_account',
+        ).prefetch_related('items').get(pk=reconciliation.pk)
+        return Response(ReconciliationWorkspaceSerializer(recon).data)
+
+    @action(detail=True, methods=['get'])
+    def workspace(self, request, pk=None):
+        """Get full workspace data for a reconciliation."""
+        reconciliation = BankReconciliation.objects.select_related(
+            'bank_account', 'created_by', 'completed_by'
+        ).prefetch_related('items').get(pk=self.get_object().pk)
+        return Response(ReconciliationWorkspaceSerializer(reconciliation).data)
 
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
-        """Complete the reconciliation."""
+        """Complete the reconciliation. Allows non-zero difference (user requirement)."""
         reconciliation = self.get_object()
 
         if reconciliation.status == 'completed':
             return Response(
                 {'error': 'Reconciliation is already completed'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if not reconciliation.is_balanced:
-            return Response(
-                {'error': f'Reconciliation is not balanced. Difference: {reconciliation.difference}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -694,7 +906,7 @@ class BankReconciliationViewSet(viewsets.ModelViewSet):
         # Update bank account
         reconciliation.bank_account.last_reconciled_date = reconciliation.period_end
         reconciliation.bank_account.last_reconciled_balance = reconciliation.statement_balance
-        reconciliation.bank_account.save()
+        reconciliation.bank_account.save(update_fields=['last_reconciled_date', 'last_reconciled_balance', 'updated_at'])
 
         AuditTrail.objects.create(
             action='reconciliation_completed',
@@ -702,8 +914,9 @@ class BankReconciliationViewSet(viewsets.ModelViewSet):
             record_id=reconciliation.id,
             changes={
                 'bank_account': reconciliation.bank_account.name,
-                'period_end': str(reconciliation.period_end),
-                'statement_balance': str(reconciliation.statement_balance)
+                'period': f'{reconciliation.month}/{reconciliation.year}',
+                'statement_balance': str(reconciliation.statement_balance),
+                'difference': str(reconciliation.difference),
             },
             user=request.user
         )
@@ -714,47 +927,35 @@ class BankReconciliationViewSet(viewsets.ModelViewSet):
     def export_excel(self, request, pk=None):
         """Export reconciliation to Excel/CSV format."""
         reconciliation = self.get_object()
+        items = reconciliation.items.all()
 
-        # Create CSV response
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = f'attachment; filename="reconciliation_{reconciliation.id}.csv"'
 
         writer = csv.writer(response)
 
-        # Header info
         writer.writerow(['Bank Reconciliation Report'])
         writer.writerow([''])
         writer.writerow(['Bank Account:', reconciliation.bank_account.name])
         writer.writerow(['Period:', f'{reconciliation.period_start} to {reconciliation.period_end}'])
         writer.writerow([''])
-
-        # Balances
         writer.writerow(['Statement Balance:', reconciliation.statement_balance])
         writer.writerow(['Book Balance:', reconciliation.book_balance])
-        writer.writerow(['Outstanding Deposits:', reconciliation.outstanding_deposits])
-        writer.writerow(['Outstanding Withdrawals:', reconciliation.outstanding_withdrawals])
-        writer.writerow(['Adjusted Book Balance:', reconciliation.adjusted_book_balance or reconciliation.book_balance])
         writer.writerow(['Difference:', reconciliation.difference])
         writer.writerow(['Status:', 'Balanced' if reconciliation.is_balanced else 'Unbalanced'])
         writer.writerow([''])
 
-        # Unreconciled transactions
-        writer.writerow(['Unreconciled Transactions'])
-        writer.writerow(['Date', 'Reference', 'Description', 'Type', 'Amount'])
+        writer.writerow(['Reconciliation Items'])
+        writer.writerow(['Date', 'Reference', 'Description', 'Type', 'Amount', 'Reconciled'])
 
-        unreconciled = BankTransaction.objects.filter(
-            bank_account=reconciliation.bank_account,
-            transaction_date__lte=reconciliation.period_end,
-            status='unreconciled'
-        )
-
-        for trans in unreconciled:
+        for item in items:
             writer.writerow([
-                trans.transaction_date,
-                trans.reference,
-                trans.description,
-                trans.transaction_type,
-                trans.amount
+                item.date,
+                item.reference,
+                item.description,
+                item.item_type,
+                item.amount,
+                'Yes' if item.is_reconciled else 'No'
             ])
 
         return response

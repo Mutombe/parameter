@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -11,15 +11,55 @@ import {
   Clock,
   Download,
   Loader2,
-  Zap,
-  ArrowUpRight,
-  ArrowDownRight,
+  ArrowLeft,
+  CheckSquare,
+  Square,
+  X,
 } from 'lucide-react'
-import { bankReconciliationApi, bankTransactionApi, bankAccountApi } from '../../services/api'
+import { bankReconciliationApi, bankAccountApi } from '../../services/api'
 import { cn, formatCurrency, formatDate } from '../../lib/utils'
 import { showToast, parseApiError } from '../../lib/toast'
 import { Modal, ModalFooter, Tooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface ReconciliationItem {
+  id: number
+  item_type: 'receipt' | 'payment'
+  receipt: number | null
+  gl_entry: number | null
+  date: string
+  reference: string
+  description: string
+  amount: string
+  is_reconciled: boolean
+  reconciled_at: string | null
+}
+
+interface WorkspaceData {
+  id: number
+  bank_account: number
+  bank_account_name: string
+  bank_account_currency: string
+  month: number
+  year: number
+  period_start: string
+  period_end: string
+  statement_balance: string
+  book_balance: string
+  status: 'draft' | 'completed'
+  notes: string
+  difference: string
+  is_balanced: boolean
+  reconciled_count: number
+  unreconciled_count: number
+  total_payments: string
+  total_receipts: string
+  items: ReconciliationItem[]
+  created_at: string
+  completed_at: string | null
+}
 
 interface BankReconciliation {
   id: number
@@ -27,29 +67,15 @@ interface BankReconciliation {
   bank_account_name: string
   period_start: string
   period_end: string
+  month: number | null
+  year: number | null
   statement_balance: string
   book_balance: string
   difference: string
-  outstanding_deposits: string
-  outstanding_withdrawals: string
   status: 'draft' | 'completed'
   notes: string
   created_at: string
   completed_at: string | null
-}
-
-interface BankTransaction {
-  id: number
-  bank_account: number
-  bank_account_name: string
-  transaction_date: string
-  value_date: string
-  reference: string
-  description: string
-  transaction_type: string
-  amount: string
-  status: string
-  ai_match_confidence: number | null
 }
 
 interface BankAccount {
@@ -57,6 +83,7 @@ interface BankAccount {
   name: string
   bank_name: string
   account_number: string
+  currency: string
 }
 
 interface SummaryBankAccount {
@@ -73,33 +100,54 @@ interface ReconciliationSummary {
   unreconciled_difference: number
 }
 
-const emptyForm = {
-  bank_account: '',
-  period_start: '',
-  period_end: '',
-  statement_balance: '',
-  book_balance: '',
-  outstanding_deposits: '0.00',
-  outstanding_withdrawals: '0.00',
-  notes: '',
-}
+// ─── Month helpers ───────────────────────────────────────────────────────────
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+const currentYear = new Date().getFullYear()
+const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i)
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
+type ViewMode = 'list' | 'workspace'
 
 export default function BankReconciliation() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState(emptyForm)
-  const [bankFilter, setBankFilter] = useState<string>('')
 
-  // Queries
-  const { data: summaryData } = useQuery({
-    queryKey: ['bank-reconciliation-summary'],
-    queryFn: () => bankReconciliationApi.summary().then(r => r.data),
+  // View state
+  const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [activeReconciliationId, setActiveReconciliationId] = useState<number | null>(null)
+
+  // Modal state
+  const [showModal, setShowModal] = useState(false)
+  const [createForm, setCreateForm] = useState({
+    bank_account: '',
+    month: String(new Date().getMonth() + 1),
+    year: String(currentYear),
+    statement_balance: '',
+    notes: '',
   })
 
-  const { data: reconciliationsData, isLoading } = useQuery({
+  // Workspace local state (for optimistic updates)
+  const [localItems, setLocalItems] = useState<ReconciliationItem[]>([])
+  const [workspaceData, setWorkspaceData] = useState<WorkspaceData | null>(null)
+
+  // ─── Queries ─────────────────────────────────────────────────────────
+
+  const { data: summaryData, isLoading: summaryLoading } = useQuery({
+    queryKey: ['bank-reconciliation-summary'],
+    queryFn: () => bankReconciliationApi.summary().then(r => r.data),
+    enabled: viewMode === 'list',
+  })
+
+  const { data: reconciliationsData, isLoading: listLoading } = useQuery({
     queryKey: ['bank-reconciliations'],
     queryFn: () => bankReconciliationApi.list().then(r => r.data.results || r.data),
+    enabled: viewMode === 'list',
   })
 
   const { data: bankAccountsData } = useQuery({
@@ -107,56 +155,132 @@ export default function BankReconciliation() {
     queryFn: () => bankAccountApi.list().then(r => r.data.results || r.data),
   })
 
-  const { data: unreconciledData, isLoading: unreconciledLoading } = useQuery({
-    queryKey: ['unreconciled-transactions', bankFilter],
-    queryFn: () => bankTransactionApi.unreconciled(bankFilter ? { bank_account: Number(bankFilter) } : undefined).then(r => r.data.transactions || r.data.results || r.data),
-  })
-
   const summaries: ReconciliationSummary[] = Array.isArray(summaryData) ? summaryData : []
   const reconciliations: BankReconciliation[] = Array.isArray(reconciliationsData) ? reconciliationsData : []
   const bankAccounts: BankAccount[] = Array.isArray(bankAccountsData) ? bankAccountsData : []
-  const unreconciledTxns: BankTransaction[] = Array.isArray(unreconciledData) ? unreconciledData : []
+  const isLoading = summaryLoading || listLoading
 
-  // Mutations
+  // ─── Workspace loading ──────────────────────────────────────────────
+
+  const loadWorkspace = useCallback(async (id: number) => {
+    try {
+      const res = await bankReconciliationApi.workspace(id)
+      const data: WorkspaceData = res.data
+      setWorkspaceData(data)
+      setLocalItems(data.items)
+      setActiveReconciliationId(id)
+      setViewMode('workspace')
+    } catch (error) {
+      showToast.error(parseApiError(error))
+    }
+  }, [])
+
+  // ─── Client-side diff calculation ──────────────────────────────────
+
+  const diff = useMemo(() => {
+    if (!workspaceData) return 0
+    const statementBalance = parseFloat(workspaceData.statement_balance)
+    const bookBalance = parseFloat(workspaceData.book_balance)
+    const untickedPayments = localItems
+      .filter(i => i.item_type === 'payment' && !i.is_reconciled)
+      .reduce((s, i) => s + parseFloat(i.amount), 0)
+    const untickedReceipts = localItems
+      .filter(i => i.item_type === 'receipt' && !i.is_reconciled)
+      .reduce((s, i) => s + parseFloat(i.amount), 0)
+    return (statementBalance - bookBalance) + untickedPayments - untickedReceipts
+  }, [localItems, workspaceData])
+
+  const reconciledCount = useMemo(() => localItems.filter(i => i.is_reconciled).length, [localItems])
+  const unreconciledCount = useMemo(() => localItems.filter(i => !i.is_reconciled).length, [localItems])
+
+  // ─── Mutations ──────────────────────────────────────────────────────
+
   const createMutation = useMutation({
-    mutationFn: (data: typeof form) => {
-      const payload = {
-        ...data,
+    mutationFn: (data: typeof createForm) =>
+      bankReconciliationApi.create({
         bank_account: Number(data.bank_account),
-      }
-      return bankReconciliationApi.create(payload)
-    },
-    onSuccess: () => {
+        month: Number(data.month),
+        year: Number(data.year),
+        statement_balance: Number(data.statement_balance),
+        notes: data.notes,
+      }),
+    onSuccess: (response) => {
+      const data: WorkspaceData = response.data
+      setWorkspaceData(data)
+      setLocalItems(data.items)
+      setActiveReconciliationId(data.id)
+      setViewMode('workspace')
+      setShowModal(false)
+      setCreateForm({
+        bank_account: '',
+        month: String(new Date().getMonth() + 1),
+        year: String(currentYear),
+        statement_balance: '',
+        notes: '',
+      })
       queryClient.invalidateQueries({ queryKey: ['bank-reconciliations'] })
       queryClient.invalidateQueries({ queryKey: ['bank-reconciliation-summary'] })
-      showToast.success('Reconciliation created')
-      setShowModal(false)
-      setForm(emptyForm)
+      showToast.success(`Reconciliation created with ${data.items.length} items`)
     },
     onError: (error) => {
       showToast.error(parseApiError(error))
+    },
+  })
+
+  const handleToggle = useCallback((itemId: number) => {
+    if (!activeReconciliationId || workspaceData?.status !== 'draft') return
+
+    // 1. Optimistic update
+    setLocalItems(prev =>
+      prev.map(i =>
+        i.id === itemId ? { ...i, is_reconciled: !i.is_reconciled } : i
+      )
+    )
+
+    // 2. Fire API in background
+    bankReconciliationApi.toggleItem(activeReconciliationId, itemId).catch(() => {
+      // Revert on failure
+      setLocalItems(prev =>
+        prev.map(i =>
+          i.id === itemId ? { ...i, is_reconciled: !i.is_reconciled } : i
+        )
+      )
+      showToast.error('Failed to toggle item')
+    })
+  }, [activeReconciliationId, workspaceData?.status])
+
+  const selectAllMutation = useMutation({
+    mutationFn: () => bankReconciliationApi.selectAll(activeReconciliationId!),
+    onMutate: () => {
+      setLocalItems(prev => prev.map(i => ({ ...i, is_reconciled: true })))
+    },
+    onError: () => {
+      showToast.error('Failed to select all')
+      if (activeReconciliationId) loadWorkspace(activeReconciliationId)
+    },
+  })
+
+  const deselectAllMutation = useMutation({
+    mutationFn: () => bankReconciliationApi.deselectAll(activeReconciliationId!),
+    onMutate: () => {
+      setLocalItems(prev => prev.map(i => ({ ...i, is_reconciled: false })))
+    },
+    onError: () => {
+      showToast.error('Failed to deselect all')
+      if (activeReconciliationId) loadWorkspace(activeReconciliationId)
     },
   })
 
   const completeMutation = useMutation({
-    mutationFn: (id: number) => bankReconciliationApi.complete(id),
+    mutationFn: () => bankReconciliationApi.complete(activeReconciliationId!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bank-reconciliations'] })
       queryClient.invalidateQueries({ queryKey: ['bank-reconciliation-summary'] })
       showToast.success('Reconciliation completed')
-    },
-    onError: (error) => {
-      showToast.error(parseApiError(error))
-    },
-  })
-
-  const autoMatchMutation = useMutation({
-    mutationFn: (bankAccountId: number) => bankTransactionApi.autoMatch(bankAccountId),
-    onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['unreconciled-transactions'] })
-      queryClient.invalidateQueries({ queryKey: ['bank-reconciliation-summary'] })
-      const matched = response.data?.matched_count || 0
-      showToast.success(`Auto-matched ${matched} transaction${matched !== 1 ? 's' : ''}`)
+      setViewMode('list')
+      setActiveReconciliationId(null)
+      setWorkspaceData(null)
+      setLocalItems([])
     },
     onError: (error) => {
       showToast.error(parseApiError(error))
@@ -169,7 +293,7 @@ export default function BankReconciliation() {
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement('a')
       link.href = url
-      link.setAttribute('download', `reconciliation-${id}.xlsx`)
+      link.setAttribute('download', `reconciliation-${id}.csv`)
       document.body.appendChild(link)
       link.click()
       link.remove()
@@ -180,14 +304,229 @@ export default function BankReconciliation() {
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.bank_account || !form.period_start || !form.period_end) {
+    if (!createForm.bank_account || !createForm.statement_balance) {
       showToast.error('Please fill in all required fields')
       return
     }
-    createMutation.mutate(form)
+    createMutation.mutate(createForm)
   }
+
+  const closeWorkspace = () => {
+    setViewMode('list')
+    setActiveReconciliationId(null)
+    setWorkspaceData(null)
+    setLocalItems([])
+    queryClient.invalidateQueries({ queryKey: ['bank-reconciliations'] })
+    queryClient.invalidateQueries({ queryKey: ['bank-reconciliation-summary'] })
+  }
+
+  const formatMonthYear = (month: number | null, year: number | null, periodStart: string, periodEnd: string) => {
+    if (month && year) {
+      return `${MONTH_NAMES[month - 1]} ${year}`
+    }
+    return `${formatDate(periodStart)} — ${formatDate(periodEnd)}`
+  }
+
+  // ─── Workspace View ─────────────────────────────────────────────────
+
+  if (viewMode === 'workspace' && workspaceData) {
+    const isReadOnly = workspaceData.status === 'completed'
+
+    return (
+      <div className="space-y-4">
+        {/* Workspace Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={closeWorkspace}
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">
+                Bank Reconciliation — {workspaceData.bank_account_name}
+              </h1>
+              <p className="text-sm text-gray-500">
+                {MONTH_NAMES[(workspaceData.month || 1) - 1]} {workspaceData.year}
+                {isReadOnly && (
+                  <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full font-medium">
+                    Completed
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={closeWorkspace}
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Balance Summary Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Cash Book Balance</p>
+            <p className="text-lg font-bold text-gray-900 mt-1">
+              {formatCurrency(parseFloat(workspaceData.book_balance))}
+            </p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Statement Balance</p>
+            <p className="text-lg font-bold text-gray-900 mt-1">
+              {formatCurrency(parseFloat(workspaceData.statement_balance))}
+            </p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Unreconciled</p>
+            <p className="text-lg font-bold text-amber-600 mt-1">{unreconciledCount}</p>
+          </div>
+          <div className={cn(
+            "rounded-xl border p-4",
+            Math.abs(diff) < 0.01
+              ? "bg-green-50 border-green-200"
+              : "bg-red-50 border-red-200"
+          )}>
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Difference</p>
+            <p className={cn(
+              "text-lg font-bold mt-1",
+              Math.abs(diff) < 0.01 ? "text-green-700" : "text-red-700"
+            )}>
+              {formatCurrency(diff)}
+            </p>
+          </div>
+        </div>
+
+        {/* Bulk Actions */}
+        {!isReadOnly && (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => selectAllMutation.mutate()}
+              disabled={selectAllMutation.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 disabled:opacity-50"
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              Select All
+            </button>
+            <button
+              onClick={() => deselectAllMutation.mutate()}
+              disabled={deselectAllMutation.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 disabled:opacity-50"
+            >
+              <Square className="w-3.5 h-3.5" />
+              Deselect All
+            </button>
+            <div className="flex-1" />
+            <button
+              onClick={() => handleExport(workspaceData.id)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export
+            </button>
+            <button
+              onClick={() => completeMutation.mutate()}
+              disabled={completeMutation.isPending}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg disabled:opacity-50"
+            >
+              {completeMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+              <CheckCircle2 className="w-4 h-4" />
+              Complete Reconciliation
+            </button>
+          </div>
+        )}
+
+        {/* Items Table */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="w-12 px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase">
+                    <CheckSquare className="w-3.5 h-3.5 mx-auto text-gray-400" />
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Payments</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Receipts</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Reference</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Description</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {localItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                      No items found for this period. This means no posted receipts or GL payments
+                      were found for this bank account in {MONTH_NAMES[(workspaceData.month || 1) - 1]} {workspaceData.year}.
+                    </td>
+                  </tr>
+                ) : (
+                  localItems.map((item) => (
+                    <tr
+                      key={item.id}
+                      className={cn(
+                        "transition-colors",
+                        item.is_reconciled ? "bg-green-50/50" : "hover:bg-gray-50",
+                        !isReadOnly && "cursor-pointer"
+                      )}
+                      onClick={() => !isReadOnly && handleToggle(item.id)}
+                    >
+                      <td className="w-12 px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={item.is_reconciled}
+                          onChange={() => !isReadOnly && handleToggle(item.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          disabled={isReadOnly}
+                          className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer disabled:cursor-default"
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-medium text-gray-900">
+                        {item.item_type === 'payment' ? formatCurrency(parseFloat(item.amount)) : ''}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-medium text-gray-900">
+                        {item.item_type === 'receipt' ? formatCurrency(parseFloat(item.amount)) : ''}
+                      </td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-700">{item.reference || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{item.description}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{formatDate(item.date)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Footer Summary */}
+        <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 px-6 py-4">
+          <div className="flex items-center gap-6 text-sm">
+            <span className="text-gray-500">
+              Reconciled: <span className="font-medium text-green-600">{reconciledCount}</span>
+            </span>
+            <span className="text-gray-500">
+              Unreconciled: <span className="font-medium text-amber-600">{unreconciledCount}</span>
+            </span>
+            <span className="text-gray-500">
+              Total items: <span className="font-medium text-gray-900">{localItems.length}</span>
+            </span>
+          </div>
+          <div className={cn(
+            "text-lg font-bold",
+            Math.abs(diff) < 0.01 ? "text-green-700" : "text-red-700"
+          )}>
+            Diff = {formatCurrency(diff)}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── List View ──────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
@@ -196,11 +535,12 @@ export default function BankReconciliation() {
         <span>/</span>
         <span className="text-gray-900 font-medium">Bank Reconciliation</span>
       </nav>
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Bank Reconciliation</h1>
-          <p className="text-gray-500 mt-1">Match bank statements with book records</p>
+          <p className="text-gray-500 mt-1">Sage-style bank reconciliation with checkbox matching</p>
         </div>
         <button
           onClick={() => setShowModal(true)}
@@ -247,13 +587,13 @@ export default function BankReconciliation() {
                 </div>
               </div>
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm" title="Date of the most recent completed reconciliation">
+                <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">Last Reconciled</span>
                   <span className="text-gray-700 font-medium">
                     {summary.last_reconciled ? formatDate(summary.last_reconciled) : 'Never'}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-sm" title="Transactions not yet matched to bank statement entries">
+                <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">Pending Transactions</span>
                   <span className={cn(
                     "font-medium",
@@ -262,7 +602,7 @@ export default function BankReconciliation() {
                     {summary.pending_transactions}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-sm" title="Difference between statement balance and book balance">
+                <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">Difference</span>
                   <span className={cn(
                     "font-medium",
@@ -277,13 +617,13 @@ export default function BankReconciliation() {
         </div>
       )}
 
-      {/* Reconciliation List */}
+      {/* Reconciliation History */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100">
           <h2 className="text-lg font-semibold text-gray-900">Reconciliation History</h2>
         </div>
 
-        {isLoading ? (
+        {listLoading ? (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -334,14 +674,15 @@ export default function BankReconciliation() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {reconciliations.map((rec, index) => {
-                  const diff = parseFloat(rec.difference || '0')
+                  const recDiff = parseFloat(rec.difference || '0')
                   return (
                     <motion.tr
                       key={rec.id}
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.02 }}
-                      className="hover:bg-gray-50 transition-colors"
+                      className="hover:bg-gray-50 transition-colors cursor-pointer"
+                      onClick={() => loadWorkspace(rec.id)}
                     >
                       <td className="px-6 py-4 text-sm font-medium text-gray-900">
                         {rec.bank_account_name}
@@ -349,7 +690,7 @@ export default function BankReconciliation() {
                       <td className="px-6 py-4 text-sm text-gray-600">
                         <div className="flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                          {formatDate(rec.period_start)} — {formatDate(rec.period_end)}
+                          {formatMonthYear(rec.month, rec.year, rec.period_start, rec.period_end)}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-right font-medium text-gray-900">
@@ -360,12 +701,12 @@ export default function BankReconciliation() {
                       </td>
                       <td className={cn(
                         "px-6 py-4 text-sm text-right font-medium",
-                        diff === 0 ? "text-green-600" : "text-red-600"
+                        Math.abs(recDiff) < 0.01 ? "text-green-600" : "text-red-600"
                       )}>
-                        {formatCurrency(diff)}
+                        {formatCurrency(recDiff)}
                       </td>
                       <td className="px-6 py-4 text-center">
-                        <Tooltip content={rec.status === 'completed' ? "Reconciliation has been finalized" : "Reconciliation is still in progress"}>
+                        <Tooltip content={rec.status === 'completed' ? "Reconciliation has been finalized" : "Click to open workspace"}>
                           <span className={cn(
                             "px-2.5 py-1 text-xs rounded-full font-medium inline-flex items-center gap-1",
                             rec.status === 'completed'
@@ -383,17 +724,8 @@ export default function BankReconciliation() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          {rec.status === 'draft' && (
-                            <button
-                              onClick={() => completeMutation.mutate(rec.id)}
-                              disabled={completeMutation.isPending}
-                              className="text-xs px-3 py-1.5 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 font-medium"
-                            >
-                              Complete
-                            </button>
-                          )}
                           <button
-                            onClick={() => handleExport(rec.id)}
+                            onClick={(e) => { e.stopPropagation(); handleExport(rec.id) }}
                             className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
                             title="Export reconciliation"
                           >
@@ -410,151 +742,22 @@ export default function BankReconciliation() {
         )}
       </div>
 
-      {/* Unreconciled Transactions */}
-      <div className="bg-white rounded-xl border border-gray-200">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Unreconciled Transactions</h2>
-          <div className="flex items-center gap-3">
-            <AsyncSelect
-              placeholder="All Bank Accounts"
-              value={bankFilter}
-              onChange={(val) => setBankFilter(String(val))}
-              options={bankAccounts.map((acc) => ({ value: acc.id, label: acc.name }))}
-              searchable
-              clearable
-              className="min-w-[200px]"
-            />
-            {bankFilter && (
-              <button
-                onClick={() => autoMatchMutation.mutate(Number(bankFilter))}
-                disabled={autoMatchMutation.isPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 disabled:opacity-50"
-              >
-                {autoMatchMutation.isPending ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Zap className="w-3.5 h-3.5" />
-                )}
-                Auto Match
-              </button>
-            )}
-          </div>
-        </div>
-
-        {unreconciledLoading ? (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Reference</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Description</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Type</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Amount</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase">AI Match</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {[...Array(4)].map((_, i) => (
-                  <tr key={i} className="animate-pulse">
-                    <td className="px-6 py-3"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
-                    <td className="px-6 py-3"><div className="h-4 w-24 bg-gray-200 rounded" /></td>
-                    <td className="px-6 py-3"><div className="h-4 w-48 bg-gray-200 rounded" /></td>
-                    <td className="px-6 py-3 text-center"><div className="h-5 w-16 bg-gray-200 rounded-full mx-auto" /></td>
-                    <td className="px-6 py-3"><div className="h-4 w-20 bg-gray-200 rounded ml-auto" /></td>
-                    <td className="px-6 py-3 text-center"><div className="h-5 w-10 bg-gray-200 rounded-full mx-auto" /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : unreconciledTxns.length === 0 ? (
-          <div className="p-12 text-center">
-            <CheckCircle2 className="w-12 h-12 text-green-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">All caught up</h3>
-            <p className="text-gray-500">No unreconciled transactions found.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Reference</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Description</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Type</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Amount</th>
-                  <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase">AI Match</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {unreconciledTxns.map((txn, index) => (
-                  <motion.tr
-                    key={txn.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.02 }}
-                    className="hover:bg-gray-50 transition-colors"
-                  >
-                    <td className="px-6 py-3 text-sm text-gray-600">{formatDate(txn.transaction_date)}</td>
-                    <td className="px-6 py-3 text-sm font-medium text-gray-900">{txn.reference || '—'}</td>
-                    <td className="px-6 py-3 text-sm text-gray-600 max-w-xs truncate">{txn.description}</td>
-                    <td className="px-6 py-3 text-center">
-                      <span className={cn(
-                        "inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full font-medium",
-                        txn.transaction_type === 'credit'
-                          ? "bg-green-100 text-green-700"
-                          : "bg-red-100 text-red-700"
-                      )}>
-                        {txn.transaction_type === 'credit' ? (
-                          <ArrowDownRight className="w-3 h-3" />
-                        ) : (
-                          <ArrowUpRight className="w-3 h-3" />
-                        )}
-                        {txn.transaction_type}
-                      </span>
-                    </td>
-                    <td className="px-6 py-3 text-sm text-right font-medium text-gray-900">
-                      {formatCurrency(parseFloat(txn.amount))}
-                    </td>
-                    <td className="px-6 py-3 text-center">
-                      {txn.ai_match_confidence !== null && txn.ai_match_confidence !== undefined ? (
-                        <span className={cn(
-                          "text-xs font-medium px-2 py-0.5 rounded-full",
-                          txn.ai_match_confidence >= 0.8 ? "bg-green-100 text-green-700" :
-                          txn.ai_match_confidence >= 0.5 ? "bg-amber-100 text-amber-700" :
-                          "bg-gray-100 text-gray-600"
-                        )}>
-                          {Math.round(txn.ai_match_confidence * 100)}%
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
-                    </td>
-                  </motion.tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
       {/* New Reconciliation Modal */}
       <Modal
         isOpen={showModal}
-        onClose={() => { setShowModal(false); setForm(emptyForm) }}
+        onClose={() => { setShowModal(false) }}
         title="New Reconciliation"
-        description="Create a new bank reconciliation"
+        description="Select a bank account and month to reconcile"
         icon={Scale}
         size="lg"
       >
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleCreateSubmit}>
           <div className="space-y-4">
             <AsyncSelect
               label="Bank Account"
-              placeholder="— Select Bank Account —"
-              value={form.bank_account}
-              onChange={(val) => setForm({ ...form, bank_account: String(val) })}
+              placeholder="-- Select Bank Account --"
+              value={createForm.bank_account}
+              onChange={(val) => setCreateForm({ ...createForm, bank_account: String(val) })}
               options={bankAccounts.map((acc) => ({ value: acc.id, label: `${acc.name} (${acc.bank_name})` }))}
               required
               searchable
@@ -563,91 +766,59 @@ export default function BankReconciliation() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Period Start <span className="text-red-500">*</span>
+                  Month <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="date"
-                  value={form.period_start}
-                  onChange={(e) => setForm({ ...form, period_start: e.target.value })}
+                <select
+                  value={createForm.month}
+                  onChange={(e) => setCreateForm({ ...createForm, month: e.target.value })}
                   className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                   required
-                />
+                >
+                  {MONTH_NAMES.map((name, idx) => (
+                    <option key={idx + 1} value={idx + 1}>{name}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Period End <span className="text-red-500">*</span>
+                  Year <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="date"
-                  value={form.period_end}
-                  onChange={(e) => setForm({ ...form, period_end: e.target.value })}
+                <select
+                  value={createForm.year}
+                  onChange={(e) => setCreateForm({ ...createForm, year: e.target.value })}
                   className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                   required
-                />
+                >
+                  {yearOptions.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Statement Balance <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.statement_balance}
-                  onChange={(e) => setForm({ ...form, statement_balance: e.target.value })}
-                  placeholder="0.00"
-                  className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Book Balance <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.book_balance}
-                  onChange={(e) => setForm({ ...form, book_balance: e.target.value })}
-                  placeholder="0.00"
-                  className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Outstanding Deposits</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.outstanding_deposits}
-                  onChange={(e) => setForm({ ...form, outstanding_deposits: e.target.value })}
-                  placeholder="0.00"
-                  className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Outstanding Withdrawals</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.outstanding_withdrawals}
-                  onChange={(e) => setForm({ ...form, outstanding_withdrawals: e.target.value })}
-                  placeholder="0.00"
-                  className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Statement Balance <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={createForm.statement_balance}
+                onChange={(e) => setCreateForm({ ...createForm, statement_balance: e.target.value })}
+                placeholder="Enter the bank statement closing balance"
+                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                required
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                The book balance will be computed automatically from the General Ledger.
+              </p>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
               <textarea
-                value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                value={createForm.notes}
+                onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })}
                 placeholder="Optional notes about this reconciliation"
                 rows={2}
                 className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -658,7 +829,7 @@ export default function BankReconciliation() {
           <ModalFooter>
             <button
               type="button"
-              onClick={() => { setShowModal(false); setForm(emptyForm) }}
+              onClick={() => setShowModal(false)}
               className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg"
             >
               Cancel
@@ -669,7 +840,7 @@ export default function BankReconciliation() {
               className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg disabled:opacity-50 flex items-center gap-2"
             >
               {createMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-              Create Reconciliation
+              Create & Open Workspace
             </button>
           </ModalFooter>
         </form>

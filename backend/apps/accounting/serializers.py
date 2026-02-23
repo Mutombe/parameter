@@ -4,8 +4,8 @@ from rest_framework import serializers
 from .models import (
     ChartOfAccount, ExchangeRate, Journal, JournalEntry,
     GeneralLedger, AuditTrail, FiscalPeriod, BankAccount,
-    BankTransaction, BankReconciliation, ExpenseCategory,
-    JournalReallocation, IncomeType
+    BankTransaction, BankReconciliation, ReconciliationItem,
+    ExpenseCategory, JournalReallocation, IncomeType
 )
 
 
@@ -266,7 +266,7 @@ class BankReconciliationSerializer(serializers.ModelSerializer):
         model = BankReconciliation
         fields = [
             'id', 'bank_account', 'bank_account_name', 'period_start',
-            'period_end', 'statement_balance', 'book_balance',
+            'period_end', 'month', 'year', 'statement_balance', 'book_balance',
             'adjusted_book_balance', 'outstanding_deposits',
             'outstanding_withdrawals', 'status', 'notes', 'difference',
             'is_balanced', 'created_by', 'created_by_name',
@@ -275,6 +275,64 @@ class BankReconciliationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['status', 'completed_at', 'completed_by',
                            'created_at', 'updated_at']
+
+
+class ReconciliationItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReconciliationItem
+        fields = [
+            'id', 'item_type', 'receipt', 'gl_entry', 'date',
+            'reference', 'description', 'amount', 'is_reconciled', 'reconciled_at'
+        ]
+
+
+class ReconciliationCreateSerializer(serializers.Serializer):
+    bank_account = serializers.PrimaryKeyRelatedField(queryset=BankAccount.objects.all())
+    month = serializers.IntegerField(min_value=1, max_value=12)
+    year = serializers.IntegerField(min_value=2000, max_value=2100)
+    statement_balance = serializers.DecimalField(max_digits=18, decimal_places=2)
+    notes = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+class ReconciliationWorkspaceSerializer(serializers.ModelSerializer):
+    bank_account_name = serializers.CharField(source='bank_account.name', read_only=True)
+    bank_account_currency = serializers.CharField(source='bank_account.currency', read_only=True)
+    items = ReconciliationItemSerializer(many=True, read_only=True)
+    difference = serializers.ReadOnlyField()
+    is_balanced = serializers.ReadOnlyField()
+    reconciled_count = serializers.SerializerMethodField()
+    unreconciled_count = serializers.SerializerMethodField()
+    total_payments = serializers.SerializerMethodField()
+    total_receipts = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BankReconciliation
+        fields = [
+            'id', 'bank_account', 'bank_account_name', 'bank_account_currency',
+            'month', 'year', 'period_start', 'period_end',
+            'statement_balance', 'book_balance',
+            'status', 'notes', 'difference', 'is_balanced',
+            'reconciled_count', 'unreconciled_count',
+            'total_payments', 'total_receipts',
+            'items', 'created_by', 'completed_at', 'completed_by',
+            'created_at', 'updated_at'
+        ]
+
+    def get_reconciled_count(self, obj):
+        items = obj.items.all()
+        return sum(1 for i in items if i.is_reconciled)
+
+    def get_unreconciled_count(self, obj):
+        items = obj.items.all()
+        return sum(1 for i in items if not i.is_reconciled)
+
+    def get_total_payments(self, obj):
+        items = obj.items.all()
+        return str(sum(i.amount for i in items if i.item_type == 'payment'))
+
+    def get_total_receipts(self, obj):
+        items = obj.items.all()
+        return str(sum(i.amount for i in items if i.item_type == 'receipt'))
 
 
 class ExpenseCategorySerializer(serializers.ModelSerializer):

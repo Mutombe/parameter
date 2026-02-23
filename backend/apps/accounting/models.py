@@ -693,9 +693,37 @@ class BankReconciliation(models.Model):
     def __str__(self):
         return f'{self.bank_account.name} - {self.period_end}'
 
+    # Sage-style month/year fields
+    month = models.PositiveSmallIntegerField(null=True, blank=True)
+    year = models.PositiveSmallIntegerField(null=True, blank=True)
+
     @property
     def difference(self):
         """Calculate reconciliation difference."""
+        if hasattr(self, '_prefetched_objects_cache') and 'items' in self._prefetched_objects_cache:
+            # Use prefetched items for efficiency
+            items = self._prefetched_objects_cache['items']
+            if items:
+                unticked_payments = sum(
+                    i.amount for i in items
+                    if i.item_type == 'payment' and not i.is_reconciled
+                )
+                unticked_receipts = sum(
+                    i.amount for i in items
+                    if i.item_type == 'receipt' and not i.is_reconciled
+                )
+                return (self.statement_balance - self.book_balance) + unticked_payments - unticked_receipts
+        elif self.pk and self.items.exists():
+            # Sage-style: compute from unticked items
+            from django.db.models import Sum as _Sum
+            unticked_payments = self.items.filter(
+                item_type='payment', is_reconciled=False
+            ).aggregate(t=_Sum('amount'))['t'] or Decimal('0')
+            unticked_receipts = self.items.filter(
+                item_type='receipt', is_reconciled=False
+            ).aggregate(t=_Sum('amount'))['t'] or Decimal('0')
+            return (self.statement_balance - self.book_balance) + unticked_payments - unticked_receipts
+        # Fallback for old records
         adjusted = self.adjusted_book_balance or self.book_balance
         return self.statement_balance - adjusted
 
@@ -703,6 +731,51 @@ class BankReconciliation(models.Model):
     def is_balanced(self):
         """Check if reconciliation is balanced."""
         return abs(self.difference) < Decimal('0.01')
+
+
+class ReconciliationItem(models.Model):
+    """Individual line item in a Sage-style reconciliation. Each row is either
+    a receipt (money in) or a payment (money out) for the bank account."""
+
+    class ItemType(models.TextChoices):
+        RECEIPT = 'receipt', 'Receipt'
+        PAYMENT = 'payment', 'Payment'
+
+    reconciliation = models.ForeignKey(
+        BankReconciliation, on_delete=models.CASCADE, related_name='items'
+    )
+    item_type = models.CharField(max_length=10, choices=ItemType.choices)
+
+    # Source references (nullable — items come from different sources)
+    receipt = models.ForeignKey(
+        'billing.Receipt', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='reconciliation_items'
+    )
+    gl_entry = models.ForeignKey(
+        GeneralLedger, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='reconciliation_items'
+    )
+
+    # Denormalized for fast rendering (snapshot at creation time)
+    date = models.DateField()
+    reference = models.CharField(max_length=255, blank=True)
+    description = models.CharField(max_length=500, blank=True)
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+
+    # The key checkbox field
+    is_reconciled = models.BooleanField(default=False)
+    reconciled_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['date', 'id']
+        indexes = [
+            models.Index(fields=['reconciliation', 'is_reconciled']),
+        ]
+
+    def __str__(self):
+        return f'{self.item_type} - {self.reference}: {self.amount}'
 
 
 class ExpenseCategory(models.Model):
