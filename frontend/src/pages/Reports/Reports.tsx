@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   BarChart3,
@@ -968,6 +968,7 @@ function CashFlowReport() {
 }
 
 function VacancyReport() {
+  const navigate = useNavigate()
   const { data, isLoading } = useQuery({
     queryKey: ['vacancy-report'],
     queryFn: () => reportsApi.vacancy().then(r => r.data),
@@ -1095,8 +1096,20 @@ function VacancyReport() {
                   transition={{ delay: idx * 0.02 }}
                   className="hover:bg-gray-50 transition-colors"
                 >
-                  <td className="px-6 py-4 font-medium text-gray-900">{prop.name}</td>
-                  <td className="px-6 py-4 text-gray-600">{prop.landlord}</td>
+                  <td className="px-6 py-4 font-medium">
+                    {prop.property_id ? (
+                      <button onClick={() => navigate(`/dashboard/properties/${prop.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{prop.name}</button>
+                    ) : (
+                      <span className="text-gray-900">{prop.name}</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    {prop.landlord_id ? (
+                      <button onClick={() => navigate(`/dashboard/landlords/${prop.landlord_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{prop.landlord}</button>
+                    ) : (
+                      <span className="text-gray-600">{prop.landlord}</span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-center font-semibold text-gray-900">{prop.total_units}</td>
                   <td className="px-6 py-4 text-center font-semibold text-emerald-600">{prop.occupied}</td>
                   <td className="px-6 py-4 text-center font-semibold text-rose-600">{prop.vacant}</td>
@@ -1128,6 +1141,7 @@ function VacancyReport() {
 }
 
 function RentRollReport() {
+  const navigate = useNavigate()
   const { data, isLoading } = useQuery({
     queryKey: ['rent-roll'],
     queryFn: () => reportsApi.rentRoll().then(r => r.data),
@@ -1267,11 +1281,33 @@ function RentRollReport() {
                   className="hover:bg-gray-50 transition-colors"
                 >
                   <td className="px-6 py-4">
-                    <span className="font-mono text-sm font-semibold text-primary-600">{lease.lease_number}</span>
+                    {lease.lease_id ? (
+                      <button onClick={() => navigate(`/dashboard/leases/${lease.lease_id}`)} className="font-mono text-sm font-semibold text-primary-600 hover:text-primary-700 hover:underline">{lease.lease_number}</button>
+                    ) : (
+                      <span className="font-mono text-sm font-semibold text-primary-600">{lease.lease_number}</span>
+                    )}
                   </td>
-                  <td className="px-6 py-4 font-medium text-gray-900">{lease.tenant}</td>
-                  <td className="px-6 py-4 text-gray-600">{lease.property}</td>
-                  <td className="px-6 py-4">{lease.unit}</td>
+                  <td className="px-6 py-4 font-medium">
+                    {lease.tenant_id ? (
+                      <button onClick={() => navigate(`/dashboard/tenants/${lease.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{lease.tenant}</button>
+                    ) : (
+                      <span className="text-gray-900">{lease.tenant}</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    {lease.property_id ? (
+                      <button onClick={() => navigate(`/dashboard/properties/${lease.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{lease.property}</button>
+                    ) : (
+                      <span className="text-gray-600">{lease.property}</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    {lease.unit_id ? (
+                      <button onClick={() => navigate(`/dashboard/units/${lease.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{lease.unit}</button>
+                    ) : (
+                      <span className="text-gray-600">{lease.unit}</span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-right font-semibold text-gray-900 tabular-nums">{formatCurrency(lease.monthly_rent)}</td>
                   <td className="px-6 py-4">
                     <span className={cn(
@@ -1304,6 +1340,7 @@ function RentRollReport() {
 const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#14b8a6', '#3b82f6']
 
 function CommissionByPropertyReport() {
+  const navigate = useNavigate()
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['commission-property'],
     queryFn: () => reportsApi.commission().then(r => r.data),
@@ -1448,8 +1485,20 @@ function CommissionByPropertyReport() {
                       {prop.rank}
                     </span>
                   </td>
-                  <td className="px-6 py-4 font-medium text-gray-900">{prop.property_name}</td>
-                  <td className="px-6 py-4 text-gray-600">{prop.landlord_name}</td>
+                  <td className="px-6 py-4 font-medium">
+                    {prop.property_id ? (
+                      <button onClick={() => navigate(`/dashboard/properties/${prop.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{prop.property_name}</button>
+                    ) : (
+                      <span className="text-gray-900">{prop.property_name}</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    {prop.landlord_id ? (
+                      <button onClick={() => navigate(`/dashboard/landlords/${prop.landlord_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{prop.landlord_name}</button>
+                    ) : (
+                      <span className="text-gray-600">{prop.landlord_name}</span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-right">
                     <span className="inline-block px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 text-sm font-medium">
                       {prop.commission_rate}%
@@ -1659,6 +1708,7 @@ const bucketConfig = [
 ] as const
 
 function AgedAnalysisReport() {
+  const navigate = useNavigate()
   const today = new Date().toISOString().split('T')[0]
   const [asOfDate, setAsOfDate] = useState(today)
   const [propertyFilter, setPropertyFilter] = useState<string>('')
@@ -1838,7 +1888,13 @@ function AgedAnalysisReport() {
               <tbody className="divide-y divide-gray-100">
                 {paginatedTenants.sort((a: any, b: any) => b.total - a.total).map((tenant: any, idx: number) => (
                   <motion.tr key={tenant.tenant_id || idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.02 }} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-3 text-sm font-medium text-gray-900">{tenant.tenant_name}</td>
+                    <td className="px-6 py-3 text-sm font-medium">
+                      {tenant.tenant_id ? (
+                        <button onClick={() => navigate(`/dashboard/tenants/${tenant.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{tenant.tenant_name}</button>
+                      ) : (
+                        <span className="text-gray-900">{tenant.tenant_name}</span>
+                      )}
+                    </td>
                     {bucketConfig.map(bucket => {
                       const val = tenant[bucket.key] || 0
                       return (
@@ -2095,6 +2151,7 @@ function LandlordAccountReport() {
 // ─── Bank to Income Report ───────────────────────────────────────────────────
 
 function BankToIncomeReport() {
+  const navigate = useNavigate()
   const [drillState, setDrillState] = useState<{
     level: 1 | 2 | 3
     bankAccountId?: number
@@ -2308,10 +2365,34 @@ function BankToIncomeReport() {
                 className="hover:bg-gray-50 transition-colors"
               >
                 <td className="px-6 py-3 text-sm text-gray-700">{formatDate(rcpt.date)}</td>
-                <td className="px-4 py-3 text-sm text-gray-600 font-mono">{rcpt.receipt_number}</td>
-                <td className="px-4 py-3 text-sm text-gray-700">{rcpt.property || '-'}</td>
-                <td className="px-4 py-3 text-sm text-gray-600">{rcpt.unit || '-'}</td>
-                <td className="px-4 py-3 text-sm text-gray-700">{rcpt.tenant || '-'}</td>
+                <td className="px-4 py-3 text-sm font-mono">
+                  {rcpt.receipt_id ? (
+                    <button onClick={() => navigate(`/dashboard/receipts/${rcpt.receipt_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{rcpt.receipt_number}</button>
+                  ) : (
+                    <span className="text-gray-600">{rcpt.receipt_number}</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-sm">
+                  {rcpt.property_id ? (
+                    <button onClick={() => navigate(`/dashboard/properties/${rcpt.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{rcpt.property}</button>
+                  ) : (
+                    <span className="text-gray-700">{rcpt.property || '-'}</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-sm">
+                  {rcpt.unit_id ? (
+                    <button onClick={() => navigate(`/dashboard/units/${rcpt.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{rcpt.unit}</button>
+                  ) : (
+                    <span className="text-gray-600">{rcpt.unit || '-'}</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-sm">
+                  {rcpt.tenant_id ? (
+                    <button onClick={() => navigate(`/dashboard/tenants/${rcpt.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{rcpt.tenant}</button>
+                  ) : (
+                    <span className="text-gray-700">{rcpt.tenant || '-'}</span>
+                  )}
+                </td>
                 <td className="px-6 py-3 text-sm text-right font-semibold tabular-nums text-gray-900">{formatCurrency(rcpt.amount)}</td>
               </motion.tr>
             ))}
@@ -2426,6 +2507,7 @@ function BankToIncomeReport() {
 // ─── Receipts Listing Report ─────────────────────────────────────────────────
 
 function ReceiptsListingReport() {
+  const navigate = useNavigate()
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['receipts-listing'],
     queryFn: () => reportsApi.receiptListing().then(r => r.data),
@@ -2504,10 +2586,34 @@ function ReceiptsListingReport() {
               {paginatedReceipts.map((r: any, idx: number) => (
                 <motion.tr key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.01 }} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3 text-sm text-gray-600">{r.date}</td>
-                  <td className="px-4 py-3 text-sm font-mono text-primary-600">{r.receipt_number}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900">{r.tenant_name || r.tenant}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{r.property_name || r.property}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{r.unit_name || r.unit}</td>
+                  <td className="px-4 py-3 text-sm font-mono">
+                    {r.receipt_id ? (
+                      <button onClick={() => navigate(`/dashboard/receipts/${r.receipt_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{r.receipt_number}</button>
+                    ) : (
+                      <span className="text-primary-600">{r.receipt_number}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {r.tenant_id ? (
+                      <button onClick={() => navigate(`/dashboard/tenants/${r.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{r.tenant_name || r.tenant}</button>
+                    ) : (
+                      <span className="text-gray-900">{r.tenant_name || r.tenant}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {r.property_id ? (
+                      <button onClick={() => navigate(`/dashboard/properties/${r.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{r.property_name || r.property}</button>
+                    ) : (
+                      <span className="text-gray-700">{r.property_name || r.property}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {r.unit_id ? (
+                      <button onClick={() => navigate(`/dashboard/units/${r.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{r.unit_name || r.unit}</button>
+                    ) : (
+                      <span className="text-gray-600">{r.unit_name || r.unit}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-sm text-gray-700">{r.income_type}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{r.bank_account || r.bank}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{r.payment_method}</td>
@@ -2536,6 +2642,7 @@ function ReceiptsListingReport() {
 // ─── Deposits Listing Report ─────────────────────────────────────────────────
 
 function DepositsListingReport() {
+  const navigate = useNavigate()
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['deposits-listing'],
     queryFn: () => reportsApi.depositSummary().then(r => r.data),
@@ -2632,10 +2739,34 @@ function DepositsListingReport() {
               <tbody className="divide-y divide-gray-100">
                 {paginatedDeposits.map((d: any, idx: number) => (
                   <motion.tr key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.02 }} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 text-sm font-mono text-primary-600">{d.lease_number}</td>
-                    <td className="px-4 py-3 text-sm text-gray-900">{d.tenant_name || d.tenant}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{d.property_name || d.property}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{d.unit_name || d.unit}</td>
+                    <td className="px-4 py-3 text-sm font-mono">
+                      {d.lease_id ? (
+                        <button onClick={() => navigate(`/dashboard/leases/${d.lease_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{d.lease_number}</button>
+                      ) : (
+                        <span className="text-primary-600">{d.lease_number}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {d.tenant_id ? (
+                        <button onClick={() => navigate(`/dashboard/tenants/${d.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{d.tenant_name || d.tenant}</button>
+                      ) : (
+                        <span className="text-gray-900">{d.tenant_name || d.tenant}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {d.property_id ? (
+                        <button onClick={() => navigate(`/dashboard/properties/${d.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{d.property_name || d.property}</button>
+                      ) : (
+                        <span className="text-gray-700">{d.property_name || d.property}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {d.unit_id ? (
+                        <button onClick={() => navigate(`/dashboard/units/${d.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{d.unit_name || d.unit}</button>
+                      ) : (
+                        <span className="text-gray-600">{d.unit_name || d.unit}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums text-gray-900">{formatCurrency(d.required || d.deposit_required || 0)}</td>
                     <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums text-emerald-600">{formatCurrency(d.paid || d.deposit_paid || 0)}</td>
                     <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums text-rose-600">{formatCurrency(d.outstanding || d.deposit_outstanding || 0)}</td>
@@ -2661,6 +2792,7 @@ function DepositsListingReport() {
 // ─── Lease Charge Summary Report ─────────────────────────────────────────────
 
 function LeaseChargeSummaryReport() {
+  const navigate = useNavigate()
   const [propertyFilter, setPropertyFilter] = useState<string>('')
   const [landlordFilter, setLandlordFilter] = useState<string>('')
 
@@ -2785,10 +2917,34 @@ function LeaseChargeSummaryReport() {
               <tbody className="divide-y divide-gray-100">
                 {paginatedLeases.map((l: any, idx: number) => (
                   <motion.tr key={idx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: idx * 0.02 }} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 text-sm font-mono text-primary-600">{l.lease_number}</td>
-                    <td className="px-4 py-3 text-sm text-gray-900">{l.tenant_name || l.tenant}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{l.property_name || l.property}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{l.unit_name || l.unit}</td>
+                    <td className="px-4 py-3 text-sm font-mono">
+                      {l.lease_id ? (
+                        <button onClick={() => navigate(`/dashboard/leases/${l.lease_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{l.lease_number}</button>
+                      ) : (
+                        <span className="text-primary-600">{l.lease_number}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {l.tenant_id ? (
+                        <button onClick={() => navigate(`/dashboard/tenants/${l.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{l.tenant_name || l.tenant}</button>
+                      ) : (
+                        <span className="text-gray-900">{l.tenant_name || l.tenant}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {l.property_id ? (
+                        <button onClick={() => navigate(`/dashboard/properties/${l.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{l.property_name || l.property}</button>
+                      ) : (
+                        <span className="text-gray-700">{l.property_name || l.property}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      {l.unit_id ? (
+                        <button onClick={() => navigate(`/dashboard/units/${l.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{l.unit_name || l.unit}</button>
+                      ) : (
+                        <span className="text-gray-600">{l.unit_name || l.unit}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums text-gray-900">{formatCurrency(l.monthly_rent || 0)}</td>
                     <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums text-gray-900">{formatCurrency(l.total_charged || 0)}</td>
                     <td className="px-4 py-3 text-sm text-right font-semibold tabular-nums text-emerald-600">{formatCurrency(l.total_paid || l.paid || 0)}</td>

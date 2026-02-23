@@ -348,6 +348,7 @@ class VacancyReportView(APIView):
                 'code': prop.code,
                 'name': prop.name,
                 'landlord': prop.landlord.name,
+                'landlord_id': prop.landlord.id,
                 'total_units': prop.unit_count,
                 'occupied': prop.occupied_count,
                 'vacant': prop.vacant_count,
@@ -384,9 +385,13 @@ class RentRollView(APIView):
 
         for lease in leases:
             report_data.append({
+                'lease_id': lease.id,
                 'lease_number': lease.lease_number,
+                'tenant_id': lease.tenant_id,
                 'tenant': lease.tenant.name,
+                'property_id': lease.unit.property_id,
                 'property': lease.unit.property.name,
+                'unit_id': lease.unit_id,
                 'unit': lease.unit.unit_number,
                 'monthly_rent': float(lease.monthly_rent),
                 'currency': lease.currency,
@@ -963,10 +968,13 @@ class DepositAccountSummaryView(APIView):
             deposit_required = lease.deposit_amount
 
             deposits.append({
+                'lease_id': lease.id,
                 'lease_number': lease.lease_number,
                 'tenant_id': lease.tenant.id,
                 'tenant_name': lease.tenant.name,
+                'property_id': lease.unit.property_id,
                 'property': lease.unit.property.name,
+                'unit_id': lease.unit_id,
                 'unit': lease.unit.unit_number,
                 'deposit_required': float(deposit_required),
                 'deposit_paid': float(deposit_paid),
@@ -1052,6 +1060,7 @@ class CommissionReportView(APIView):
         property_qs = Receipt.objects.filter(base_filter).values(
             'invoice__unit__property__id',
             'invoice__unit__property__name',
+            'invoice__unit__property__landlord__id',
             'invoice__unit__property__landlord__name',
             'invoice__unit__property__landlord__commission_rate',
         ).annotate(
@@ -1066,6 +1075,7 @@ class CommissionReportView(APIView):
             property_list.append({
                 'property_id': row['invoice__unit__property__id'],
                 'property_name': row['invoice__unit__property__name'],
+                'landlord_id': row['invoice__unit__property__landlord__id'],
                 'landlord_name': row['invoice__unit__property__landlord__name'],
                 'commission_rate': float(rate),
                 'collected': float(collected),
@@ -1211,6 +1221,7 @@ class LeaseChargeSummaryView(APIView):
                 'lease_number': lease.lease_number,
                 'tenant_id': lease.tenant_id,
                 'tenant_name': lease.tenant.name,
+                'property_id': lease.unit.property_id,
                 'property': lease.unit.property.name,
                 'unit_id': lease.unit_id,
                 'unit': lease.unit.unit_number,
@@ -1291,13 +1302,16 @@ class ReceiptListingView(APIView):
             bank_name = rcpt.bank_account.name if rcpt.bank_account else rcpt.bank_name
 
             receipt_list.append({
+                'receipt_id': rcpt.id,
                 'date': str(rcpt.date),
                 'receipt_number': rcpt.receipt_number,
                 'tenant_id': rcpt.tenant.id,
                 'tenant_code': rcpt.tenant.code,
                 'tenant_name': rcpt.tenant.name,
                 'landlord_name': landlord_name,
+                'property_id': rcpt.invoice.unit.property_id if rcpt.invoice and rcpt.invoice.unit else None,
                 'property_name': property_name,
+                'unit_id': rcpt.invoice.unit_id if rcpt.invoice and rcpt.invoice.unit else None,
                 'unit_number': unit_number,
                 'income_type': inv_type,
                 'income_type_display': rcpt.invoice.get_invoice_type_display() if rcpt.invoice else None,
@@ -1707,10 +1721,14 @@ class IncomeItemDrilldownView(APIView):
                     prop_name = rcpt.invoice.property.name if rcpt.invoice.property else ''
                     unit_name = rcpt.invoice.unit.unit_number if rcpt.invoice.unit else ''
                 receipt_list.append({
+                    'receipt_id': rcpt.id,
                     'date': str(rcpt.date),
                     'receipt_number': rcpt.receipt_number,
+                    'property_id': rcpt.invoice.property_id if rcpt.invoice and rcpt.invoice.property else None,
                     'property': prop_name,
+                    'unit_id': rcpt.invoice.unit_id if rcpt.invoice and rcpt.invoice.unit else None,
                     'unit': unit_name,
+                    'tenant_id': rcpt.tenant_id if rcpt.tenant else None,
                     'tenant': str(rcpt.tenant) if rcpt.tenant else '',
                     'amount': float(rcpt.amount),
                 })
