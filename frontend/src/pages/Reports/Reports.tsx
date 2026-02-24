@@ -645,15 +645,17 @@ export default function Reports() {
 
   return (
     <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 flex h-[calc(100vh-64px)]">
-      {/* Desktop Sidebar */}
-      <div className="hidden lg:flex">
-        <ReportsSidebar
-          activeReport={activeReport}
-          onSelect={handleSelectReport}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={handleToggleCollapse}
-        />
-      </div>
+      {/* Desktop Sidebar — hidden when AI sidebar is open */}
+      {reportsSidebarOpen && (
+        <div className="hidden lg:flex">
+          <ReportsSidebar
+            activeReport={activeReport}
+            onSelect={handleSelectReport}
+            collapsed={sidebarCollapsed}
+            onToggleCollapse={handleToggleCollapse}
+          />
+        </div>
+      )}
 
       {/* Content Area */}
       <div className="flex-1 overflow-auto">

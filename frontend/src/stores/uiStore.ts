@@ -39,16 +39,24 @@ export const useUIStore = create<UIState>()(
       theme: 'system',
       toggleSidebar: () => set((state) => ({
         sidebarOpen: !state.sidebarOpen,
-        ...(!state.sidebarOpen ? { askMeOpen: false, reportsSidebarOpen: false } : {}),
+        ...(!state.sidebarOpen
+          ? { askMeOpen: false, reportsSidebarOpen: false }
+          : { reportsSidebarOpen: true }),
       })),
-      setSidebarOpen: (open) => set(open ? { sidebarOpen: true, askMeOpen: false, reportsSidebarOpen: false } : { sidebarOpen: false }),
+      setSidebarOpen: (open) => set(open
+        ? { sidebarOpen: true, askMeOpen: false, reportsSidebarOpen: false }
+        : { sidebarOpen: false, reportsSidebarOpen: true }),
       toggleMobileSidebar: () => set((state) => ({ mobileSidebarOpen: !state.mobileSidebarOpen })),
       setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
       toggleAskMe: () => set((state) => ({
         askMeOpen: !state.askMeOpen,
-        ...(!state.askMeOpen ? { sidebarOpen: false, reportsSidebarOpen: false } : {}),
+        ...(!state.askMeOpen
+          ? { sidebarOpen: false, reportsSidebarOpen: false }
+          : { reportsSidebarOpen: true }),
       })),
-      setAskMeOpen: (open) => set(open ? { askMeOpen: true, sidebarOpen: false, reportsSidebarOpen: false } : { askMeOpen: false }),
+      setAskMeOpen: (open) => set(open
+        ? { askMeOpen: true, sidebarOpen: false, reportsSidebarOpen: false }
+        : { askMeOpen: false, reportsSidebarOpen: true }),
       toggleReportsSidebar: () => set((state) => ({
         reportsSidebarOpen: !state.reportsSidebarOpen,
         ...(!state.reportsSidebarOpen ? { sidebarOpen: false, askMeOpen: false } : {}),
