@@ -95,6 +95,7 @@ const navigation: NavSection[] = [
       { name: 'Income Types', href: '/dashboard/income-types', icon: DollarSign },
       { name: 'Expense Categories', href: '/dashboard/expense-categories', icon: GitCompare },
       { name: 'Reconciliation', href: '/dashboard/bank-reconciliation', icon: Scale },
+      { name: 'Income & Expenditure', href: '/dashboard/reports?report=income-expenditure', icon: BarChart3 },
     ],
   },
   {
