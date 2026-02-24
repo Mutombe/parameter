@@ -7,6 +7,7 @@ interface UIState {
   sidebarOpen: boolean
   mobileSidebarOpen: boolean
   askMeOpen: boolean
+  reportsSidebarOpen: boolean
   commandPaletteOpen: boolean
   shortcutsModalOpen: boolean
   isMobile: boolean
@@ -17,6 +18,8 @@ interface UIState {
   setMobileSidebarOpen: (open: boolean) => void
   toggleAskMe: () => void
   setAskMeOpen: (open: boolean) => void
+  toggleReportsSidebar: () => void
+  setReportsSidebarOpen: (open: boolean) => void
   setCommandPaletteOpen: (open: boolean) => void
   setShortcutsModalOpen: (open: boolean) => void
   setIsMobile: (isMobile: boolean) => void
@@ -29,22 +32,28 @@ export const useUIStore = create<UIState>()(
       sidebarOpen: true,
       mobileSidebarOpen: false,
       askMeOpen: false,
+      reportsSidebarOpen: true,
       commandPaletteOpen: false,
       shortcutsModalOpen: false,
       isMobile: false,
       theme: 'system',
       toggleSidebar: () => set((state) => ({
         sidebarOpen: !state.sidebarOpen,
-        ...(!state.sidebarOpen ? { askMeOpen: false } : {}),
+        ...(!state.sidebarOpen ? { askMeOpen: false, reportsSidebarOpen: false } : {}),
       })),
-      setSidebarOpen: (open) => set(open ? { sidebarOpen: true, askMeOpen: false } : { sidebarOpen: false }),
+      setSidebarOpen: (open) => set(open ? { sidebarOpen: true, askMeOpen: false, reportsSidebarOpen: false } : { sidebarOpen: false }),
       toggleMobileSidebar: () => set((state) => ({ mobileSidebarOpen: !state.mobileSidebarOpen })),
       setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
       toggleAskMe: () => set((state) => ({
         askMeOpen: !state.askMeOpen,
-        ...(!state.askMeOpen ? { sidebarOpen: false } : {}),
+        ...(!state.askMeOpen ? { sidebarOpen: false, reportsSidebarOpen: false } : {}),
       })),
-      setAskMeOpen: (open) => set(open ? { askMeOpen: true, sidebarOpen: false } : { askMeOpen: false }),
+      setAskMeOpen: (open) => set(open ? { askMeOpen: true, sidebarOpen: false, reportsSidebarOpen: false } : { askMeOpen: false }),
+      toggleReportsSidebar: () => set((state) => ({
+        reportsSidebarOpen: !state.reportsSidebarOpen,
+        ...(!state.reportsSidebarOpen ? { sidebarOpen: false, askMeOpen: false } : {}),
+      })),
+      setReportsSidebarOpen: (open) => set(open ? { reportsSidebarOpen: true, sidebarOpen: false, askMeOpen: false } : { reportsSidebarOpen: false }),
       setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
       setShortcutsModalOpen: (open) => set({ shortcutsModalOpen: open }),
       setIsMobile: (isMobile) => set({ isMobile }),

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -31,6 +31,12 @@ import {
   ClipboardList,
   Plus,
   Trash2,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  PanelLeftClose,
+  PanelLeftOpen,
+  X,
 } from 'lucide-react'
 import {
   BarChart,
@@ -49,10 +55,11 @@ import { reportsApi, tenantApi, landlordApi, propertyApi } from '../../services/
 import { formatCurrency, formatPercent, formatDate, cn } from '../../lib/utils'
 import { printElement } from '../../lib/printTemplate'
 import { exportReport } from '../../lib/export'
-import { PageHeader, Button, Badge, Skeleton, EmptyState, TableFilter, Pagination } from '../../components/ui'
+import { PageHeader, Button, Badge, Skeleton, EmptyState, TableFilter, Pagination, Tooltip as UITooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import toast from 'react-hot-toast'
 import { PiBuildingApartmentLight } from "react-icons/pi";
+import { useUIStore } from '../../stores/uiStore'
 
 type ReportType =
   | 'trial-balance' | 'income-statement' | 'balance-sheet' | 'cash-flow' | 'aged-analysis'
@@ -274,6 +281,290 @@ const reportNames: Record<ReportType, string> = {
   'income-expenditure': 'Income & Expenditure',
 }
 
+const RECENT_REPORTS_KEY = 'parameter-recent-reports'
+const REPORTS_SIDEBAR_COLLAPSED_KEY = 'parameter-reports-sidebar-collapsed'
+
+function getRecentReports(): ReportType[] {
+  try {
+    const stored = localStorage.getItem(RECENT_REPORTS_KEY)
+    return stored ? JSON.parse(stored) : []
+  } catch { return [] }
+}
+
+function addRecentReport(id: ReportType) {
+  const recent = getRecentReports().filter(r => r !== id)
+  recent.unshift(id)
+  localStorage.setItem(RECENT_REPORTS_KEY, JSON.stringify(recent.slice(0, 3)))
+}
+
+function findReportDef(id: ReportType): ReportDef | undefined {
+  for (const cat of reportCategories) {
+    const found = cat.reports.find(r => r.id === id)
+    if (found) return found
+  }
+  return undefined
+}
+
+/* ─── Reports Sidebar ─── */
+function ReportsSidebar({
+  activeReport,
+  onSelect,
+  collapsed,
+  onToggleCollapse,
+}: {
+  activeReport: ReportType
+  onSelect: (id: ReportType) => void
+  collapsed: boolean
+  onToggleCollapse: () => void
+}) {
+  const recentReports = getRecentReports()
+
+  return (
+    <motion.aside
+      initial={false}
+      animate={{ width: collapsed ? 56 : 260 }}
+      transition={{ duration: 0.3, ease: 'easeInOut' }}
+      className="h-full bg-white border-r border-gray-200 flex flex-col flex-shrink-0 overflow-hidden shadow-[1px_0_3px_0_rgba(0,0,0,0.04)]"
+    >
+      {/* Header / collapse toggle */}
+      <div className={cn(
+        "flex items-center px-3 py-3 border-b border-gray-100",
+        collapsed ? "justify-center" : "justify-between"
+      )}>
+        <AnimatePresence>
+          {!collapsed && (
+            <motion.span
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -8 }}
+              className="text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap"
+            >
+              Reports
+            </motion.span>
+          )}
+        </AnimatePresence>
+        <button
+          onClick={onToggleCollapse}
+          className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1"
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+        </button>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto py-3 px-2.5 space-y-5 sidebar-scroll">
+        {/* Recent reports — plain shortcuts, no active highlight */}
+        {recentReports.length > 0 && !collapsed && (
+          <div>
+            <h4 className="px-2 mb-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+              Recent
+            </h4>
+            <div className="space-y-0.5">
+              {recentReports.map(id => {
+                const def = findReportDef(id)
+                if (!def) return null
+                const Icon = def.icon
+                return (
+                  <button
+                    key={`recent-${id}`}
+                    onClick={() => onSelect(id)}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg transition-all duration-150 group text-left text-gray-500 hover:bg-gray-50 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1"
+                  >
+                    <Icon className="w-4 h-4 flex-shrink-0 text-gray-400 group-hover:text-gray-500" />
+                    <span className="text-sm truncate">{def.name}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="border-t border-gray-100 mx-2 mt-2.5" />
+          </div>
+        )}
+
+        {/* Category sections */}
+        {reportCategories.map((category) => (
+          <div key={category.title}>
+            <AnimatePresence>
+              {!collapsed && (
+                <motion.h4
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="px-2 mb-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider"
+                >
+                  {category.title}
+                </motion.h4>
+              )}
+            </AnimatePresence>
+
+            {collapsed && category.title !== reportCategories[0].title && (
+              <div className="border-t border-gray-100 mx-1 mb-1" />
+            )}
+
+            <div className="space-y-1">
+              {category.reports.map((report) => {
+                const isActive = activeReport === report.id
+                const Icon = report.icon
+
+                const itemButton = (
+                  <button
+                    key={report.id}
+                    onClick={() => onSelect(report.id)}
+                    className={cn(
+                      'w-full flex items-center gap-2.5 rounded-lg transition-all duration-150 group relative text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1',
+                      collapsed ? 'py-2.5 justify-center' : 'px-2.5 py-2',
+                      isActive
+                        ? 'bg-primary-50 text-primary-700'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    )}
+                  >
+                    {isActive && !collapsed && (
+                      <motion.div
+                        layoutId="reportActiveIndicator"
+                        className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-primary-600 rounded-r-full"
+                        transition={{ type: 'spring', duration: 0.3 }}
+                      />
+                    )}
+                    <Icon className={cn(
+                      'flex-shrink-0 transition-colors',
+                      collapsed ? 'w-5 h-5' : 'w-4 h-4',
+                      isActive ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-600'
+                    )} />
+                    <AnimatePresence>
+                      {!collapsed && (
+                        <motion.span
+                          initial={{ opacity: 0, x: -6 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: -6 }}
+                          className={cn("text-sm whitespace-nowrap truncate", isActive ? "font-semibold" : "font-medium")}
+                        >
+                          {report.name}
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  </button>
+                )
+
+                if (collapsed) {
+                  return (
+                    <UITooltip key={report.id} content={report.name} side="right" delay={100}>
+                      {itemButton}
+                    </UITooltip>
+                  )
+                }
+
+                return itemButton
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
+    </motion.aside>
+  )
+}
+
+/* ─── Mobile Report Selector ─── */
+function MobileReportSelector({
+  activeReport,
+  onSelect,
+}: {
+  activeReport: ReportType
+  onSelect: (id: ReportType) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const activeDef = findReportDef(activeReport)
+
+  return (
+    <div className="lg:hidden mb-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-xl text-left"
+      >
+        <div className="flex items-center gap-3">
+          {activeDef && <activeDef.icon className="w-5 h-5 text-primary-600" />}
+          <div>
+            <p className="text-sm font-semibold text-gray-900">{activeDef?.name || 'Select Report'}</p>
+            <p className="text-xs text-gray-500">{activeDef?.desc}</p>
+          </div>
+        </div>
+        <ChevronDown className={cn('w-5 h-5 text-gray-400 transition-transform', open && 'rotate-180')} />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setOpen(false)}
+              className="fixed inset-0 bg-black/30 z-40"
+            />
+            {/* Bottom sheet */}
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl max-h-[70vh] overflow-y-auto shadow-2xl"
+            >
+              {/* Drag handle */}
+              <div className="flex justify-center pt-3 pb-1">
+                <div className="w-10 h-1 rounded-full bg-gray-300" />
+              </div>
+              <div className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900">Select Report</h3>
+                <button onClick={() => setOpen(false)} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-3 space-y-4 pb-8">
+                {reportCategories.map(category => (
+                  <div key={category.title}>
+                    <h4 className="px-2 mb-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                      {category.title}
+                    </h4>
+                    <div className="space-y-0.5">
+                      {category.reports.map(report => {
+                        const isActive = activeReport === report.id
+                        const Icon = report.icon
+                        return (
+                          <button
+                            key={report.id}
+                            onClick={() => {
+                              onSelect(report.id)
+                              setOpen(false)
+                            }}
+                            className={cn(
+                              'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left',
+                              isActive
+                                ? 'bg-primary-50 text-primary-700'
+                                : 'text-gray-600 hover:bg-gray-50'
+                            )}
+                          >
+                            <Icon className={cn('w-4 h-4 flex-shrink-0', isActive ? 'text-primary-600' : 'text-gray-400')} />
+                            <div className="flex-1 min-w-0">
+                              <p className={cn('text-sm font-medium', isActive && 'text-primary-700')}>{report.name}</p>
+                              <p className="text-xs text-gray-500">{report.desc}</p>
+                            </div>
+                            {isActive && <CheckCircle className="w-4 h-4 text-primary-600 flex-shrink-0" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+/* ─── Main Reports Page ─── */
 export default function Reports() {
   const [searchParams, setSearchParams] = useSearchParams()
   const initialReport = (searchParams.get('report') as ReportType) || 'trial-balance'
@@ -283,6 +574,24 @@ export default function Reports() {
     endDate: new Date().toISOString().split('T')[0],
   })
 
+  // Sidebar collapse state from localStorage
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(REPORTS_SIDEBAR_COLLAPSED_KEY) === 'true'
+    } catch { return false }
+  })
+
+  const { reportsSidebarOpen, setReportsSidebarOpen, setSidebarOpen } = useUIStore()
+
+  // Auto-expand reports sidebar and collapse main sidebar when entering the page
+  useEffect(() => {
+    setReportsSidebarOpen(true)
+    return () => {
+      // Restore main sidebar when leaving reports page
+      setSidebarOpen(true)
+    }
+  }, [])
+
   // Deep-linking: read ?report= on mount
   useEffect(() => {
     const reportParam = searchParams.get('report') as ReportType | null
@@ -290,6 +599,20 @@ export default function Reports() {
       setActiveReport(reportParam)
     }
   }, [searchParams])
+
+  const handleSelectReport = useCallback((id: ReportType) => {
+    setActiveReport(id)
+    setSearchParams({ report: id })
+    addRecentReport(id)
+  }, [setSearchParams])
+
+  const handleToggleCollapse = useCallback(() => {
+    setSidebarCollapsed(prev => {
+      const next = !prev
+      localStorage.setItem(REPORTS_SIDEBAR_COLLAPSED_KEY, String(next))
+      return next
+    })
+  }, [])
 
   const handlePrint = () => {
     printElement('report-content', {
@@ -321,106 +644,81 @@ export default function Reports() {
   currentReportType = activeReport
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Reports"
-        subtitle="Accounting and operational reports"
-        icon={BarChart3}
-        breadcrumbs={[
-          { label: 'Dashboard', href: '/dashboard' },
-          { label: 'Reports' },
-        ]}
-        actions={
-          <div className="flex items-center gap-3">
-            <Button variant="outline" className="gap-2" onClick={handlePrint}>
-              <Printer className="w-4 h-4" />
-              Print
-            </Button>
-            <Button variant="outline" className="gap-2" onClick={handleExportCSV}>
-              <Download className="w-4 h-4" />
-              CSV
-            </Button>
-            <Button variant="outline" className="gap-2" onClick={handleExportExcel}>
-              <Download className="w-4 h-4" />
-              Excel
-            </Button>
-          </div>
-        }
-      />
-
-      {/* Report Selector - Categorized */}
-      <div className="space-y-5">
-        {reportCategories.map(category => (
-          <div key={category.title} className="space-y-2">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">
-              {category.title}
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {category.reports.map((report) => {
-                const ReportIcon = report.icon
-                const isActive = activeReport === report.id
-                return (
-                  <motion.button
-                    key={report.id}
-                    whileHover={{ y: -2 }}
-                    onClick={() => {
-                      setActiveReport(report.id)
-                      setSearchParams({ report: report.id })
-                    }}
-                    className={cn(
-                      'p-3 rounded-xl border text-left transition-all',
-                      isActive
-                        ? 'bg-white border-primary-300 ring-2 ring-primary-100 shadow-lg'
-                        : 'bg-white border-gray-200 hover:border-gray-300'
-                    )}
-                  >
-                    <div className={cn(
-                      'w-9 h-9 rounded-lg flex items-center justify-center mb-2',
-                      isActive ? 'bg-primary-100' : report.bgColor
-                    )}>
-                      <ReportIcon className={cn('w-4 h-4', isActive ? 'text-primary-600' : report.color)} />
-                    </div>
-                    <h3 className={cn('font-semibold text-sm leading-tight', isActive ? 'text-primary-700' : 'text-gray-900')}>
-                      {report.name}
-                    </h3>
-                    <p className="text-xs text-gray-500 mt-0.5">{report.desc}</p>
-                  </motion.button>
-                )
-              })}
-            </div>
-          </div>
-        ))}
+    <div className="-mx-4 md:-mx-6 -mt-4 md:-mt-6 flex h-[calc(100vh-64px)]">
+      {/* Desktop Sidebar */}
+      <div className="hidden lg:flex">
+        <ReportsSidebar
+          activeReport={activeReport}
+          onSelect={handleSelectReport}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={handleToggleCollapse}
+        />
       </div>
 
-      {/* Report Content */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={activeReport}
-          id="report-content"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          transition={{ duration: 0.2 }}
-        >
-          {activeReport === 'trial-balance' && <TrialBalanceReport />}
-          {activeReport === 'income-statement' && <IncomeStatementReport />}
-          {activeReport === 'balance-sheet' && <BalanceSheetReport />}
-          {activeReport === 'cash-flow' && <CashFlowReport />}
-          {activeReport === 'aged-analysis' && <AgedAnalysisReport />}
-          {activeReport === 'vacancy' && <VacancyReport />}
-          {activeReport === 'rent-roll' && <RentRollReport />}
-          {activeReport === 'rent-rollover' && <RentRolloverReport />}
-          {activeReport === 'tenant-account' && <TenantAccountReport />}
-          {activeReport === 'landlord-account' && <LandlordAccountReport />}
-          {activeReport === 'commission-property' && <CommissionByPropertyReport />}
-          {activeReport === 'commission-income' && <CommissionByIncomeReport />}
-          {activeReport === 'bank-to-income' && <BankToIncomeReport />}
-          {activeReport === 'receipts-listing' && <ReceiptsListingReport />}
-          {activeReport === 'deposits-listing' && <DepositsListingReport />}
-          {activeReport === 'lease-charges' && <LeaseChargeSummaryReport />}
-          {activeReport === 'income-expenditure' && <IncomeExpenditureReport />}
-        </motion.div>
-      </AnimatePresence>
+      {/* Content Area */}
+      <div className="flex-1 overflow-auto">
+        <div className="p-4 md:p-6 space-y-6">
+          {/* Mobile selector */}
+          <MobileReportSelector activeReport={activeReport} onSelect={handleSelectReport} />
+
+          <PageHeader
+            title={reportNames[activeReport]}
+            subtitle="Accounting and operational reports"
+            icon={BarChart3}
+            breadcrumbs={[
+              { label: 'Dashboard', href: '/dashboard' },
+              { label: 'Reports' },
+              { label: reportNames[activeReport] },
+            ]}
+            actions={
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={handlePrint}>
+                  <Printer className="w-4 h-4" />
+                  <span className="hidden sm:inline">Print</span>
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportCSV}>
+                  <Download className="w-4 h-4" />
+                  <span className="hidden sm:inline">CSV</span>
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportExcel}>
+                  <Download className="w-4 h-4" />
+                  <span className="hidden sm:inline">Excel</span>
+                </Button>
+              </div>
+            }
+          />
+
+          {/* Report Content */}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeReport}
+              id="report-content"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              {activeReport === 'trial-balance' && <TrialBalanceReport />}
+              {activeReport === 'income-statement' && <IncomeStatementReport />}
+              {activeReport === 'balance-sheet' && <BalanceSheetReport />}
+              {activeReport === 'cash-flow' && <CashFlowReport />}
+              {activeReport === 'aged-analysis' && <AgedAnalysisReport />}
+              {activeReport === 'vacancy' && <VacancyReport />}
+              {activeReport === 'rent-roll' && <RentRollReport />}
+              {activeReport === 'rent-rollover' && <RentRolloverReport />}
+              {activeReport === 'tenant-account' && <TenantAccountReport />}
+              {activeReport === 'landlord-account' && <LandlordAccountReport />}
+              {activeReport === 'commission-property' && <CommissionByPropertyReport />}
+              {activeReport === 'commission-income' && <CommissionByIncomeReport />}
+              {activeReport === 'bank-to-income' && <BankToIncomeReport />}
+              {activeReport === 'receipts-listing' && <ReceiptsListingReport />}
+              {activeReport === 'deposits-listing' && <DepositsListingReport />}
+              {activeReport === 'lease-charges' && <LeaseChargeSummaryReport />}
+              {activeReport === 'income-expenditure' && <IncomeExpenditureReport />}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
     </div>
   )
 }
