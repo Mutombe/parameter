@@ -2285,10 +2285,53 @@ class IncomeExpenditureReportView(APIView):
             })
 
         # ── 6. Income summary per tenant ─────────────────────────────
-        # Active leases in the period to identify tenants & units
+        # Batched queries to avoid N+1 (one query per aggregation instead of per-lease)
         leases = LeaseAgreement.objects.filter(
             unit__in=units,
         ).select_related('tenant', 'unit', 'unit__property')
+
+        # Build (tenant_id, unit_id) pairs
+        lease_list = list(leases)
+        unit_ids = [l.unit_id for l in lease_list]
+        tenant_ids = [l.tenant_id for l in lease_list]
+
+        valid_statuses = ['sent', 'partial', 'overdue', 'paid']
+
+        # Batch: prior invoices total per (tenant, unit)
+        prior_inv_qs = Invoice.objects.filter(
+            tenant_id__in=tenant_ids, unit_id__in=unit_ids,
+            date__lt=start_date, status__in=valid_statuses,
+        ).values('tenant_id', 'unit_id').annotate(total=Sum('total_amount'))
+        prior_inv_map = {(r['tenant_id'], r['unit_id']): r['total'] or Decimal('0') for r in prior_inv_qs}
+
+        # Batch: prior payments per (tenant, unit)
+        prior_pay_qs = Receipt.objects.filter(
+            tenant_id__in=tenant_ids, invoice__unit_id__in=unit_ids,
+            date__lt=start_date,
+        ).values('tenant_id', 'invoice__unit_id').annotate(total=Sum('amount'))
+        prior_pay_map = {(r['tenant_id'], r['invoice__unit_id']): r['total'] or Decimal('0') for r in prior_pay_qs}
+
+        # Batch: period charges per (tenant, unit)
+        period_inv_qs = Invoice.objects.filter(
+            tenant_id__in=tenant_ids, unit_id__in=unit_ids,
+            date__gte=start_date, date__lte=end_date, status__in=valid_statuses,
+        ).values('tenant_id', 'unit_id').annotate(total=Sum('total_amount'))
+        period_inv_map = {(r['tenant_id'], r['unit_id']): r['total'] or Decimal('0') for r in period_inv_qs}
+
+        # Batch: penalties per (tenant, unit)
+        penalty_qs = Invoice.objects.filter(
+            tenant_id__in=tenant_ids, unit_id__in=unit_ids,
+            invoice_type='penalty',
+            date__gte=start_date, date__lte=end_date, status__in=valid_statuses,
+        ).values('tenant_id', 'unit_id').annotate(total=Sum('total_amount'))
+        penalty_map = {(r['tenant_id'], r['unit_id']): r['total'] or Decimal('0') for r in penalty_qs}
+
+        # Build per-receipt lookup: (tenant_id, unit_id) -> total paid
+        receipt_paid_map = {}
+        for r in period_receipts:
+            if r.invoice and r.invoice.unit_id:
+                key = (r.tenant_id, r.invoice.unit_id)
+                receipt_paid_map[key] = receipt_paid_map.get(key, Decimal('0')) + r.amount
 
         income_summary_tenants = []
         totals_bf = Decimal('0')
@@ -2296,54 +2339,28 @@ class IncomeExpenditureReportView(APIView):
         totals_paid = Decimal('0')
         totals_penalty = Decimal('0')
 
-        for lease in leases:
+        for lease in lease_list:
+            tid, uid = lease.tenant_id, lease.unit_id
             tenant = lease.tenant
             unit = lease.unit
 
-            # Balance B/F: outstanding invoice balance before period
-            prior_invoices_total = Invoice.objects.filter(
-                tenant=tenant, unit=unit,
-                date__lt=start_date,
-                status__in=['sent', 'partial', 'overdue', 'paid'],
-            ).aggregate(t=Sum('total_amount'))['t'] or Decimal('0')
-
-            prior_payments = Receipt.objects.filter(
-                tenant=tenant, invoice__unit=unit,
-                date__lt=start_date,
-            ).aggregate(t=Sum('amount'))['t'] or Decimal('0')
-
+            prior_invoices_total = prior_inv_map.get((tid, uid), Decimal('0'))
+            prior_payments = prior_pay_map.get((tid, uid), Decimal('0'))
             balance_bf = prior_invoices_total - prior_payments
 
-            # Charges in period (invoices raised)
-            period_charges = Invoice.objects.filter(
-                tenant=tenant, unit=unit,
-                date__gte=start_date, date__lte=end_date,
-                status__in=['sent', 'partial', 'overdue', 'paid'],
-            ).aggregate(t=Sum('total_amount'))['t'] or Decimal('0')
-
-            # Penalties in period
-            penalty = Invoice.objects.filter(
-                tenant=tenant, unit=unit,
-                invoice_type='penalty',
-                date__gte=start_date, date__lte=end_date,
-                status__in=['sent', 'partial', 'overdue', 'paid'],
-            ).aggregate(t=Sum('total_amount'))['t'] or Decimal('0')
-
-            # Non-penalty charges
+            period_charges = period_inv_map.get((tid, uid), Decimal('0'))
+            penalty = penalty_map.get((tid, uid), Decimal('0'))
             charge = period_charges - penalty
 
             amount_due = balance_bf + charge + penalty
-            amount_paid = sum(
-                (r.amount for r in period_receipts if r.tenant_id == tenant.id and r.invoice and r.invoice.unit_id == unit.id),
-                Decimal('0'),
-            )
+            amount_paid = receipt_paid_map.get((tid, uid), Decimal('0'))
             carried_forward = amount_due - amount_paid
 
             prop_name = unit.property.name if unit.property else ''
             display_name = f"{tenant.name} {unit.unit_number} {prop_name}".strip()
 
             income_summary_tenants.append({
-                'tenant_id': tenant.id,
+                'tenant_id': tid,
                 'name': display_name,
                 'unit': unit.unit_number,
                 'balance_bf': float(balance_bf),
