@@ -32,6 +32,7 @@ import { formatPercent, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, ConfirmDialog, Pagination, SelectionCheckbox, BulkActionsBar, SplitButton, Tooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
+import { undoToast } from '../../lib/undoToast'
 import { useChainStore } from '../../stores/chainStore'
 import PropertyForm from '../../components/forms/PropertyForm'
 import { exportTableData } from '../../lib/export'
@@ -351,8 +352,10 @@ export default function Properties() {
   }
 
   const handleDelete = (property: Property) => {
-    setSelectedProperty(property)
-    setShowDeleteDialog(true)
+    undoToast({
+      message: `Deleting "${property.name}"...`,
+      onConfirm: () => deleteMutation.mutate(property.id as number),
+    })
   }
 
   const handleViewDetails = (property: Property) => {
@@ -416,17 +419,15 @@ export default function Properties() {
   }
 
   const handleBulkDelete = () => {
-    setBulkDeleteConfirm({
-      open: true,
-      title: `Delete ${selection.selectedCount} properties?`,
-      message: 'This action cannot be undone.',
+    const count = selection.selectedCount
+    const ids = Array.from(selection.selectedIds)
+    selection.clearSelection()
+    undoToast({
+      message: `Deleting ${count} properties...`,
       onConfirm: async () => {
-        const ids = Array.from(selection.selectedIds)
         for (const id of ids) { try { await propertyApi.delete(id) } catch {} }
-        selection.clearSelection()
         queryClient.invalidateQueries({ queryKey: ['properties'] })
-        showToast.success(`Deleted ${ids.length} properties`)
-        setBulkDeleteConfirm(d => ({ ...d, open: false }))
+        showToast.success(`Deleted ${count} properties`)
       },
     })
   }

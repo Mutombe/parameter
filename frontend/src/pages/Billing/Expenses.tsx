@@ -30,6 +30,7 @@ import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, Tooltip, Pagination } from '../../components/ui'
 import { AutocompleteInput } from '../../components/ui/AutocompleteInput'
 import { showToast, parseApiError } from '../../lib/toast'
+import { undoToast } from '../../lib/undoToast'
 import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
@@ -384,17 +385,15 @@ export default function Expenses() {
   }
 
   const handleBulkDelete = () => {
-    setConfirmDialog({
-      open: true,
-      title: `Delete ${selection.selectedCount} expenses?`,
-      message: 'This action cannot be undone.',
+    const count = selection.selectedCount
+    const ids = Array.from(selection.selectedIds)
+    selection.clearSelection()
+    undoToast({
+      message: `Deleting ${count} expenses...`,
       onConfirm: async () => {
-        const ids = Array.from(selection.selectedIds)
         for (const id of ids) { try { await expenseApi.delete(id as number) } catch {} }
-        selection.clearSelection()
         queryClient.invalidateQueries({ queryKey: ['expenses'] })
-        showToast.success(`Deleted ${ids.length} expenses`)
-        setConfirmDialog(d => ({ ...d, open: false }))
+        showToast.success(`Deleted ${count} expenses`)
       },
     })
   }

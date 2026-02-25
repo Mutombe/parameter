@@ -24,6 +24,7 @@ import { landlordApi, importsApi } from '../../services/api'
 import { cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, ConfirmDialog, Pagination, SplitButton } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
+import { undoToast } from '../../lib/undoToast'
 import { useChainStore } from '../../stores/chainStore'
 import LandlordForm from '../../components/forms/LandlordForm'
 import { TbUserSquareRounded } from "react-icons/tb"
@@ -263,8 +264,10 @@ export default function Landlords() {
   }
 
   const handleDelete = (landlord: Landlord) => {
-    setSelectedLandlord(landlord)
-    setShowDeleteDialog(true)
+    undoToast({
+      message: `Deleting "${landlord.name}"...`,
+      onConfirm: () => deleteMutation.mutate(landlord.id as number),
+    })
   }
 
   const handleViewDetails = (landlord: Landlord) => {
@@ -306,16 +309,17 @@ export default function Landlords() {
   }
 
   const handleBulkDelete = () => {
-    setShowBulkDeleteDialog(true)
-  }
-
-  const handleBulkDeleteConfirm = async () => {
+    const count = selection.selectedCount
     const ids = Array.from(selection.selectedIds)
-    for (const id of ids) { try { await landlordApi.delete(id) } catch {} }
     selection.clearSelection()
-    queryClient.invalidateQueries({ queryKey: ['landlords'] })
-    showToast.success(`Deleted ${ids.length} landlords`)
-    setShowBulkDeleteDialog(false)
+    undoToast({
+      message: `Deleting ${count} landlords...`,
+      onConfirm: async () => {
+        for (const id of ids) { try { await landlordApi.delete(id) } catch {} }
+        queryClient.invalidateQueries({ queryKey: ['landlords'] })
+        showToast.success(`Deleted ${count} landlords`)
+      },
+    })
   }
 
   const handleDownloadTemplate = async () => {
@@ -774,7 +778,7 @@ export default function Landlords() {
       <ConfirmDialog
         open={showBulkDeleteDialog}
         onClose={() => setShowBulkDeleteDialog(false)}
-        onConfirm={handleBulkDeleteConfirm}
+        onConfirm={handleBulkDelete}
         title={`Delete ${selection.selectedCount} landlords?`}
         description="This action cannot be undone."
         confirmText="Delete"

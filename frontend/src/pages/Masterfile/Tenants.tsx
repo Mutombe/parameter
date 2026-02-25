@@ -9,6 +9,7 @@ import { useDebounce, formatCurrency, formatDate, cn } from '../../lib/utils'
 import { Pagination, EmptyState, Modal, SelectionCheckbox, BulkActionsBar, ConfirmDialog, SplitButton, Select, Tooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
+import { undoToast } from '../../lib/undoToast'
 import { useChainStore } from '../../stores/chainStore'
 import TenantForm from '../../components/forms/TenantForm'
 import { exportTableData } from '../../lib/export'
@@ -268,17 +269,23 @@ export default function Tenants() {
   })
 
   const handleDelete = (tenant: any) => {
-    setConfirmDialog({
-      open: true,
-      title: `Delete ${tenant.name}?`,
-      message: tenant.has_active_lease
-        ? 'This tenant has active leases. Deleting may fail if there are related records.'
-        : 'This action cannot be undone. The tenant will be permanently removed.',
-      onConfirm: () => {
-        setConfirmDialog(d => ({ ...d, open: false }))
-        deleteMutation.mutate(tenant.id)
-      },
-    })
+    if (tenant.has_active_lease) {
+      // Keep confirm dialog for tenants with active leases (risky)
+      setConfirmDialog({
+        open: true,
+        title: `Delete ${tenant.name}?`,
+        message: 'This tenant has active leases. Deleting may fail if there are related records.',
+        onConfirm: () => {
+          setConfirmDialog(d => ({ ...d, open: false }))
+          deleteMutation.mutate(tenant.id)
+        },
+      })
+    } else {
+      undoToast({
+        message: `Deleting "${tenant.name}"...`,
+        onConfirm: () => deleteMutation.mutate(tenant.id),
+      })
+    }
   }
 
   const selectableItems = (tenants || []).filter((t: any) => !t._isOptimistic)
@@ -297,17 +304,15 @@ export default function Tenants() {
   }
 
   const handleBulkDelete = () => {
-    setConfirmDialog({
-      open: true,
-      title: `Delete ${selection.selectedCount} tenants?`,
-      message: 'This action cannot be undone.',
+    const count = selection.selectedCount
+    const ids = Array.from(selection.selectedIds)
+    selection.clearSelection()
+    undoToast({
+      message: `Deleting ${count} tenants...`,
       onConfirm: async () => {
-        const ids = Array.from(selection.selectedIds)
         for (const id of ids) { try { await tenantApi.delete(id) } catch {} }
-        selection.clearSelection()
         queryClient.invalidateQueries({ queryKey: ['tenants'] })
-        showToast.success(`Deleted ${ids.length} tenants`)
-        setConfirmDialog(d => ({ ...d, open: false }))
+        showToast.success(`Deleted ${count} tenants`)
       },
     })
   }
