@@ -5,7 +5,7 @@ from decimal import Decimal
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Sum, Count, Q, F, Avg, Case, When, Value, CharField
+from django.db.models import Sum, Count, Q, F, Avg, Case, When, Value, CharField, DecimalField
 from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 from django.core.cache import cache
@@ -1163,6 +1163,14 @@ class DepositAccountSummaryView(APIView):
         if property_id:
             deposit_invoices = deposit_invoices.filter(unit__property_id=property_id)
 
+        # Pre-fetch deposit invoices into a dict keyed by (tenant_id, lease_id)
+        # to avoid N+1 queries (one DB hit per lease).
+        deposit_inv_map = {}
+        for inv in deposit_invoices:
+            key = (inv.tenant_id, inv.lease_id)
+            if key not in deposit_inv_map:
+                deposit_inv_map[key] = inv
+
         # Build deposit summary
         deposits = []
         total_deposits_required = Decimal('0')
@@ -1170,11 +1178,7 @@ class DepositAccountSummaryView(APIView):
         total_deposits_held = Decimal('0')
 
         for lease in leases:
-            # Find related deposit invoice
-            deposit_inv = deposit_invoices.filter(
-                tenant=lease.tenant, lease=lease
-            ).first()
-
+            deposit_inv = deposit_inv_map.get((lease.tenant_id, lease.id))
             deposit_paid = deposit_inv.amount_paid if deposit_inv else Decimal('0')
             deposit_required = lease.deposit_amount
 
@@ -2165,15 +2169,30 @@ class IncomeExpenditureReportView(APIView):
         commission_rate = float(landlord.commission_rate)
 
         # ── 1. Opening balance (all transactions BEFORE start_date) ──
-        prior_receipts = Receipt.objects.filter(
-            invoice__unit__in=units, date__lt=start_date,
-        ).select_related('income_type')
+        # Pre-evaluate unit IDs to avoid repeated subquery evaluation
+        unit_id_list = list(units.values_list('id', flat=True))
 
-        prior_receipts_total = Decimal('0')
-        prior_commissions_total = Decimal('0')
-        for r in prior_receipts:
-            prior_receipts_total += r.amount
-            prior_commissions_total += self._compute_commission_amount(r, landlord)
+        # Aggregate prior receipts total and commission in SQL (avoids loading
+        # every historical receipt into Python memory — the old per-receipt loop
+        # caused OOM / connection drops for landlords with large history).
+        prior_agg = Receipt.objects.filter(
+            invoice__unit_id__in=unit_id_list, date__lt=start_date,
+        ).aggregate(
+            receipts_total=Sum('amount'),
+            commissions_total=Sum(
+                Case(
+                    When(
+                        income_type__isnull=False,
+                        income_type__is_commissionable=True,
+                        then=F('amount') * F('income_type__default_commission_rate') / Value(Decimal('100')),
+                    ),
+                    default=F('amount') * Value(landlord.commission_rate) / Value(Decimal('100')),
+                    output_field=DecimalField(max_digits=18, decimal_places=2),
+                )
+            ),
+        )
+        prior_receipts_total = prior_agg['receipts_total'] or Decimal('0')
+        prior_commissions_total = prior_agg['commissions_total'] or Decimal('0')
 
         prior_expenses_total = Expense.objects.filter(
             payee_type='landlord', payee_id=landlord.id,
@@ -2185,7 +2204,7 @@ class IncomeExpenditureReportView(APIView):
         # ── 2. Period receipts + expenses (eager load once) ──
         period_receipts = list(
             Receipt.objects.filter(
-                invoice__unit__in=units,
+                invoice__unit_id__in=unit_id_list,
                 date__gte=start_date, date__lte=end_date,
             ).select_related('income_type', 'tenant', 'invoice', 'invoice__unit')
             .order_by('date')
@@ -2287,13 +2306,13 @@ class IncomeExpenditureReportView(APIView):
         # ── 6. Income summary per tenant ─────────────────────────────
         # Batched queries to avoid N+1 (one query per aggregation instead of per-lease)
         leases = LeaseAgreement.objects.filter(
-            unit__in=units,
+            unit_id__in=unit_id_list,
         ).select_related('tenant', 'unit', 'unit__property')
 
-        # Build (tenant_id, unit_id) pairs
+        # Build deduplicated (tenant_id, unit_id) sets for efficient IN clauses
         lease_list = list(leases)
-        unit_ids = [l.unit_id for l in lease_list]
-        tenant_ids = [l.tenant_id for l in lease_list]
+        unit_ids = list({l.unit_id for l in lease_list})
+        tenant_ids = list({l.tenant_id for l in lease_list})
 
         valid_statuses = ['sent', 'partial', 'overdue', 'paid']
 

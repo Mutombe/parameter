@@ -3859,10 +3859,11 @@ function IncomeExpenditureReport() {
     queryFn: () => landlordApi.list().then(r => r.data.results || r.data),
   })
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['income-expenditure', selectedLandlord, startDate, endDate],
     queryFn: () => reportsApi.incomeExpenditure({ landlord_id: Number(selectedLandlord), start_date: startDate, end_date: endDate }).then(r => r.data),
     enabled: !!selectedLandlord,
+    retry: 1,
   })
 
   if (data) { currentReportData = data; currentReportType = 'income-expenditure' }
@@ -3923,6 +3924,15 @@ function IncomeExpenditureReport() {
         </div>
       ) : isLoading ? (
         <SkeletonIncomeExpenditure />
+      ) : isError ? (
+        <div className="bg-white rounded-xl border border-red-200 p-8 text-center">
+          <AlertTriangle className="w-10 h-10 mx-auto text-red-400 mb-3" />
+          <p className="font-medium text-red-700 mb-1">Failed to load report</p>
+          <p className="text-sm text-gray-500 mb-4">{(error as any)?.response?.data?.error || (error as any)?.message || 'An unexpected error occurred'}</p>
+          <button onClick={() => refetch()} className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors">
+            <RefreshCw className="w-4 h-4" /> Retry
+          </button>
+        </div>
       ) : data ? (
         <>
           {/* ── Summary cards ── */}
