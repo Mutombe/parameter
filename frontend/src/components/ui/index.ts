@@ -31,6 +31,7 @@ export {
 } from './Skeleton'
 export { EmptyState, EmptyTableState } from './EmptyState'
 export { AsyncSelect, SelectSkeleton } from './AsyncSelect'
+export { AutocompleteInput } from './AutocompleteInput'
 
 // Forms & Inputs
 export { Button, IconButton } from './Button'

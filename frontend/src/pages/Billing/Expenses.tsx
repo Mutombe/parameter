@@ -28,12 +28,14 @@ import {
 import { expenseApi, landlordApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, Tooltip, Pagination } from '../../components/ui'
+import { AutocompleteInput } from '../../components/ui/AutocompleteInput'
 import { showToast, parseApiError } from '../../lib/toast'
 import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { usePrefetch } from '../../hooks/usePrefetch'
+import { useRecentValues } from '../../hooks/useRecentValues'
 
 interface Expense {
   id: number | string
@@ -156,6 +158,20 @@ export default function Expenses() {
     { key: 'c', handler: () => setShowModal(true) },
     { key: '/', handler: (e) => { e.preventDefault(); searchInputRef.current?.focus() } },
   ])
+
+  const recentExpenseType = useRecentValues('expense_type', 1)
+  const recentPayeeType = useRecentValues('expense_payee_type', 1)
+
+  const [expenseForm, setExpenseForm] = useState({
+    expense_type: recentExpenseType.values[0] || '',
+    payee_name: '',
+    payee_type: recentPayeeType.values[0] || '',
+    date: new Date().toISOString().split('T')[0],
+    amount: '',
+    currency: 'USD',
+    description: '',
+    reference: '',
+  })
 
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
 
@@ -297,22 +313,47 @@ export default function Expenses() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    const form = e.currentTarget
-    const formData = new FormData(form)
+
+    recentExpenseType.add(expenseForm.expense_type)
+    recentPayeeType.add(expenseForm.payee_type)
 
     const data = {
-      expense_type: formData.get('expense_type'),
-      payee_name: formData.get('payee_name'),
-      payee_type: formData.get('payee_type'),
-      payee_id: formData.get('payee_id') || null,
-      date: formData.get('date'),
-      amount: formData.get('amount'),
-      currency: formData.get('currency') || 'USD',
-      description: formData.get('description'),
-      reference: formData.get('reference'),
+      expense_type: expenseForm.expense_type,
+      payee_name: expenseForm.payee_name,
+      payee_type: expenseForm.payee_type,
+      payee_id: null,
+      date: expenseForm.date,
+      amount: expenseForm.amount,
+      currency: expenseForm.currency,
+      description: expenseForm.description,
+      reference: expenseForm.reference,
     }
 
     createMutation.mutate(data)
+
+    // Reset form
+    setExpenseForm({
+      expense_type: recentExpenseType.values[0] || '',
+      payee_name: '',
+      payee_type: recentPayeeType.values[0] || '',
+      date: new Date().toISOString().split('T')[0],
+      amount: '',
+      currency: 'USD',
+      description: '',
+      reference: '',
+    })
+  }
+
+  // Get description suggestions based on expense type
+  const getExpenseDescriptionSuggestions = () => {
+    const map: Record<string, string[]> = {
+      landlord_payment: ['Landlord payout', 'Monthly landlord remittance', 'Rental income distribution'],
+      maintenance: ['Plumbing repair', 'Electrical repair', 'Painting', 'General maintenance', 'Lock replacement'],
+      utility: ['Electricity bill', 'Water bill', 'Internet bill', 'Rates and taxes'],
+      commission: ['Management commission', 'Letting commission'],
+      other: ['Office supplies', 'Legal fees', 'Insurance premium', 'Cleaning services'],
+    }
+    return map[expenseForm.expense_type] || []
   }
 
   const selectableItems = (expenses || []).filter((e: any) => !e._isOptimistic)
@@ -669,40 +710,50 @@ export default function Expenses() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <Select
             label="Expense Type"
-            name="expense_type"
+            value={expenseForm.expense_type}
+            onChange={(e) => setExpenseForm({ ...expenseForm, expense_type: e.target.value })}
             required
             options={expenseTypes}
           />
 
           <Select
             label="Payee Type"
-            name="payee_type"
+            value={expenseForm.payee_type}
+            onChange={(e) => setExpenseForm({ ...expenseForm, payee_type: e.target.value })}
             required
             options={payeeTypes}
           />
 
-          <Input
+          <AutocompleteInput
             label="Payee Name"
-            name="payee_name"
             placeholder="Enter payee name"
+            value={expenseForm.payee_name}
+            onChange={(e) => setExpenseForm({ ...expenseForm, payee_name: e.target.value })}
+            suggestions={
+              expenseForm.payee_type === 'landlord'
+                ? landlords.map((l: any) => l.name)
+                : []
+            }
+            recentKey="expense_payee_names"
             required
           />
 
           <div className="grid grid-cols-2 gap-4">
             <Input
               label="Date"
-              name="date"
               type="date"
+              value={expenseForm.date}
+              onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
               required
-              defaultValue={new Date().toISOString().split('T')[0]}
             />
             <Input
               label="Amount"
-              name="amount"
               type="number"
               step="0.01"
               min="0"
               placeholder="0.00"
+              value={expenseForm.amount}
+              onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
               required
             />
           </div>
@@ -710,24 +761,29 @@ export default function Expenses() {
           <div className="grid grid-cols-2 gap-4">
             <Select
               label="Currency"
-              name="currency"
+              value={expenseForm.currency}
+              onChange={(e) => setExpenseForm({ ...expenseForm, currency: e.target.value })}
               options={[
                 { value: 'USD', label: 'USD' },
                 { value: 'ZWG', label: 'ZiG' },
               ]}
-              defaultValue="USD"
             />
-            <Input
+            <AutocompleteInput
               label="Reference"
-              name="reference"
               placeholder="Payment reference"
+              value={expenseForm.reference}
+              onChange={(e) => setExpenseForm({ ...expenseForm, reference: e.target.value })}
+              recentKey="expense_references"
             />
           </div>
 
-          <Textarea
+          <AutocompleteInput
             label="Description"
-            name="description"
             placeholder="Describe the expense..."
+            value={expenseForm.description}
+            onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
+            suggestions={getExpenseDescriptionSuggestions()}
+            recentKey="expense_descriptions"
             required
           />
 

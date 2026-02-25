@@ -1,5 +1,5 @@
-import { forwardRef, useState, useRef, useEffect, useCallback, InputHTMLAttributes, TextareaHTMLAttributes, ComponentType } from 'react'
-import { ChevronDown, Check } from 'lucide-react'
+import { forwardRef, useState, useRef, useEffect, useCallback, useMemo, InputHTMLAttributes, TextareaHTMLAttributes, ComponentType } from 'react'
+import { ChevronDown, Check, Search, X } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { AnimatePresence, motion } from 'framer-motion'
 
@@ -112,6 +112,7 @@ interface SelectProps {
   name?: string
   className?: string
   children?: React.ReactNode
+  searchable?: boolean
 }
 
 export function Select({
@@ -128,13 +129,16 @@ export function Select({
   disabled,
   name,
   children,
+  searchable = false,
 }: SelectProps) {
   const [internalValue, setInternalValue] = useState(String(defaultValue ?? ''))
   const value = controlledValue !== undefined ? controlledValue : internalValue
   const [isOpen, setIsOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  const [searchTerm, setSearchTerm] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Derive options from children if provided (for backward compat with <option> children)
   const derivedOptions: SelectOption[] = (() => {
@@ -163,6 +167,22 @@ export function Select({
 
   const currentValue = String(value ?? '')
   const selectedOption = derivedOptions.find(opt => opt.value === currentValue)
+
+  const filteredOptions = useMemo(() => {
+    if (!searchable || !searchTerm) return derivedOptions
+    const q = searchTerm.toLowerCase()
+    return derivedOptions.filter(opt => opt.label.toLowerCase().includes(q))
+  }, [derivedOptions, searchTerm, searchable])
+
+  // Focus search input when dropdown opens
+  useEffect(() => {
+    if (isOpen && searchable && searchInputRef.current) {
+      searchInputRef.current.focus()
+    }
+    if (!isOpen) {
+      setSearchTerm('')
+    }
+  }, [isOpen, searchable])
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -202,16 +222,16 @@ export function Select({
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault()
-        setHighlightedIndex(prev => prev < derivedOptions.length - 1 ? prev + 1 : 0)
+        setHighlightedIndex(prev => prev < filteredOptions.length - 1 ? prev + 1 : 0)
         break
       case 'ArrowUp':
         e.preventDefault()
-        setHighlightedIndex(prev => prev > 0 ? prev - 1 : derivedOptions.length - 1)
+        setHighlightedIndex(prev => prev > 0 ? prev - 1 : filteredOptions.length - 1)
         break
       case 'Enter':
         e.preventDefault()
-        if (highlightedIndex >= 0 && highlightedIndex < derivedOptions.length) {
-          handleSelect(derivedOptions[highlightedIndex].value)
+        if (highlightedIndex >= 0 && highlightedIndex < filteredOptions.length) {
+          handleSelect(filteredOptions[highlightedIndex].value)
         }
         break
       case 'Escape':
@@ -220,7 +240,7 @@ export function Select({
         setHighlightedIndex(-1)
         break
     }
-  }, [isOpen, derivedOptions, highlightedIndex, handleSelect])
+  }, [isOpen, filteredOptions, highlightedIndex, handleSelect])
 
   return (
     <div className={cn('relative', className)} ref={containerRef} onKeyDown={handleKeyDown}>
@@ -264,8 +284,35 @@ export function Select({
             transition={{ duration: 0.15 }}
             className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden dark:bg-slate-900 dark:border-slate-600"
           >
+            {searchable && (
+              <div className="p-2 border-b border-gray-100 dark:border-slate-700">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder="Search..."
+                    value={searchTerm}
+                    onChange={(e) => { setSearchTerm(e.target.value); setHighlightedIndex(-1) }}
+                    onKeyDown={handleKeyDown}
+                    className="w-full pl-9 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:bg-slate-900 dark:border-slate-600 dark:text-slate-200 dark:placeholder:text-slate-500"
+                  />
+                  {searchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => { setSearchTerm(''); setHighlightedIndex(-1) }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="max-h-60 overflow-y-auto p-1" ref={listRef}>
-              {derivedOptions.map((option, index) => (
+              {filteredOptions.length === 0 ? (
+                <div className="px-3 py-2.5 text-sm text-gray-400 text-center">No options found</div>
+              ) : filteredOptions.map((option, index) => (
                 <button
                   key={option.value}
                   type="button"

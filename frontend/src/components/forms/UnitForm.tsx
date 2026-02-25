@@ -2,6 +2,7 @@ import { useState, useImperativeHandle, forwardRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Bed, Bath, Square } from 'lucide-react'
 import { Input, Select, Textarea } from '../ui'
+import { AutocompleteInput } from '../ui/AutocompleteInput'
 import { AsyncSelect } from '../ui/AsyncSelect'
 import { propertyApi } from '../../services/api'
 
@@ -49,6 +50,16 @@ const UnitForm = forwardRef<UnitFormRef, UnitFormProps>(
       }
     }, [initialValues])
 
+    // Auto-calculate deposit as 2x rent when rental_amount changes and deposit is empty
+    useEffect(() => {
+      if (form.rental_amount && !form.deposit_amount) {
+        const rent = parseFloat(form.rental_amount)
+        if (rent > 0) {
+          setForm(prev => prev.deposit_amount ? prev : { ...prev, deposit_amount: (rent * 2).toFixed(2) })
+        }
+      }
+    }, [form.rental_amount])
+
     const handleSubmit = (e?: React.FormEvent) => {
       e?.preventDefault()
       const data = {
@@ -72,11 +83,12 @@ const UnitForm = forwardRef<UnitFormRef, UnitFormProps>(
     return (
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-2 gap-4">
-          <Input
+          <AutocompleteInput
             label="Unit Number"
             placeholder="A101"
             value={form.unit_number}
             onChange={(e) => setForm({ ...form, unit_number: e.target.value })}
+            recentKey="unit_numbers"
             required
           />
 
@@ -98,6 +110,7 @@ const UnitForm = forwardRef<UnitFormRef, UnitFormProps>(
             label="Unit Type"
             value={form.unit_type}
             onChange={(e) => setForm({ ...form, unit_type: e.target.value })}
+            searchable
           >
             <option value="studio">Studio</option>
             <option value="apartment">Apartment</option>
@@ -139,6 +152,7 @@ const UnitForm = forwardRef<UnitFormRef, UnitFormProps>(
             min="0"
             value={form.deposit_amount}
             onChange={(e) => setForm({ ...form, deposit_amount: e.target.value })}
+            hint="Typically 2x monthly rent"
           />
         </div>
 

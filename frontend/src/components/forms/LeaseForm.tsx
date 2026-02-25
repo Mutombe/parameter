@@ -2,8 +2,11 @@ import { useState, useImperativeHandle, forwardRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Upload, XCircle } from 'lucide-react'
 import { Input, Select, Textarea } from '../ui'
+import { AutocompleteInput } from '../ui/AutocompleteInput'
 import { AsyncSelect } from '../ui/AsyncSelect'
 import { tenantApi, unitApi, propertyApi } from '../../services/api'
+import { useDebounce } from '../../lib/utils'
+import { useChainStore } from '../../stores/chainStore'
 
 export interface LeaseFormRef {
   submit: () => void
@@ -29,16 +32,20 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
       monthly_rent: '',
       deposit_amount: '',
       currency: 'USD',
-      start_date: '',
+      start_date: new Date().toISOString().split('T')[0],
       end_date: '',
       payment_day: '1',
       notes: '',
     })
     const [documentFile, setDocumentFile] = useState<File | null>(null)
 
+    // Server-side search for tenants
+    const [tenantSearch, setTenantSearch] = useState('')
+    const debouncedTenantSearch = useDebounce(tenantSearch, 300)
+
     const { data: tenants, isLoading: tenantsLoading } = useQuery({
-      queryKey: ['tenants-list'],
-      queryFn: () => tenantApi.list().then((r) => r.data.results || r.data),
+      queryKey: ['tenants-list', debouncedTenantSearch],
+      queryFn: () => tenantApi.list(debouncedTenantSearch ? { search: debouncedTenantSearch } : {}).then((r) => r.data.results || r.data),
       staleTime: 30000,
     })
 
@@ -75,6 +82,27 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
       }
     }, [initialValues])
 
+    // Auto-fill end_date when start_date changes (12 months ahead)
+    useEffect(() => {
+      if (form.start_date && !form.end_date) {
+        const start = new Date(form.start_date)
+        if (!isNaN(start.getTime())) {
+          start.setFullYear(start.getFullYear() + 1)
+          setForm(prev => prev.end_date ? prev : { ...prev, end_date: start.toISOString().split('T')[0] })
+        }
+      }
+    }, [form.start_date])
+
+    // Auto-fill deposit as 2x rent when rent changes and deposit is empty
+    useEffect(() => {
+      if (form.monthly_rent && !form.deposit_amount) {
+        const rent = parseFloat(form.monthly_rent)
+        if (rent > 0) {
+          setForm(prev => prev.deposit_amount ? prev : { ...prev, deposit_amount: (rent * 2).toFixed(2) })
+        }
+      }
+    }, [form.monthly_rent])
+
     const handleSubmit = (e?: React.FormEvent) => {
       e?.preventDefault()
       const data: any = {
@@ -104,6 +132,16 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
       getDocumentFile: () => documentFile,
     }))
 
+    const startChain = useChainStore(s => s.startChain)
+
+    const commonNotes = [
+      'Standard 12-month lease agreement',
+      'Month-to-month tenancy',
+      'Includes parking bay',
+      'Pet deposit required',
+      'No subletting allowed',
+    ]
+
     return (
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -116,6 +154,9 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
             isLoading={tenantsLoading}
             required
             searchable
+            onSearch={setTenantSearch}
+            onCreateNew={() => startChain('tenant')}
+            createNewLabel="+ Create new tenant"
           />
 
           <AsyncSelect
@@ -129,6 +170,8 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
             isLoading={propertiesLoading}
             required
             searchable
+            onCreateNew={() => startChain('landlord')}
+            createNewLabel="+ Create new property chain"
           />
         </div>
 
@@ -181,6 +224,7 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
             min="0"
             value={form.deposit_amount}
             onChange={(e) => setForm({ ...form, deposit_amount: e.target.value })}
+            hint="Typically 2x monthly rent"
           />
 
           <Select
@@ -219,6 +263,8 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
               value: String(i + 1),
               label: `Day ${i + 1}`,
             }))}
+            searchable
+            hint="Day of month rent is due"
           />
         </div>
 
@@ -249,12 +295,13 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
           </div>
         </div>
 
-        <Textarea
+        <AutocompleteInput
           label="Notes"
           placeholder="Additional terms or notes..."
           value={form.notes}
           onChange={(e) => setForm({ ...form, notes: e.target.value })}
-          rows={3}
+          suggestions={commonNotes}
+          recentKey="lease_notes"
         />
 
         {showButtons && (

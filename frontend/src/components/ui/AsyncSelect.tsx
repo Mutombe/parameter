@@ -24,6 +24,11 @@ interface AsyncSelectProps {
   clearable?: boolean
   className?: string
   emptyMessage?: string
+  onSearch?: (query: string) => void
+  onCreateNew?: () => void
+  createNewLabel?: string
+  recentItems?: Option[]
+  recentLabel?: string
 }
 
 export function AsyncSelect({
@@ -40,6 +45,11 @@ export function AsyncSelect({
   clearable = false,
   className,
   emptyMessage = 'No options available',
+  onSearch,
+  onCreateNew,
+  createNewLabel = '+ Create new...',
+  recentItems,
+  recentLabel = 'Recently used',
 }: AsyncSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -73,12 +83,21 @@ export function AsyncSelect({
 
   const selectedOption = options.find(opt => String(opt.value) === String(value))
 
-  const filteredOptions = searchTerm
-    ? options.filter(opt =>
-        opt.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        opt.description?.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    : options
+  // When onSearch is provided, parent handles filtering server-side
+  const filteredOptions = onSearch
+    ? options
+    : searchTerm
+      ? options.filter(opt =>
+          opt.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          opt.description?.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      : options
+
+  // Show recent items when search is empty
+  const showRecentSection = !searchTerm && recentItems && recentItems.length > 0
+  const displayOptions = showRecentSection
+    ? [...recentItems.filter(r => !filteredOptions.some(o => String(o.value) === String(r.value))), ...filteredOptions]
+    : filteredOptions
 
   const handleSelect = useCallback((optionValue: string | number) => {
     onChange(optionValue)
@@ -117,19 +136,19 @@ export function AsyncSelect({
       case 'ArrowDown':
         e.preventDefault()
         setHighlightedIndex(prev =>
-          prev < filteredOptions.length - 1 ? prev + 1 : 0
+          prev < displayOptions.length - 1 ? prev + 1 : 0
         )
         break
       case 'ArrowUp':
         e.preventDefault()
         setHighlightedIndex(prev =>
-          prev > 0 ? prev - 1 : filteredOptions.length - 1
+          prev > 0 ? prev - 1 : displayOptions.length - 1
         )
         break
       case 'Enter':
         e.preventDefault()
-        if (highlightedIndex >= 0 && highlightedIndex < filteredOptions.length) {
-          handleSelect(filteredOptions[highlightedIndex].value)
+        if (highlightedIndex >= 0 && highlightedIndex < displayOptions.length) {
+          handleSelect(displayOptions[highlightedIndex].value)
         }
         break
       case 'Escape':
@@ -139,7 +158,7 @@ export function AsyncSelect({
         setHighlightedIndex(-1)
         break
     }
-  }, [isOpen, filteredOptions, highlightedIndex, handleSelect])
+  }, [isOpen, displayOptions, highlightedIndex, handleSelect])
 
   return (
     <div className={cn('relative', className)} ref={containerRef} onKeyDown={handleKeyDown}>
@@ -206,7 +225,7 @@ export function AsyncSelect({
                   type="text"
                   placeholder="Search..."
                   value={searchTerm}
-                  onChange={(e) => { setSearchTerm(e.target.value); setHighlightedIndex(-1) }}
+                  onChange={(e) => { setSearchTerm(e.target.value); setHighlightedIndex(-1); onSearch?.(e.target.value) }}
                   className="w-full pl-9 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-lg focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 dark:bg-slate-900 dark:border-slate-600 dark:text-slate-200 dark:placeholder:text-slate-500"
                 />
                 {searchTerm && (
@@ -225,7 +244,6 @@ export function AsyncSelect({
           {/* Options list */}
           <div className="max-h-60 overflow-y-auto" ref={listRef}>
             {isLoading ? (
-              // Loading skeleton
               <div className="p-2 space-y-1">
                 {[...Array(4)].map((_, i) => (
                   <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-lg">
@@ -237,8 +255,7 @@ export function AsyncSelect({
                   </div>
                 ))}
               </div>
-            ) : filteredOptions.length === 0 ? (
-              // Empty state
+            ) : displayOptions.length === 0 && !onCreateNew ? (
               <div className="px-4 py-6 text-center">
                 <Inbox className="w-8 h-8 text-gray-300 mx-auto mb-2" />
                 <p className="text-sm text-gray-500">
@@ -247,7 +264,7 @@ export function AsyncSelect({
                 {searchTerm && (
                   <button
                     type="button"
-                    onClick={() => { setSearchTerm(''); setHighlightedIndex(-1) }}
+                    onClick={() => { setSearchTerm(''); setHighlightedIndex(-1); onSearch?.('') }}
                     className="mt-2 text-xs text-primary-600 hover:text-primary-700 font-medium"
                   >
                     Clear search
@@ -255,9 +272,13 @@ export function AsyncSelect({
                 )}
               </div>
             ) : (
-              // Options
               <div className="p-1">
-                {filteredOptions.map((option, index) => (
+                {showRecentSection && (
+                  <div className="px-3 py-1.5 text-xs font-medium text-gray-400 uppercase tracking-wide">
+                    {recentLabel}
+                  </div>
+                )}
+                {displayOptions.map((option, index) => (
                   <button
                     key={option.value}
                     type="button"
@@ -289,6 +310,15 @@ export function AsyncSelect({
                     )}
                   </button>
                 ))}
+                {onCreateNew && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setIsOpen(false); onCreateNew() }}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 text-left text-sm rounded-lg text-primary-600 hover:bg-primary-50 font-medium transition-colors border-t border-gray-100 dark:border-slate-700 mt-1 dark:text-primary-400 dark:hover:bg-slate-800"
+                  >
+                    {createNewLabel}
+                  </button>
+                )}
               </div>
             )}
           </div>

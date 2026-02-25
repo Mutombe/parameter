@@ -1,5 +1,8 @@
-import { useState, useImperativeHandle, forwardRef, useEffect } from 'react'
+import { useState, useImperativeHandle, forwardRef, useEffect, useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Input, Select, Textarea } from '../ui'
+import { AutocompleteInput } from '../ui/AutocompleteInput'
+import { landlordApi } from '../../services/api'
 
 export interface LandlordFormRef {
   submit: () => void
@@ -25,6 +28,13 @@ const LandlordForm = forwardRef<LandlordFormRef, LandlordFormProps>(
       commission_rate: '10.00',
     })
 
+    // Fetch existing landlords for name duplicate detection
+    const { data: existingLandlords } = useQuery({
+      queryKey: ['landlords-list'],
+      queryFn: () => landlordApi.list().then(r => r.data.results || r.data),
+      staleTime: 30000,
+    })
+
     useEffect(() => {
       if (initialValues) {
         setForm((prev) => ({ ...prev, ...initialValues }))
@@ -41,13 +51,24 @@ const LandlordForm = forwardRef<LandlordFormRef, LandlordFormProps>(
       getFormData: () => form,
     }))
 
+    const fetchNameSuggestions = useCallback(async (query: string) => {
+      if (!existingLandlords) return []
+      const q = query.toLowerCase()
+      return existingLandlords
+        .filter((l: any) => l.name.toLowerCase().includes(q))
+        .slice(0, 8)
+        .map((l: any) => ({ text: l.name, subtext: l.landlord_type }))
+    }, [existingLandlords])
+
     return (
       <form onSubmit={handleSubmit} className="space-y-5">
-        <Input
+        <AutocompleteInput
           label="Full Name"
           placeholder="John Doe or Company Ltd"
           value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
+          onFetchSuggestions={fetchNameSuggestions}
+          recentKey="landlord_names"
           required
         />
 
@@ -71,24 +92,27 @@ const LandlordForm = forwardRef<LandlordFormRef, LandlordFormProps>(
             max="100"
             value={form.commission_rate}
             onChange={(e) => setForm({ ...form, commission_rate: e.target.value })}
+            hint="Standard commission is 10%"
           />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <Input
+          <AutocompleteInput
             type="email"
             label="Email Address"
             placeholder="email@example.com"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
+            recentKey="landlord_emails"
             required
           />
 
-          <Input
+          <AutocompleteInput
             label="Phone Number"
             placeholder="+263 77 123 4567"
             value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            recentKey="landlord_phones"
             required
           />
         </div>

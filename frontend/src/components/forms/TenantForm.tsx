@@ -1,9 +1,10 @@
-import { useState, useImperativeHandle, forwardRef, useEffect } from 'react'
+import { useState, useImperativeHandle, forwardRef, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Building2 } from 'lucide-react'
-import { Select } from '../ui'
+import { Input, Select } from '../ui'
+import { AutocompleteInput } from '../ui/AutocompleteInput'
 import { AsyncSelect } from '../ui/AsyncSelect'
-import { propertyApi, unitApi } from '../../services/api'
+import { propertyApi, unitApi, tenantApi } from '../../services/api'
 
 export interface TenantFormRef {
   submit: () => void
@@ -30,6 +31,13 @@ const TenantForm = forwardRef<TenantFormRef, TenantFormProps>(
       id_number: '',
       property: '' as string | number,
       unit: '' as string | number,
+    })
+
+    // Fetch existing tenants for name duplicate detection
+    const { data: existingTenants } = useQuery({
+      queryKey: ['tenants-for-suggestions'],
+      queryFn: () => tenantApi.list().then(r => r.data.results || r.data),
+      staleTime: 30000,
     })
 
     const { data: propertiesData } = useQuery({
@@ -76,43 +84,47 @@ const TenantForm = forwardRef<TenantFormRef, TenantFormProps>(
       getFormData: () => form,
     }))
 
+    const fetchNameSuggestions = useCallback(async (query: string) => {
+      if (!existingTenants) return []
+      const q = query.toLowerCase()
+      return existingTenants
+        .filter((t: any) => t.name.toLowerCase().includes(q))
+        .slice(0, 8)
+        .map((t: any) => ({ text: t.name, subtext: t.tenant_type }))
+    }, [existingTenants])
+
     return (
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="label">Name</label>
-          <input
-            type="text"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            className="input"
-            required
-          />
-        </div>
+        <AutocompleteInput
+          label="Name"
+          placeholder="Tenant name"
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          onFetchSuggestions={fetchNameSuggestions}
+          recentKey="tenant_names"
+          required
+        />
 
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="label">Tenant Type</label>
-            <Select
-              value={form.tenant_type}
-              onChange={(e) => setForm({ ...form, tenant_type: e.target.value })}
-              options={[
-                { value: 'individual', label: 'Individual' },
-                { value: 'company', label: 'Company' },
-              ]}
-            />
-          </div>
-          <div>
-            <label className="label">Account Type</label>
-            <Select
-              value={form.account_type}
-              onChange={(e) => setForm({ ...form, account_type: e.target.value })}
-              options={[
-                { value: 'rental', label: 'Rental Tenant' },
-                { value: 'levy', label: 'Levy Account Holder' },
-                { value: 'both', label: 'Both (Rental & Levy)' },
-              ]}
-            />
-          </div>
+          <Select
+            label="Tenant Type"
+            value={form.tenant_type}
+            onChange={(e) => setForm({ ...form, tenant_type: e.target.value })}
+            options={[
+              { value: 'individual', label: 'Individual' },
+              { value: 'company', label: 'Company' },
+            ]}
+          />
+          <Select
+            label="Account Type"
+            value={form.account_type}
+            onChange={(e) => setForm({ ...form, account_type: e.target.value })}
+            options={[
+              { value: 'rental', label: 'Rental Tenant' },
+              { value: 'levy', label: 'Levy Account Holder' },
+              { value: 'both', label: 'Both (Rental & Levy)' },
+            ]}
+          />
         </div>
 
         <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 space-y-3">
@@ -162,51 +174,42 @@ const TenantForm = forwardRef<TenantFormRef, TenantFormProps>(
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="label">ID Type</label>
-            <Select
-              value={form.id_type}
-              onChange={(e) => setForm({ ...form, id_type: e.target.value })}
-              options={[
-                { value: 'national_id', label: 'National ID' },
-                { value: 'passport', label: 'Passport' },
-                { value: 'company_reg', label: 'Company Reg' },
-              ]}
-            />
-          </div>
-          <div>
-            <label className="label">ID Number</label>
-            <input
-              type="text"
-              value={form.id_number}
-              onChange={(e) => setForm({ ...form, id_number: e.target.value })}
-              className="input"
-              required
-            />
-          </div>
+          <Select
+            label="ID Type"
+            value={form.id_type}
+            onChange={(e) => setForm({ ...form, id_type: e.target.value })}
+            options={[
+              { value: 'national_id', label: 'National ID' },
+              { value: 'passport', label: 'Passport' },
+              { value: 'company_reg', label: 'Company Reg' },
+            ]}
+          />
+          <Input
+            label="ID Number"
+            value={form.id_number}
+            onChange={(e) => setForm({ ...form, id_number: e.target.value })}
+            required
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="label">Email</label>
-            <input
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="input"
-              required
-            />
-          </div>
-          <div>
-            <label className="label">Phone</label>
-            <input
-              type="text"
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              className="input"
-              required
-            />
-          </div>
+          <AutocompleteInput
+            type="email"
+            label="Email"
+            placeholder="email@example.com"
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+            recentKey="tenant_emails"
+            required
+          />
+          <AutocompleteInput
+            label="Phone"
+            placeholder="+263 77 123 4567"
+            value={form.phone}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+            recentKey="tenant_phones"
+            required
+          />
         </div>
 
         {showButtons && (

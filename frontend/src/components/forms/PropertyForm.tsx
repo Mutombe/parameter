@@ -1,8 +1,10 @@
-import { useState, useImperativeHandle, forwardRef, useEffect } from 'react'
+import { useState, useImperativeHandle, forwardRef, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Input, Select } from '../ui'
+import { AutocompleteInput } from '../ui/AutocompleteInput'
 import { AsyncSelect } from '../ui/AsyncSelect'
-import { landlordApi } from '../../services/api'
+import { landlordApi, propertyApi } from '../../services/api'
+import { useChainStore } from '../../stores/chainStore'
 
 export interface PropertyFormRef {
   submit: () => void
@@ -34,6 +36,13 @@ const PropertyForm = forwardRef<PropertyFormRef, PropertyFormProps>(
       queryFn: () => landlordApi.list().then((r) => r.data.results || r.data),
     })
 
+    // Fetch existing properties for address/city suggestions
+    const { data: existingProperties } = useQuery({
+      queryKey: ['properties-for-suggestions'],
+      queryFn: () => propertyApi.list().then(r => r.data.results || r.data),
+      staleTime: 30000,
+    })
+
     useEffect(() => {
       if (initialValues) {
         setForm((prev) => ({
@@ -58,6 +67,30 @@ const PropertyForm = forwardRef<PropertyFormRef, PropertyFormProps>(
       getFormData: () => ({ ...form, landlord: parseInt(form.landlord, 10), total_units: parseInt(String(form.total_units), 10) || 0 }),
     }))
 
+    const fetchAddressSuggestions = useCallback(async (query: string) => {
+      if (!existingProperties) return []
+      const q = query.toLowerCase()
+      const seen = new Set<string>()
+      return existingProperties
+        .filter((p: any) => p.address && p.address.toLowerCase().includes(q))
+        .filter((p: any) => { if (seen.has(p.address)) return false; seen.add(p.address); return true })
+        .slice(0, 8)
+        .map((p: any) => ({ text: p.address, subtext: p.city }))
+    }, [existingProperties])
+
+    const fetchCitySuggestions = useCallback(async (query: string) => {
+      if (!existingProperties) return []
+      const q = query.toLowerCase()
+      const seen = new Set<string>()
+      return existingProperties
+        .filter((p: any) => p.city && p.city.toLowerCase().includes(q))
+        .filter((p: any) => { if (seen.has(p.city)) return false; seen.add(p.city); return true })
+        .slice(0, 8)
+        .map((p: any) => ({ text: p.city }))
+    }, [existingProperties])
+
+    const startChain = useChainStore(s => s.startChain)
+
     return (
       <form onSubmit={handleSubmit} className="space-y-5">
         <AsyncSelect
@@ -70,13 +103,16 @@ const PropertyForm = forwardRef<PropertyFormRef, PropertyFormProps>(
           required
           searchable
           emptyMessage="No landlords found. Create a landlord first."
+          onCreateNew={() => startChain('landlord')}
+          createNewLabel="+ Create new landlord"
         />
 
-        <Input
+        <AutocompleteInput
           label="Property Name"
           placeholder="e.g., Sunrise Apartments"
           value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
+          recentKey="property_names"
           required
         />
 
@@ -102,19 +138,23 @@ const PropertyForm = forwardRef<PropertyFormRef, PropertyFormProps>(
           />
         </div>
 
-        <Input
+        <AutocompleteInput
           label="Address"
           placeholder="123 Main Street"
           value={form.address}
           onChange={(e) => setForm({ ...form, address: e.target.value })}
+          onFetchSuggestions={fetchAddressSuggestions}
+          recentKey="property_addresses"
           required
         />
 
-        <Input
+        <AutocompleteInput
           label="City"
           placeholder="Harare"
           value={form.city}
           onChange={(e) => setForm({ ...form, city: e.target.value })}
+          onFetchSuggestions={fetchCitySuggestions}
+          recentKey="property_cities"
         />
 
         <div>

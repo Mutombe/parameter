@@ -6,10 +6,12 @@ import { Search, CreditCard, Plus, Send, Loader2, Eye, X, User, FileText, Downlo
 import { receiptApi, tenantApi, invoiceApi } from '../../services/api'
 import { formatCurrency, formatDate, useDebounce, cn } from '../../lib/utils'
 import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination } from '../../components/ui'
+import { AutocompleteInput } from '../../components/ui/AutocompleteInput'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { usePrefetch } from '../../hooks/usePrefetch'
+import { useRecentValues } from '../../hooks/useRecentValues'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { Skeleton, OptimisticItemSkeleton } from '../../components/ui/Skeleton'
 import { showToast, parseApiError } from '../../lib/toast'
@@ -60,12 +62,14 @@ export default function Receipts() {
     { key: '/', handler: (e) => { e.preventDefault(); searchInputRef.current?.focus() } },
   ])
 
+  const recentPaymentMethod = useRecentValues('receipt_payment_method', 1)
+
   const [form, setForm] = useState({
     tenant: '',
     invoice: '',
     date: new Date().toISOString().split('T')[0],
     amount: '',
-    payment_method: 'bank_transfer',
+    payment_method: recentPaymentMethod.values[0] || 'bank_transfer',
     reference: '',
     description: '',
   })
@@ -105,6 +109,16 @@ export default function Receipts() {
   const invoices = allInvoices?.filter((inv: any) =>
     ['sent', 'partial', 'overdue'].includes(inv.status) && Number(inv.balance) > 0
   )
+
+  // Auto-fill amount when invoice is selected
+  useEffect(() => {
+    if (form.invoice && invoices) {
+      const inv = invoices.find((i: any) => String(i.id) === form.invoice)
+      if (inv && !form.amount) {
+        setForm(prev => ({ ...prev, amount: String(Number(inv.balance).toFixed(2)) }))
+      }
+    }
+  }, [form.invoice])
 
   // Optimistic create mutation
   const createMutation = useMutation({
@@ -175,7 +189,7 @@ export default function Receipts() {
       invoice: '',
       date: new Date().toISOString().split('T')[0],
       amount: '',
-      payment_method: 'bank_transfer',
+      payment_method: recentPaymentMethod.values[0] || 'bank_transfer',
       reference: '',
       description: '',
     })
@@ -560,7 +574,10 @@ export default function Receipts() {
             <Select
               label="Payment Method"
               value={form.payment_method}
-              onChange={(e) => setForm({ ...form, payment_method: e.target.value })}
+              onChange={(e) => {
+                setForm({ ...form, payment_method: e.target.value })
+                recentPaymentMethod.add(e.target.value)
+              }}
               options={[
                 { value: 'cash', label: 'Cash' },
                 { value: 'bank_transfer', label: 'Bank Transfer' },
@@ -569,20 +586,22 @@ export default function Receipts() {
                 { value: 'cheque', label: 'Cheque' },
               ]}
             />
-            <Input
+            <AutocompleteInput
               label="Reference"
               placeholder="Bank ref, EcoCash ref..."
               value={form.reference}
               onChange={(e) => setForm({ ...form, reference: e.target.value })}
+              recentKey="receipt_references"
             />
           </div>
 
-          <Textarea
+          <AutocompleteInput
             label="Description"
             placeholder="Payment description..."
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
-            rows={2}
+            suggestions={['Rent payment', 'Deposit payment', 'Arrears payment', 'Advance payment', 'Levy payment', 'Penalty payment']}
+            recentKey="receipt_descriptions"
           />
 
           <div className="flex gap-3 pt-4">

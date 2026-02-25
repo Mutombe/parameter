@@ -10,6 +10,7 @@ import DemoExpiryBanner from '../DemoExpiryBanner'
 import ErrorBoundary from '../ErrorBoundary'
 import KeyboardShortcutsModal from '../KeyboardShortcutsModal'
 import ChainedCreationModal from '../ChainedCreationModal'
+import CommandPalette from '../CommandPalette'
 import { useUIStore } from '../../stores/uiStore'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket'
@@ -42,7 +43,7 @@ export default function Layout() {
         modifier: 'ctrl',
         handler: (e) => {
           e.preventDefault()
-          navigate('/dashboard/search')
+          useUIStore.getState().setCommandPaletteOpen(true)
         },
       },
       {
@@ -207,6 +208,7 @@ export default function Layout() {
       <SessionExpiredModal />
       <KeyboardShortcutsModal open={shortcutsModalOpen} onClose={() => setShortcutsModalOpen(false)} />
       <ChainedCreationModal />
+      <CommandPalette />
     </div>
   )
 }
