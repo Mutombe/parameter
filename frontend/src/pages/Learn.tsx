@@ -74,7 +74,9 @@ const sections = [
     icon: BarChart3,
     subsections: [
       { id: 'report-categories', title: 'Report Categories' },
+      { id: 'reports-sidebar', title: 'Reports Sidebar Navigation' },
       { id: 'financial-reports', title: 'Financial Reports' },
+      { id: 'income-expenditure', title: 'Income & Expenditure Report' },
       { id: 'property-reports', title: 'Property Reports' },
       { id: 'report-search', title: 'Search & Pagination' },
       { id: 'report-emailing', title: 'Automated Report Emailing' },
@@ -322,14 +324,14 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
             <Calculator className="w-5 h-5 text-primary-600 mt-0.5" />
             <div>
               <h4 className="font-semibold text-gray-900">Accounting</h4>
-              <p className="text-sm text-gray-600">Chart of Accounts, Journals, and Audit Trail</p>
+              <p className="text-sm text-gray-600">Chart of Accounts, Journals, Audit Trail, and Income & Expenditure report</p>
             </div>
           </div>
           <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-xl">
             <BarChart3 className="w-5 h-5 text-primary-600 mt-0.5" />
             <div>
               <h4 className="font-semibold text-gray-900">Reports</h4>
-              <p className="text-sm text-gray-600">Financial statements and analytics</p>
+              <p className="text-sm text-gray-600">All 16 reports with a dedicated sidebar for quick navigation between categories</p>
             </div>
           </div>
         </div>
@@ -447,7 +449,7 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
           <ul className="space-y-2 text-sm text-gray-600">
             <li className="flex items-start gap-2">
               <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
-              <span><strong>Statement Generation:</strong> Generate landlord statements showing rent collected and commissions</span>
+              <span><strong>Statement Generation:</strong> Generate landlord account summaries showing receipts, commissions, expenses, and running balance</span>
             </li>
             <li className="flex items-start gap-2">
               <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
@@ -1053,17 +1055,18 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
     content: (
       <div className="space-y-6">
         <p className="text-gray-600 leading-relaxed">
-          Parameter offers 15 built-in reports organized into 4 categories. Access all reports from
-          the <strong>Reports</strong> page and switch between them using the category tabs.
+          Parameter offers 16 built-in reports organized into 4 categories. Access all reports from
+          the <strong>Reports</strong> page using the collapsible sidebar navigation on the left.
         </p>
         <div className="space-y-4">
           <div className="bg-blue-50 rounded-xl p-5">
-            <h4 className="font-semibold text-gray-900 mb-2">Financial Reports (5)</h4>
+            <h4 className="font-semibold text-gray-900 mb-2">Financial Reports (6)</h4>
             <ul className="text-sm text-gray-600 space-y-1">
               <li>• <strong>Trial Balance</strong> — All accounts with debit/credit balances</li>
               <li>• <strong>Income Statement</strong> — Revenue vs expenses for a period</li>
               <li>• <strong>Balance Sheet</strong> — Assets, liabilities, and equity snapshot</li>
               <li>• <strong>Cash Flow Statement</strong> — Cash movements by activity</li>
+              <li>• <strong>Income & Expenditure</strong> — Per-landlord monthly columnar I&E with working capital</li>
               <li>• <strong>Bank to Income Analysis</strong> — Matrix of bank accounts vs income types with drill-down</li>
             </ul>
           </div>
@@ -1089,7 +1092,7 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
             <ul className="text-sm text-gray-600 space-y-1">
               <li>• <strong>Deposits Listing</strong> — Security deposit tracking per lease</li>
               <li>• <strong>Dashboard KPIs</strong> — Key performance indicators summary</li>
-              <li>• <strong>Landlord Statement</strong> — Rent collected and commissions per landlord</li>
+              <li>• <strong>Landlord Account Summary</strong> — Receipts, commissions, expenses, and running balance per landlord</li>
             </ul>
           </div>
         </div>
@@ -1098,6 +1101,55 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
             <strong>Tip:</strong> Each report supports date range filtering. Use the period selector at the top
             of the Reports page to view data for any month or custom range.
           </p>
+        </div>
+      </div>
+    )
+  },
+  'reports-sidebar': {
+    title: 'Reports Sidebar Navigation',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          The Reports page uses a dedicated <strong>sidebar navigation</strong> on the left for browsing all
+          available reports. Reports are organized into collapsible categories for quick access.
+        </p>
+        <div className="space-y-4">
+          <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Sidebar Features</h4>
+            <ul className="text-sm text-gray-600 space-y-1.5">
+              <li className="flex items-start gap-2">
+                <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+                <span><strong>Collapsible Categories:</strong> Financial, Property Management, Comparative, and Administrative groups that expand/collapse on click</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+                <span><strong>Recent Reports:</strong> Quick access to the last 5 reports you viewed</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+                <span><strong>Collapse/Expand:</strong> Toggle the sidebar to icon-only mode for more report space</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <ChevronRight className="w-4 h-4 text-primary-600 mt-0.5" />
+                <span><strong>Tooltips:</strong> Hover over collapsed icons to see report names</span>
+              </li>
+            </ul>
+          </div>
+          <div className="bg-blue-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Sidebar Exclusivity</h4>
+            <p className="text-sm text-gray-600">
+              Only one sidebar can be open at a time. When the main navigation sidebar or the AI assistant
+              sidebar opens, the reports sidebar automatically closes. It restores when those sidebars close.
+            </p>
+          </div>
+          <div className="bg-emerald-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Mobile Experience</h4>
+            <p className="text-sm text-gray-600">
+              On mobile devices, the sidebar is replaced by a <strong>bottom sheet</strong> that slides up with
+              a drag handle. Tap a report to select it, and the sheet closes automatically. A floating button
+              at the bottom lets you reopen the selector at any time.
+            </p>
+          </div>
         </div>
       </div>
     )
@@ -1140,6 +1192,15 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
             </p>
           </div>
           <div className="bg-gray-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Income & Expenditure</h4>
+            <p className="text-sm text-gray-600">
+              Per-landlord monthly columnar report showing opening balance, levies collected, expenditure
+              by category (maintenance, utilities, commission, etc.), and closing balance for each month.
+              Includes consolidated year-to-date totals, income summary per tenant, and working capital analysis.
+              Also accessible from <strong>Accounting &rarr; Income & Expenditure</strong> in the sidebar.
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-xl p-5">
             <h4 className="font-semibold text-gray-900 mb-2">Bank to Income Analysis</h4>
             <p className="text-sm text-gray-600">
               A 3-level drill-down report: Level 1 shows a matrix of bank accounts vs income types,
@@ -1147,6 +1208,65 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
               pagination are available at the receipts level.
             </p>
           </div>
+        </div>
+      </div>
+    )
+  },
+  'income-expenditure': {
+    title: 'Income & Expenditure Report',
+    content: (
+      <div className="space-y-6">
+        <p className="text-gray-600 leading-relaxed">
+          The Income & Expenditure report is a comprehensive per-landlord financial summary that mirrors
+          the traditional spreadsheet format used by property managers. Select a landlord and date range
+          to generate the report.
+        </p>
+        <div className="space-y-4">
+          <div className="bg-blue-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Section 1: Monthly Columns</h4>
+            <p className="text-sm text-gray-600 mb-2">
+              A table with one column per month showing:
+            </p>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• <strong>Balance B/F</strong> — Opening balance carried from the previous month</li>
+              <li>• <strong>Levies</strong> — Total receipts (rent collected) for the month</li>
+              <li>• <strong>Expenditure</strong> — Broken down by category (maintenance, utilities, commission, landlord payments, etc.)</li>
+              <li>• <strong>Balance C/F</strong> — Closing balance after all income and expenditure</li>
+            </ul>
+          </div>
+          <div className="bg-emerald-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Section 2: Consolidated Totals</h4>
+            <p className="text-sm text-gray-600">
+              A final column that sums all months: total levies, total per expense category,
+              total management commission, and the year-to-date closing balance.
+            </p>
+          </div>
+          <div className="bg-amber-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Section 3: Income Summary</h4>
+            <p className="text-sm text-gray-600">
+              A per-tenant breakdown showing balance brought forward, current charges, penalties,
+              amounts paid, and balance carried forward. Includes totals row at the bottom.
+            </p>
+          </div>
+          <div className="bg-purple-50 rounded-xl p-5">
+            <h4 className="font-semibold text-gray-900 mb-2">Section 4: Working Capital</h4>
+            <p className="text-sm text-gray-600 mb-2">
+              Calculates net working capital from debtors and creditors:
+            </p>
+            <ul className="text-sm text-gray-600 space-y-1">
+              <li>• <strong>Debtors:</strong> Cash balances + levies in arrears</li>
+              <li>• <strong>Creditors:</strong> Overdraft + tenant prepayments</li>
+              <li>• <strong>Custom Items:</strong> Add your own debtor/creditor line items (e.g., petty cash, pending refunds) that adjust the working capital calculation in real time</li>
+              <li>• <strong>Net Working Capital</strong> = Total Debtors &minus; Total Creditors</li>
+            </ul>
+          </div>
+        </div>
+        <div className="bg-primary-50 rounded-xl p-4">
+          <p className="text-sm text-primary-800">
+            <strong>Quick access:</strong> The Income & Expenditure report is also available from the
+            <strong> Accounting</strong> section in the main sidebar, making it easy to reach without
+            navigating to the Reports page.
+          </p>
         </div>
       </div>
     )
@@ -1184,8 +1304,10 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
           <div className="bg-gray-50 rounded-xl p-5">
             <h4 className="font-semibold text-gray-900 mb-2">Lease Charge Summary</h4>
             <p className="text-sm text-gray-600">
-              Lists all charges per lease including tenant, property, unit, charge types, and amounts.
-              Useful for verifying billing accuracy. Search by tenant, property, or unit.
+              Comprehensive charge breakdown per lease showing tenant, property, unit, monthly rent,
+              all charge types (rent, service charge, levy, deposit, etc.), total charges, and lease status.
+              Filter by landlord, property, or status. Includes summary cards for total charges, active leases,
+              and average rent. Search and pagination supported.
             </p>
           </div>
           <div className="bg-gray-50 rounded-xl p-5">
@@ -1246,6 +1368,7 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
             <div>• Deposits Listing</div>
             <div>• Lease Charge Summary</div>
             <div>• Commission by Property</div>
+            <div>• Income & Expenditure (tenant table)</div>
             <div>• Bank to Income (Level 3)</div>
           </div>
         </div>
@@ -1292,6 +1415,7 @@ const content: Record<string, { title: string; content: React.ReactNode }> = {
               <li>• <strong>Cash Flow Statement</strong> — Cash movements</li>
               <li>• <strong>Lease Charge Summary</strong> — Charges per lease</li>
               <li>• <strong>Commission Reports</strong> — By property and income type</li>
+              <li>• <strong>Income & Expenditure</strong> — Per-landlord monthly I&E with working capital</li>
             </ul>
           </div>
         </div>
