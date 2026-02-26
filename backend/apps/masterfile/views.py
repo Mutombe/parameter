@@ -53,7 +53,7 @@ class PropertyViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
         _vacant_units=Count('units', filter=Q(units__is_occupied=False)),
     ).all()
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['landlord', 'property_type', 'city', 'is_active', 'country']
+    filterset_fields = ['landlord', 'property_type', 'management_type', 'city', 'is_active', 'country']
     search_fields = ['code', 'name', 'address', 'city', 'suburb', 'landlord__name', 'landlord__code']
     ordering_fields = ['name', 'created_at', 'code', 'city', 'total_units', 'property_type']
     ordering = ['-created_at']
@@ -128,6 +128,12 @@ class PropertyViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
     def generate_units(self, request, pk=None):
         """Generate Unit records from the unit_definition."""
         property_obj = self.get_object()
+
+        if property_obj.management_type == 'levy':
+            return Response(
+                {'error': 'Unit generation is not available for levy-managed properties'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         if not property_obj.unit_definition:
             return Response(

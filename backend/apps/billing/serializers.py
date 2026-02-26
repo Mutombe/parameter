@@ -39,12 +39,14 @@ class ReceiptSerializer(serializers.ModelSerializer):
     tenant_name = serializers.CharField(source='tenant.name', read_only=True)
     invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
     journal_number = serializers.CharField(source='journal.journal_number', read_only=True)
+    income_type_name = serializers.CharField(source='income_type.name', read_only=True, default=None)
 
     class Meta:
         model = Receipt
         fields = [
             'id', 'receipt_number', 'tenant', 'tenant_name', 'invoice',
-            'invoice_number', 'date', 'amount', 'currency', 'payment_method',
+            'invoice_number', 'income_type', 'income_type_name', 'bank_account',
+            'date', 'amount', 'currency', 'payment_method',
             'reference', 'bank_name', 'description', 'notes', 'journal',
             'journal_number', 'created_by', 'created_at', 'updated_at'
         ]
@@ -57,26 +59,40 @@ class ReceiptCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Receipt
         fields = [
-            'tenant', 'invoice', 'date', 'amount', 'currency',
-            'payment_method', 'reference', 'bank_name', 'description', 'notes'
+            'tenant', 'invoice', 'income_type', 'bank_account', 'date', 'amount',
+            'currency', 'payment_method', 'reference', 'bank_name', 'description',
+            'notes'
         ]
+
+    def validate(self, data):
+        if not data.get('income_type'):
+            raise serializers.ValidationError({'income_type': 'Income type is required.'})
+        return data
 
 
 class ExpenseSerializer(serializers.ModelSerializer):
     journal_number = serializers.CharField(source='journal.journal_number', read_only=True)
+    expense_category_name = serializers.CharField(source='expense_category.name', read_only=True, default=None)
+    income_type_name = serializers.CharField(source='income_type.name', read_only=True, default=None)
 
     class Meta:
         model = Expense
         fields = [
             'id', 'expense_number', 'expense_type', 'status', 'payee_name',
             'payee_type', 'payee_id', 'date', 'amount', 'currency',
-            'description', 'reference', 'journal', 'journal_number',
+            'description', 'reference', 'expense_category', 'expense_category_name',
+            'income_type', 'income_type_name', 'journal', 'journal_number',
             'approved_by', 'approved_at', 'created_by', 'created_at', 'updated_at'
         ]
         read_only_fields = [
             'expense_number', 'journal', 'approved_by', 'approved_at',
             'created_at', 'updated_at'
         ]
+
+    def validate(self, data):
+        if not self.instance and not data.get('income_type'):
+            raise serializers.ValidationError({'income_type': 'Income type is required for new expenses.'})
+        return data
 
 
 class BulkInvoiceSerializer(serializers.Serializer):

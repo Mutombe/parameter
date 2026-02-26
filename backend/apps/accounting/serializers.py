@@ -402,6 +402,7 @@ class IncomeTypeSerializer(serializers.ModelSerializer):
             'id', 'code', 'name', 'description', 'gl_account',
             'gl_account_name', 'gl_account_code', 'is_commissionable',
             'default_commission_rate', 'is_vatable', 'vat_rate',
-            'is_active', 'display_order', 'created_at', 'updated_at'
+            'is_active', 'display_order', 'is_system', 'management_type',
+            'created_at', 'updated_at'
         ]
-        read_only_fields = ['code', 'created_at', 'updated_at']
+        read_only_fields = ['code', 'is_system', 'created_at', 'updated_at']

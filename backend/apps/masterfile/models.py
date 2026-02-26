@@ -104,6 +104,10 @@ class Property(SoftDeleteModel):
         INDUSTRIAL = 'industrial', 'Industrial'
         MIXED = 'mixed', 'Mixed Use'
 
+    class ManagementType(models.TextChoices):
+        RENTAL = 'rental', 'Rental'
+        LEVY = 'levy', 'Levy'
+
     landlord = models.ForeignKey(
         Landlord, on_delete=models.PROTECT, related_name='properties'
     )
@@ -114,6 +118,12 @@ class Property(SoftDeleteModel):
         max_length=20,
         choices=PropertyType.choices,
         default=PropertyType.RESIDENTIAL
+    )
+    management_type = models.CharField(
+        max_length=20,
+        choices=ManagementType.choices,
+        default=ManagementType.RENTAL,
+        help_text='Determines income structures, unit creation, and vacancy reporting'
     )
 
     # Address
@@ -153,6 +163,7 @@ class Property(SoftDeleteModel):
             models.Index(fields=['name']),
             models.Index(fields=['landlord', 'is_active']),
             models.Index(fields=['property_type', 'is_active']),
+            models.Index(fields=['management_type', 'is_active']),
             models.Index(fields=['city']),
             models.Index(fields=['created_at']),
         ]

@@ -1120,9 +1120,30 @@ class IncomeTypeViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
     queryset = IncomeType.objects.select_related('gl_account').all()
     serializer_class = IncomeTypeSerializer
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['is_active', 'is_commissionable', 'is_vatable']
+    filterset_fields = ['is_active', 'is_commissionable', 'is_vatable', 'management_type', 'is_system']
     search_fields = ['code', 'name', 'description']
     ordering = ['display_order', 'name']
+
+    def perform_destroy(self, instance):
+        if instance.is_system:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('System income types cannot be deleted.')
+        super().perform_destroy(instance)
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        if instance.is_system:
+            # Only allow updating certain fields on system records
+            allowed = {'is_active', 'display_order', 'description'}
+            changed = set(serializer.validated_data.keys())
+            disallowed = changed - allowed
+            if disallowed:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied(
+                    f'System income types only allow changes to: {", ".join(allowed)}. '
+                    f'Cannot change: {", ".join(disallowed)}'
+                )
+        serializer.save()
 
     @action(detail=False, methods=['post'])
     def seed_defaults(self, request):
@@ -1138,19 +1159,20 @@ class IncomeTypeViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
             }
         )
 
+        # (code, name, subtype, commissionable, vatable, order, management_type)
         defaults = [
-            ('RENT', 'Rental Income', 'rental_income', True, False, 1),
-            ('LEVY', 'Levy Income', 'levy_income', False, False, 2),
-            ('SPECIAL_LEVY', 'Special Levy', 'special_levy_income', False, False, 3),
-            ('RATES', 'Rates Recovery', 'rates_income', False, False, 4),
-            ('PARKING', 'Parking Income', 'parking_income', True, False, 5),
-            ('VAT', 'VAT Income', 'vat_income', False, True, 6),
-            ('DEPOSIT', 'Deposit Income', 'other_income', False, False, 7),
-            ('OTHER', 'Other Income', 'other_income', True, False, 8),
+            ('RENT', 'Rental Income', 'rental_income', True, False, 1, 'rental'),
+            ('LEVY', 'Levy Income', 'levy_income', False, False, 2, 'levy'),
+            ('SPECIAL_LEVY', 'Special Levy', 'special_levy_income', False, False, 3, 'levy'),
+            ('RATES', 'Rates Recovery', 'rates_income', False, False, 4, 'both'),
+            ('PARKING', 'Parking Income', 'parking_income', True, False, 5, 'levy'),
+            ('VAT', 'VAT Income', 'vat_income', False, True, 6, 'rental'),
+            ('DEPOSIT', 'Deposit Income', 'other_income', False, False, 7, 'both'),
+            ('OTHER', 'Other Income', 'other_income', True, False, 8, 'both'),
         ]
 
         created = 0
-        for code, name, subtype, commissionable, vatable, order in defaults:
+        for code, name, subtype, commissionable, vatable, order, mgmt_type in defaults:
             gl_acct, _ = ChartOfAccount.objects.get_or_create(
                 account_subtype=subtype,
                 defaults={
@@ -1168,7 +1190,9 @@ class IncomeTypeViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
                     'gl_account': gl_acct,
                     'is_commissionable': commissionable,
                     'is_vatable': vatable,
-                    'display_order': order
+                    'display_order': order,
+                    'is_system': True,
+                    'management_type': mgmt_type,
                 }
             )
             if was_created:

@@ -331,7 +331,9 @@ class VacancyReportView(APIView):
 
     @_cache_report('vacancy', ttl=120)
     def get(self, request):
-        properties = Property.objects.select_related('landlord').annotate(
+        properties = Property.objects.filter(
+            management_type='rental'
+        ).select_related('landlord').annotate(
             unit_count=Count('units'),
             vacant_count=Count('units', filter=Q(units__is_occupied=False)),
             occupied_count=Count('units', filter=Q(units__is_occupied=True))

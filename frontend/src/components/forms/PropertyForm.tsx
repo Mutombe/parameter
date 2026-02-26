@@ -25,6 +25,7 @@ const PropertyForm = forwardRef<PropertyFormRef, PropertyFormProps>(
       landlord: '',
       name: '',
       property_type: 'residential',
+      management_type: 'rental',
       address: '',
       city: '',
       total_units: '',
@@ -128,15 +129,24 @@ const PropertyForm = forwardRef<PropertyFormRef, PropertyFormProps>(
             <option value="mixed">Mixed Use</option>
           </Select>
 
-          <Input
-            type="number"
-            label="Total Units"
-            placeholder="0"
-            min="0"
-            value={form.total_units}
-            onChange={(e) => setForm({ ...form, total_units: e.target.value })}
-          />
+          <Select
+            label="Management Type"
+            value={form.management_type}
+            onChange={(e) => setForm({ ...form, management_type: e.target.value })}
+          >
+            <option value="rental">Rental</option>
+            <option value="levy">Levy</option>
+          </Select>
         </div>
+
+        <Input
+          type="number"
+          label="Total Units"
+          placeholder="0"
+          min="0"
+          value={form.total_units}
+          onChange={(e) => setForm({ ...form, total_units: e.target.value })}
+        />
 
         <AutocompleteInput
           label="Address"

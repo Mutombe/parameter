@@ -204,6 +204,25 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
           </div>
         )}
 
+        {/* Auto-derived lease type from property */}
+        {form.property && (() => {
+          const selectedProp = properties?.find((p: any) => String(p.id) === form.property)
+          const leaseType = selectedProp?.management_type || 'rental'
+          return (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Lease Type</label>
+              <div className="flex items-center gap-2">
+                <span className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
+                  leaseType === 'levy' ? 'bg-violet-50 text-violet-700' : 'bg-sky-50 text-sky-700'
+                }`}>
+                  {leaseType === 'levy' ? 'Levy Account' : 'Rental Lease'}
+                </span>
+                <span className="text-xs text-gray-500">Auto-set from property management type</span>
+              </div>
+            </div>
+          )
+        })()}
+
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Input
             type="number"

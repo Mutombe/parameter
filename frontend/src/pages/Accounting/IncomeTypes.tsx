@@ -37,6 +37,8 @@ interface IncomeType {
   is_taxable: boolean
   default_rate: string
   is_active: boolean
+  is_system: boolean
+  management_type: 'rental' | 'levy' | 'both'
   display_order: number
 }
 
@@ -356,7 +358,14 @@ export default function IncomeTypes() {
                         </button>
                         <button
                           onClick={() => openDelete(type)}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                          className={cn(
+                            "w-full flex items-center gap-2 px-3 py-2 text-sm",
+                            type.is_system
+                              ? "text-gray-300 cursor-not-allowed"
+                              : "text-red-600 hover:bg-red-50"
+                          )}
+                          disabled={type.is_system}
+                          title={type.is_system ? 'System types cannot be deleted' : 'Delete'}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                           Delete
@@ -406,12 +415,25 @@ export default function IncomeTypes() {
                 )}
               </div>
 
-              <div className="mt-3 flex items-center gap-2">
+              <div className="mt-3 flex items-center gap-2 flex-wrap">
                 <span className={cn(
                   "px-2 py-0.5 text-xs rounded-full",
                   type.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
                 )}>
                   {type.is_active ? 'Active' : 'Inactive'}
+                </span>
+                {type.is_system && (
+                  <span className="px-2 py-0.5 text-xs rounded-full bg-amber-50 text-amber-700">
+                    System
+                  </span>
+                )}
+                <span className={cn(
+                  "px-2 py-0.5 text-xs rounded-full",
+                  type.management_type === 'rental' ? "bg-sky-50 text-sky-600"
+                    : type.management_type === 'levy' ? "bg-violet-50 text-violet-600"
+                    : "bg-gray-100 text-gray-600"
+                )}>
+                  {type.management_type === 'rental' ? 'Rental' : type.management_type === 'levy' ? 'Levy' : 'Both'}
                 </span>
               </div>
             </motion.div>

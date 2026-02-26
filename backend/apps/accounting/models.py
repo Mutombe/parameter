@@ -966,6 +966,12 @@ class IncomeType(models.Model):
 
     is_active = models.BooleanField(default=True)
     display_order = models.PositiveIntegerField(default=0)
+    is_system = models.BooleanField(default=False)
+    management_type = models.CharField(
+        max_length=20,
+        choices=[('rental', 'Rental'), ('levy', 'Levy'), ('both', 'Both')],
+        default='both'
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

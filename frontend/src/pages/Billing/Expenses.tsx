@@ -25,7 +25,7 @@ import {
   Download,
   Trash2,
 } from 'lucide-react'
-import { expenseApi, landlordApi } from '../../services/api'
+import { expenseApi, landlordApi, incomeTypeApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, Tooltip, Pagination } from '../../components/ui'
 import { AutocompleteInput } from '../../components/ui/AutocompleteInput'
@@ -51,6 +51,10 @@ interface Expense {
   currency: string
   description: string
   reference?: string
+  expense_category?: number
+  expense_category_name?: string
+  income_type?: number
+  income_type_name?: string
   journal?: number
   journal_number?: string
   approved_by?: number
@@ -172,9 +176,17 @@ export default function Expenses() {
     currency: 'USD',
     description: '',
     reference: '',
+    income_type: '',
   })
 
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
+
+  // Fetch income types for expense form
+  const { data: incomeTypesData } = useQuery({
+    queryKey: ['income-types-for-expenses'],
+    queryFn: () => incomeTypeApi.list({ is_active: true }).then((r: any) => r.data.results || r.data),
+    staleTime: 60000,
+  })
 
   // Fetch expenses
   const { data: expensesData, isLoading, error } = useQuery({
@@ -318,7 +330,7 @@ export default function Expenses() {
     recentExpenseType.add(expenseForm.expense_type)
     recentPayeeType.add(expenseForm.payee_type)
 
-    const data = {
+    const data: Record<string, unknown> = {
       expense_type: expenseForm.expense_type,
       payee_name: expenseForm.payee_name,
       payee_type: expenseForm.payee_type,
@@ -328,6 +340,7 @@ export default function Expenses() {
       currency: expenseForm.currency,
       description: expenseForm.description,
       reference: expenseForm.reference,
+      income_type: expenseForm.income_type ? parseInt(expenseForm.income_type) : null,
     }
 
     createMutation.mutate(data)
@@ -342,6 +355,7 @@ export default function Expenses() {
       currency: 'USD',
       description: '',
       reference: '',
+      income_type: '',
     })
   }
 
@@ -775,6 +789,18 @@ export default function Expenses() {
               recentKey="expense_references"
             />
           </div>
+
+          <Select
+            label="Income Type"
+            value={expenseForm.income_type}
+            onChange={(e) => setExpenseForm({ ...expenseForm, income_type: e.target.value })}
+            required
+          >
+            <option value="">Select income type...</option>
+            {incomeTypesData?.map((it: any) => (
+              <option key={it.id} value={it.id}>{it.name} ({it.code})</option>
+            ))}
+          </Select>
 
           <AutocompleteInput
             label="Description"

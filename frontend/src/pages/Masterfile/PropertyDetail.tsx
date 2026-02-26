@@ -159,6 +159,7 @@ export default function PropertyDetail() {
     landlord: '',
     name: '',
     property_type: 'residential',
+    management_type: 'rental',
     address: '',
     city: 'Harare',
     total_units: 1,
@@ -216,7 +217,7 @@ export default function PropertyDetail() {
 
   // Edit mutation
   const editMutation = useMutation({
-    mutationFn: (data: { landlord: number; name: string; property_type: string; address: string; city: string; total_units: number; unit_definition: string }) =>
+    mutationFn: (data: { landlord: number; name: string; property_type: string; management_type: string; address: string; city: string; total_units: number; unit_definition: string }) =>
       propertyApi.update(propertyId, data),
     onSuccess: () => {
       showToast.success('Property updated successfully')
@@ -273,6 +274,7 @@ export default function PropertyDetail() {
       landlord: String(property.landlord),
       name: property.name,
       property_type: property.property_type,
+      management_type: property.management_type || 'rental',
       address: property.address || '',
       city: property.city || 'Harare',
       total_units: property.total_units || 1,
@@ -536,6 +538,16 @@ export default function PropertyDetail() {
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <PiBuildingApartmentLight className="w-3.5 h-3.5 text-gray-400" />
                   <span className="capitalize">{property?.property_type}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className={cn(
+                    'px-2 py-0.5 rounded-full text-xs font-medium',
+                    property?.management_type === 'levy'
+                      ? 'bg-violet-50 text-violet-600'
+                      : 'bg-sky-50 text-sky-600'
+                  )}>
+                    {property?.management_type === 'levy' ? 'Levy' : 'Rental'}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Home className="w-3.5 h-3.5 text-gray-400" />
@@ -1029,15 +1041,25 @@ export default function PropertyDetail() {
               ]}
             />
 
-            <Input
-              type="number"
-              label="Total Units"
-              placeholder="1"
-              min="1"
-              value={editForm.total_units}
-              onChange={(e) => setEditForm({ ...editForm, total_units: parseInt(e.target.value) || 1 })}
+            <Select
+              label="Management Type"
+              value={editForm.management_type}
+              onChange={(e) => setEditForm({ ...editForm, management_type: e.target.value })}
+              options={[
+                { value: 'rental', label: 'Rental' },
+                { value: 'levy', label: 'Levy' },
+              ]}
             />
           </div>
+
+          <Input
+            type="number"
+            label="Total Units"
+            placeholder="1"
+            min="1"
+            value={editForm.total_units}
+            onChange={(e) => setEditForm({ ...editForm, total_units: parseInt(e.target.value) || 1 })}
+          />
 
           <Input
             label="Address"

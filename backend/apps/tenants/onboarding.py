@@ -195,56 +195,64 @@ class OnboardingService:
         from apps.accounting.models import ChartOfAccount
 
         # Standard Real Estate Chart of Accounts
-        # Format: (code, name, account_type, account_subtype, is_system)
+        # Format: (code, name, account_type, account_subtype, is_system, currency)
         accounts = [
             # Assets (1xxx)
-            ('1000', 'Cash and Cash Equivalents', 'asset', 'cash', True),
-            ('1010', 'Petty Cash', 'asset', 'cash', True),
-            ('1100', 'Accounts Receivable - Tenants', 'asset', 'accounts_receivable', True),
-            ('1110', 'Accounts Receivable - Other', 'asset', 'accounts_receivable', False),
-            ('1200', 'Prepaid Expenses', 'asset', 'prepaid', False),
-            ('1300', 'Security Deposits Held', 'asset', 'prepaid', False),
-            ('1500', 'Property and Equipment', 'asset', 'fixed_asset', False),
-            ('1510', 'Accumulated Depreciation', 'asset', 'fixed_asset', False),
+            ('1000', 'Cash and Cash Equivalents', 'asset', 'cash', True, 'USD'),
+            ('1010', 'Petty Cash', 'asset', 'cash', True, 'USD'),
+            ('1100', 'Accounts Receivable - Tenants', 'asset', 'accounts_receivable', True, 'USD'),
+            ('1110', 'Accounts Receivable - Other', 'asset', 'accounts_receivable', False, 'USD'),
+            ('1200', 'Prepaid Expenses', 'asset', 'prepaid', False, 'USD'),
+            ('1300', 'Security Deposits Held', 'asset', 'prepaid', False, 'USD'),
+            ('1500', 'Property and Equipment', 'asset', 'fixed_asset', False, 'USD'),
+            ('1510', 'Accumulated Depreciation', 'asset', 'fixed_asset', False, 'USD'),
 
             # Liabilities (2xxx)
-            ('2000', 'Accounts Payable', 'liability', 'accounts_payable', True),
-            ('2100', 'Landlord Payables', 'liability', 'accounts_payable', True),
-            ('2200', 'Tenant Deposits Liability', 'liability', 'tenant_deposits', True),
-            ('2300', 'Accrued Expenses', 'liability', 'accounts_payable', False),
-            ('2400', 'VAT Payable', 'liability', 'vat_payable', True),
-            ('2500', 'Deferred Revenue', 'liability', 'accounts_payable', False),
+            ('2000', 'Accounts Payable', 'liability', 'accounts_payable', True, 'USD'),
+            ('2100', 'Landlord Payables', 'liability', 'accounts_payable', True, 'USD'),
+            ('2200', 'Tenant Deposits Liability', 'liability', 'tenant_deposits', True, 'USD'),
+            ('2300', 'Accrued Expenses', 'liability', 'accounts_payable', False, 'USD'),
+            ('2400', 'VAT Payable', 'liability', 'vat_payable', True, 'USD'),
+            ('2500', 'Deferred Revenue', 'liability', 'accounts_payable', False, 'USD'),
 
             # Equity (3xxx)
-            ('3000', 'Owner Capital', 'equity', 'capital', True),
-            ('3100', 'Retained Earnings', 'equity', 'retained_earnings', True),
-            ('3200', 'Owner Drawings', 'equity', 'capital', False),
+            ('3000', 'Owner Capital', 'equity', 'capital', True, 'USD'),
+            ('3100', 'Retained Earnings', 'equity', 'retained_earnings', True, 'USD'),
+            ('3200', 'Owner Drawings', 'equity', 'capital', False, 'USD'),
 
-            # Revenue (4xxx)
-            ('4000', 'Rental Income', 'revenue', 'rental_income', True),
-            ('4010', 'Late Fee Income', 'revenue', 'other_income', False),
-            ('4020', 'Service Fee Income', 'revenue', 'other_income', False),
-            ('4100', 'Management Fee Income', 'revenue', 'commission_income', False),
-            ('4200', 'Commission Income', 'revenue', 'commission_income', True),
-            ('4900', 'Other Income', 'revenue', 'other_income', True),
+            # Revenue (4xxx) - USD
+            ('4000', 'Rental Income', 'revenue', 'rental_income', True, 'USD'),
+            ('4010', 'Late Fee Income', 'revenue', 'other_income', False, 'USD'),
+            ('4020', 'Service Fee Income', 'revenue', 'other_income', False, 'USD'),
+            ('4100', 'Management Fee Income', 'revenue', 'commission_income', False, 'USD'),
+            ('4200', 'Commission Income', 'revenue', 'commission_income', True, 'USD'),
+            ('4900', 'Other Income', 'revenue', 'other_income', True, 'USD'),
+
+            # Revenue (4xxxZ) - ZWG variants
+            ('4000Z', 'Rental Income (ZWG)', 'revenue', 'rental_income', True, 'ZWG'),
+            ('4010Z', 'Late Fee Income (ZWG)', 'revenue', 'other_income', False, 'ZWG'),
+            ('4020Z', 'Service Fee Income (ZWG)', 'revenue', 'other_income', False, 'ZWG'),
+            ('4100Z', 'Management Fee Income (ZWG)', 'revenue', 'commission_income', False, 'ZWG'),
+            ('4200Z', 'Commission Income (ZWG)', 'revenue', 'commission_income', True, 'ZWG'),
+            ('4900Z', 'Other Income (ZWG)', 'revenue', 'other_income', True, 'ZWG'),
 
             # Expenses (5xxx)
-            ('5000', 'Property Management Expenses', 'expense', 'operating_expense', True),
-            ('5100', 'Repairs and Maintenance', 'expense', 'maintenance', True),
-            ('5200', 'Utilities Expense', 'expense', 'utilities', True),
-            ('5300', 'Insurance Expense', 'expense', 'operating_expense', False),
-            ('5400', 'Property Taxes', 'expense', 'operating_expense', False),
-            ('5500', 'Legal and Professional Fees', 'expense', 'operating_expense', False),
-            ('5600', 'Advertising and Marketing', 'expense', 'operating_expense', False),
-            ('5700', 'Salaries and Wages', 'expense', 'operating_expense', False),
-            ('5800', 'Office Expenses', 'expense', 'operating_expense', False),
-            ('5900', 'Depreciation Expense', 'expense', 'operating_expense', False),
-            ('5950', 'Bad Debt Expense', 'expense', 'operating_expense', False),
-            ('5999', 'Miscellaneous Expense', 'expense', 'operating_expense', False),
+            ('5000', 'Property Management Expenses', 'expense', 'operating_expense', True, 'USD'),
+            ('5100', 'Repairs and Maintenance', 'expense', 'maintenance', True, 'USD'),
+            ('5200', 'Utilities Expense', 'expense', 'utilities', True, 'USD'),
+            ('5300', 'Insurance Expense', 'expense', 'operating_expense', False, 'USD'),
+            ('5400', 'Property Taxes', 'expense', 'operating_expense', False, 'USD'),
+            ('5500', 'Legal and Professional Fees', 'expense', 'operating_expense', False, 'USD'),
+            ('5600', 'Advertising and Marketing', 'expense', 'operating_expense', False, 'USD'),
+            ('5700', 'Salaries and Wages', 'expense', 'operating_expense', False, 'USD'),
+            ('5800', 'Office Expenses', 'expense', 'operating_expense', False, 'USD'),
+            ('5900', 'Depreciation Expense', 'expense', 'operating_expense', False, 'USD'),
+            ('5950', 'Bad Debt Expense', 'expense', 'operating_expense', False, 'USD'),
+            ('5999', 'Miscellaneous Expense', 'expense', 'operating_expense', False, 'USD'),
         ]
 
         with tenant_context(client):
-            for code, name, acc_type, subtype, is_system in accounts:
+            for code, name, acc_type, subtype, is_system, currency in accounts:
                 ChartOfAccount.objects.get_or_create(
                     code=code,
                     defaults={
@@ -252,7 +260,8 @@ class OnboardingService:
                         'account_type': acc_type,
                         'account_subtype': subtype,
                         'is_system': is_system,
-                        'is_active': True
+                        'is_active': True,
+                        'currency': currency,
                     }
                 )
 

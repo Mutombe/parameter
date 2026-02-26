@@ -50,6 +50,7 @@ interface Lease {
   end_date: string
   payment_day: number
   status: 'draft' | 'active' | 'expired' | 'terminated'
+  lease_type: 'rental' | 'levy'
   notes: string
   document: string | null
   created_at: string
@@ -760,15 +761,25 @@ export default function Leases() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <Tooltip content={statusTooltips[lease.status] || config.label}>
+                      <div className="flex items-center gap-1.5">
+                        <Tooltip content={statusTooltips[lease.status] || config.label}>
+                          <span className={cn(
+                            'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
+                            config.bgColor, config.color
+                          )}>
+                            <StatusIcon className="w-3 h-3" />
+                            {config.label}
+                          </span>
+                        </Tooltip>
                         <span className={cn(
-                          'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
-                          config.bgColor, config.color
+                          'px-2 py-0.5 rounded-full text-xs font-medium',
+                          lease.lease_type === 'levy'
+                            ? 'bg-violet-50 text-violet-600'
+                            : 'bg-sky-50 text-sky-600'
                         )}>
-                          <StatusIcon className="w-3 h-3" />
-                          {config.label}
+                          {lease.lease_type === 'levy' ? 'Levy' : 'Rental'}
                         </span>
-                      </Tooltip>
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">

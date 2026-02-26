@@ -57,6 +57,7 @@ interface Property {
   landlord: number
   landlord_name: string
   property_type: 'residential' | 'commercial' | 'industrial' | 'mixed'
+  management_type: 'rental' | 'levy'
   address: string
   city: string
   total_units: number
@@ -117,6 +118,7 @@ export default function Properties() {
     landlord: '',
     name: '',
     property_type: 'residential',
+    management_type: 'rental',
     address: '',
     city: '',
     total_units: '',
@@ -322,6 +324,7 @@ export default function Properties() {
       landlord: '',
       name: '',
       property_type: 'residential',
+      management_type: 'rental',
       address: '',
       city: '',
       total_units: '',
@@ -335,6 +338,7 @@ export default function Properties() {
       landlord: String(property.landlord),
       name: property.name,
       property_type: property.property_type,
+      management_type: property.management_type || 'rental',
       address: property.address,
       city: property.city,
       total_units: String(property.total_units),
@@ -670,6 +674,16 @@ export default function Properties() {
                       {config.label}
                     </span>
                   </Tooltip>
+
+                  {/* Management Type Badge */}
+                  <span className={cn(
+                    'hidden sm:inline-flex px-2.5 py-1 rounded-full text-xs font-medium',
+                    property.management_type === 'levy'
+                      ? 'bg-violet-50 text-violet-600'
+                      : 'bg-sky-50 text-sky-600'
+                  )}>
+                    {property.management_type === 'levy' ? 'Levy' : 'Rental'}
+                  </span>
 
                   {/* Landlord */}
                   <div className="hidden md:flex items-center gap-2 text-sm min-w-[120px]">

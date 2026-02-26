@@ -666,6 +666,17 @@ class Expense(SoftDeleteModel):
     description = models.TextField()
     reference = models.CharField(max_length=100, blank=True)
 
+    # Categorization
+    expense_category = models.ForeignKey(
+        'accounting.ExpenseCategory', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='expenses'
+    )
+    income_type = models.ForeignKey(
+        'accounting.IncomeType', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='expenses',
+        help_text='Income category this expense is matched against'
+    )
+
     # GL Reference
     journal = models.ForeignKey(
         Journal, on_delete=models.SET_NULL, null=True, blank=True,
@@ -722,13 +733,21 @@ class Expense(SoftDeleteModel):
     @transaction.atomic
     def post_to_ledger(self, user=None):
         """Post expense to General Ledger."""
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
         if self.journal:
             return self.journal
 
-        # Get accounts
-        expense_account = ChartOfAccount.objects.filter(
-            account_type='expense'
-        ).first()
+        if not self.income_type:
+            raise DjangoValidationError('Cannot post expense without an income_type.')
+
+        # Get accounts - prefer expense_category GL account if available
+        if self.expense_category and self.expense_category.gl_account:
+            expense_account = self.expense_category.gl_account
+        else:
+            expense_account = ChartOfAccount.objects.filter(
+                account_type='expense'
+            ).first()
         cash_account = ChartOfAccount.objects.get(code='1100')  # Bank
 
         # Create journal

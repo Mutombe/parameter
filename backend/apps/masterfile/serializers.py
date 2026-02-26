@@ -88,7 +88,7 @@ class PropertySerializer(serializers.ModelSerializer):
         model = Property
         fields = [
             'id', 'landlord', 'landlord_name', 'code', 'name', 'property_type',
-            'unit_definition', 'defined_unit_count', 'valid_units',
+            'management_type', 'unit_definition', 'defined_unit_count', 'valid_units',
             'address', 'city', 'suburb', 'country', 'year_built', 'total_units',
             'total_floors', 'parking_spaces', 'amenities', 'image', 'is_active',
             'notes', 'units', 'unit_count', 'vacancy_rate', 'occupancy_rate',
@@ -144,7 +144,7 @@ class PropertyListSerializer(serializers.ModelSerializer):
         model = Property
         fields = [
             'id', 'landlord', 'landlord_name', 'code', 'name', 'property_type',
-            'unit_definition', 'defined_unit_count',
+            'management_type', 'unit_definition', 'defined_unit_count',
             'city', 'total_units', 'unit_count', 'vacancy_rate', 'is_active',
             'primary_manager'
         ]
@@ -272,13 +272,14 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
             'id', 'tenant', 'tenant_name', 'unit', 'unit_display',
             'property_name', 'property_id', 'landlord_name', 'landlord_id',
             'property', 'unit_number',  # For auto-creating units
-            'lease_number', 'status', 'start_date', 'end_date', 'monthly_rent',
-            'currency', 'deposit_amount', 'deposit_paid', 'billing_day',
-            'grace_period_days', 'annual_escalation_rate', 'terms_and_conditions',
-            'special_conditions', 'document', 'terminated_at', 'termination_reason',
+            'lease_number', 'lease_type', 'status', 'start_date', 'end_date',
+            'monthly_rent', 'currency', 'deposit_amount', 'deposit_paid',
+            'billing_day', 'grace_period_days', 'annual_escalation_rate',
+            'terms_and_conditions', 'special_conditions', 'document',
+            'terminated_at', 'termination_reason',
             'created_by', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['lease_number', 'created_at', 'updated_at']
+        read_only_fields = ['lease_number', 'lease_type', 'created_at', 'updated_at']
         extra_kwargs = {
             'unit': {'required': False}  # Not required if property/unit_number provided
         }
@@ -328,6 +329,21 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
                     'unit_number': f"Invalid unit number. Valid units for this property: {', '.join(valid_units[:10])}{'...' if len(valid_units) > 10 else ''}"
                 })
 
+        # Cross-validate tenant account_type with property management_type
+        tenant = data.get('tenant')
+        resolved_prop = prop or (unit.property if unit else None)
+        if tenant and resolved_prop and not self.instance:
+            mgmt = resolved_prop.management_type
+            acct = tenant.account_type
+            if mgmt == 'rental' and acct == 'levy':
+                raise serializers.ValidationError(
+                    'A levy-only tenant cannot be assigned to a rental property.'
+                )
+            if mgmt == 'levy' and acct == 'rental':
+                raise serializers.ValidationError(
+                    'A rental-only tenant cannot be assigned to a levy property.'
+                )
+
         return data
 
     def create(self, validated_data):
@@ -352,6 +368,11 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
             if not created:
                 unit.is_occupied = True
                 unit.save(update_fields=['is_occupied'])
+
+        # Auto-set lease_type from property management_type
+        unit = validated_data.get('unit')
+        if unit:
+            validated_data['lease_type'] = unit.property.management_type
 
         return super().create(validated_data)
 

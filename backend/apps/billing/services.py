@@ -17,7 +17,7 @@ def generate_monthly_invoices(month, year, lease_ids=None, created_by=None):
 
     leases = LeaseAgreement.objects.filter(
         status='active'
-    ).select_related('tenant', 'unit')
+    ).select_related('tenant', 'unit', 'unit__property')
     if lease_ids:
         leases = leases.filter(id__in=lease_ids)
 
@@ -43,11 +43,24 @@ def generate_monthly_invoices(month, year, lease_ids=None, created_by=None):
             errors.append(f'Invoice already exists for {lease.lease_number}')
             continue
 
+        # Skip vacant units for rental leases (levy always bills regardless)
+        if lease.lease_type == 'rental' and not lease.unit.is_occupied:
+            errors.append(f'Skipped {lease.lease_number}: rental unit {lease.unit} is vacant')
+            continue
+
+        # Set invoice_type based on lease_type
+        if lease.lease_type == 'levy':
+            invoice_type = Invoice.InvoiceType.LEVY
+            desc_label = 'Levy'
+        else:
+            invoice_type = Invoice.InvoiceType.RENT
+            desc_label = 'Rent'
+
         invoices_to_create.append(Invoice(
             tenant=lease.tenant,
             lease=lease,
             unit=lease.unit,
-            invoice_type=Invoice.InvoiceType.RENT,
+            invoice_type=invoice_type,
             date=invoice_date,
             due_date=due_date,
             period_start=period_start,
@@ -55,7 +68,7 @@ def generate_monthly_invoices(month, year, lease_ids=None, created_by=None):
             amount=lease.monthly_rent,
             vat_amount=Decimal('0'),
             currency=lease.currency,
-            description=f'Rent for {period_start.strftime("%B %Y")} - {lease.unit}',
+            description=f'{desc_label} for {period_start.strftime("%B %Y")} - {lease.unit}',
             created_by=created_by
         ))
 
