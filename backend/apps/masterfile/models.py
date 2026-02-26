@@ -3,7 +3,7 @@ Masterfile models for Real Estate entities.
 Landlords, Properties, Units, and Rental Tenants.
 """
 from decimal import Decimal
-from django.db import models
+from django.db import models, transaction
 from django.conf import settings
 from apps.soft_delete import SoftDeleteModel
 
@@ -82,12 +82,15 @@ class Landlord(SoftDeleteModel):
 
     def save(self, *args, **kwargs):
         if not self.code:
-            self.code = self.generate_code()
+            with transaction.atomic():
+                self.code = self.generate_code()
+                super().save(*args, **kwargs)
+                return
         super().save(*args, **kwargs)
 
     @classmethod
     def generate_code(cls):
-        last = cls.all_objects.order_by('-id').first()
+        last = cls.all_objects.select_for_update().order_by('-id').first()
         num = (last.id + 1) if last else 1
         return f'LL{num:04d}'
 
@@ -159,12 +162,15 @@ class Property(SoftDeleteModel):
 
     def save(self, *args, **kwargs):
         if not self.code:
-            self.code = self.generate_code()
+            with transaction.atomic():
+                self.code = self.generate_code()
+                super().save(*args, **kwargs)
+                return
         super().save(*args, **kwargs)
 
     @classmethod
     def generate_code(cls):
-        last = cls.all_objects.order_by('-id').first()
+        last = cls.all_objects.select_for_update().order_by('-id').first()
         num = (last.id + 1) if last else 1
         return f'PROP{num:04d}'
 
@@ -435,12 +441,15 @@ class RentalTenant(SoftDeleteModel):
 
     def save(self, *args, **kwargs):
         if not self.code:
-            self.code = self.generate_code()
+            with transaction.atomic():
+                self.code = self.generate_code()
+                super().save(*args, **kwargs)
+                return
         super().save(*args, **kwargs)
 
     @classmethod
     def generate_code(cls):
-        last = cls.all_objects.order_by('-id').first()
+        last = cls.all_objects.select_for_update().order_by('-id').first()
         num = (last.id + 1) if last else 1
         return f'TN{num:04d}'
 

@@ -198,6 +198,10 @@ class PasswordResetToken(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
     used = models.BooleanField(default=False)
+    tenant_schema = models.CharField(
+        max_length=63, blank=True, default='',
+        help_text='Schema name of the tenant this reset token belongs to'
+    )
 
     class Meta:
         ordering = ['-created_at']
@@ -224,10 +228,12 @@ class PasswordResetToken(models.Model):
         """Create a reset token, invalidating any existing ones."""
         from django.utils import timezone
         from datetime import timedelta
+        from django.db import connection
         # Invalidate old tokens
         cls.objects.filter(user=user, used=False).update(used=True)
         return cls.objects.create(
             user=user,
             token=cls.generate_token(),
             expires_at=timezone.now() + timedelta(hours=1),
+            tenant_schema=connection.schema_name or '',
         )

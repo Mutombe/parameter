@@ -126,9 +126,6 @@ class Invoice(SoftDeleteModel):
         return f'{self.invoice_number} - {self.tenant.name}'
 
     def save(self, *args, **kwargs):
-        if not self.invoice_number:
-            self.invoice_number = self.generate_invoice_number()
-
         # Auto-populate property from unit
         if self.unit and not self.property:
             self.property = self.unit.property
@@ -137,13 +134,19 @@ class Invoice(SoftDeleteModel):
         self.total_amount = self.amount + self.vat_amount
         self.balance = self.total_amount - self.amount_paid
 
+        if not self.invoice_number:
+            with transaction.atomic():
+                self.invoice_number = self.generate_invoice_number()
+                super().save(*args, **kwargs)
+                return
+
         super().save(*args, **kwargs)
 
     @classmethod
     def generate_invoice_number(cls):
         from django.utils import timezone
         prefix = timezone.now().strftime('INV%Y%m')
-        last = cls.all_objects.filter(invoice_number__startswith=prefix).order_by('-invoice_number').first()
+        last = cls.all_objects.select_for_update().filter(invoice_number__startswith=prefix).order_by('-invoice_number').first()
         if last:
             num = int(last.invoice_number[-4:]) + 1
         else:
@@ -302,14 +305,17 @@ class Receipt(SoftDeleteModel):
 
     def save(self, *args, **kwargs):
         if not self.receipt_number:
-            self.receipt_number = self.generate_receipt_number()
+            with transaction.atomic():
+                self.receipt_number = self.generate_receipt_number()
+                super().save(*args, **kwargs)
+                return
         super().save(*args, **kwargs)
 
     @classmethod
     def generate_receipt_number(cls):
         from django.utils import timezone
         prefix = timezone.now().strftime('RCT%Y%m')
-        last = cls.all_objects.filter(receipt_number__startswith=prefix).order_by('-receipt_number').first()
+        last = cls.all_objects.select_for_update().filter(receipt_number__startswith=prefix).order_by('-receipt_number').first()
         if last:
             num = int(last.receipt_number[-4:]) + 1
         else:
@@ -696,14 +702,17 @@ class Expense(SoftDeleteModel):
 
     def save(self, *args, **kwargs):
         if not self.expense_number:
-            self.expense_number = self.generate_expense_number()
+            with transaction.atomic():
+                self.expense_number = self.generate_expense_number()
+                super().save(*args, **kwargs)
+                return
         super().save(*args, **kwargs)
 
     @classmethod
     def generate_expense_number(cls):
         from django.utils import timezone
         prefix = timezone.now().strftime('EXP%Y%m')
-        last = cls.all_objects.filter(expense_number__startswith=prefix).order_by('-expense_number').first()
+        last = cls.all_objects.select_for_update().filter(expense_number__startswith=prefix).order_by('-expense_number').first()
         if last:
             num = int(last.expense_number[-4:]) + 1
         else:

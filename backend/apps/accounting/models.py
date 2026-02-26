@@ -538,18 +538,21 @@ class BankAccount(models.Model):
         return f'{self.name} ({self.currency})'
 
     def save(self, *args, **kwargs):
-        if not self.code:
-            self.code = self.generate_code()
         # Ensure only one default per currency
         if self.is_default:
             BankAccount.objects.filter(
                 currency=self.currency, is_default=True
             ).exclude(pk=self.pk).update(is_default=False)
+        if not self.code:
+            with transaction.atomic():
+                self.code = self.generate_code()
+                super().save(*args, **kwargs)
+                return
         super().save(*args, **kwargs)
 
     @classmethod
     def generate_code(cls):
-        last = cls.objects.order_by('-id').first()
+        last = cls.objects.select_for_update().order_by('-id').first()
         num = (last.id + 1) if last else 1
         return f'BA{num:04d}'
 
@@ -817,12 +820,15 @@ class ExpenseCategory(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.code:
-            self.code = self.generate_code()
+            with transaction.atomic():
+                self.code = self.generate_code()
+                super().save(*args, **kwargs)
+                return
         super().save(*args, **kwargs)
 
     @classmethod
     def generate_code(cls):
-        last = cls.objects.order_by('-id').first()
+        last = cls.objects.select_for_update().order_by('-id').first()
         num = (last.id + 1) if last else 1
         return f'EXP{num:04d}'
 
@@ -974,11 +980,14 @@ class IncomeType(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.code:
-            self.code = self.generate_code()
+            with transaction.atomic():
+                self.code = self.generate_code()
+                super().save(*args, **kwargs)
+                return
         super().save(*args, **kwargs)
 
     @classmethod
     def generate_code(cls):
-        last = cls.objects.order_by('-id').first()
+        last = cls.objects.select_for_update().order_by('-id').first()
         num = (last.id + 1) if last else 1
         return f'INC{num:04d}'

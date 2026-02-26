@@ -205,6 +205,9 @@ Parameter Team
         serializer.is_valid(raise_exception=True)
 
         token_obj = PasswordResetToken.objects.get(token=serializer.validated_data['token'])
+        # Validate token belongs to current tenant
+        if token_obj.tenant_schema and token_obj.tenant_schema != connection.schema_name:
+            return Response({'error': 'Invalid reset link.'}, status=status.HTTP_400_BAD_REQUEST)
         user = token_obj.user
 
         user.set_password(serializer.validated_data['new_password'])
@@ -231,6 +234,9 @@ Parameter Team
             return Response({'valid': False, 'error': 'No token provided'}, status=status.HTTP_400_BAD_REQUEST)
         try:
             token_obj = PasswordResetToken.objects.get(token=token)
+            # Validate token belongs to current tenant
+            if token_obj.tenant_schema and token_obj.tenant_schema != connection.schema_name:
+                return Response({'valid': False, 'error': 'Invalid reset link.'})
             if token_obj.is_valid:
                 return Response({'valid': True, 'email': token_obj.user.email})
             return Response({'valid': False, 'error': 'This reset link has expired.'})
