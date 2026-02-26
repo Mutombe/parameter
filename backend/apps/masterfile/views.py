@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from django.db.models import Sum, Count, Q
+from django.db.models import Sum, Count, Q, Prefetch
 from .models import Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager
 from .serializers import (
     LandlordSerializer, PropertySerializer, PropertyListSerializer,
@@ -12,12 +12,18 @@ from .serializers import (
     LeaseAgreementSerializer,
     LeaseActivateSerializer, LeaseTerminateSerializer, PropertyManagerSerializer
 )
+from .services import (
+    send_lease_activation_emails, send_lease_termination_emails,
+    get_landlord_summary, get_tenant_detail, get_tenant_ledger,
+)
 from apps.soft_delete import SoftDeleteMixin
 
 
 class LandlordViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Landlords."""
-    queryset = Landlord.objects.prefetch_related('properties', 'properties__units').all()
+    queryset = Landlord.objects.annotate(
+        _property_count=Count('properties')
+    ).prefetch_related('properties', 'properties__units').all()
     serializer_class = LandlordSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ['landlord_type', 'is_active', 'preferred_currency', 'payment_frequency', 'vat_registered']
@@ -29,30 +35,23 @@ class LandlordViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
     def statement(self, request, pk=None):
         """Get landlord statement summary."""
         landlord = self.get_object()
-
-        # Use prefetched properties data, then collect units in Python
-        properties = list(landlord.properties.all())
-        all_units = []
-        for prop in properties:
-            all_units.extend(list(prop.units.all()))
-        total_units = len(all_units)
-        occupied_units = sum(1 for u in all_units if u.is_occupied)
-
+        summary = get_landlord_summary(landlord)
         return Response({
             'landlord': LandlordSerializer(landlord).data,
-            'summary': {
-                'total_properties': len(properties),
-                'total_units': total_units,
-                'occupied_units': occupied_units,
-                'vacant_units': total_units - occupied_units,
-                'occupancy_rate': (occupied_units / total_units * 100) if total_units else 0
-            }
+            'summary': summary,
         })
 
 
 class PropertyViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Properties."""
-    queryset = Property.objects.select_related('landlord').prefetch_related('units', 'managers__user').all()
+    queryset = Property.objects.select_related('landlord').prefetch_related(
+        'units',
+        Prefetch('managers', queryset=PropertyManager.objects.filter(is_primary=True).select_related('user'), to_attr='_primary_managers'),
+        Prefetch('managers', queryset=PropertyManager.objects.select_related('user')),
+    ).annotate(
+        _unit_count=Count('units'),
+        _vacant_units=Count('units', filter=Q(units__is_occupied=False)),
+    ).all()
     permission_classes = [IsAuthenticated]
     filterset_fields = ['landlord', 'property_type', 'city', 'is_active', 'country']
     search_fields = ['code', 'name', 'address', 'city', 'suburb', 'landlord__name', 'landlord__code']
@@ -163,7 +162,9 @@ class PropertyViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
 
 class UnitViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Units."""
-    queryset = Unit.objects.select_related('property', 'property__landlord').prefetch_related('leases', 'leases__tenant').all()
+    queryset = Unit.objects.select_related('property', 'property__landlord').prefetch_related(
+        Prefetch('leases', queryset=LeaseAgreement.objects.filter(status='active').select_related('tenant'), to_attr='_active_leases'),
+    ).all()
     serializer_class = UnitSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ['property', 'property__landlord', 'unit_type', 'is_occupied', 'is_active', 'currency']
@@ -203,12 +204,16 @@ class RentalTenantViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Use lightweight queryset for list, full prefetch for detail, with lease_status filtering."""
-        base = RentalTenant.objects.select_related('unit', 'unit__property')
+        base = RentalTenant.objects.select_related('unit', 'unit__property').annotate(
+            _lease_count=Count('leases'),
+            _has_active_lease=Count('leases', filter=Q(leases__status='active')),
+        )
         if self.action == 'list':
             queryset = base.prefetch_related('leases').all()
         else:
             queryset = base.prefetch_related(
-                'leases', 'leases__unit', 'leases__unit__property', 'invoices', 'receipts'
+                Prefetch('leases', queryset=LeaseAgreement.objects.filter(status='active').select_related('unit', 'unit__property'), to_attr='_active_leases'),
+                'leases', 'leases__unit', 'leases__unit__property',
             ).all()
 
         # Filter by lease_status (active/inactive based on having active leases)
@@ -229,84 +234,20 @@ class RentalTenantViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
     def detail_view(self, request, pk=None):
         """Get comprehensive tenant details including lease history and billing summary."""
         tenant = self.get_object()
-
-        # Import here to avoid circular imports
-        from apps.billing.serializers import InvoiceSerializer, ReceiptSerializer
-
-        # Use prefetched data - filter/sort in Python to avoid new DB queries
-        # that lose django-tenants schema context
-        all_leases = sorted(tenant.leases.all(), key=lambda l: l.start_date, reverse=True)
-        active_leases = [l for l in all_leases if l.status == 'active']
-        past_leases = [l for l in all_leases if l.status != 'active']
-
-        # Use prefetched invoices and receipts - aggregate in Python
-        all_invoices = sorted(tenant.invoices.all(), key=lambda i: i.date, reverse=True)
-        all_receipts = sorted(tenant.receipts.all(), key=lambda r: r.date, reverse=True)
-
-        total_invoiced = sum(inv.total_amount or 0 for inv in all_invoices)
-        total_paid = sum(r.amount or 0 for r in all_receipts)
-        overdue = sum(inv.total_amount or 0 for inv in all_invoices if inv.status == 'overdue')
-
+        detail = get_tenant_detail(tenant)
         return Response({
             'tenant': RentalTenantSerializer(tenant).data,
-            'active_leases': [{
-                'id': l.id,
-                'lease_number': l.lease_number,
-                'unit': str(l.unit),
-                'property': l.unit.property.name if l.unit and l.unit.property else '-',
-                'monthly_rent': str(l.monthly_rent),
-                'currency': l.currency,
-                'start_date': l.start_date,
-                'end_date': l.end_date,
-                'status': l.status,
-            } for l in active_leases],
-            'lease_history': [{
-                'id': l.id,
-                'lease_number': l.lease_number,
-                'unit': str(l.unit),
-                'property': l.unit.property.name if l.unit and l.unit.property else '-',
-                'monthly_rent': str(l.monthly_rent),
-                'start_date': l.start_date,
-                'end_date': l.end_date,
-                'status': l.status,
-                'termination_reason': l.termination_reason,
-            } for l in past_leases],
-            'billing_summary': {
-                'total_invoiced': total_invoiced,
-                'total_paid': total_paid,
-                'balance_due': total_invoiced - total_paid,
-                'overdue_amount': overdue,
-                'invoice_count': len(all_invoices),
-                'receipt_count': len(all_receipts),
-            },
-            'recent_invoices': InvoiceSerializer(all_invoices[:5], many=True).data,
-            'recent_receipts': ReceiptSerializer(all_receipts[:5], many=True).data,
+            **detail,
         })
 
     @action(detail=True, methods=['get'])
     def ledger(self, request, pk=None):
         """Get tenant's financial ledger (invoices and receipts)."""
         tenant = self.get_object()
-
-        # Import here to avoid circular imports
-        from apps.billing.serializers import InvoiceSerializer, ReceiptSerializer
-
-        # Use prefetched data - aggregate in Python to avoid schema context loss
-        all_invoices = sorted(tenant.invoices.all(), key=lambda i: i.date, reverse=True)
-        all_receipts = sorted(tenant.receipts.all(), key=lambda r: r.date, reverse=True)
-
-        total_invoiced = sum(inv.total_amount or 0 for inv in all_invoices)
-        total_paid = sum(r.amount or 0 for r in all_receipts)
-
+        ledger_data = get_tenant_ledger(tenant)
         return Response({
             'tenant': RentalTenantSerializer(tenant).data,
-            'invoices': InvoiceSerializer(all_invoices, many=True).data,
-            'receipts': ReceiptSerializer(all_receipts, many=True).data,
-            'summary': {
-                'total_invoiced': total_invoiced,
-                'total_paid': total_paid,
-                'balance_due': total_invoiced - total_paid
-            }
+            **ledger_data,
         })
 
 
@@ -386,84 +327,7 @@ class LeaseAgreementViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
             )
 
         lease.activate()
-
-        # Email tenant about lease activation
-        try:
-            from apps.notifications.utils import send_tenant_email
-            send_tenant_email(
-                lease.tenant,
-                f'Lease Activated - {lease.lease_number}',
-                f"""Dear {lease.tenant.name},
-
-Your lease agreement has been activated.
-
-Lease Details:
-- Lease Number: {lease.lease_number}
-- Unit: {lease.unit.unit_number}
-- Start Date: {lease.start_date}
-- End Date: {lease.end_date}
-- Monthly Rent: {lease.currency} {lease.monthly_rent:,.2f}
-
-Welcome to your new home! If you have any questions, please contact your property management office.
-
-Best regards,
-Property Management
-Powered by Parameter.co.zw
-"""
-            )
-        except Exception:
-            pass
-
-        # Email staff about lease activation
-        try:
-            from apps.notifications.utils import send_staff_email
-            send_staff_email(
-                f'Lease Activated: {lease.tenant.name} - {lease.unit.unit_number}',
-                f"""A lease has been activated.
-
-Lease Details:
-- Lease Number: {lease.lease_number}
-- Tenant: {lease.tenant.name}
-- Unit: {lease.unit.unit_number}
-- Property: {lease.unit.property.name if lease.unit.property else 'N/A'}
-- Monthly Rent: {lease.currency} {lease.monthly_rent:,.2f}
-- Period: {lease.start_date} to {lease.end_date}
-- Activated By: {request.user.get_full_name() or request.user.email}
-
-Best regards,
-Parameter System
-"""
-            )
-        except Exception:
-            pass
-
-        # Email landlord about new tenant
-        try:
-            from apps.notifications.utils import send_landlord_email
-            landlord = lease.unit.property.landlord if lease.unit.property else None
-            if landlord:
-                send_landlord_email(
-                    landlord,
-                    f'New Tenant Moved In - {lease.unit.unit_number}',
-                    f"""Dear {landlord.name},
-
-A new tenant has moved into your property.
-
-Details:
-- Property: {lease.unit.property.name}
-- Unit: {lease.unit.unit_number}
-- Tenant: {lease.tenant.name}
-- Monthly Rent: {lease.currency} {lease.monthly_rent:,.2f}
-- Lease Period: {lease.start_date} to {lease.end_date}
-
-Best regards,
-Property Management
-Powered by Parameter.co.zw
-"""
-                )
-        except Exception:
-            pass
-
+        send_lease_activation_emails(lease, request.user)
         return Response(LeaseAgreementSerializer(lease).data)
 
     @action(detail=True, methods=['post'])
@@ -479,85 +343,9 @@ Powered by Parameter.co.zw
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        lease.terminate(serializer.validated_data['reason'])
-
-        # Email tenant about lease termination
-        try:
-            from apps.notifications.utils import send_tenant_email
-            send_tenant_email(
-                lease.tenant,
-                f'Lease Terminated - {lease.lease_number}',
-                f"""Dear {lease.tenant.name},
-
-Your lease agreement has been terminated.
-
-Lease Details:
-- Lease Number: {lease.lease_number}
-- Unit: {lease.unit.unit_number}
-- Termination Reason: {serializer.validated_data['reason']}
-
-Please contact your property management office for any outstanding matters or questions regarding your move-out process.
-
-Best regards,
-Property Management
-Powered by Parameter.co.zw
-"""
-            )
-        except Exception:
-            pass
-
-        # Email staff about lease termination
-        try:
-            from apps.notifications.utils import send_staff_email
-            send_staff_email(
-                f'Lease Terminated: {lease.tenant.name} - {lease.unit.unit_number}',
-                f"""A lease has been terminated.
-
-Lease Details:
-- Lease Number: {lease.lease_number}
-- Tenant: {lease.tenant.name}
-- Unit: {lease.unit.unit_number}
-- Property: {lease.unit.property.name if lease.unit.property else 'N/A'}
-- Reason: {serializer.validated_data['reason']}
-- Terminated By: {request.user.get_full_name() or request.user.email}
-
-The unit is now vacant.
-
-Best regards,
-Parameter System
-"""
-            )
-        except Exception:
-            pass
-
-        # Email landlord about vacancy
-        try:
-            from apps.notifications.utils import send_landlord_email
-            landlord = lease.unit.property.landlord if lease.unit.property else None
-            if landlord:
-                send_landlord_email(
-                    landlord,
-                    f'Unit Vacated - {lease.unit.unit_number}',
-                    f"""Dear {landlord.name},
-
-A tenant has vacated a unit in your property.
-
-Details:
-- Property: {lease.unit.property.name}
-- Unit: {lease.unit.unit_number}
-- Former Tenant: {lease.tenant.name}
-- Termination Reason: {serializer.validated_data['reason']}
-
-The unit is now vacant and available for re-letting.
-
-Best regards,
-Property Management
-Powered by Parameter.co.zw
-"""
-                )
-        except Exception:
-            pass
-
+        reason = serializer.validated_data['reason']
+        lease.terminate(reason)
+        send_lease_termination_emails(lease, reason, request.user)
         return Response(LeaseAgreementSerializer(lease).data)
 
     @action(detail=False, methods=['get'])

@@ -176,7 +176,12 @@ class Property(SoftDeleteModel):
 
     @property
     def vacancy_rate(self):
-        """Calculate vacancy rate as percentage."""
+        """Calculate vacancy rate as percentage. Uses annotations when available (zero queries)."""
+        if hasattr(self, '_vacant_units') and hasattr(self, '_unit_count'):
+            total = self._unit_count
+            if total == 0:
+                return Decimal('0')
+            return (Decimal(self._vacant_units) / Decimal(total)) * 100
         total = self.units.count()
         if total == 0:
             return Decimal('0')

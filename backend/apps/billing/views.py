@@ -77,8 +77,9 @@ class InvoiceViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
         """
         Generate monthly rent invoices for all active leases.
         This is the automated billing cron job (Activity 1).
-        Optimized with prefetch and bulk_create.
         """
+        from .services import generate_monthly_invoices
+
         serializer = BulkInvoiceSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -86,61 +87,9 @@ class InvoiceViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
         year = serializer.validated_data['year']
         lease_ids = serializer.validated_data.get('lease_ids', [])
 
-        # Get active leases with related objects in one query
-        leases = LeaseAgreement.objects.filter(
-            status='active'
-        ).select_related('tenant', 'unit')
-        if lease_ids:
-            leases = leases.filter(id__in=lease_ids)
-
-        # Get date range for the period
-        _, last_day = monthrange(year, month)
-        period_start = date(year, month, 1)
-        period_end = date(year, month, last_day)
-        invoice_date = date.today()
-        due_date = date(year, month, 15)  # Due on 15th
-
-        # Batch check: get all lease IDs that already have invoices for this period
-        existing_lease_ids = set(
-            Invoice.objects.filter(
-                lease__in=leases,
-                period_start=period_start,
-                period_end=period_end
-            ).values_list('lease_id', flat=True)
+        created_invoices, errors = generate_monthly_invoices(
+            month, year, lease_ids=lease_ids or None, created_by=request.user
         )
-
-        invoices_to_create = []
-        errors = []
-
-        for lease in leases:
-            if lease.id in existing_lease_ids:
-                errors.append(f'Invoice already exists for {lease.lease_number}')
-                continue
-
-            invoices_to_create.append(Invoice(
-                tenant=lease.tenant,
-                lease=lease,
-                unit=lease.unit,
-                invoice_type=Invoice.InvoiceType.RENT,
-                date=invoice_date,
-                due_date=due_date,
-                period_start=period_start,
-                period_end=period_end,
-                amount=lease.monthly_rent,
-                vat_amount=Decimal('0'),
-                currency=lease.currency,
-                description=f'Rent for {period_start.strftime("%B %Y")} - {lease.unit}',
-                created_by=request.user
-            ))
-
-        # Bulk create all invoices at once (triggers save() for number generation)
-        created_invoices = []
-        for invoice in invoices_to_create:
-            try:
-                invoice.save()
-                created_invoices.append(invoice)
-            except Exception as e:
-                errors.append(f'Error creating invoice: {str(e)}')
 
         return Response({
             'created': len(created_invoices),
