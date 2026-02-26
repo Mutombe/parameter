@@ -20,6 +20,61 @@ interface CommandItem {
   group: string
 }
 
+// NLP: Parse natural language queries into navigation + filter actions
+function parseNLPQuery(query: string): { route?: string; params?: Record<string, string>; label?: string } | null {
+  const q = query.toLowerCase().trim()
+
+  // "show/go to unpaid invoices" → invoices page with status filter
+  if (/(?:show|list|view|go to|find)\s+(?:unpaid|outstanding|overdue)\s+invoices?/.test(q)) {
+    return { route: '/dashboard/invoices?status=unpaid', label: 'View unpaid invoices' }
+  }
+  if (/(?:show|list|view)\s+(?:paid)\s+invoices?/.test(q)) {
+    return { route: '/dashboard/invoices?status=paid', label: 'View paid invoices' }
+  }
+  // "unpaid invoices from january" or "invoices from jan"
+  const monthMatch = q.match(/invoices?\s+(?:from|in|for)\s+(\w+)/)
+  if (monthMatch) {
+    return { route: `/dashboard/invoices?month=${monthMatch[1]}`, label: `Invoices from ${monthMatch[1]}` }
+  }
+  // "receipts this month"
+  if (/receipts?\s+(?:this|current)\s+month/.test(q)) {
+    return { route: '/dashboard/receipts', label: 'Receipts this month' }
+  }
+  // "vacant units" / "empty units"
+  if (/(?:vacant|empty|available)\s+units?/.test(q)) {
+    return { route: '/dashboard/units?status=vacant', label: 'View vacant units' }
+  }
+  // "expiring leases"
+  if (/(?:expiring|ending)\s+leases?/.test(q)) {
+    return { route: '/dashboard/leases?status=expiring', label: 'Expiring leases' }
+  }
+  // "aged analysis" / "aging report"
+  if (/(?:aged|aging)\s+(?:analysis|report|receivable)/.test(q)) {
+    return { route: '/dashboard/reports/aged-analysis', label: 'Aged analysis report' }
+  }
+  // "revenue report" / "income report"
+  if (/(?:revenue|income|financial)\s+(?:report|summary)/.test(q)) {
+    return { route: '/dashboard/reports?report=income-expenditure', label: 'Revenue report' }
+  }
+  // "expenses for [month]"
+  const expenseMonth = q.match(/expenses?\s+(?:from|in|for)\s+(\w+)/)
+  if (expenseMonth) {
+    return { route: `/dashboard/expenses?month=${expenseMonth[1]}`, label: `Expenses for ${expenseMonth[1]}` }
+  }
+  // "add/create/new [entity]"
+  if (/(?:add|create|new)\s+(?:a\s+)?landlord/.test(q)) {
+    return { route: '#create-landlord', label: 'Create new landlord' }
+  }
+  if (/(?:add|create|new)\s+(?:a\s+)?tenant/.test(q)) {
+    return { route: '#create-tenant', label: 'Create new tenant' }
+  }
+  if (/(?:add|create|new)\s+(?:a\s+)?property/.test(q)) {
+    return { route: '#create-property', label: 'Create new property' }
+  }
+
+  return null
+}
+
 const RECENT_SEARCHES_KEY = 'command_palette_recent'
 
 function getRecentSearches(): string[] {
@@ -120,6 +175,28 @@ export default function CommandPalette() {
 
     // Filter items by query
     if (q) {
+      // NLP: Try to parse natural language first
+      const nlpResult = parseNLPQuery(query)
+      if (nlpResult) {
+        items.push({
+          id: 'nlp-result',
+          label: nlpResult.label || query,
+          description: nlpResult.route?.replace('/dashboard/', '') || '',
+          icon: <Command className="w-4 h-4" />,
+          action: () => {
+            close()
+            addRecentSearch(query)
+            if (nlpResult.route?.startsWith('#create-')) {
+              const entity = nlpResult.route.replace('#create-', '')
+              startChain(entity as EntityType)
+            } else if (nlpResult.route) {
+              navigate(nlpResult.route)
+            }
+          },
+          group: 'Suggested Action',
+        })
+      }
+
       const filtered = [...quickActions, ...navItems].filter(
         item => item.label.toLowerCase().includes(q) || item.description?.toLowerCase().includes(q)
       )

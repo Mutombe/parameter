@@ -173,6 +173,9 @@ export function AsyncSelect({
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
+        role="combobox"
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
         className={cn(
           'w-full flex items-center justify-between px-3 py-2.5 text-left text-sm bg-white border rounded-xl transition-all dark:bg-slate-900 dark:text-slate-200',
           isOpen ? 'border-primary-500 ring-2 ring-primary-100' : 'border-gray-200 hover:border-gray-300 dark:border-slate-600 dark:hover:border-slate-500',

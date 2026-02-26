@@ -255,6 +255,9 @@ export function Select({
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
+        role="combobox"
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
         className={cn(
           'w-full flex items-center justify-between px-4 py-2.5 text-left text-sm bg-white border rounded-xl transition-all duration-200',
           isOpen ? 'border-primary-500 ring-2 ring-primary-100' : 'border-gray-200 hover:border-gray-300',
@@ -309,7 +312,7 @@ export function Select({
                 </div>
               </div>
             )}
-            <div className="max-h-60 overflow-y-auto p-1" ref={listRef}>
+            <div className="max-h-60 overflow-y-auto p-1" ref={listRef} role="listbox">
               {filteredOptions.length === 0 ? (
                 <div className="px-3 py-2.5 text-sm text-gray-400 text-center">No options found</div>
               ) : filteredOptions.map((option, index) => (

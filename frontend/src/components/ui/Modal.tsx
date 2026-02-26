@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
-import { ReactNode, ComponentType } from 'react'
+import { ReactNode, ComponentType, useRef, useEffect, useId } from 'react'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 
 type IconComponent = ComponentType<{ className?: string }>
 
@@ -37,6 +38,22 @@ export function Modal({
 }: ModalProps) {
   // Support both isOpen and open props
   const isVisible = isOpen ?? open ?? false
+  const modalRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+  const descId = useId()
+
+  // Focus trap: keep Tab within the modal
+  useFocusTrap(modalRef, isVisible)
+
+  // Close on Escape key
+  useEffect(() => {
+    if (!isVisible) return
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleEsc)
+    return () => document.removeEventListener('keydown', handleEsc)
+  }, [isVisible, onClose])
 
   return (
     <AnimatePresence>
@@ -49,9 +66,15 @@ export function Modal({
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/50 backdrop-blur-sm"
               onClick={onClose}
+              aria-hidden="true"
             />
 
             <motion.div
+              ref={modalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={titleId}
+              aria-describedby={description ? descId : undefined}
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -67,9 +90,9 @@ export function Modal({
                     </div>
                   )}
                   <div>
-                    <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
+                    <h2 id={titleId} className="text-xl font-semibold text-gray-900">{title}</h2>
                     {description && (
-                      <p className="mt-1 text-sm text-gray-500">{description}</p>
+                      <p id={descId} className="mt-1 text-sm text-gray-500">{description}</p>
                     )}
                   </div>
                 </div>
@@ -77,6 +100,7 @@ export function Modal({
                   <button
                     onClick={onClose}
                     className="p-2 -m-2 rounded-lg hover:bg-gray-100 transition-colors"
+                    aria-label="Close dialog"
                   >
                     <X className="w-5 h-5 text-gray-400" />
                   </button>

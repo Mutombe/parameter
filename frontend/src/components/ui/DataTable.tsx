@@ -1,6 +1,6 @@
-import { useState, ReactNode } from 'react'
+import { useState, ReactNode, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { ChevronUp, ChevronDown, ChevronsUpDown, Search, Filter, Download, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronUp, ChevronDown, ChevronsUpDown, Search, ChevronLeft, ChevronRight, AlignJustify, List, StretchHorizontal } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { SkeletonTable } from './Skeleton'
 import { EmptyState } from './EmptyState'
@@ -12,6 +12,24 @@ export interface Column<T> {
   sortable?: boolean
   align?: 'left' | 'center' | 'right'
   width?: string
+  /** For column totals — provide a function to extract the numeric value */
+  total?: (item: T) => number
+  /** Render function for the total cell */
+  totalRender?: (sum: number) => ReactNode
+}
+
+type Density = 'compact' | 'comfortable' | 'spacious'
+
+const densityConfig: Record<Density, { cell: string; header: string; text: string }> = {
+  compact: { cell: 'px-4 py-2', header: 'px-4 py-2.5', text: 'text-xs' },
+  comfortable: { cell: 'px-6 py-4', header: 'px-6 py-4', text: 'text-sm' },
+  spacious: { cell: 'px-6 py-5', header: 'px-6 py-5', text: 'text-sm' },
+}
+
+const densityIcons: Record<Density, typeof List> = {
+  compact: AlignJustify,
+  comfortable: List,
+  spacious: StretchHorizontal,
 }
 
 interface DataTableProps<T> {
@@ -35,6 +53,8 @@ interface DataTableProps<T> {
   rowKey: (item: T) => string | number
   actions?: ReactNode
   stickyHeader?: boolean
+  showDensityToggle?: boolean
+  showTotals?: boolean
 }
 
 export function DataTable<T>({
@@ -52,10 +72,26 @@ export function DataTable<T>({
   onRowClick,
   rowKey,
   actions,
-  stickyHeader = false,
+  stickyHeader = true,
+  showDensityToggle = false,
+  showTotals = false,
 }: DataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [density, setDensity] = useState<Density>(() => {
+    try {
+      return (localStorage.getItem('table-density') as Density) || 'comfortable'
+    } catch { return 'comfortable' }
+  })
+
+  const dp = densityConfig[density]
+
+  const cycleDensity = () => {
+    const order: Density[] = ['compact', 'comfortable', 'spacious']
+    const next = order[(order.indexOf(density) + 1) % order.length]
+    setDensity(next)
+    try { localStorage.setItem('table-density', next) } catch {}
+  }
 
   const handleSort = (key: string) => {
     if (sortKey === key) {
@@ -76,16 +112,30 @@ export function DataTable<T>({
       })
     : data
 
+  // Calculate totals for columns that have total functions
+  const hasTotals = showTotals && columns.some(col => col.total)
+  const totals = useMemo(() => {
+    if (!hasTotals) return {}
+    const result: Record<string, number> = {}
+    columns.forEach(col => {
+      if (col.total) {
+        result[col.key] = data.reduce((sum, item) => sum + (col.total!(item) || 0), 0)
+      }
+    })
+    return result
+  }, [data, columns, hasTotals])
+
   if (loading) {
     return <SkeletonTable rows={5} cols={columns.length} />
   }
 
   const totalPages = pagination ? Math.ceil(pagination.total / pagination.pageSize) : 1
+  const DensityIcon = densityIcons[density]
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       {/* Toolbar */}
-      {(searchable || actions) && (
+      {(searchable || actions || showDensityToggle) && (
         <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-4">
           {searchable && (
             <div className="relative flex-1 max-w-md">
@@ -99,20 +149,32 @@ export function DataTable<T>({
               />
             </div>
           )}
-          {actions && <div className="flex items-center gap-2">{actions}</div>}
+          <div className="flex items-center gap-2">
+            {showDensityToggle && (
+              <button
+                onClick={cycleDensity}
+                className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-gray-500 hover:text-gray-700"
+                title={`Density: ${density}`}
+              >
+                <DensityIcon className="w-4 h-4" />
+              </button>
+            )}
+            {actions}
+          </div>
         </div>
       )}
 
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className={cn('bg-gray-50', stickyHeader && 'sticky top-0 z-10')}>
+          <thead className={cn('bg-gray-50', stickyHeader && 'sticky top-0 z-10 shadow-[0_1px_3px_0_rgba(0,0,0,0.05)]')}>
             <tr>
               {columns.map((col) => (
                 <th
                   key={col.key}
                   className={cn(
-                    'px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider',
+                    dp.header,
+                    'text-xs font-semibold text-gray-600 uppercase tracking-wider',
                     col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left',
                     col.sortable && 'cursor-pointer hover:bg-gray-100 transition-colors select-none',
                     col.width
@@ -167,8 +229,9 @@ export function DataTable<T>({
                     <td
                       key={col.key}
                       className={cn(
-                        'px-6 py-4 text-sm',
-                        col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'
+                        dp.cell,
+                        dp.text,
+                        col.align === 'right' ? 'text-right tabular-nums' : col.align === 'center' ? 'text-center' : 'text-left'
                       )}
                     >
                       {col.render ? col.render(item) : (item as any)[col.key]}
@@ -178,6 +241,28 @@ export function DataTable<T>({
               ))
             )}
           </tbody>
+          {/* Totals Row */}
+          {hasTotals && sortedData.length > 0 && (
+            <tfoot>
+              <tr className="bg-gray-50 border-t-2 border-gray-300 font-semibold">
+                {columns.map((col, i) => (
+                  <td
+                    key={col.key}
+                    className={cn(
+                      dp.cell,
+                      dp.text,
+                      col.align === 'right' ? 'text-right tabular-nums' : col.align === 'center' ? 'text-center' : 'text-left',
+                      'text-gray-900'
+                    )}
+                  >
+                    {col.total && totals[col.key] !== undefined
+                      ? (col.totalRender ? col.totalRender(totals[col.key]) : totals[col.key].toLocaleString())
+                      : (i === 0 ? 'Total' : '')}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 

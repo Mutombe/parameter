@@ -9,14 +9,18 @@ import {
   TrendingDown,
   AlertTriangle,
   Calendar,
-  ArrowUpRight,
-  ArrowDownRight,
   Wallet,
   Receipt,
   PiggyBank,
   Activity,
   ChevronRight,
   Clock,
+  Zap,
+  CheckCircle2,
+  FileText,
+  UserPlus,
+  CreditCard,
+  ArrowRight,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -31,9 +35,11 @@ import {
   Cell,
   BarChart,
   Bar,
+  LineChart,
+  Line,
 } from 'recharts'
 import { reportsApi } from '../services/api'
-import { formatCurrency, formatPercent, formatDate, cn } from '../lib/utils'
+import { formatCurrency, formatPercent, formatDate, formatDistanceToNow, cn } from '../lib/utils'
 import { useNavigate } from 'react-router-dom'
 import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
@@ -58,7 +64,6 @@ interface StatCardProps {
   title: string
   value: string | number
   subtitle?: string
-  trend?: { value: number; label: string }
   icon: React.ElementType
   color: 'blue' | 'green' | 'purple' | 'orange' | 'red' | 'cyan'
   isLoading?: boolean
@@ -75,7 +80,7 @@ const colorConfig = {
   cyan: { bg: 'bg-cyan-50', icon: 'bg-cyan-500', text: 'text-cyan-600' },
 }
 
-function StatCard({ title, value, subtitle, trend, icon: Icon, color, isLoading, href, tooltip }: StatCardProps) {
+function StatCard({ title, value, subtitle, icon: Icon, color, isLoading, href, tooltip }: StatCardProps) {
   const navigate = useNavigate()
   const colors = colorConfig[color]
 
@@ -96,19 +101,6 @@ function StatCard({ title, value, subtitle, trend, icon: Icon, color, isLoading,
             <Icon className="w-4 h-4 md:w-5 md:h-5 text-white" />
           </div>
         </div>
-        {trend && (
-          <div className={cn(
-            'flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium',
-            trend.value >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
-          )}>
-            {trend.value >= 0 ? (
-              <ArrowUpRight className="w-3 h-3" />
-            ) : (
-              <ArrowDownRight className="w-3 h-3" />
-            )}
-            {Math.abs(trend.value)}%
-          </div>
-        )}
       </div>
       <div className="mt-3 md:mt-4">
         {isLoading ? (
@@ -126,7 +118,7 @@ function StatCard({ title, value, subtitle, trend, icon: Icon, color, isLoading,
         {isLoading ? (
           <div className="h-3 md:h-4 w-16 md:w-20 bg-gray-200 rounded animate-pulse mt-1" />
         ) : subtitle ? (
-          <p className="text-xs text-gray-400 mt-1">{subtitle}</p>
+          <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
         ) : null}
       </div>
     </motion.div>
@@ -151,7 +143,6 @@ export default function Dashboard() {
       title: 'Total Properties',
       value: stats?.properties?.total || 0,
       subtitle: `${stats?.properties?.units || 0} total units`,
-      trend: { value: 12, label: 'vs last month' },
       icon: PiBuildingApartmentLight,
       color: 'blue' as const,
       href: '/dashboard/properties',
@@ -160,10 +151,9 @@ export default function Dashboard() {
     {
       title: 'Occupancy Rate',
       value: formatPercent(occupancyRate),
-      subtitle: `${stats?.properties?.units - stats?.properties?.vacant || 0} occupied`,
-      trend: { value: occupancyRate >= 90 ? 5 : -3, label: 'vs last month' },
+      subtitle: `${stats?.properties?.units - stats?.properties?.vacant || 0} of ${stats?.properties?.units || 0} occupied`,
       icon: Home,
-      color: 'green' as const,
+      color: occupancyRate >= 90 ? 'green' as const : occupancyRate >= 70 ? 'orange' as const : 'red' as const,
       href: '/dashboard/units',
       tooltip: 'Percentage of units currently leased',
     },
@@ -171,7 +161,6 @@ export default function Dashboard() {
       title: 'Monthly Revenue',
       value: formatCurrency(stats?.monthly?.invoiced || 0),
       subtitle: `${formatCurrency(stats?.monthly?.collected || 0)} collected`,
-      trend: { value: 8, label: 'vs last month' },
       icon: Wallet,
       color: 'purple' as const,
       href: '/dashboard/invoices',
@@ -181,7 +170,6 @@ export default function Dashboard() {
       title: 'Outstanding',
       value: formatCurrency(stats?.financial?.outstanding || 0),
       subtitle: `${formatPercent(collectionRate)} collection rate`,
-      trend: { value: collectionRate >= 85 ? 2 : -5, label: 'vs last month' },
       icon: Receipt,
       color: 'orange' as const,
       href: '/dashboard/reports/aged-analysis',
@@ -191,7 +179,6 @@ export default function Dashboard() {
       title: 'Collection Rate',
       value: formatPercent(collectionRate),
       subtitle: collectionRate >= 85 ? 'On target' : 'Below target',
-      trend: { value: collectionRate >= 85 ? 3 : -8, label: 'vs last month' },
       icon: PiggyBank,
       color: (collectionRate >= 85 ? 'green' : 'red') as 'green' | 'red',
       href: '/dashboard/receipts',
@@ -201,7 +188,6 @@ export default function Dashboard() {
       title: 'Overdue Invoices',
       value: overdueInvoices,
       subtitle: formatCurrency(stats?.alerts?.overdue_amount || 0),
-      trend: { value: overdueInvoices > 0 ? -overdueInvoices : 0, label: 'items' },
       icon: AlertTriangle,
       color: (overdueInvoices > 0 ? 'red' : 'cyan') as 'red' | 'cyan',
       href: '/dashboard/invoices',
@@ -247,6 +233,51 @@ export default function Dashboard() {
           Last updated: {new Date().toLocaleTimeString()}
         </div>
       </motion.div>
+
+      {/* Month Summary Banner */}
+      {!isLoading && stats && (
+        <motion.div
+          initial={{ opacity: 0, y: -5 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-xl p-4 md:p-5 text-white"
+        >
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-white/15 rounded-lg">
+                <Zap className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-sm font-medium text-white/80">
+                  {new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })} Summary
+                </h2>
+                <p className="text-base md:text-lg font-semibold">
+                  {stats?.monthly?.paid_invoices || 0} of {stats?.monthly?.total_invoices || 0} invoices paid
+                  {stats?.financial?.outstanding > 0 && (
+                    <span className="text-white/80 font-normal"> &middot; {formatCurrency(stats.financial.outstanding)} outstanding</span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-sm">
+              <div className="text-center">
+                <p className="text-white/70 text-xs">Collected</p>
+                <p className="font-bold">{formatCurrency(stats?.monthly?.collected || 0)}</p>
+              </div>
+              <div className="w-px h-8 bg-white/20" />
+              <div className="text-center">
+                <p className="text-white/70 text-xs">Invoiced</p>
+                <p className="font-bold">{formatCurrency(stats?.monthly?.invoiced || 0)}</p>
+              </div>
+              <div className="w-px h-8 bg-white/20" />
+              <div className="text-center">
+                <p className="text-white/70 text-xs">Collection Rate</p>
+                <p className="font-bold">{formatPercent(collectionRate)}</p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* KPI Cards */}
       <motion.div
@@ -320,7 +351,7 @@ export default function Dashboard() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                   <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v/1000}k`} />
+                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
                   <Tooltip
                     formatter={(value: number) => formatCurrency(value)}
                     contentStyle={{
@@ -445,7 +476,7 @@ export default function Dashboard() {
                 <BarChart data={revenueData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                   <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v/1000}k`} />
+                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
                   <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
                   <Bar dataKey="invoiced" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Invoiced" />
                   <Bar dataKey="collected" fill="#10b981" radius={[4, 4, 0, 0]} name="Collected" />
@@ -499,6 +530,129 @@ export default function Dashboard() {
               )
             })()}
           </div>
+        </motion.div>
+      </div>
+
+      {/* Aged Receivables & Activity Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Aged Receivables */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.42 }}
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow duration-300"
+        >
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Aged Receivables</h3>
+          <p className="text-sm text-gray-500 mb-4">Outstanding invoices by age</p>
+          {isLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="h-4 w-16 bg-gray-200 rounded animate-pulse" />
+                  <div className="flex-1 h-6 bg-gray-200 rounded animate-pulse" />
+                  <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
+                </div>
+              ))}
+            </div>
+          ) : (() => {
+            const aged = stats?.aged_receivables || {}
+            const buckets = [
+              { label: 'Current', amount: aged.current || 0, color: 'bg-emerald-500' },
+              { label: '1-30 days', amount: aged.days_30 || 0, color: 'bg-yellow-500' },
+              { label: '31-60 days', amount: aged.days_60 || 0, color: 'bg-orange-500' },
+              { label: '61-90 days', amount: aged.days_90 || 0, color: 'bg-red-500' },
+              { label: '90+ days', amount: aged.days_90_plus || 0, color: 'bg-red-700' },
+            ]
+            const maxAmount = Math.max(...buckets.map(b => b.amount), 1)
+            return (
+              <div className="space-y-3">
+                {buckets.map(bucket => (
+                  <div key={bucket.label} className="flex items-center gap-3">
+                    <span className="text-xs font-medium text-gray-500 w-16 shrink-0">{bucket.label}</span>
+                    <div className="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.max((bucket.amount / maxAmount) * 100, bucket.amount > 0 ? 3 : 0)}%` }}
+                        transition={{ duration: 0.6, delay: 0.1 }}
+                        className={cn('h-full rounded-full', bucket.color)}
+                      />
+                    </div>
+                    <span className="text-xs font-semibold text-gray-700 tabular-nums w-24 text-right">
+                      {formatCurrency(bucket.amount)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+        </motion.div>
+
+        {/* Activity Feed */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.45 }}
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow duration-300"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
+            <button
+              onClick={() => navigate('/dashboard/audit-trail')}
+              className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
+            >
+              View all <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
+          {isLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3, 4, 5].map(i => (
+                <div key={i} className="flex gap-3">
+                  <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse shrink-0" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3 w-3/4 bg-gray-200 rounded animate-pulse" />
+                    <div className="h-2.5 w-1/3 bg-gray-200 rounded animate-pulse" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (() => {
+            const activities = stats?.recent_activity || []
+            if (activities.length === 0) {
+              return (
+                <div className="text-center py-8 text-gray-400 text-sm">
+                  <Activity className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  No recent activity
+                </div>
+              )
+            }
+            const activityIcons: Record<string, { icon: typeof Receipt; color: string; bg: string }> = {
+              receipt: { icon: CreditCard, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+              invoice: { icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50' },
+              lease: { icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50' },
+              tenant: { icon: UserPlus, color: 'text-orange-600', bg: 'bg-orange-50' },
+              expense: { icon: Wallet, color: 'text-red-600', bg: 'bg-red-50' },
+              default: { icon: CheckCircle2, color: 'text-gray-600', bg: 'bg-gray-50' },
+            }
+            return (
+              <div className="space-y-1 max-h-[280px] overflow-y-auto">
+                {activities.slice(0, 8).map((act: any, i: number) => {
+                  const config = activityIcons[act.type] || activityIcons.default
+                  const ActIcon = config.icon
+                  return (
+                    <div key={i} className="flex gap-3 py-2 px-1 rounded-lg hover:bg-gray-50 transition-colors">
+                      <div className={cn('p-1.5 rounded-lg shrink-0', config.bg)}>
+                        <ActIcon className={cn('w-4 h-4', config.color)} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-700 truncate">{act.description}</p>
+                        <p className="text-xs text-gray-500">{act.timestamp ? formatDistanceToNow(act.timestamp) : ''}</p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })()}
         </motion.div>
       </div>
 
@@ -594,7 +748,7 @@ export default function Dashboard() {
             {quickActions.map((action) => (
               <motion.button
                 key={action.label}
-                whileHover={{ scale: 1.07, y: -2 }}
+                whileHover={{ scale: 1.03, y: -2 }}
                 whileTap={{ scale: 0.97 }}
                 transition={{ type: 'spring', stiffness: 300, damping: 20 }}
                 onClick={() => navigate(action.href)}

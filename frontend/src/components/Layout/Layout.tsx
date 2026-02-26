@@ -11,6 +11,7 @@ import ErrorBoundary from '../ErrorBoundary'
 import KeyboardShortcutsModal from '../KeyboardShortcutsModal'
 import ChainedCreationModal from '../ChainedCreationModal'
 import CommandPalette from '../CommandPalette'
+import MobileBottomNav from './MobileBottomNav'
 import { useUIStore } from '../../stores/uiStore'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket'
@@ -155,7 +156,7 @@ export default function Layout() {
         <DemoExpiryBanner />
         <Header />
 
-        <main className="flex-1 overflow-auto p-4 md:p-6">
+        <main className="flex-1 overflow-auto p-4 md:p-6 pb-20 lg:pb-6">
           <ErrorBoundary>
             <AnimatePresence mode="wait">
               <motion.div
@@ -204,6 +205,7 @@ export default function Layout() {
         )}
       </AnimatePresence>
 
+      <MobileBottomNav />
       <PrintPreviewModal />
       <SessionExpiredModal />
       <KeyboardShortcutsModal open={shortcutsModalOpen} onClose={() => setShortcutsModalOpen(false)} />

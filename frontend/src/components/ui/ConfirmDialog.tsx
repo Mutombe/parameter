@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { AlertTriangle, Trash2, X, CheckCircle, AlertCircle, Info } from 'lucide-react'
-import { ReactNode } from 'react'
+import { ReactNode, useRef, useId } from 'react'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 
 type DialogType = 'danger' | 'warning' | 'success' | 'info'
 
@@ -77,6 +78,8 @@ export function ConfirmDialog({
   const showDialog = isOpen ?? open ?? false
   const displayMessage = message || description
   const showLoading = isLoading ?? loading ?? false
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
 
   // Resolve the dialog type with fallback
   const rawType = type || variant || 'danger'
@@ -84,10 +87,18 @@ export function ConfirmDialog({
   const config = typeConfig[dialogType] || typeConfig.danger
   const Icon = config.icon
 
+  // Focus trap
+  useFocusTrap(dialogRef, showDialog)
+
   return (
     <AnimatePresence>
       {showDialog && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
+        <div
+          className="fixed inset-0 z-50 overflow-y-auto"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+        >
           <div className="flex min-h-full items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
@@ -95,9 +106,11 @@ export function ConfirmDialog({
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/50 backdrop-blur-sm"
               onClick={onClose}
+              aria-hidden="true"
             />
 
             <motion.div
+              ref={dialogRef}
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -107,6 +120,7 @@ export function ConfirmDialog({
               <button
                 onClick={onClose}
                 className="absolute top-4 right-4 p-1 rounded-lg hover:bg-gray-100 transition-colors"
+                aria-label="Close dialog"
               >
                 <X className="w-5 h-5 text-gray-400" />
               </button>
@@ -116,7 +130,7 @@ export function ConfirmDialog({
                   <Icon className={`w-6 h-6 ${config.color}`} />
                 </div>
                 <div className="flex-1 pt-1">
-                  <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+                  <h3 id={titleId} className="text-lg font-semibold text-gray-900">{title}</h3>
                   <div className="mt-2 text-gray-600">{displayMessage}</div>
                 </div>
               </div>
