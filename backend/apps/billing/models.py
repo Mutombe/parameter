@@ -145,10 +145,10 @@ class Invoice(SoftDeleteModel):
     @classmethod
     def generate_invoice_number(cls):
         from django.utils import timezone
-        prefix = timezone.now().strftime('INV%Y%m')
+        prefix = timezone.now().strftime('INV%Y%m%d')
         last = cls.all_objects.select_for_update().filter(invoice_number__startswith=prefix).order_by('-invoice_number').first()
         if last:
-            num = int(last.invoice_number[-4:]) + 1
+            num = int(last.invoice_number[len(prefix):]) + 1
         else:
             num = 1
         return f'{prefix}{num:04d}'
@@ -314,10 +314,10 @@ class Receipt(SoftDeleteModel):
     @classmethod
     def generate_receipt_number(cls):
         from django.utils import timezone
-        prefix = timezone.now().strftime('RCT%Y%m')
+        prefix = timezone.now().strftime('RCT%Y%m%d')
         last = cls.all_objects.select_for_update().filter(receipt_number__startswith=prefix).order_by('-receipt_number').first()
         if last:
-            num = int(last.receipt_number[-4:]) + 1
+            num = int(last.receipt_number[len(prefix):]) + 1
         else:
             num = 1
         return f'{prefix}{num:04d}'
@@ -722,10 +722,10 @@ class Expense(SoftDeleteModel):
     @classmethod
     def generate_expense_number(cls):
         from django.utils import timezone
-        prefix = timezone.now().strftime('EXP%Y%m')
+        prefix = timezone.now().strftime('EXP%Y%m%d')
         last = cls.all_objects.select_for_update().filter(expense_number__startswith=prefix).order_by('-expense_number').first()
         if last:
-            num = int(last.expense_number[-4:]) + 1
+            num = int(last.expense_number[len(prefix):]) + 1
         else:
             num = 1
         return f'{prefix}{num:04d}'

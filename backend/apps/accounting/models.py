@@ -192,10 +192,10 @@ class Journal(models.Model):
     @classmethod
     def generate_journal_number(cls):
         from django.utils import timezone
-        prefix = timezone.now().strftime('JRN%Y%m')
+        prefix = timezone.now().strftime('JRN%Y%m%d')
         last = cls.objects.filter(journal_number__startswith=prefix).order_by('-journal_number').first()
         if last:
-            num = int(last.journal_number[-4:]) + 1
+            num = int(last.journal_number[len(prefix):]) + 1
         else:
             num = 1
         return f'{prefix}{num:04d}'

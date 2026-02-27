@@ -620,10 +620,10 @@ class LeaseAgreement(SoftDeleteModel):
     @classmethod
     def generate_lease_number(cls):
         from django.utils import timezone
-        prefix = timezone.now().strftime('LS%Y%m')
+        prefix = timezone.now().strftime('LS%Y%m%d')
         last = cls.all_objects.filter(lease_number__startswith=prefix).order_by('-lease_number').first()
         if last:
-            num = int(last.lease_number[-4:]) + 1
+            num = int(last.lease_number[len(prefix):]) + 1
         else:
             num = 1
         return f'{prefix}{num:04d}'
