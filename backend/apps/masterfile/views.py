@@ -63,20 +63,6 @@ class PropertyViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
             return PropertyListSerializer
         return PropertySerializer
 
-    def list(self, request, *args, **kwargs):
-        """Override list to add debugging."""
-        import logging
-        from django.db import connection
-        logger = logging.getLogger(__name__)
-
-        # Log tenant info
-        logger.info(f"PropertyViewSet.list - Schema: {connection.schema_name}, User: {request.user}")
-        logger.info(f"Property count in current schema: {Property.objects.count()}")
-
-        response = super().list(request, *args, **kwargs)
-        logger.info(f"Response data count: {len(response.data.get('results', response.data) if isinstance(response.data, dict) else response.data)}")
-        return response
-
     @action(detail=False, methods=['get'])
     def stats(self, request):
         """Get property statistics."""

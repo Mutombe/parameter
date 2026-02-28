@@ -336,6 +336,8 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
                 })
 
         # Cross-validate tenant account_type with property management_type
+        # Only block truly incompatible combinations (levy-only on rental, rental-only on levy)
+        # but auto-upgrade to 'both' in create() for soft mismatches
         tenant = data.get('tenant')
         resolved_prop = prop or (unit.property if unit else None)
         if tenant and resolved_prop and not self.instance:
@@ -343,12 +345,10 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
             acct = tenant.account_type
             if mgmt == 'rental' and acct == 'levy':
                 raise serializers.ValidationError(
-                    'A levy-only tenant cannot be assigned to a rental property.'
+                    'A levy-only tenant cannot be assigned to a rental property. '
+                    'Please change the tenant\'s account type first.'
                 )
-            if mgmt == 'levy' and acct == 'rental':
-                raise serializers.ValidationError(
-                    'A rental-only tenant cannot be assigned to a levy property.'
-                )
+            # Allow rental tenants on levy properties — auto-upgrade happens in create()
 
         return data
 
@@ -379,6 +379,14 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
         unit = validated_data.get('unit')
         if unit:
             validated_data['lease_type'] = unit.property.management_type
+
+        # Auto-upgrade tenant account_type to 'both' if assigning to a different management_type
+        tenant = validated_data.get('tenant')
+        if tenant and unit:
+            mgmt = unit.property.management_type
+            if tenant.account_type != 'both' and tenant.account_type != mgmt:
+                tenant.account_type = 'both'
+                tenant.save(update_fields=['account_type'])
 
         return super().create(validated_data)
 

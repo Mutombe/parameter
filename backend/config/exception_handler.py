@@ -47,6 +47,7 @@ FIELD_NAMES = {
     'address': 'Address',
     'company_name': 'Company name',
     'registration_number': 'Registration number',
+    'non_field_errors': '',
 }
 
 # Common validation error patterns and their friendly messages
@@ -111,6 +112,9 @@ def format_error_message(field_name: str, error_message: str) -> str:
         return f'{friendly_field} must be a negative number.'
 
     # If no pattern matched, return the original with friendly field name
+    if not friendly_field:
+        return error_message
+
     if error_message.lower().startswith('this field'):
         return f'{friendly_field} {error_message[11:]}'
 
