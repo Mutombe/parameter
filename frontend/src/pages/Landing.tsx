@@ -294,7 +294,7 @@ const generateEmailLink = () => {
                 patternUnits="userSpaceOnUse"
               >
                 <path
-                  d="M 40 0 L 0 0 0 40"
+                  d="M 0 0 H 40 M 0 0 V 40"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="1"
@@ -302,6 +302,8 @@ const generateEmailLink = () => {
               </pattern>
             </defs>
             <rect width="100%" height="100%" fill="url(#grid)" />
+            <line x1="100%" y1="0" x2="100%" y2="100%" stroke="currentColor" strokeWidth="1" />
+            <line x1="0" y1="100%" x2="100%" y2="100%" stroke="currentColor" strokeWidth="1" />
           </svg>
         </div>
         <div className="max-w-7xl mx-auto relative z-10">
