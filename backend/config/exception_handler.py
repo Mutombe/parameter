@@ -97,6 +97,9 @@ def format_error_message(field_name: str, error_message: str) -> str:
             return 'Please enter a valid phone number.'
         if 'date' in field_name.lower():
             return 'Please enter a valid date.'
+        # Preserve detailed messages (longer than DRF's default short patterns)
+        if len(error_message) > 50:
+            return error_message if not friendly_field else f'{friendly_field}: {error_message}'
         return f'{friendly_field} has an invalid value.'
 
     if 'too long' in error_lower or 'max_length' in error_lower:

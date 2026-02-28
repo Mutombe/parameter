@@ -323,16 +323,30 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
 
             # Auto-generate unit_number if property given without one
             if prop and not unit_number and not unit:
-                next_num = prop.units.count() + 1
-                data['unit_number'] = f'UNIT-{next_num:03d}'
+                valid_units = prop.get_valid_units()
+                if valid_units:
+                    # Use next available from the property's defined units
+                    existing = set(prop.units.values_list('unit_number', flat=True))
+                    available = [u for u in valid_units if u not in existing]
+                    if available:
+                        data['unit_number'] = available[0]
+                    else:
+                        next_num = prop.units.count() + 1
+                        data['unit_number'] = f'UNIT-{next_num:03d}'
+                else:
+                    next_num = prop.units.count() + 1
+                    data['unit_number'] = f'UNIT-{next_num:03d}'
+                data['_auto_generated_unit'] = True
 
-        # Validate unit_number is in property's valid units if unit_definition exists
+        # Validate user-provided unit_number against property's valid units
         unit_number = data.get('unit_number')
-        if prop and unit_number:
+        is_auto = data.pop('_auto_generated_unit', False)
+        if prop and unit_number and not is_auto:
             valid_units = prop.get_valid_units()
             if valid_units and unit_number not in valid_units:
                 raise serializers.ValidationError({
-                    'unit_number': f"Invalid unit number. Valid units for this property: {', '.join(valid_units[:10])}{'...' if len(valid_units) > 10 else ''}"
+                    'unit_number': f"'{unit_number}' is not a valid unit for this property. "
+                    f"Valid units: {', '.join(valid_units[:10])}{'...' if len(valid_units) > 10 else ''}"
                 })
 
         # Cross-validate tenant account_type with property management_type

@@ -303,6 +303,7 @@ class LeaseAgreementViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def activate(self, request, pk=None):
         """Activate a lease agreement."""
+        from django.core.exceptions import ValidationError as DjangoValidationError
         lease = self.get_object()
 
         if lease.status != LeaseAgreement.Status.DRAFT:
@@ -318,13 +319,19 @@ class LeaseAgreementViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        lease.activate()
+        try:
+            lease.activate()
+        except DjangoValidationError as e:
+            msg = e.message if hasattr(e, 'message') else str(e.messages[0]) if e.messages else str(e)
+            return Response({'error': msg}, status=status.HTTP_400_BAD_REQUEST)
+
         send_lease_activation_emails(lease, request.user)
         return Response(LeaseAgreementSerializer(lease).data)
 
     @action(detail=True, methods=['post'])
     def terminate(self, request, pk=None):
         """Terminate a lease agreement."""
+        from django.core.exceptions import ValidationError as DjangoValidationError
         lease = self.get_object()
         serializer = LeaseTerminateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -336,7 +343,12 @@ class LeaseAgreementViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
             )
 
         reason = serializer.validated_data['reason']
-        lease.terminate(reason)
+        try:
+            lease.terminate(reason)
+        except DjangoValidationError as e:
+            msg = e.message if hasattr(e, 'message') else str(e.messages[0]) if e.messages else str(e)
+            return Response({'error': msg}, status=status.HTTP_400_BAD_REQUEST)
+
         send_lease_termination_emails(lease, reason, request.user)
         return Response(LeaseAgreementSerializer(lease).data)
 
