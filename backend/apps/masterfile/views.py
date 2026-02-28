@@ -291,10 +291,14 @@ class LeaseAgreementViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
             logger.debug(f"LEASE CREATED OK: {serializer.data.get('lease_number', 'unknown')}")
             logger.debug("=" * 60)
         except Exception as e:
-            logger.error(f"LEASE CREATE EXCEPTION: {e}")
+            logger.error(f"LEASE CREATE EXCEPTION: {type(e).__name__}: {e}")
             logger.error(traceback.format_exc())
             logger.debug("=" * 60)
-            raise
+            from rest_framework.response import Response
+            return Response(
+                {'error': f'{type(e).__name__}: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
