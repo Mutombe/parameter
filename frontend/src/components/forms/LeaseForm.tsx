@@ -118,9 +118,11 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
 
       if (form.unit) {
         data.unit = parseInt(form.unit)
-      } else if (form.property && form.unit_number) {
+      } else if (form.property) {
         data.property = parseInt(form.property)
-        data.unit_number = form.unit_number
+        if (form.unit_number) {
+          data.unit_number = form.unit_number
+        }
       }
 
       onSubmit(data, documentFile)

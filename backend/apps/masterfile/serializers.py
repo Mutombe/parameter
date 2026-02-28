@@ -309,19 +309,25 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
         return None
 
     def validate(self, data):
-        """Validate that either unit or (property + unit_number) is provided."""
+        """Validate that either unit or property (with optional unit_number) is provided."""
         unit = data.get('unit')
         prop = data.get('property')
         unit_number = data.get('unit_number')
 
         # Creating a new lease
         if not self.instance:
-            if not unit and not (prop and unit_number):
+            if not unit and not prop:
                 raise serializers.ValidationError(
-                    "Either 'unit' or both 'property' and 'unit_number' must be provided."
+                    "Either 'unit' or 'property' must be provided."
                 )
 
+            # Auto-generate unit_number if property given without one
+            if prop and not unit_number and not unit:
+                next_num = prop.units.count() + 1
+                data['unit_number'] = f'UNIT-{next_num:03d}'
+
         # Validate unit_number is in property's valid units if unit_definition exists
+        unit_number = data.get('unit_number')
         if prop and unit_number:
             valid_units = prop.get_valid_units()
             if valid_units and unit_number not in valid_units:
