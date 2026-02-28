@@ -226,19 +226,7 @@ export default function Leases() {
 
   const createMutation = useMutation({
     mutationFn: (data: any) => {
-      console.log('=== LEASE MUTATION ===')
-      console.log('editingId:', editingId)
-      console.log('Sending to API:', JSON.parse(JSON.stringify(data)))
-      const promise = editingId ? leaseApi.update(editingId, data) : leaseApi.create(data)
-      return promise.then(resp => {
-        console.log('API SUCCESS response:', resp.status, resp.data)
-        return resp
-      }).catch(err => {
-        console.error('API ERROR status:', err?.response?.status)
-        console.error('API ERROR data:', err?.response?.data)
-        console.error('API ERROR full:', err)
-        throw err
-      })
+      return editingId ? leaseApi.update(editingId, data) : leaseApi.create(data)
     },
     onMutate: async (newData) => {
       const isUpdating = !!editingId
@@ -310,15 +298,7 @@ export default function Leases() {
       queryClient.invalidateQueries({ queryKey: ['units-all'] })
     },
     onError: (error: any, _, context) => {
-      console.error('=== LEASE MUTATION ERROR ===')
-      console.error('Error object:', error)
-      console.error('Error response:', error?.response)
-      console.error('Error response data:', error?.response?.data)
-      console.error('Error response status:', error?.response?.status)
-      console.error('Error message:', error?.message)
       const parsed = parseApiError(error, 'Failed to save lease')
-      console.error('Parsed error message:', parsed)
-      console.error('============================')
       ;(createMutation as any)._pendingDoc = null
       if (context?.previousData) {
         queryClient.setQueryData(['leases', debouncedSearch, statusFilter, currentPage], context.previousData)
@@ -437,8 +417,6 @@ export default function Leases() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    console.log('=== LEASES PAGE handleSubmit ===')
-    console.log('Raw form state:', JSON.parse(JSON.stringify(form)))
 
     const data: any = {
       tenant: parseInt(form.tenant),
@@ -460,8 +438,6 @@ export default function Leases() {
       }
     }
 
-    console.log('Payload to mutate:', JSON.parse(JSON.stringify(data)))
-    console.log('================================')
     createMutation.mutate(data)
   }
 
@@ -873,10 +849,6 @@ export default function Leases() {
         <LeaseForm
           initialValues={form}
           onSubmit={(data, docFile) => {
-            console.log('=== MODAL onSubmit callback ===')
-            console.log('Data from LeaseForm:', JSON.parse(JSON.stringify(data)))
-            console.log('Doc file:', docFile ? docFile.name : 'none')
-            console.log('===============================')
             if (docFile) setDocumentFile(docFile)
             createMutation.mutate(data)
           }}

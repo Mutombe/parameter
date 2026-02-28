@@ -105,8 +105,6 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
 
     const handleSubmit = (e?: React.FormEvent) => {
       e?.preventDefault()
-      console.log('=== LEASE FORM SUBMIT ===')
-      console.log('Raw form state:', JSON.parse(JSON.stringify(form)))
 
       const data: any = {
         tenant: parseInt(form.tenant),
@@ -127,10 +125,6 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
           data.unit_number = form.unit_number
         }
       }
-
-      console.log('Payload being sent to onSubmit:', JSON.parse(JSON.stringify(data)))
-      console.log('Document file:', documentFile ? documentFile.name : 'none')
-      console.log('=========================')
 
       onSubmit(data, documentFile)
     }

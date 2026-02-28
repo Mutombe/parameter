@@ -79,13 +79,17 @@ def create_masterfile_notification(entity_type, entity_id, entity_name, change_t
                 pass
 
         if property_id:
-            manager_user_ids = PropertyManager.objects.filter(
-                property_id=property_id
-            ).values_list('user_id', flat=True)
-            manager_users = get_tenant_users(
-                notifications_enabled_only=True
-            ).filter(id__in=manager_user_ids)
-            notify_users = (notify_users | manager_users).distinct()
+            try:
+                manager_user_ids = PropertyManager.objects.filter(
+                    property_id=property_id
+                ).values_list('user_id', flat=True)
+                manager_users = get_tenant_users(
+                    notifications_enabled_only=True
+                ).filter(id__in=manager_user_ids)
+                notify_users = (notify_users | manager_users).distinct()
+            except Exception:
+                # PropertyManager table may not exist in all tenant schemas
+                logger.debug(f"Could not query PropertyManager for property {property_id}, skipping")
 
     # Exclude the user who made the change
     if user:

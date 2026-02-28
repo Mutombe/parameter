@@ -310,13 +310,6 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         """Validate that either unit or property (with optional unit_number) is provided."""
-        import logging
-        logger = logging.getLogger('lease.debug')
-        logger.debug(f"[SERIALIZER.validate] Input data keys: {list(data.keys())}")
-        logger.debug(f"[SERIALIZER.validate] tenant={data.get('tenant')}, unit={data.get('unit')}, property={data.get('property')}, unit_number={data.get('unit_number')}")
-        logger.debug(f"[SERIALIZER.validate] monthly_rent={data.get('monthly_rent')}, deposit={data.get('deposit_amount')}, currency={data.get('currency')}")
-        logger.debug(f"[SERIALIZER.validate] start_date={data.get('start_date')}, end_date={data.get('end_date')}, payment_day={data.get('billing_day')}")
-
         unit = data.get('unit')
         prop = data.get('property')
         unit_number = data.get('unit_number')
@@ -371,18 +364,12 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
                 )
             # Allow rental tenants on levy properties — auto-upgrade happens in create()
 
-        logger.debug(f"[SERIALIZER.validate] PASSED - returning data keys: {list(data.keys())}")
         return data
 
     def create(self, validated_data):
         """Create lease, auto-creating unit if needed."""
-        import logging
-        logger = logging.getLogger('lease.debug')
-        logger.debug(f"[SERIALIZER.create] validated_data keys: {list(validated_data.keys())}")
-
         prop = validated_data.pop('property', None)
         unit_number = validated_data.pop('unit_number', None)
-        logger.debug(f"[SERIALIZER.create] prop={prop}, unit_number={unit_number}")
 
         # If property and unit_number provided, find or create the unit
         if prop and unit_number:

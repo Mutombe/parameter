@@ -257,44 +257,15 @@ class LeaseAgreementViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
     ordering = ['-created_at']
 
     def create(self, request, *args, **kwargs):
-        """Override create to add DEBUG logging."""
+        """Override create to catch unexpected exceptions and return JSON."""
         import logging, traceback
-        logger = logging.getLogger('lease.debug')
-        logger.setLevel(logging.DEBUG)
-        if not logger.handlers:
-            handler = logging.StreamHandler()
-            handler.setLevel(logging.DEBUG)
-            logger.addHandler(handler)
-
-        logger.debug("=" * 60)
-        logger.debug("LEASE CREATE - RAW REQUEST")
-        logger.debug(f"Content-Type: {request.content_type}")
-        logger.debug(f"Request data: {dict(request.data)}")
-        logger.debug(f"Request user: {request.user} (id={request.user.id})")
-        logger.debug(f"Request FILES: {dict(request.FILES)}")
-
         serializer = self.get_serializer(data=request.data)
-        logger.debug(f"Serializer initial_data: {serializer.initial_data}")
-
-        is_valid = serializer.is_valid()
-        logger.debug(f"Serializer is_valid: {is_valid}")
-        if not is_valid:
-            logger.debug(f"Serializer ERRORS: {serializer.errors}")
-            logger.debug("=" * 60)
-            from rest_framework.response import Response
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        logger.debug(f"Validated data: {serializer.validated_data}")
+        serializer.is_valid(raise_exception=True)
 
         try:
             self.perform_create(serializer)
-            logger.debug(f"LEASE CREATED OK: {serializer.data.get('lease_number', 'unknown')}")
-            logger.debug("=" * 60)
         except Exception as e:
-            logger.error(f"LEASE CREATE EXCEPTION: {type(e).__name__}: {e}")
-            logger.error(traceback.format_exc())
-            logger.debug("=" * 60)
-            from rest_framework.response import Response
+            logging.getLogger(__name__).error(f"Lease create error: {e}", exc_info=True)
             return Response(
                 {'error': f'{type(e).__name__}: {str(e)}'},
                 status=status.HTTP_400_BAD_REQUEST

@@ -78,6 +78,29 @@ class Command(BaseCommand):
                     )
                     self.stdout.write("  - Added/verified foreign key constraint")
 
+                    # Create masterfile_propertymanager if missing
+                    cursor.execute(
+                        sql.SQL('''
+                            CREATE TABLE IF NOT EXISTS {schema}.masterfile_propertymanager (
+                                id bigserial PRIMARY KEY,
+                                role varchar(50) NOT NULL DEFAULT 'manager',
+                                created_at timestamp with time zone NOT NULL DEFAULT now(),
+                                property_id bigint NOT NULL REFERENCES {schema}.masterfile_property(id) DEFERRABLE INITIALLY DEFERRED,
+                                user_id bigint NOT NULL REFERENCES {schema}.accounts_customuser(id) DEFERRABLE INITIALLY DEFERRED
+                            )
+                        ''').format(schema=schema_id)
+                    )
+                    cursor.execute(
+                        sql.SQL('CREATE INDEX IF NOT EXISTS masterfile_pm_property_idx ON {schema}.masterfile_propertymanager(property_id)').format(schema=schema_id)
+                    )
+                    cursor.execute(
+                        sql.SQL('CREATE INDEX IF NOT EXISTS masterfile_pm_user_idx ON {schema}.masterfile_propertymanager(user_id)').format(schema=schema_id)
+                    )
+                    cursor.execute(
+                        sql.SQL('CREATE UNIQUE INDEX IF NOT EXISTS masterfile_pm_prop_user_uniq ON {schema}.masterfile_propertymanager(property_id, user_id)').format(schema=schema_id)
+                    )
+                    self.stdout.write("  - Added/verified masterfile_propertymanager table")
+
                     self.stdout.write(self.style.SUCCESS(f"  Schema {schema} fixed successfully"))
 
                 except Exception as e:
