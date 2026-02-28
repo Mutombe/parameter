@@ -270,15 +270,22 @@ export default function Leases() {
           _isOptimistic: true,
         }
         queryClient.setQueryData(['leases', debouncedSearch, statusFilter, currentPage], (old: any) => {
-          const items = old || []
-          return [optimistic, ...items]
+          if (!old) return old
+          // Handle paginated response {results: [...], count: N} or plain array
+          if (old.results) {
+            return { ...old, results: [optimistic, ...old.results] }
+          }
+          return Array.isArray(old) ? [optimistic, ...old] : old
         })
       } else {
         queryClient.setQueryData(['leases', debouncedSearch, statusFilter, currentPage], (old: any) => {
-          const items = old || []
-          return items.map((item: any) =>
+          if (!old) return old
+          const mapFn = (item: any) =>
             item.id === editingId ? { ...item, ...newData, _isOptimistic: true } : item
-          )
+          if (old.results) {
+            return { ...old, results: old.results.map(mapFn) }
+          }
+          return Array.isArray(old) ? old.map(mapFn) : old
         })
       }
       // Preserve doc file ref for upload in onSuccess
@@ -327,10 +334,11 @@ export default function Leases() {
       await queryClient.cancelQueries({ queryKey: ['leases'] })
       const previousData = queryClient.getQueryData(['leases', debouncedSearch, statusFilter, currentPage])
       queryClient.setQueryData(['leases', debouncedSearch, statusFilter, currentPage], (old: any) => {
-        const items = old || []
-        return items.map((item: any) =>
+        if (!old) return old
+        const mapFn = (item: any) =>
           item.id === id ? { ...item, status: 'active', _isOptimistic: true } : item
-        )
+        if (old.results) return { ...old, results: old.results.map(mapFn) }
+        return Array.isArray(old) ? old.map(mapFn) : old
       })
       return { previousData }
     },
@@ -356,10 +364,11 @@ export default function Leases() {
       await queryClient.cancelQueries({ queryKey: ['leases'] })
       const previousData = queryClient.getQueryData(['leases', debouncedSearch, statusFilter, currentPage])
       queryClient.setQueryData(['leases', debouncedSearch, statusFilter, currentPage], (old: any) => {
-        const items = old || []
-        return items.map((item: any) =>
+        if (!old) return old
+        const mapFn = (item: any) =>
           item.id === id ? { ...item, status: 'terminated', _isOptimistic: true } : item
-        )
+        if (old.results) return { ...old, results: old.results.map(mapFn) }
+        return Array.isArray(old) ? old.map(mapFn) : old
       })
       return { previousData }
     },
