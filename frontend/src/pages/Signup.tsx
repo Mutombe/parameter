@@ -538,19 +538,19 @@ export default function Signup() {
         className="w-full max-w-2xl"
       >
         {/* Logo */}
-        <div className="text-center mb-8">
-          <a href="/" className="inline-flex items-center gap-2 px-4 py-2 bg-white rounded-xl shadow-sm border border-gray-200">
+        <div className="text-center mb-4">
+          <a href="/" className="inline-flex items-center gap-2 px-3 py-1.5 bg-white rounded-xl shadow-sm border border-gray-200">
             <img
               src="/logo.png"
               alt="Parameter"
-              className="w-8 h-8 rounded-lg object-contain dark:brightness-0 dark:invert"
+              className="w-7 h-7 rounded-lg object-contain dark:brightness-0 dark:invert"
             />
-            <span className="font-bold text-xl text-gray-900">Parameter</span>
+            <span className="font-bold text-lg text-gray-900">Parameter</span>
           </a>
-          <h1 className="mt-6 text-2xl font-bold text-gray-900">
+          <h1 className="mt-3 text-xl font-bold text-gray-900">
             {mode === 'invited' ? 'Complete Your Registration' : 'Start Your Free Demo'}
           </h1>
-          <p className="mt-2 text-gray-600">
+          <p className="mt-1 text-sm text-gray-600">
             {mode === 'invited'
               ? `You've been invited to set up ${invitation?.company_name}`
               : 'Try Parameter free for 2 hours with sample data'}
@@ -559,31 +559,26 @@ export default function Signup() {
 
         {/* Demo Notice */}
         {isDemo && (
-          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
-            <Clock className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-medium text-amber-800">Demo Account</p>
-              <p className="text-sm text-amber-700">
-                Your demo account will be active for 2 hours. All data will be preserved for when you're ready to subscribe.
-              </p>
-            </div>
+          <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2">
+            <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
+            <p className="text-sm text-amber-700">
+              <span className="font-medium text-amber-800">Demo Account</span> — active for 2 hours with sample data.
+            </p>
           </div>
         )}
 
         {/* Error from invalid invitation */}
         {error && token && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
-            <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-medium text-red-800">Invitation Error</p>
-              <p className="text-sm text-red-700">{error}</p>
-              <p className="text-sm text-red-700 mt-1">You can still create a demo account below.</p>
-            </div>
+          <div className="mb-3 px-3 py-2 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2">
+            <XCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+            <p className="text-sm text-red-700">
+              <span className="font-medium text-red-800">Invalid invitation.</span> You can still create a demo account below.
+            </p>
           </div>
         )}
 
         {/* Progress Steps */}
-        <div className="flex items-center justify-center mb-8">
+        <div className="flex items-center justify-center mb-4">
           {steps.map((step, idx) => {
             const StepIcon = step.icon
             const isComplete = currentStep > step.id
@@ -591,20 +586,20 @@ export default function Signup() {
             return (
               <div key={step.id} className="flex items-center">
                 <div className={cn(
-                  'flex items-center gap-2 px-4 py-2 rounded-xl transition-colors',
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-colors text-sm',
                   isCurrent && 'bg-primary-100 text-primary-700',
                   isComplete && 'bg-emerald-100 text-emerald-700',
                   !isCurrent && !isComplete && 'text-gray-400'
                 )}>
                   {isComplete ? (
-                    <CheckCircle className="w-5 h-5" />
+                    <CheckCircle className="w-4 h-4" />
                   ) : (
-                    <StepIcon className="w-5 h-5" />
+                    <StepIcon className="w-4 h-4" />
                   )}
-                  <span className="font-medium text-sm hidden sm:inline">{step.title}</span>
+                  <span className="font-medium hidden sm:inline">{step.title}</span>
                 </div>
                 {idx < steps.length - 1 && (
-                  <ChevronRight className="w-5 h-5 text-gray-300 mx-2" />
+                  <ChevronRight className="w-4 h-4 text-gray-300 mx-1.5" />
                 )}
               </div>
             )
@@ -621,35 +616,35 @@ export default function Signup() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="p-5 sm:p-8"
+                className="p-4 sm:p-6"
               >
-                <h2 className="text-lg font-semibold text-gray-900 mb-6">Company Setup</h2>
+                <h2 className="text-base font-semibold text-gray-900 mb-4">Company Setup</h2>
 
-                <div className="space-y-5">
+                <div className="space-y-3">
                   {mode === 'demo' && (
                     <>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <label className="block text-xs font-medium text-gray-700 mb-0.5">
                           Company Name *
                         </label>
                         <input
                           type="text"
                           value={formData.company_name}
                           onChange={(e) => updateForm('company_name', e.target.value)}
-                          className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
+                          className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                           placeholder="Acme Real Estate"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <label className="block text-xs font-medium text-gray-700 mb-0.5">
                           Company Email *
                         </label>
                         <input
                           type="email"
                           value={formData.company_email}
                           onChange={(e) => updateForm('company_email', e.target.value)}
-                          className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
+                          className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                           placeholder="info@acme.com"
                         />
                       </div>
@@ -672,7 +667,7 @@ export default function Signup() {
                   )}
 
                   <div>
- <label className="block text-sm font-medium text-gray-700 mb-1">
+ <label className="block text-xs font-medium text-gray-700 mb-0.5">
     Subdomain * <span className="text-gray-400 font-normal">(your unique URL)</span>
   </label>
   <div className="flex flex-col sm:flex-row">
@@ -683,7 +678,7 @@ export default function Signup() {
       className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl sm:rounded-l-xl sm:rounded-r-none text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
       placeholder="acme"
     />
-    <span className="px-4 py-2 sm:py-3 bg-gray-50 border border-t-0 sm:border-t sm:border-l-0 border-gray-200 rounded-b-xl sm:rounded-b-none sm:rounded-r-xl text-gray-500 text-sm flex items-center justify-center sm:justify-start">
+    <span className="px-3 py-2 bg-gray-50 border border-t-0 sm:border-t sm:border-l-0 border-gray-200 rounded-b-xl sm:rounded-b-none sm:rounded-r-xl text-gray-500 text-xs flex items-center justify-center sm:justify-start">
       .parameter.co.zw
     </span>
   </div>
@@ -715,25 +710,25 @@ export default function Signup() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
                         Phone
                       </label>
                       <input
                         type="tel"
                         value={formData.company_phone}
                         onChange={(e) => updateForm('company_phone', e.target.value)}
-                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
+                        className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                         placeholder="+263 77 123 4567"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
                         Currency
                       </label>
                       <select
                         value={formData.default_currency}
                         onChange={(e) => updateForm('default_currency', e.target.value)}
-                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
+                        className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                       >
                         <option value="USD">USD - US Dollar</option>
                         <option value="ZiG">ZiG - Zimbabwe Gold</option>
@@ -751,54 +746,54 @@ export default function Signup() {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
-                className="p-5 sm:p-8"
+                className="p-4 sm:p-6"
               >
-                <h2 className="text-lg font-semibold text-gray-900 mb-6">Create Admin Account</h2>
+                <h2 className="text-base font-semibold text-gray-900 mb-4">Create Admin Account</h2>
 
-                <div className="space-y-5">
+                <div className="space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
                         First Name *
                       </label>
                       <input
                         type="text"
                         value={formData.admin_first_name}
                         onChange={(e) => updateForm('admin_first_name', e.target.value)}
-                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
+                        className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                         placeholder="John"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-xs font-medium text-gray-700 mb-0.5">
                         Last Name *
                       </label>
                       <input
                         type="text"
                         value={formData.admin_last_name}
                         onChange={(e) => updateForm('admin_last_name', e.target.value)}
-                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
+                        className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                         placeholder="Doe"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
                       Email Address *
                     </label>
                     <input
                       type="email"
                       value={formData.admin_email}
                       onChange={(e) => updateForm('admin_email', e.target.value)}
-                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                       placeholder="john@acme.com"
                       disabled={mode === 'invited'}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
                       Password * <span className="text-gray-400 font-normal">(min. 8 characters)</span>
                     </label>
                     <div className="relative">
@@ -806,7 +801,7 @@ export default function Signup() {
                         type={showPassword ? 'text' : 'password'}
                         value={formData.admin_password}
                         onChange={(e) => updateForm('admin_password', e.target.value)}
-                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 pr-12 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
+                        className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 pr-12 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                         placeholder="Create a strong password"
                       />
                       <button
@@ -820,14 +815,14 @@ export default function Signup() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-0.5">
                       Confirm Password *
                     </label>
                     <input
                       type="password"
                       value={formData.admin_password_confirm}
                       onChange={(e) => updateForm('admin_password_confirm', e.target.value)}
-                      className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
                       placeholder="Confirm your password"
                     />
                     {formData.admin_password_confirm && formData.admin_password !== formData.admin_password_confirm && (
@@ -843,7 +838,7 @@ export default function Signup() {
           </AnimatePresence>
 
           {/* Footer */}
-          <div className="px-4 sm:px-8 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+          <div className="px-4 sm:px-6 py-3 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
             <button
               onClick={handleBack}
               disabled={currentStep === 1}
@@ -900,7 +895,7 @@ export default function Signup() {
         </div>
 
         {/* Login Link */}
-        <p className="mt-6 text-center text-gray-600">
+        <p className="mt-4 text-center text-sm text-gray-600">
           Already have an account?{' '}
           <Link to="/login" className="text-primary-600 font-medium hover:text-primary-700">
             Sign in
