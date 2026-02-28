@@ -21,11 +21,12 @@ from .serializers import (
 from apps.masterfile.models import LeaseAgreement, Property, RentalTenant
 from apps.accounting.models import AuditTrail
 from apps.soft_delete import SoftDeleteMixin
+from apps.accounts.mixins import TenantSchemaValidationMixin
 
 logger = logging.getLogger(__name__)
 
 
-class InvoiceViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
+class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Invoices."""
     queryset = Invoice.objects.select_related(
         'tenant', 'unit', 'lease', 'unit__property', 'created_by', 'journal'
@@ -111,6 +112,45 @@ class InvoiceViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
 
         serializer = self.get_serializer(invoices, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    @transaction.atomic
+    def bulk_generate_statements(self, request):
+        """Generate statements for multiple tenants at once."""
+        from apps.accounts.throttles import BulkOperationThrottle
+        tenant_ids = request.data.get('tenant_ids', [])
+        period = request.data.get('period')  # e.g., "2026-02"
+
+        if not tenant_ids or not period:
+            return Response(
+                {'error': 'tenant_ids and period are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            year, month = int(period.split('-')[0]), int(period.split('-')[1])
+        except (ValueError, IndexError):
+            return Response(
+                {'error': 'period must be in YYYY-MM format'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        from .services import generate_monthly_invoices
+        created, errors = generate_monthly_invoices(
+            month, year,
+            lease_ids=list(
+                LeaseAgreement.objects.filter(
+                    tenant_id__in=tenant_ids, status='active'
+                ).values_list('id', flat=True)
+            ),
+            created_by=request.user
+        )
+
+        return Response({
+            'created': len(created),
+            'invoices': InvoiceSerializer(created, many=True).data,
+            'errors': errors,
+        })
 
     @action(detail=False, methods=['get'])
     def summary(self, request):
@@ -539,7 +579,7 @@ class BulkMailingViewSet(viewsets.ViewSet):
         })
 
 
-class ReceiptViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
+class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Receipts."""
     queryset = Receipt.objects.select_related(
         'tenant', 'invoice', 'invoice__unit', 'created_by', 'journal'
@@ -630,6 +670,49 @@ class ReceiptViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
             'errors': errors
         })
 
+    @action(detail=False, methods=['post'])
+    @transaction.atomic
+    def bulk_receipts(self, request):
+        """Create multiple receipts in a single transaction."""
+        receipts_data = request.data.get('receipts', [])
+        if not receipts_data:
+            return Response(
+                {'error': 'receipts array is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        today = timezone.now().date()
+        created_receipts = []
+        errors = []
+
+        for idx, receipt_data in enumerate(receipts_data):
+            try:
+                receipt = Receipt(
+                    tenant_id=receipt_data['tenant_id'],
+                    invoice_id=receipt_data.get('invoice_id'),
+                    date=receipt_data.get('date', today),
+                    amount=Decimal(str(receipt_data['amount'])),
+                    currency=receipt_data.get('currency', 'USD'),
+                    payment_method=receipt_data.get('payment_method', 'cash'),
+                    reference=receipt_data.get('reference', ''),
+                    bank_name=receipt_data.get('bank_name', ''),
+                    description=receipt_data.get('description', ''),
+                    created_by=request.user
+                )
+                receipt.save()
+                created_receipts.append(receipt)
+            except Exception as e:
+                errors.append({
+                    'index': idx,
+                    'error': str(e)
+                })
+
+        return Response({
+            'created': len(created_receipts),
+            'receipts': ReceiptSerializer(created_receipts, many=True).data,
+            'errors': errors,
+        })
+
     @action(detail=False, methods=['get'])
     def summary(self, request):
         """Get receipt summary statistics."""
@@ -654,7 +737,7 @@ class ReceiptViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
         })
 
 
-class ExpenseViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
+class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Expenses."""
     queryset = Expense.objects.select_related(
         'created_by', 'approved_by', 'journal'

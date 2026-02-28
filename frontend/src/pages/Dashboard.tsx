@@ -40,7 +40,8 @@ import {
 } from 'recharts'
 import { reportsApi } from '../services/api'
 import { formatCurrency, formatPercent, formatDate, formatDistanceToNow, cn } from '../lib/utils'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { OnboardingChecklist } from '../components/dashboard/OnboardingChecklist'
 import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
 import { LiaUsersSolid } from "react-icons/lia";
@@ -127,6 +128,7 @@ function StatCard({ title, value, subtitle, icon: Icon, color, isLoading, href, 
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ['dashboard-stats'],
@@ -205,9 +207,9 @@ export default function Dashboard() {
     : []
 
   const quickActions = [
-    { label: 'New Invoice', href: '/dashboard/invoices', icon: Receipt, color: 'blue' },
-    { label: 'Record Receipt', href: '/dashboard/receipts', icon: DollarSign, color: 'green' },
-    { label: 'Add Tenant', href: '/dashboard/tenants', icon: LiaUsersSolid, color: 'purple' },
+    { label: 'New Invoice', href: '/dashboard/invoices?action=create', icon: Receipt, color: 'blue' },
+    { label: 'Record Receipt', href: '/dashboard/receipts?action=create', icon: DollarSign, color: 'green' },
+    { label: 'Add Tenant', href: '/dashboard/tenants?action=create', icon: LiaUsersSolid, color: 'purple' },
     { label: 'View Reports', href: '/dashboard/reports', icon: Activity, color: 'orange' },
   ]
 
@@ -275,6 +277,54 @@ export default function Dashboard() {
                 <p className="font-bold">{formatPercent(collectionRate)}</p>
               </div>
             </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Onboarding Checklist - shown for new tenants */}
+      {!isLoading && stats && <OnboardingChecklist stats={stats} />}
+
+      {/* Action Required Section */}
+      {!isLoading && stats && ((stats?.alerts?.overdue_invoices || 0) > 0 || (stats?.alerts?.expiring_leases || 0) > 0) && (
+        <motion.div
+          initial={{ opacity: 0, y: -5 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="bg-white rounded-xl border border-red-200 p-5"
+        >
+          <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-500" />
+            Action Required
+          </h3>
+          <div className="space-y-2">
+            {(stats?.alerts?.overdue_invoices || 0) > 0 && (
+              <button
+                onClick={() => navigate('/dashboard/invoices?status=overdue')}
+                className="w-full flex items-center justify-between p-3 bg-red-50 hover:bg-red-100 rounded-lg transition-colors group"
+              >
+                <div className="flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-red-600" />
+                  <span className="text-sm text-gray-700">
+                    <span className="font-semibold text-red-600">{stats.alerts.overdue_invoices}</span> overdue invoice{stats.alerts.overdue_invoices !== 1 ? 's' : ''} totalling {formatCurrency(stats.alerts.overdue_amount || 0)}
+                  </span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
+              </button>
+            )}
+            {(stats?.alerts?.expiring_leases || 0) > 0 && (
+              <button
+                onClick={() => navigate('/dashboard/leases?status=active&expiring=true')}
+                className="w-full flex items-center justify-between p-3 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors group"
+              >
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-amber-600" />
+                  <span className="text-sm text-gray-700">
+                    <span className="font-semibold text-amber-600">{stats.alerts.expiring_leases}</span> lease{stats.alerts.expiring_leases !== 1 ? 's' : ''} expiring within 30 days
+                  </span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
+              </button>
+            )}
           </div>
         </motion.div>
       )}

@@ -1,4 +1,4 @@
-import { forwardRef, useState, useRef, useEffect, useCallback, useMemo, InputHTMLAttributes, TextareaHTMLAttributes, ComponentType } from 'react'
+import { forwardRef, useState, useRef, useEffect, useCallback, useMemo, useId, InputHTMLAttributes, TextareaHTMLAttributes, ComponentType } from 'react'
 import { ChevronDown, Check, Search, X } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -14,11 +14,13 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, label, error, hint, icon: Icon, iconPosition = 'left', ...props }, ref) => {
+  ({ className, label, error, hint, icon: Icon, iconPosition = 'left', id, ...props }, ref) => {
+    const autoId = useId()
+    const inputId = id || autoId
     return (
       <div className="space-y-1.5">
         {label && (
-          <label className="block text-sm font-medium text-gray-700">
+          <label htmlFor={inputId} className="block text-sm font-medium text-gray-700">
             {label}
             {props.required && <span className="text-red-500 ml-1">*</span>}
           </label>
@@ -29,8 +31,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           )}
           <input
             ref={ref}
+            id={inputId}
             className={cn(
-              'w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 transition-all duration-200',
+              'w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 transition-all duration-200',
               'placeholder:text-gray-400',
               'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent',
               'disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed',
@@ -62,19 +65,22 @@ interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, label, error, hint, ...props }, ref) => {
+  ({ className, label, error, hint, id, ...props }, ref) => {
+    const autoId = useId()
+    const inputId = id || autoId
     return (
       <div className="space-y-1.5">
         {label && (
-          <label className="block text-sm font-medium text-gray-700">
+          <label htmlFor={inputId} className="block text-sm font-medium text-gray-700">
             {label}
             {props.required && <span className="text-red-500 ml-1">*</span>}
           </label>
         )}
         <textarea
           ref={ref}
+          id={inputId}
           className={cn(
-            'w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 transition-all duration-200',
+            'w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm text-gray-900 transition-all duration-200',
             'placeholder:text-gray-400 resize-none',
             'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent',
             'disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed',
@@ -110,6 +116,7 @@ interface SelectProps {
   required?: boolean
   disabled?: boolean
   name?: string
+  id?: string
   className?: string
   children?: React.ReactNode
   searchable?: boolean
@@ -128,9 +135,12 @@ export function Select({
   required,
   disabled,
   name,
+  id,
   children,
   searchable = false,
 }: SelectProps) {
+  const autoId = useId()
+  const selectId = id || autoId
   const [internalValue, setInternalValue] = useState(String(defaultValue ?? ''))
   const value = controlledValue !== undefined ? controlledValue : internalValue
   const [isOpen, setIsOpen] = useState(false)
@@ -245,13 +255,14 @@ export function Select({
   return (
     <div className={cn('relative', className)} ref={containerRef} onKeyDown={handleKeyDown}>
       {label && (
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+        <label htmlFor={selectId} className="block text-sm font-medium text-gray-700 mb-1.5">
           {label}
           {required && <span className="text-red-500 ml-1">*</span>}
         </label>
       )}
       {name && <input type="hidden" name={name} value={currentValue} />}
       <button
+        id={selectId}
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}

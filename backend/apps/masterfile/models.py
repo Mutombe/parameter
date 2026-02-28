@@ -59,6 +59,13 @@ class Landlord(SoftDeleteModel):
         default='monthly'
     )
 
+    # Portal access
+    portal_user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='landlord_profile',
+        help_text='User account for landlord self-service portal'
+    )
+
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True)
 
@@ -535,6 +542,12 @@ class LeaseAgreement(SoftDeleteModel):
     # Escalation
     annual_escalation_rate = models.DecimalField(
         max_digits=5, decimal_places=2, default=Decimal('0')
+    )
+    auto_renew = models.BooleanField(default=False)
+    last_escalation_date = models.DateField(null=True, blank=True)
+    original_rent = models.DecimalField(
+        max_digits=18, decimal_places=2, null=True, blank=True,
+        help_text='Original rent before escalations'
     )
 
     # Terms

@@ -34,6 +34,7 @@ export {
 } from './Skeleton'
 export { EmptyState, EmptyTableState } from './EmptyState'
 export { MobileCardView } from './MobileCardView'
+export { ResponsiveTable } from './ResponsiveTable'
 export { AsyncSelect, SelectSkeleton } from './AsyncSelect'
 export { AutocompleteInput } from './AutocompleteInput'
 

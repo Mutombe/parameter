@@ -11,6 +11,8 @@ from .views import (
     IncomeItemDrilldownView, IncomeExpenditureReportView,
     DataVisualizationView, StreamingCSVExportView
 )
+from .property_performance import PropertyPerformanceView
+from .tax_reports import VATReturnView, WithholdingTaxView, AnnualIncomeSummaryView
 
 urlpatterns = [
     # Core financial reports
@@ -52,4 +54,12 @@ urlpatterns = [
 
     # Streaming CSV export
     path('export/', StreamingCSVExportView.as_view(), name='streaming-export'),
+
+    # Property performance P&L
+    path('property-performance/<int:pk>/', PropertyPerformanceView.as_view(), name='property-performance'),
+
+    # ZIMRA tax compliance reports
+    path('tax/vat-return/', VATReturnView.as_view(), name='vat-return'),
+    path('tax/withholding-tax/', WithholdingTaxView.as_view(), name='withholding-tax'),
+    path('tax/annual-income/', AnnualIncomeSummaryView.as_view(), name='annual-income-summary'),
 ]

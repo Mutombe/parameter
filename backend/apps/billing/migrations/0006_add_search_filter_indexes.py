@@ -7,7 +7,6 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('accounting', '0006_add_search_filter_indexes'),
         ('billing', '0005_add_receipt_indexes'),
         ('masterfile', '0007_add_search_filter_indexes'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),

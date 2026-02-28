@@ -17,9 +17,10 @@ from .services import (
     get_landlord_summary, get_tenant_detail, get_tenant_ledger,
 )
 from apps.soft_delete import SoftDeleteMixin
+from apps.accounts.mixins import TenantSchemaValidationMixin
 
 
-class LandlordViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
+class LandlordViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Landlords."""
     queryset = Landlord.objects.annotate(
         _property_count=Count('properties')
@@ -42,7 +43,7 @@ class LandlordViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
         })
 
 
-class PropertyViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
+class PropertyViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Properties."""
     queryset = Property.objects.select_related('landlord').prefetch_related(
         'units',
@@ -152,7 +153,7 @@ class PropertyViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
         }, status=status.HTTP_201_CREATED)
 
 
-class UnitViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
+class UnitViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Units."""
     queryset = Unit.objects.select_related('property', 'property__landlord').prefetch_related(
         Prefetch('leases', queryset=LeaseAgreement.objects.filter(status='active').select_related('tenant'), to_attr='_active_leases'),
@@ -186,7 +187,7 @@ class UnitViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class RentalTenantViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
+class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Rental Tenants."""
     permission_classes = [IsAuthenticated]
     filterset_fields = ['tenant_type', 'is_active', 'account_type', 'unit', 'unit__property', 'id_type']
@@ -243,7 +244,7 @@ class RentalTenantViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
         })
 
 
-class LeaseAgreementViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
+class LeaseAgreementViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Lease Agreements."""
     queryset = LeaseAgreement.objects.select_related(
         'tenant', 'unit', 'unit__property', 'unit__property__landlord', 'created_by'
@@ -369,6 +370,63 @@ class LeaseAgreementViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
 
         send_lease_termination_emails(lease, reason, request.user)
         return Response(LeaseAgreementSerializer(lease).data)
+
+    @action(detail=False, methods=['post'])
+    def bulk_rent_adjustment(self, request):
+        """Bulk adjust monthly rent for multiple leases."""
+        from django.db import transaction
+        from decimal import Decimal
+
+        lease_ids = request.data.get('lease_ids', [])
+        adjustment_type = request.data.get('adjustment_type')  # 'percentage' or 'fixed'
+        value = request.data.get('value')
+
+        if not lease_ids or not adjustment_type or value is None:
+            return Response(
+                {'error': 'lease_ids, adjustment_type, and value are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if adjustment_type not in ('percentage', 'fixed'):
+            return Response(
+                {'error': 'adjustment_type must be "percentage" or "fixed"'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        value = Decimal(str(value))
+        updated = []
+        errors = []
+
+        with transaction.atomic():
+            leases = LeaseAgreement.objects.filter(
+                id__in=lease_ids, status='active'
+            ).select_for_update()
+
+            for lease in leases:
+                try:
+                    old_rent = lease.monthly_rent
+                    if adjustment_type == 'percentage':
+                        lease.monthly_rent = old_rent * (1 + value / 100)
+                    else:
+                        lease.monthly_rent = old_rent + value
+                    lease.save(update_fields=['monthly_rent', 'updated_at'])
+                    updated.append({
+                        'lease_id': lease.id,
+                        'lease_number': lease.lease_number,
+                        'old_rent': str(old_rent),
+                        'new_rent': str(lease.monthly_rent),
+                    })
+                except Exception as e:
+                    errors.append({
+                        'lease_id': lease.id,
+                        'error': str(e),
+                    })
+
+        return Response({
+            'updated': len(updated),
+            'details': updated,
+            'errors': errors,
+        })
 
     @action(detail=False, methods=['get'])
     def expiring_soon(self, request):

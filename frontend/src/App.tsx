@@ -1,6 +1,7 @@
 import { lazy, Suspense, ReactNode } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
+import { useOfflineSync } from './hooks/useOfflineSync'
 import Layout from './components/Layout/Layout'
 import { PageSkeleton, ProfileSkeleton, SettingsSkeleton, SkeletonDashboard } from './components/ui'
 
@@ -50,6 +51,19 @@ const Notifications = lazy(() => import('./pages/Notifications'))
 const LatePenalties = lazy(() => import('./pages/Billing/LatePenalties'))
 const Trash = lazy(() => import('./pages/Trash'))
 
+// Reports
+const PropertyPerformance = lazy(() => import('./pages/Reports/PropertyPerformance'))
+const TaxReports = lazy(() => import('./pages/Reports/TaxReports'))
+
+// Maintenance
+const MaintenanceRequests = lazy(() => import('./pages/Maintenance/MaintenanceRequests'))
+const MaintenanceDetail = lazy(() => import('./pages/Maintenance/MaintenanceDetail'))
+
+// Landlord Portal
+const LandlordDashboard = lazy(() => import('./pages/LandlordPortal/LandlordDashboard'))
+const LandlordProperties = lazy(() => import('./pages/LandlordPortal/LandlordProperties'))
+const LandlordStatements = lazy(() => import('./pages/LandlordPortal/LandlordStatements'))
+
 // Tenant Portal
 const TenantPortalLayout = lazy(() => import('./components/TenantPortalLayout'))
 const TenantDashboard = lazy(() => import('./pages/TenantPortal/TenantDashboard'))
@@ -90,6 +104,20 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function LandlordPortalRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, user } = useAuthStore()
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (user?.role !== 'landlord_portal') {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  return <>{children}</>
+}
+
 function PortalRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user, impersonation } = useAuthStore()
 
@@ -106,8 +134,29 @@ function PortalRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function OfflineBanner() {
+  const { isOnline, queueLength, isSyncing } = useOfflineSync()
+  if (isOnline && queueLength === 0) return null
+
+  return (
+    <div className={`fixed top-0 left-0 right-0 z-[100] px-4 py-2 text-center text-sm font-medium ${
+      isOnline ? 'bg-blue-500 text-white' : 'bg-yellow-500 text-yellow-900'
+    }`}>
+      {!isOnline ? (
+        'You are offline. Changes will be saved and synced when you reconnect.'
+      ) : isSyncing ? (
+        `Syncing ${queueLength} queued change${queueLength !== 1 ? 's' : ''}...`
+      ) : (
+        `${queueLength} change${queueLength !== 1 ? 's' : ''} queued for sync`
+      )}
+    </div>
+  )
+}
+
 export default function App() {
   return (
+    <>
+    <OfflineBanner />
     <Routes>
       {/* Public Routes */}
       <Route path="/" element={<Suspense fallback={<PublicPageLoader />}><Landing /></Suspense>} />
@@ -164,6 +213,24 @@ export default function App() {
         <Route path="notifications" element={<LazyPage><Notifications /></LazyPage>} />
         <Route path="late-penalties" element={<LazyPage><LatePenalties /></LazyPage>} />
         <Route path="trash" element={<LazyPage><Trash /></LazyPage>} />
+        <Route path="reports/property-performance" element={<LazyPage><PropertyPerformance /></LazyPage>} />
+        <Route path="reports/tax" element={<LazyPage><TaxReports /></LazyPage>} />
+        <Route path="maintenance" element={<LazyPage><MaintenanceRequests /></LazyPage>} />
+        <Route path="maintenance/:id" element={<LazyPage><MaintenanceDetail /></LazyPage>} />
+      </Route>
+
+      {/* Landlord Portal Routes */}
+      <Route
+        path="/landlord"
+        element={
+          <LandlordPortalRoute>
+            <Layout />
+          </LandlordPortalRoute>
+        }
+      >
+        <Route index element={<LazyPage fallback={<SkeletonDashboard />}><LandlordDashboard /></LazyPage>} />
+        <Route path="properties" element={<LazyPage><LandlordProperties /></LazyPage>} />
+        <Route path="statements" element={<LazyPage><LandlordStatements /></LazyPage>} />
       </Route>
 
       {/* Tenant Portal Routes */}
@@ -185,5 +252,6 @@ export default function App() {
         <Route path="notify-payment" element={<LazyPage><TenantPaymentNotification /></LazyPage>} />
       </Route>
     </Routes>
+    </>
   )
 }

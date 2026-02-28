@@ -27,6 +27,7 @@ from .serializers import (
     ExpenseCategorySerializer, JournalReallocationSerializer,
     ReallocationCreateSerializer, IncomeTypeSerializer
 )
+from apps.accounts.mixins import TenantSchemaValidationMixin
 
 
 class ProtectedDeleteMixin:
@@ -48,7 +49,7 @@ class ProtectedDeleteMixin:
             )
 
 
-class ChartOfAccountViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
+class ChartOfAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Chart of Accounts."""
     queryset = ChartOfAccount.objects.select_related('parent').prefetch_related('children').all()
     serializer_class = ChartOfAccountSerializer
@@ -143,7 +144,7 @@ class ExchangeRateViewSet(viewsets.ModelViewSet):
         })
 
 
-class JournalViewSet(viewsets.ModelViewSet):
+class JournalViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
     """CRUD for journal entries."""
     queryset = Journal.objects.select_related(
         'created_by', 'posted_by', 'reversed_by'
@@ -342,7 +343,7 @@ class FiscalPeriodViewSet(viewsets.ModelViewSet):
         return Response(FiscalPeriodSerializer(period).data)
 
 
-class BankAccountViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
+class BankAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, viewsets.ModelViewSet):
     """
     CRUD for Bank Accounts.
     Supports FBC Bank, EcoCash, ZB Bank, CABS, Cash with USD/ZWG currencies.
@@ -443,7 +444,7 @@ class BankAccountViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
         return Response({'message': f'Created {created} default bank accounts'})
 
 
-class BankTransactionViewSet(viewsets.ModelViewSet):
+class BankTransactionViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
     """
     CRUD for Bank Transactions.
     Supports uploading bank statements and AI-assisted matching.
@@ -981,7 +982,7 @@ class BankReconciliationViewSet(viewsets.ModelViewSet):
         return Response(summary)
 
 
-class ExpenseCategoryViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
+class ExpenseCategoryViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, viewsets.ModelViewSet):
     """
     CRUD for Expense Categories.
     Allows dynamic creation of expense item types.
@@ -1112,7 +1113,7 @@ class JournalReallocationViewSet(viewsets.ModelViewSet):
         })
 
 
-class IncomeTypeViewSet(ProtectedDeleteMixin, viewsets.ModelViewSet):
+class IncomeTypeViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, viewsets.ModelViewSet):
     """
     CRUD for Income Types.
     Defines income categories for detailed analysis (Rent, Levy, Special Levy, etc.).

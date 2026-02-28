@@ -16,6 +16,7 @@ type ValidationErrors = Record<string, string>
 
 export function useFormValidation(rules: ValidationRules) {
   const [errors, setErrors] = useState<ValidationErrors>({})
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
 
   const validateField = useCallback((name: string, value: any): string | null => {
     const rule = rules[name]
@@ -65,11 +66,20 @@ export function useFormValidation(rules: ValidationRules) {
     return !error
   }, [validateField])
 
+  const handleBlur = useCallback((field: string, value?: any) => {
+    setTouched(prev => ({ ...prev, [field]: true }))
+    if (value !== undefined) {
+      validate(field, value)
+    }
+  }, [validate])
+
   const validateAll = useCallback((formData: Record<string, any>): boolean => {
     const newErrors: ValidationErrors = {}
+    const newTouched: Record<string, boolean> = {}
     let isValid = true
 
     for (const [name, rule] of Object.entries(rules)) {
+      newTouched[name] = true
       const error = validateField(name, formData[name])
       if (error) {
         newErrors[name] = error
@@ -78,6 +88,7 @@ export function useFormValidation(rules: ValidationRules) {
     }
 
     setErrors(newErrors)
+    setTouched(prev => ({ ...prev, ...newTouched }))
     return isValid
   }, [rules, validateField])
 
@@ -89,7 +100,15 @@ export function useFormValidation(rules: ValidationRules) {
 
   const clearErrors = useCallback(() => {
     setErrors({})
+    setTouched({})
   }, [])
 
-  return { errors, validate, validateAll, handleSubmit, clearErrors }
+  const isValid = Object.keys(errors).length === 0
+
+  // Helper: get error for a field only if it has been touched
+  const getFieldError = useCallback((field: string): string | undefined => {
+    return touched[field] ? errors[field] : undefined
+  }, [errors, touched])
+
+  return { errors, touched, validate, validateAll, handleSubmit, handleBlur, clearErrors, isValid, getFieldError }
 }

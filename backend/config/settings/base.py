@@ -54,6 +54,7 @@ TENANT_APPS = [
     'apps.search',  # Unified search API
     'apps.imports',  # Data import from CSV/Excel
     'apps.trash',  # Soft-delete trash management
+    'apps.maintenance',  # Maintenance requests & work orders
 ]
 
 INSTALLED_APPS = list(SHARED_APPS) + [app for app in TENANT_APPS if app not in SHARED_APPS]
@@ -247,6 +248,10 @@ REST_FRAMEWORK = {
         'anon': '30/minute',
         'user': '120/minute',
         'login': '5/minute',
+        'password_reset': '3/minute',
+        'bulk': '10/hour',
+        'upload': '20/hour',
+        'invoice_gen': '5/hour',
     },
 }
 

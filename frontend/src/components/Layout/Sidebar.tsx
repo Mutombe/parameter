@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -29,6 +30,8 @@ import {
   AlertTriangle,
   Scale,
   Trash2,
+  ChevronDown,
+  Wrench,
 } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useAuthStore } from '../../stores/authStore'
@@ -51,6 +54,7 @@ interface NavItem {
 interface NavSection {
   title: string
   items: NavItem[]
+  defaultOpen?: boolean
 }
 
 interface SidebarProps {
@@ -63,18 +67,20 @@ const navigation: NavSection[] = [
     title: 'Overview',
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+      { name: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
       { name: 'Notifications', href: '/dashboard/notifications', icon: Bell },
       { name: 'Search', href: '/dashboard/search', icon: Search },
     ],
   },
   {
-    title: 'Masterfile',
+    title: 'Portfolio',
     items: [
       { name: 'Landlords', href: '/dashboard/landlords', icon: PiUsersFour },
       { name: 'Properties', href: '/dashboard/properties', icon: PiBuildingApartmentLight },
       { name: 'Units', href: '/dashboard/units', icon: Home },
       { name: 'Tenants', href: '/dashboard/tenants', icon: LiaUsersSolid },
       { name: 'Leases', href: '/dashboard/leases', icon: FileText },
+      { name: 'Maintenance', href: '/dashboard/maintenance', icon: Wrench },
     ],
   },
   {
@@ -88,6 +94,7 @@ const navigation: NavSection[] = [
   },
   {
     title: 'Accounting',
+    defaultOpen: false,
     items: [
       { name: 'Chart of Accounts', href: '/dashboard/chart-of-accounts', icon: BookOpen },
       { name: 'Journals', href: '/dashboard/journals', icon: FileSpreadsheet },
@@ -99,21 +106,10 @@ const navigation: NavSection[] = [
     ],
   },
   {
-    title: 'Analytics',
-    items: [
-      { name: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
-    ],
-  },
-  {
-    title: 'AI Tools',
-    items: [
-      { name: 'Document Scanner', href: '/dashboard/document-scanner', icon: ScanLine },
-    ],
-  },
-  {
     title: 'Administration',
     items: [
       { name: 'Team', href: '/dashboard/team', icon: TbUserSquareRounded },
+      { name: 'Document Scanner', href: '/dashboard/document-scanner', icon: ScanLine },
       { name: 'Data Import', href: '/dashboard/data-import', icon: Upload },
       { name: 'Audit Trail', href: '/dashboard/audit-trail', icon: SiFsecure },
       { name: 'Trash', href: '/dashboard/trash', icon: Trash2 },
@@ -132,7 +128,7 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
   const isSuperAdmin = user?.role === 'super_admin'
 
   // Build navigation with conditional Super Admin section
-  const fullNavigation = isSuperAdmin
+  const fullNavigation: NavSection[] = isSuperAdmin
     ? [
         ...navigation,
         {
@@ -143,6 +139,21 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
         },
       ]
     : navigation
+
+  // Track which sections are collapsed
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {}
+    for (const section of navigation) {
+      if (section.defaultOpen === false) {
+        initial[section.title] = true
+      }
+    }
+    return initial
+  })
+
+  const toggleSection = (title: string) => {
+    setCollapsedSections(prev => ({ ...prev, [title]: !prev[title] }))
+  }
 
   // On mobile drawer, always show expanded state
   const isExpanded = isMobileDrawer ? true : sidebarOpen
@@ -205,18 +216,33 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-6 sidebar-scroll">
-        {fullNavigation.map((section) => (
+        {fullNavigation.map((section) => {
+          const isCollapsed = collapsedSections[section.title]
+          const hasActiveChild = section.items.some(item =>
+            location.pathname === item.href ||
+            (item.href !== '/dashboard' && location.pathname.startsWith(item.href))
+          )
+
+          return (
           <div key={section.title}>
             <AnimatePresence>
               {isExpanded && (
-                <motion.h3
+                <motion.button
+                  type="button"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider"
+                  onClick={() => section.defaultOpen === false || isCollapsed !== undefined ? toggleSection(section.title) : undefined}
+                  className="w-full flex items-center justify-between px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-600 transition-colors"
                 >
-                  {section.title}
-                </motion.h3>
+                  <span>{section.title}</span>
+                  {section.defaultOpen === false || collapsedSections[section.title] !== undefined ? (
+                    <ChevronDown className={cn(
+                      'w-3 h-3 transition-transform',
+                      isCollapsed && '-rotate-90'
+                    )} />
+                  ) : null}
+                </motion.button>
               )}
             </AnimatePresence>
 
@@ -224,6 +250,15 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
               <div className="border-t border-gray-100 mx-3 mb-2" />
             )}
 
+            <AnimatePresence initial={false}>
+            {(!isCollapsed || hasActiveChild || !isExpanded) && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
             <div className="space-y-1">
               {section.items.map((item) => {
                 const isActive = location.pathname === item.href ||
@@ -305,8 +340,12 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
                 )
               })}
             </div>
+            </motion.div>
+            )}
+            </AnimatePresence>
           </div>
-        ))}
+          )
+        })}
       </nav>
 
       {/* Collapse Toggle - only show on desktop */}

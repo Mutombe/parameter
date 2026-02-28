@@ -81,3 +81,63 @@ def generate_monthly_invoices(month, year, lease_ids=None, created_by=None):
             errors.append(f'Error creating invoice: {str(e)}')
 
     return created_invoices, errors
+
+
+def apply_lease_escalations():
+    """
+    Apply annual rent escalations for leases where the anniversary month matches the current month.
+    Should be called before monthly invoice generation.
+    Returns list of updated leases.
+    """
+    from datetime import date
+    from apps.masterfile.models import LeaseAgreement
+
+    today = date.today()
+    current_month = today.month
+    updated_leases = []
+
+    # Find active leases with escalation rate > 0 where start month matches current month
+    leases = LeaseAgreement.objects.filter(
+        status='active',
+        annual_escalation_rate__gt=0,
+    ).select_related('tenant', 'unit')
+
+    for lease in leases:
+        # Check if this is the anniversary month
+        if lease.start_date.month != current_month:
+            continue
+
+        # Check if already escalated this year
+        if lease.last_escalation_date and lease.last_escalation_date.year == today.year:
+            continue
+
+        # Calculate new rent
+        old_rent = lease.monthly_rent
+        escalation_factor = 1 + (lease.annual_escalation_rate / Decimal('100'))
+        new_rent = (old_rent * escalation_factor).quantize(Decimal('0.01'))
+
+        # Preserve original rent on first escalation
+        if not lease.original_rent:
+            lease.original_rent = old_rent
+
+        lease.monthly_rent = new_rent
+        lease.last_escalation_date = today
+        lease.save(update_fields=[
+            'monthly_rent', 'last_escalation_date', 'original_rent', 'updated_at'
+        ])
+
+        updated_leases.append({
+            'lease_id': lease.id,
+            'lease_number': lease.lease_number,
+            'tenant': lease.tenant.name,
+            'old_rent': str(old_rent),
+            'new_rent': str(new_rent),
+            'escalation_rate': str(lease.annual_escalation_rate),
+        })
+
+        logger.info(
+            f"Lease escalation applied: {lease.lease_number} "
+            f"{old_rent} -> {new_rent} ({lease.annual_escalation_rate}%)"
+        )
+
+    return updated_leases

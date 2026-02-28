@@ -31,6 +31,7 @@ class User(AbstractUser):
         ACCOUNTANT = 'accountant', 'Accountant'
         CLERK = 'clerk', 'Clerk'
         TENANT_PORTAL = 'tenant_portal', 'Tenant Portal'
+        LANDLORD_PORTAL = 'landlord_portal', 'Landlord Portal'
 
     class AccountStatus(models.TextChoices):
         PENDING = 'pending', 'Pending Activation'
