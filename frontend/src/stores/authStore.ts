@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 interface TenantInfo {
+  schema_name?: string
   name: string
   email?: string
   phone?: string
@@ -65,7 +66,10 @@ export const useAuthStore = create<AuthState>()(
         const demoExpiresAt = user?.tenant_info?.demo_expires_at || null
         set({ user, isAuthenticated: !!user, isDemo, demoExpiresAt })
       },
-      logout: () => set({ user: null, isAuthenticated: false, isDemo: false, demoExpiresAt: null, impersonation: null }),
+      logout: () => {
+        sessionStorage.removeItem('tenant_subdomain')
+        set({ user: null, isAuthenticated: false, isDemo: false, demoExpiresAt: null, impersonation: null })
+      },
       updateDemoStatus: (expiresAt) => set({ demoExpiresAt: expiresAt }),
       startImpersonation: (tenantId, tenantName) => set({ impersonation: { tenantId, tenantName } }),
       stopImpersonation: () => set({ impersonation: null }),

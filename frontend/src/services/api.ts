@@ -26,6 +26,18 @@ const getSubdomain = (): string | null => {
     return storedTenant
   }
 
+  // Fallback: derive from logged-in user's tenant_info (persisted in localStorage)
+  try {
+    const authStorage = JSON.parse(localStorage.getItem('auth-storage') || '{}')
+    const schemaName = authStorage?.state?.user?.tenant_info?.schema_name
+    if (schemaName && schemaName !== 'public') {
+      sessionStorage.setItem('tenant_subdomain', schemaName)
+      return schemaName
+    }
+  } catch {
+    // ignore parse errors
+  }
+
   const hostname = window.location.hostname
   // Check for subdomains (e.g., acme.localhost or acme.parameter.co.zw)
   const parts = hostname.split('.')

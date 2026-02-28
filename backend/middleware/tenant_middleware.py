@@ -132,9 +132,18 @@ class SubdomainHeaderMiddleware(MiddlewareMixin):
             # Override HTTP_HOST so django-tenants can process it correctly
             request.META['HTTP_HOST'] = expected_host
         else:
-            # No subdomain header — explicitly set public tenant so that
-            # TenantMainMiddleware can resolve it even if the request domain
-            # (e.g., parameter-backend.onrender.com) doesn't match any Domain record.
+            # No subdomain header — check if the Host already matches a known tenant domain.
+            # If so, let TenantMainMiddleware resolve it. Only fall back to public
+            # for unrecognized hosts (e.g., parameter-backend.onrender.com).
+            host_without_port = original_host.split(':')[0]
+            try:
+                from apps.tenants.models import Domain
+                if Domain.objects.filter(domain=host_without_port).exists():
+                    logger.debug(f"SubdomainHeaderMiddleware: host {host_without_port} matches a domain, letting TenantMainMiddleware handle it")
+                    return
+            except Exception:
+                pass
+
             public_tenant = self._get_public_tenant()
             if public_tenant:
                 request.tenant = public_tenant

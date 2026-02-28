@@ -95,6 +95,7 @@ class UserSerializer(serializers.ModelSerializer):
                     pass
 
             return {
+                'schema_name': tenant.schema_name,
                 'name': tenant.name,
                 'email': tenant.email,
                 'phone': tenant.phone,

@@ -63,6 +63,17 @@ class DashboardStatsView(APIView):
 
     @_cache_report('dashboard', ttl=30)
     def get(self, request):
+        from django.db import connection
+        if connection.schema_name == 'public':
+            return Response({
+                'properties': {'total': 0, 'units': 0, 'vacant': 0, 'occupancy_rate': 0},
+                'financial': {'total_invoiced': 0, 'total_collected': 0, 'outstanding': 0, 'collection_rate': 0},
+                'monthly': {'invoiced': 0, 'collected': 0},
+                'alerts': {'overdue_invoices': 0, 'overdue_amount': 0, 'expiring_leases': 0},
+                'counts': {'landlords': 0, 'tenants': 0, 'active_leases': 0},
+                'revenue_trend': [],
+            })
+
         today = timezone.now().date()
         month_start = today.replace(day=1)
         thirty_days = today + timedelta(days=30)
