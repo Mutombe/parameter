@@ -169,6 +169,9 @@ def custom_exception_handler(exc, context):
         )
 
         if isinstance(exc, ValidationError):
+            # DEBUG: Log raw validation error detail
+            logger.warning(f"ValidationError detail type={type(exc.detail).__name__}: {exc.detail}")
+
             # Format validation errors
             if isinstance(exc.detail, dict):
                 formatted_errors = format_validation_errors(exc.detail)
