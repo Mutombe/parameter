@@ -284,7 +284,7 @@ const generateEmailLink = () => {
 
       {/* Hero Section */}
 <section className="relative pt-24 sm:pt-32 pb-12 sm:pb-20 px-4 sm:px-6 overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-[4.5rem] left-0 right-0 bottom-0 opacity-10">
           <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
             <defs>
               <pattern
