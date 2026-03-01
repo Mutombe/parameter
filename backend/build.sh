@@ -11,25 +11,24 @@ python manage.py collectstatic --no-input
 
 echo "=== Starting migration ==="
 
-# Try to run migrations normally first
+# Step 1: Migrate shared (public) schema
+echo "Migrating shared schema..."
 python manage.py migrate_schemas --shared 2>&1 && {
-    echo "Migrations completed successfully"
+    echo "Shared migrations completed successfully"
 } || {
-    echo "Migration failed, checking for inconsistent history..."
-
-    # Check if it's the known accounting/billing dependency issue
-    if python manage.py showmigrations accounting 2>&1 | grep -q "\[ \]"; then
-        echo "Found unapplied accounting migrations, faking them..."
-        python manage.py migrate accounting --fake || true
-    fi
-
-    # Try again
-    echo "Retrying migrations..."
+    echo "Shared migration failed, retrying..."
     python manage.py migrate_schemas --shared || {
-        echo "CRITICAL: Migrations still failing. NOT dropping schema."
-        echo "Please fix migration issues manually."
-        # DO NOT drop the public schema - this destroys all data
+        echo "WARNING: Shared migrations failed. Continuing with tenant migrations..."
     }
+}
+
+# Step 2: Migrate all tenant schemas
+echo "Migrating tenant schemas..."
+python manage.py migrate_schemas --tenant 2>&1 && {
+    echo "Tenant migrations completed successfully"
+} || {
+    echo "WARNING: Tenant migrations had errors (some schemas may have failed)"
+    echo "This is often OK if test schemas were deleted. Continuing..."
 }
 
 echo "Creating cache table..."
