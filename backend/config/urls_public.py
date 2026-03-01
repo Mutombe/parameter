@@ -9,9 +9,29 @@ from django.urls import path, include, re_path
 from django.conf import settings
 from django.views.static import serve
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from django.db import connection
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def debug_tenant(request):
+    """Debug endpoint: show current tenant routing state. Remove after debugging."""
+    from apps.tenants.models import Domain
+    all_domains = list(Domain.objects.values_list('domain', 'tenant__schema_name', 'is_primary'))
+    return Response({
+        'db_schema': connection.schema_name,
+        'request_tenant': str(getattr(request, 'tenant', None)),
+        'request_tenant_schema': getattr(getattr(request, 'tenant', None), 'schema_name', None),
+        'http_host': request.META.get('HTTP_HOST', ''),
+        'x_tenant_subdomain': request.META.get('HTTP_X_TENANT_SUBDOMAIN', ''),
+        'user': str(request.user),
+        'user_tenant_schema': getattr(request.user, 'tenant_schema', None) if hasattr(request.user, 'tenant_schema') else 'N/A',
+        'urlconf': getattr(request, 'urlconf', 'default'),
+        'all_domains': all_domains,
+    })
 
 
 # Stub endpoints for features not available in public schema
@@ -44,6 +64,7 @@ def ai_suggestions(request):
 
 
 urlpatterns = [
+    path('api/debug-tenant/', debug_tenant, name='debug-tenant'),
     path('admin/', admin.site.urls),
     path('api/tenants/', include('apps.tenants.urls')),
     path('api/accounts/', include('apps.accounts.urls')),

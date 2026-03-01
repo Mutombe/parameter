@@ -13,14 +13,15 @@ const getSubdomain = (): string | null => {
   const urlParams = new URLSearchParams(window.location.search)
   const tenantParam = urlParams.get('tenant')
   if (tenantParam) {
-    // Store in sessionStorage for subsequent requests
     sessionStorage.setItem('tenant_subdomain', tenantParam)
+    console.debug('[TENANT] from URL param:', tenantParam)
     return tenantParam
   }
 
   // Check sessionStorage (persists tenant across page navigations)
   const storedTenant = sessionStorage.getItem('tenant_subdomain')
   if (storedTenant) {
+    console.debug('[TENANT] from sessionStorage:', storedTenant)
     return storedTenant
   }
 
@@ -28,6 +29,7 @@ const getSubdomain = (): string | null => {
   try {
     const authStorage = JSON.parse(localStorage.getItem('auth-storage') || '{}')
     const schemaName = authStorage?.state?.user?.tenant_info?.schema_name
+    console.debug('[TENANT] auth-storage schema_name:', schemaName)
     if (schemaName && schemaName !== 'public') {
       sessionStorage.setItem('tenant_subdomain', schemaName)
       return schemaName
@@ -37,20 +39,22 @@ const getSubdomain = (): string | null => {
   }
 
   const hostname = window.location.hostname
-  // Check for subdomains (e.g., acme.localhost or acme.parameter.co.zw)
   const parts = hostname.split('.')
 
   // Development: subdomain.localhost
   if (hostname.endsWith('.localhost') && parts.length >= 2) {
+    console.debug('[TENANT] from dev hostname:', parts[0])
     return parts[0]
   }
 
   // Production: subdomain.parameter.co.zw (3+ parts means there's a subdomain)
   // Exclude onrender.com domains
   if (parts.length >= 3 && !['www', 'api'].includes(parts[0]) && !hostname.includes('onrender.com')) {
+    console.debug('[TENANT] from prod hostname:', parts[0])
     return parts[0]
   }
 
+  console.warn('[TENANT] NO SUBDOMAIN RESOLVED! hostname:', hostname, 'sessionStorage:', sessionStorage.getItem('tenant_subdomain'), 'auth-storage schema:', (() => { try { return JSON.parse(localStorage.getItem('auth-storage') || '{}')?.state?.user?.tenant_info?.schema_name } catch { return 'parse-error' } })())
   return null
 }
 
@@ -97,11 +101,16 @@ api.interceptors.request.use((config) => {
   }
 
   // Add tenant subdomain header for multi-tenant routing
-  // This is used when frontend and API are on different domains
   const subdomain = getSubdomain()
   if (subdomain) {
     config.headers['X-Tenant-Subdomain'] = subdomain
   }
+
+  const fullUrl = `${config.baseURL || ''}${config.url || ''}`
+  console.log(`[API REQ] ${config.method?.toUpperCase()} ${fullUrl} | tenant=${subdomain || 'NONE'} | headers:`, {
+    'X-Tenant-Subdomain': config.headers['X-Tenant-Subdomain'] || 'NOT SET',
+    'X-CSRFToken': config.headers['X-CSRFToken'] ? 'present' : 'NOT SET',
+  })
 
   // Staff impersonation: append tenant_id to tenant-portal API calls
   if (config.url?.includes('/tenant-portal/')) {
@@ -122,6 +131,10 @@ api.interceptors.request.use((config) => {
 // Response interceptor for error handling + slow-network tracking
 api.interceptors.response.use(
   (response) => {
+    console.log(`[API RES] ${response.config.method?.toUpperCase()} ${response.config.url} → ${response.status}`, {
+      dataKeys: response.data ? Object.keys(response.data) : 'no data',
+      count: response.data?.count ?? response.data?.results?.length ?? (Array.isArray(response.data) ? response.data.length : undefined),
+    })
     // Track request duration for slow-network detection
     const start = response.config._requestStartTime
     if (start) {
@@ -142,6 +155,10 @@ api.interceptors.response.use(
     return response
   },
   (error) => {
+    console.error(`[API ERR] ${error.config?.method?.toUpperCase()} ${error.config?.url} → ${error.response?.status || 'NETWORK ERROR'}`, {
+      data: error.response?.data,
+      message: error.message,
+    })
     if (error.response?.status === 401) {
       const path = window.location.pathname
       const url = (error.config as InternalAxiosRequestConfig)?.url || ''

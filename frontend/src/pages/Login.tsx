@@ -51,11 +51,18 @@ export default function Login() {
     try {
       const response = await authApi.login(form)
       const loggedInUser = response.data.user
+      console.log('[LOGIN] response user:', {
+        email: loggedInUser?.email,
+        role: loggedInUser?.role,
+        tenant_info: loggedInUser?.tenant_info,
+        schema_name: loggedInUser?.tenant_info?.schema_name,
+      })
       setUser(loggedInUser)
 
       // Store tenant subdomain for API routing (critical for production
       // where frontend/backend are on different domains)
       const schemaName = loggedInUser?.tenant_info?.schema_name
+      console.log('[LOGIN] schema_name:', schemaName, '| storing in sessionStorage:', schemaName && schemaName !== 'public')
       if (schemaName && schemaName !== 'public') {
         sessionStorage.setItem('tenant_subdomain', schemaName)
       }
