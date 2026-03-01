@@ -156,8 +156,37 @@ def custom_exception_handler(exc, context):
     """
     Custom exception handler that returns user-friendly error messages.
     """
+    import traceback
+
     # Call DRF's default exception handler first
     response = exception_handler(exc, context)
+
+    if response is None:
+        # DRF didn't handle it — this is an unhandled exception (DB error, etc.)
+        # Log the full traceback so we can see it in Render logs
+        view = context.get('view')
+        request = context.get('request')
+        tb = traceback.format_exc()
+        print(f"[UNHANDLED ERROR] {exc.__class__.__name__}: {exc}")
+        print(f"[UNHANDLED ERROR] View: {view.__class__.__name__ if view else 'Unknown'}")
+        print(f"[UNHANDLED ERROR] Path: {request.method} {request.path}" if request else "[UNHANDLED ERROR] No request")
+        print(f"[UNHANDLED ERROR] Traceback:\n{tb}")
+        logger.error(f"Unhandled exception in {view.__class__.__name__ if view else 'Unknown'}: {exc}\n{tb}")
+
+        # Return a JSON response instead of HTML 500 page
+        from rest_framework.response import Response
+        from rest_framework import status as drf_status
+        from django.db import connection as db_conn
+        return Response({
+            'message': 'An internal server error occurred.',
+            'code': 'server_error',
+            'debug': {
+                'error': str(exc),
+                'type': exc.__class__.__name__,
+                'schema': db_conn.schema_name,
+                'view': view.__class__.__name__ if view else 'Unknown',
+            }
+        }, status=drf_status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     if response is not None:
         # Log the error for debugging
