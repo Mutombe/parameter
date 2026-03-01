@@ -76,8 +76,8 @@ class Command(BaseCommand):
                                 is_primary boolean NOT NULL DEFAULT false,
                                 assigned_at timestamp with time zone NOT NULL DEFAULT now(),
                                 property_id bigint NOT NULL REFERENCES masterfile_property(id) DEFERRABLE INITIALLY DEFERRED,
-                                user_id bigint NOT NULL REFERENCES accounts_customuser(id) DEFERRABLE INITIALLY DEFERRED,
-                                assigned_by_id bigint REFERENCES accounts_customuser(id) DEFERRABLE INITIALLY DEFERRED
+                                user_id bigint NOT NULL REFERENCES accounts_user(id) DEFERRABLE INITIALLY DEFERRED,
+                                assigned_by_id bigint REFERENCES accounts_user(id) DEFERRABLE INITIALLY DEFERRED
                             )
                         """)
                         cursor.execute(
@@ -106,7 +106,7 @@ class Command(BaseCommand):
                                 ) THEN
                                     ALTER TABLE masterfile_landlord
                                     ADD COLUMN portal_user_id bigint
-                                    REFERENCES accounts_customuser(id)
+                                    REFERENCES accounts_user(id)
                                     ON DELETE SET NULL
                                     DEFERRABLE INITIALLY DEFERRED;
                                     CREATE UNIQUE INDEX IF NOT EXISTS masterfile_landlord_portal_user_uniq
@@ -146,7 +146,7 @@ class Command(BaseCommand):
                                 updated_at timestamp with time zone NOT NULL DEFAULT now(),
                                 property_id bigint REFERENCES masterfile_property(id) DEFERRABLE INITIALLY DEFERRED,
                                 unit_id bigint REFERENCES masterfile_unit(id) DEFERRABLE INITIALLY DEFERRED,
-                                reported_by_id bigint REFERENCES accounts_customuser(id) DEFERRABLE INITIALLY DEFERRED
+                                reported_by_id bigint REFERENCES accounts_user(id) DEFERRABLE INITIALLY DEFERRED
                             )
                         """)
                         cursor.execute("""
