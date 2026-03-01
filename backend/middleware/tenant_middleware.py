@@ -177,6 +177,23 @@ class SafeTenantMiddleware(MiddlewareMixin):
             mw = TenantMainMiddleware(lambda r: None)
             mw.process_request(request)
         except Exception as e:
+            # If SubdomainHeaderMiddleware already resolved a tenant (e.g. via
+            # X-Tenant-Subdomain header), use that tenant's schema directly.
+            # This handles the case where the Domain record doesn't match the
+            # constructed hostname (e.g. domain is demo.localhost but host was
+            # rewritten to demo.parameter.co.zw).
+            existing_tenant = getattr(request, 'tenant', None)
+            if existing_tenant and existing_tenant.schema_name != 'public':
+                logger.info(
+                    f"TenantMainMiddleware failed ({e}), but tenant already "
+                    f"resolved to {existing_tenant.schema_name} — using it"
+                )
+                try:
+                    db_connection.set_tenant(existing_tenant)
+                    return
+                except Exception as e2:
+                    logger.error(f"Failed to set tenant {existing_tenant.schema_name}: {e2}")
+
             logger.error(f"TenantMainMiddleware failed: {e} — falling back to public schema")
             # Manually set the connection to public schema
             try:
