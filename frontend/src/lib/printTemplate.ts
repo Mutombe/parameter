@@ -174,11 +174,7 @@ function buildBaseStyles(paperSize: string, orientation: string): string {
 // ─── Header & Footer Builders ─────────────────────────────────────
 
 function getLogoProxyUrl(): string {
-  const base = import.meta.env.VITE_API_URL || (
-    typeof window !== 'undefined' && window.location.hostname.includes('localhost')
-      ? 'http://localhost:8000'
-      : ''
-  )
+  const base = import.meta.env.VITE_API_URL || ''
 
   // Resolve tenant subdomain (same logic as services/api.ts)
   let subdomain = ''

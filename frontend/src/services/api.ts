@@ -1,13 +1,11 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios'
 import { useSessionStore } from '../stores/sessionStore'
 
-// API base URL - use environment variable for production, localhost for development
-// In production on Render, frontend is served from same origin as API
-const API_BASE_URL = import.meta.env.VITE_API_URL || (
-  typeof window !== 'undefined' && window.location.hostname.includes('localhost')
-    ? 'http://localhost:8000'
-    : ''
-)
+// API base URL - use environment variable for production, empty for development.
+// In development, requests use relative URLs (e.g. /api/...) so they go through
+// the Vite dev server proxy, which forwards to Django with the correct Host header
+// for tenant resolution. In production, VITE_API_URL points to the API server.
+const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
 // Extract subdomain from current hostname for multi-tenant routing
 const getSubdomain = (): string | null => {
