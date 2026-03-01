@@ -71,9 +71,23 @@ class UserSerializer(serializers.ModelSerializer):
     def get_tenant_info(self, obj):
         """Get current tenant info including demo status and settings."""
         request = self.context.get('request')
-        if request and hasattr(request, 'tenant'):
-            tenant = request.tenant
+        tenant = getattr(request, 'tenant', None) if request else None
 
+        # If request resolved to public schema but user belongs to a specific
+        # tenant (common in production where frontend/backend are on different
+        # domains and no subdomain header is sent during login), look up the
+        # user's actual tenant so we return the correct schema_name.
+        if (tenant is None or tenant.schema_name == 'public') and getattr(obj, 'tenant_schema', '') and obj.tenant_schema != 'public':
+            try:
+                from django_tenants.utils import get_tenant_model
+                TenantModel = get_tenant_model()
+                real_tenant = TenantModel.objects.filter(schema_name=obj.tenant_schema).first()
+                if real_tenant:
+                    tenant = real_tenant
+            except Exception:
+                pass
+
+        if tenant:
             # Build logo URL
             logo_url = None
             if tenant.logo:

@@ -53,6 +53,13 @@ export default function Login() {
       const loggedInUser = response.data.user
       setUser(loggedInUser)
 
+      // Store tenant subdomain for API routing (critical for production
+      // where frontend/backend are on different domains)
+      const schemaName = loggedInUser?.tenant_info?.schema_name
+      if (schemaName && schemaName !== 'public') {
+        sessionStorage.setItem('tenant_subdomain', schemaName)
+      }
+
       // Show demo warning if applicable
       if (response.data.demo_warning) {
         toast.success('Welcome! Your demo session is active.', { duration: 5000 })
