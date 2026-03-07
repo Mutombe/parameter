@@ -15,7 +15,8 @@ from .models import (
     ChartOfAccount, ExchangeRate, Journal, JournalEntry,
     GeneralLedger, AuditTrail, FiscalPeriod, BankAccount,
     BankTransaction, BankReconciliation, ReconciliationItem,
-    ExpenseCategory, JournalReallocation, IncomeType
+    ExpenseCategory, JournalReallocation, IncomeType,
+    SubsidiaryAccount, SubsidiaryTransaction,
 )
 from .serializers import (
     ChartOfAccountSerializer, ExchangeRateSerializer,
@@ -25,7 +26,9 @@ from .serializers import (
     BankTransactionUploadSerializer, BankReconciliationSerializer,
     ReconciliationCreateSerializer, ReconciliationWorkspaceSerializer,
     ExpenseCategorySerializer, JournalReallocationSerializer,
-    ReallocationCreateSerializer, IncomeTypeSerializer
+    ReallocationCreateSerializer, IncomeTypeSerializer,
+    SubsidiaryAccountSerializer, SubsidiaryTransactionSerializer,
+    SubsidiaryStatementSerializer,
 )
 from apps.accounts.mixins import TenantSchemaValidationMixin
 
@@ -88,13 +91,15 @@ class ChartOfAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, v
             # Liabilities
             ('2000', 'Accounts Payable', 'liability', 'accounts_payable', True),
             ('2100', 'VAT Payable', 'liability', 'vat_payable', True),
-            ('2200', 'Tenant Deposits', 'liability', 'tenant_deposits', True),
+            ('2110', 'VAT Payable (Commission)', 'liability', 'vat_payable', True),
+            ('2200', 'Unpaid Rent (Deferred Revenue)', 'liability', 'tenant_deposits', True),
+            ('2300', 'Landlord Trust Payable', 'liability', 'accounts_payable', True),
             # Equity
             ('3000', 'Retained Earnings', 'equity', 'retained_earnings', True),
             ('3100', 'Capital', 'equity', 'capital', True),
             # Revenue
             ('4000', 'Rental Income', 'revenue', 'rental_income', True),
-            ('4100', 'Commission Income', 'revenue', 'commission_income', True),
+            ('4100', 'Commission Revenue', 'revenue', 'commission_income', True),
             ('4200', 'Other Income', 'revenue', 'other_income', True),
             # Expenses
             ('5000', 'Operating Expenses', 'expense', 'operating_expense', True),
@@ -1217,3 +1222,132 @@ class IncomeTypeViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, views
             }
             for it in income_types
         ])
+
+
+class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyModelViewSet):
+    """
+    Subsidiary Ledger Accounts — read-only view of tenant, landlord,
+    and account holder sub-ledger accounts.
+    """
+    queryset = SubsidiaryAccount.objects.all()
+    serializer_class = SubsidiaryAccountSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['entity_type', 'is_active', 'currency']
+    search_fields = ['code', 'name']
+    ordering = ['code']
+
+    @action(detail=True, methods=['get'])
+    def statement(self, request, pk=None):
+        """
+        Get a full statement for a subsidiary account.
+        Query params: period_start, period_end (YYYY-MM-DD)
+        Returns: opening balance, transactions, totals, closing balance.
+        """
+        account = self.get_object()
+        period_start = request.query_params.get('period_start')
+        period_end = request.query_params.get('period_end')
+
+        if not period_start or not period_end:
+            return Response(
+                {'error': 'period_start and period_end are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        from datetime import datetime
+        start = datetime.strptime(period_start, '%Y-%m-%d').date()
+        end = datetime.strptime(period_end, '%Y-%m-%d').date()
+
+        # Calculate opening balance from transactions before the period
+        prior_txns = account.transactions.filter(date__lt=start)
+        if prior_txns.exists():
+            last_prior = prior_txns.order_by('-transaction_number').first()
+            opening_balance = last_prior.balance
+        else:
+            opening_balance = Decimal('0.00')
+
+        # Get transactions in the period
+        transactions = account.transactions.filter(
+            date__gte=start, date__lte=end
+        ).order_by('transaction_number')
+
+        totals = transactions.aggregate(
+            total_debits=Sum('debit_amount'),
+            total_credits=Sum('credit_amount'),
+        )
+
+        closing_balance = account.current_balance
+        if account.transactions.filter(date__gt=end).exists():
+            last_in_period = transactions.last()
+            closing_balance = last_in_period.balance if last_in_period else opening_balance
+
+        data = {
+            'account': SubsidiaryAccountSerializer(account).data,
+            'period_start': period_start,
+            'period_end': period_end,
+            'opening_balance': opening_balance,
+            'transactions': SubsidiaryTransactionSerializer(transactions, many=True).data,
+            'total_debits': totals['total_debits'] or Decimal('0.00'),
+            'total_credits': totals['total_credits'] or Decimal('0.00'),
+            'closing_balance': closing_balance,
+        }
+        return Response(data)
+
+    @action(detail=False, methods=['get'])
+    def by_type(self, request):
+        """Group subsidiary accounts by entity type with totals."""
+        entity_type = request.query_params.get('entity_type')
+        qs = self.get_queryset().filter(is_active=True)
+        if entity_type:
+            qs = qs.filter(entity_type=entity_type)
+
+        result = {}
+        for et in SubsidiaryAccount.EntityType.values:
+            accounts = qs.filter(entity_type=et)
+            result[et] = {
+                'count': accounts.count(),
+                'total_balance': accounts.aggregate(
+                    total=Sum('current_balance')
+                )['total'] or Decimal('0.00'),
+                'accounts': SubsidiaryAccountSerializer(accounts[:20], many=True).data,
+            }
+
+        return Response(result)
+
+    @action(detail=False, methods=['post'])
+    def sync_accounts(self, request):
+        """
+        Create subsidiary accounts for all existing tenants and landlords
+        that don't have one yet. Run once during setup.
+        """
+        from apps.masterfile.models import RentalTenant, Landlord
+
+        created = 0
+        for tenant in RentalTenant.objects.filter(is_active=True, is_deleted=False):
+            _, was_created = SubsidiaryAccount.objects.get_or_create(
+                tenant=tenant,
+                defaults={
+                    'code': f'TN/{tenant.code.replace("TN", "").lstrip("0") or "0"}',
+                    'name': tenant.name,
+                    'entity_type': SubsidiaryAccount.EntityType.TENANT
+                    if tenant.account_type == 'rental'
+                    else SubsidiaryAccount.EntityType.ACCOUNT_HOLDER,
+                    'currency': 'USD',
+                }
+            )
+            if was_created:
+                created += 1
+
+        for landlord in Landlord.objects.filter(is_active=True, is_deleted=False):
+            _, was_created = SubsidiaryAccount.objects.get_or_create(
+                landlord=landlord,
+                defaults={
+                    'code': f'LD/{landlord.code.replace("LL", "").lstrip("0") or "0"}',
+                    'name': landlord.name,
+                    'entity_type': SubsidiaryAccount.EntityType.LANDLORD,
+                    'currency': landlord.preferred_currency,
+                }
+            )
+            if was_created:
+                created += 1
+
+        return Response({'message': f'Synced subsidiary accounts. Created {created} new accounts.'})

@@ -5,7 +5,8 @@ from .views import (
     ChartOfAccountViewSet, ExchangeRateViewSet, JournalViewSet,
     GeneralLedgerViewSet, AuditTrailViewSet, FiscalPeriodViewSet,
     BankAccountViewSet, BankTransactionViewSet, BankReconciliationViewSet,
-    ExpenseCategoryViewSet, JournalReallocationViewSet, IncomeTypeViewSet
+    ExpenseCategoryViewSet, JournalReallocationViewSet, IncomeTypeViewSet,
+    SubsidiaryAccountViewSet,
 )
 
 router = DefaultRouter()
@@ -21,6 +22,7 @@ router.register('bank-reconciliations', BankReconciliationViewSet, basename='ban
 router.register('expense-categories', ExpenseCategoryViewSet, basename='expense-category')
 router.register('reallocations', JournalReallocationViewSet, basename='reallocation')
 router.register('income-types', IncomeTypeViewSet, basename='income-type')
+router.register('subsidiary-accounts', SubsidiaryAccountViewSet, basename='subsidiary-account')
 
 urlpatterns = [
     path('', include(router.urls)),

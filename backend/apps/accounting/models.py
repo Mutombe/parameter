@@ -997,3 +997,214 @@ class IncomeType(models.Model):
         last = cls.objects.select_for_update().order_by('-id').first()
         num = (last.id + 1) if last else 1
         return f'INC{num:04d}'
+
+
+class SubsidiaryAccount(models.Model):
+    """
+    Subsidiary Ledger Account - Individual accounts for tenants, landlords,
+    and account holders. These are sub-ledgers that feed into GL control accounts.
+
+    Tenant accounts (TN/xxxxx) track what each tenant owes.
+    Landlord accounts (LD/xxxxx) track what the agent owes each landlord (trust money).
+    Account Holder accounts (AC/xxxxx) track levy payers.
+    """
+
+    class EntityType(models.TextChoices):
+        TENANT = 'tenant', 'Tenant'
+        LANDLORD = 'landlord', 'Landlord'
+        ACCOUNT_HOLDER = 'account_holder', 'Account Holder'
+
+    code = models.CharField(max_length=20, unique=True, db_index=True)
+    name = models.CharField(max_length=255)
+    entity_type = models.CharField(max_length=20, choices=EntityType.choices)
+
+    # Polymorphic links — exactly one should be set
+    tenant = models.OneToOneField(
+        'masterfile.RentalTenant', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='subsidiary_account'
+    )
+    landlord = models.OneToOneField(
+        'masterfile.Landlord', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='subsidiary_account'
+    )
+
+    currency = models.CharField(max_length=3, default='USD')
+    current_balance = models.DecimalField(
+        max_digits=18, decimal_places=2, default=Decimal('0.00')
+    )
+
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Subsidiary Account'
+        verbose_name_plural = 'Subsidiary Accounts'
+        ordering = ['code']
+        indexes = [
+            models.Index(fields=['entity_type', 'is_active']),
+        ]
+
+    def __str__(self):
+        return f'{self.code} - {self.name}'
+
+    @classmethod
+    def get_or_create_for_tenant(cls, tenant):
+        """Get or create a subsidiary account for a rental tenant."""
+        account, created = cls.objects.get_or_create(
+            tenant=tenant,
+            defaults={
+                'code': f'TN/{tenant.code.replace("TN", "").lstrip("0") or "0"}',
+                'name': tenant.name,
+                'entity_type': cls.EntityType.TENANT
+                if tenant.account_type == 'rental'
+                else cls.EntityType.ACCOUNT_HOLDER,
+                'currency': 'USD',
+            }
+        )
+        # Fix code format if account_type is levy and code starts with TN/
+        if tenant.account_type == 'levy' and account.code.startswith('TN/'):
+            account.code = f'AC/{tenant.code.replace("TN", "").lstrip("0") or "0"}'
+            account.entity_type = cls.EntityType.ACCOUNT_HOLDER
+            account.save(update_fields=['code', 'entity_type'])
+        return account
+
+    @classmethod
+    def get_or_create_for_landlord(cls, landlord):
+        """Get or create a subsidiary account for a landlord."""
+        account, created = cls.objects.get_or_create(
+            landlord=landlord,
+            defaults={
+                'code': f'LD/{landlord.code.replace("LL", "").lstrip("0") or "0"}',
+                'name': landlord.name,
+                'entity_type': cls.EntityType.LANDLORD,
+                'currency': landlord.preferred_currency,
+            }
+        )
+        return account
+
+
+class SubsidiaryTransaction(models.Model):
+    """
+    Subsidiary Ledger Transaction - Individual entries in a subsidiary account.
+    Each transaction shows the contra account, reference, and running balance.
+
+    Mirrors the statement format from the trust accounting spec:
+    TRANSACTION ID | Date | Contra Acc | Ref | Description | Debit | Credit | Balance
+    """
+    account = models.ForeignKey(
+        SubsidiaryAccount, on_delete=models.CASCADE, related_name='transactions'
+    )
+    transaction_number = models.PositiveIntegerField(db_index=True)
+    date = models.DateField()
+
+    contra_account = models.CharField(
+        max_length=20,
+        help_text='Code of the other side of the entry (e.g., 2300/010, 4000/001, LD/3000)'
+    )
+    reference = models.CharField(
+        max_length=50,
+        help_text='Document reference (INV-xxxxxx, RCT-xxxxxx, CMA-xxxxxx)'
+    )
+    description = models.CharField(max_length=500)
+
+    debit_amount = models.DecimalField(
+        max_digits=18, decimal_places=2, default=Decimal('0.00')
+    )
+    credit_amount = models.DecimalField(
+        max_digits=18, decimal_places=2, default=Decimal('0.00')
+    )
+    balance = models.DecimalField(max_digits=18, decimal_places=2)
+
+    # Link back to GL for cross-referencing
+    journal_entry = models.ForeignKey(
+        JournalEntry, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='subsidiary_transactions'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Subsidiary Transaction'
+        verbose_name_plural = 'Subsidiary Transactions'
+        ordering = ['transaction_number']
+        unique_together = ['account', 'transaction_number']
+        indexes = [
+            models.Index(fields=['account', 'date']),
+            models.Index(fields=['date']),
+            models.Index(fields=['reference']),
+        ]
+
+    def __str__(self):
+        side = f'Dr {self.debit_amount}' if self.debit_amount else f'Cr {self.credit_amount}'
+        return f'{self.transaction_number} - {self.account.code}: {side}'
+
+    @classmethod
+    def get_next_number(cls):
+        """Get the next global transaction number."""
+        last = cls.objects.order_by('-transaction_number').first()
+        return (last.transaction_number + 1) if last else 10001
+
+    @classmethod
+    def create_entry(cls, account, date, contra_account, reference,
+                     description, debit_amount=None, credit_amount=None,
+                     journal_entry=None):
+        """
+        Create a subsidiary transaction and update the account balance.
+        Returns the created transaction.
+        """
+        debit = debit_amount or Decimal('0.00')
+        credit = credit_amount or Decimal('0.00')
+
+        # Update running balance on the account
+        # Tenant accounts: normal balance is DEBIT (they owe money)
+        # Landlord accounts: normal balance is CREDIT (agent owes them)
+        if account.entity_type in ('tenant', 'account_holder'):
+            account.current_balance += debit - credit
+        else:
+            account.current_balance += credit - debit
+
+        account.save(update_fields=['current_balance', 'updated_at'])
+
+        txn_number = cls.get_next_number()
+
+        return cls.objects.create(
+            account=account,
+            transaction_number=txn_number,
+            date=date,
+            contra_account=contra_account,
+            reference=reference,
+            description=description,
+            debit_amount=debit,
+            credit_amount=credit,
+            balance=account.current_balance,
+            journal_entry=journal_entry,
+        )
+
+
+def build_transaction_description(txn_type, payment_method=None, tenant_name=None,
+                                  unit=None, lease=None, user_ref=None):
+    """
+    Build a transaction description in the trust accounting format:
+    {Type}-{Payment Method}-{Tenant Name}-{Unit}-{Lease ID} Ref-{User text}
+
+    The system-generated part cannot be altered. The user-entered part follows "Ref-".
+    """
+    parts = [txn_type]
+    if payment_method:
+        parts.append(payment_method)
+    if tenant_name:
+        parts.append(tenant_name)
+    if unit:
+        unit_label = f'{unit}' if isinstance(unit, str) else f'{unit.property.name}-{unit.unit_number}'
+        parts.append(unit_label)
+    if lease:
+        lease_id = lease if isinstance(lease, str) else f'Lease ID {lease.id}'
+        parts.append(lease_id)
+
+    desc = '-'.join(parts)
+
+    if user_ref:
+        desc += f' Ref-{user_ref}'
+
+    return desc

@@ -516,6 +516,16 @@ export const incomeTypeApi = {
   seedDefaults: () => api.post('/accounting/income-types/seed_defaults/'),
 }
 
+// Subsidiary Ledger API (Trust Accounting)
+export const subsidiaryApi = {
+  list: (params?: object) => api.get('/accounting/subsidiary-accounts/', { params }),
+  get: (id: number) => api.get(`/accounting/subsidiary-accounts/${id}/`),
+  statement: (id: number, params: { period_start: string; period_end: string }) =>
+    api.get(`/accounting/subsidiary-accounts/${id}/statement/`, { params }),
+  byType: (params?: object) => api.get('/accounting/subsidiary-accounts/by_type/', { params }),
+  syncAccounts: () => api.post('/accounting/subsidiary-accounts/sync_accounts/'),
+}
+
 // Tenant Portal API (for tenant portal users)
 export const tenantPortalApi = {
   profile: () => api.get('/accounts/tenant-portal/profile/'),

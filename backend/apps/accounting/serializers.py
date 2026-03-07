@@ -5,7 +5,8 @@ from .models import (
     ChartOfAccount, ExchangeRate, Journal, JournalEntry,
     GeneralLedger, AuditTrail, FiscalPeriod, BankAccount,
     BankTransaction, BankReconciliation, ReconciliationItem,
-    ExpenseCategory, JournalReallocation, IncomeType
+    ExpenseCategory, JournalReallocation, IncomeType,
+    SubsidiaryAccount, SubsidiaryTransaction,
 )
 
 
@@ -406,3 +407,59 @@ class IncomeTypeSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = ['code', 'is_system', 'created_at', 'updated_at']
+
+
+class SubsidiaryTransactionSerializer(serializers.ModelSerializer):
+    """Individual transaction line in a subsidiary account statement."""
+
+    class Meta:
+        model = SubsidiaryTransaction
+        fields = [
+            'id', 'transaction_number', 'date', 'contra_account',
+            'reference', 'description', 'debit_amount', 'credit_amount',
+            'balance', 'created_at'
+        ]
+
+
+class SubsidiaryAccountSerializer(serializers.ModelSerializer):
+    """Subsidiary account with summary info."""
+    entity_name = serializers.SerializerMethodField()
+    entity_id = serializers.SerializerMethodField()
+    transaction_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SubsidiaryAccount
+        fields = [
+            'id', 'code', 'name', 'entity_type', 'entity_name', 'entity_id',
+            'currency', 'current_balance', 'is_active',
+            'transaction_count', 'created_at', 'updated_at'
+        ]
+
+    def get_entity_name(self, obj):
+        if obj.tenant:
+            return obj.tenant.name
+        if obj.landlord:
+            return obj.landlord.name
+        return obj.name
+
+    def get_entity_id(self, obj):
+        if obj.tenant_id:
+            return obj.tenant_id
+        if obj.landlord_id:
+            return obj.landlord_id
+        return None
+
+    def get_transaction_count(self, obj):
+        return obj.transactions.count()
+
+
+class SubsidiaryStatementSerializer(serializers.Serializer):
+    """Full statement for a subsidiary account (like a tenant or landlord statement)."""
+    account = SubsidiaryAccountSerializer()
+    period_start = serializers.DateField()
+    period_end = serializers.DateField()
+    opening_balance = serializers.DecimalField(max_digits=18, decimal_places=2)
+    transactions = SubsidiaryTransactionSerializer(many=True)
+    total_debits = serializers.DecimalField(max_digits=18, decimal_places=2)
+    total_credits = serializers.DecimalField(max_digits=18, decimal_places=2)
+    closing_balance = serializers.DecimalField(max_digits=18, decimal_places=2)

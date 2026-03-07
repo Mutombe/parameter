@@ -39,6 +39,7 @@ const ExpenseCategories = lazy(() => import('./pages/Accounting/ExpenseCategorie
 const Reports = lazy(() => import('./pages/Reports/Reports'))
 // AgedAnalysis now lives inside Reports.tsx — old route redirects there
 const BankReconciliation = lazy(() => import('./pages/Accounting/BankReconciliation'))
+const SubsidiaryLedger = lazy(() => import('./pages/Accounting/SubsidiaryLedger'))
 const AuditTrail = lazy(() => import('./pages/Admin/AuditTrail'))
 const TeamManagement = lazy(() => import('./pages/Admin/TeamManagement'))
 const SuperAdminDashboard = lazy(() => import('./pages/Admin/SuperAdminDashboard'))
@@ -200,6 +201,7 @@ export default function App() {
         <Route path="income-types" element={<LazyPage><IncomeTypes /></LazyPage>} />
         <Route path="expense-categories" element={<LazyPage><ExpenseCategories /></LazyPage>} />
         <Route path="bank-reconciliation" element={<LazyPage><BankReconciliation /></LazyPage>} />
+        <Route path="subsidiary-ledger" element={<LazyPage><SubsidiaryLedger /></LazyPage>} />
         <Route path="reports" element={<LazyPage><Reports /></LazyPage>} />
         <Route path="aged-analysis" element={<Navigate to="/dashboard/reports?report=aged-analysis" replace />} />
         <Route path="audit-trail" element={<LazyPage><AuditTrail /></LazyPage>} />

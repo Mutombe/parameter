@@ -169,6 +169,70 @@ class Command(BaseCommand):
                         """)
                         self.stdout.write("  - Added/verified maintenance tables")
 
+                        # Trust Accounting: Create subsidiary ledger tables (accounting.0009)
+                        cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS accounting_subsidiaryaccount (
+                                id bigserial PRIMARY KEY,
+                                code varchar(20) NOT NULL UNIQUE,
+                                name varchar(255) NOT NULL,
+                                entity_type varchar(20) NOT NULL,
+                                currency varchar(3) NOT NULL DEFAULT 'USD',
+                                current_balance numeric(18,2) NOT NULL DEFAULT 0,
+                                is_active boolean NOT NULL DEFAULT true,
+                                created_at timestamp with time zone NOT NULL DEFAULT now(),
+                                updated_at timestamp with time zone NOT NULL DEFAULT now(),
+                                tenant_id bigint UNIQUE REFERENCES masterfile_rentaltenant(id)
+                                    ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+                                landlord_id bigint UNIQUE REFERENCES masterfile_landlord(id)
+                                    ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+                            )
+                        """)
+                        cursor.execute(
+                            "CREATE INDEX IF NOT EXISTS accounting_sub_entity_idx "
+                            "ON accounting_subsidiaryaccount(entity_type, is_active)"
+                        )
+                        cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS accounting_subsidiarytransaction (
+                                id bigserial PRIMARY KEY,
+                                transaction_number integer NOT NULL,
+                                date date NOT NULL,
+                                contra_account varchar(20) NOT NULL,
+                                reference varchar(50) NOT NULL,
+                                description varchar(500) NOT NULL,
+                                debit_amount numeric(18,2) NOT NULL DEFAULT 0,
+                                credit_amount numeric(18,2) NOT NULL DEFAULT 0,
+                                balance numeric(18,2) NOT NULL,
+                                created_at timestamp with time zone NOT NULL DEFAULT now(),
+                                account_id bigint NOT NULL REFERENCES accounting_subsidiaryaccount(id)
+                                    ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+                                journal_entry_id bigint REFERENCES accounting_journalentry(id)
+                                    ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
+                                UNIQUE(account_id, transaction_number)
+                            )
+                        """)
+                        cursor.execute(
+                            "CREATE INDEX IF NOT EXISTS accounting_subtxn_date_idx "
+                            "ON accounting_subsidiarytransaction(account_id, date)"
+                        )
+                        cursor.execute(
+                            "CREATE INDEX IF NOT EXISTS accounting_subtxn_ref_idx "
+                            "ON accounting_subsidiarytransaction(reference)"
+                        )
+
+                        # Trust Accounting: Add new GL accounts if missing
+                        cursor.execute("""
+                            INSERT INTO accounting_chartofaccount
+                                (code, name, account_type, account_subtype, is_system, is_active,
+                                 currency, current_balance, description, created_at, updated_at)
+                            VALUES
+                                ('2300', 'Landlord Trust Payable', 'liability', 'accounts_payable',
+                                 true, true, 'USD', 0, '', now(), now()),
+                                ('2110', 'VAT Payable (Commission)', 'liability', 'vat_payable',
+                                 true, true, 'USD', 0, '', now(), now())
+                            ON CONFLICT (code) DO NOTHING
+                        """)
+                        self.stdout.write("  - Added/verified subsidiary ledger tables and trust GL accounts")
+
                         self.stdout.write(self.style.SUCCESS(f"  Schema {schema} fixed successfully"))
 
             except Exception as e:
