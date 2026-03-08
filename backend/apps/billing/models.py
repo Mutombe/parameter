@@ -460,6 +460,10 @@ class Receipt(SoftDeleteModel):
         VAT = 15% * Net Commission
         Gross = Net + VAT
         """
+        amount = Decimal(str(amount))
+        gross_rate = Decimal(str(gross_rate))
+        vat_rate = Decimal(str(vat_rate))
+
         if gross_rate <= 0:
             return Decimal('0'), Decimal('0'), Decimal('0')
 
