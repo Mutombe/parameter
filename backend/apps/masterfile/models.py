@@ -501,7 +501,8 @@ class LeaseAgreement(SoftDeleteModel):
         RentalTenant, on_delete=models.PROTECT, related_name='leases'
     )
     unit = models.ForeignKey(
-        Unit, on_delete=models.PROTECT, related_name='leases'
+        Unit, on_delete=models.PROTECT, related_name='leases',
+        null=True, blank=True
     )
     # Property reference for easy querying (denormalized from unit.property)
     property = models.ForeignKey(
@@ -644,8 +645,9 @@ class LeaseAgreement(SoftDeleteModel):
     def activate(self):
         """Activate the lease and mark unit as occupied."""
         self.status = self.Status.ACTIVE
-        self.unit.is_occupied = True
-        self.unit.save()
+        if self.unit:
+            self.unit.is_occupied = True
+            self.unit.save()
         self.save()
 
     def terminate(self, reason):
@@ -654,8 +656,9 @@ class LeaseAgreement(SoftDeleteModel):
         self.status = self.Status.TERMINATED
         self.terminated_at = timezone.now()
         self.termination_reason = reason
-        self.unit.is_occupied = False
-        self.unit.save()
+        if self.unit:
+            self.unit.is_occupied = False
+            self.unit.save()
         self.save()
 
 

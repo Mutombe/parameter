@@ -131,6 +131,13 @@ class Command(BaseCommand):
                         )
                         self.stdout.write("  - Added/verified lease escalation fields")
 
+                        # Make unit_id nullable on leaseagreement (for levy block leases)
+                        cursor.execute(
+                            "ALTER TABLE masterfile_leaseagreement "
+                            "ALTER COLUMN unit_id DROP NOT NULL"
+                        )
+                        self.stdout.write("  - Made unit_id nullable on masterfile_leaseagreement")
+
                         # Phase 7: Create maintenance tables (maintenance.0001)
                         cursor.execute("""
                             CREATE TABLE IF NOT EXISTS maintenance_maintenancerequest (
