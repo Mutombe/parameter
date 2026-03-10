@@ -289,23 +289,33 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
         return str(obj.unit) if obj.unit else None
 
     def get_property_name(self, obj):
-        """Return property name or None if no unit."""
-        return obj.unit.property.name if obj.unit else None
+        """Return property name from unit or direct property reference."""
+        if obj.unit:
+            return obj.unit.property.name
+        if obj.property:
+            return obj.property.name
+        return None
 
     def get_property_id(self, obj):
-        """Return property ID or None if no unit."""
-        return obj.unit.property.id if obj.unit else None
+        """Return property ID from unit or direct property reference."""
+        if obj.unit:
+            return obj.unit.property.id
+        if obj.property:
+            return obj.property.id
+        return None
 
     def get_landlord_name(self, obj):
-        """Return landlord name or None if no unit/property."""
-        if obj.unit and obj.unit.property and obj.unit.property.landlord:
-            return obj.unit.property.landlord.name
+        """Return landlord name from unit's property or direct property."""
+        prop = obj.unit.property if obj.unit else obj.property
+        if prop and prop.landlord:
+            return prop.landlord.name
         return None
 
     def get_landlord_id(self, obj):
-        """Return landlord ID or None if no unit/property."""
-        if obj.unit and obj.unit.property and obj.unit.property.landlord:
-            return obj.unit.property.landlord.id
+        """Return landlord ID from unit's property or direct property."""
+        prop = obj.unit.property if obj.unit else obj.property
+        if prop and prop.landlord:
+            return prop.landlord.id
         return None
 
     def validate(self, data):
@@ -321,8 +331,11 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
                     "Either 'unit' or 'property' must be provided."
                 )
 
-            # Auto-generate unit_number if property given without one
-            if prop and not unit_number and not unit:
+            # Levy leases are property-level — no unit needed
+            is_levy = prop and prop.management_type == 'levy'
+
+            # Auto-generate unit_number if property given without one (rental only)
+            if prop and not unit_number and not unit and not is_levy:
                 valid_units = prop.get_valid_units()
                 if valid_units:
                     # Use next available from the property's defined units
@@ -367,12 +380,19 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        """Create lease, auto-creating unit if needed."""
+        """Create lease, auto-creating unit if needed (rental only)."""
         prop = validated_data.pop('property', None)
         unit_number = validated_data.pop('unit_number', None)
 
-        # If property and unit_number provided, find or create the unit
-        if prop and unit_number:
+        is_levy = prop and prop.management_type == 'levy'
+
+        if is_levy:
+            # Levy leases are property-level — no unit, just store the property reference
+            validated_data['lease_type'] = 'levy'
+            validated_data['property'] = prop
+            # Don't create or assign a unit
+        elif prop and unit_number:
+            # Rental leases: find or create the unit
             unit, created = Unit.objects.get_or_create(
                 property=prop,
                 unit_number=unit_number,
@@ -389,15 +409,16 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
                 unit.is_occupied = True
                 unit.save(update_fields=['is_occupied'])
 
-        # Auto-set lease_type from property management_type
+        # Auto-set lease_type from unit's property (if not already set for levy)
         unit = validated_data.get('unit')
-        if unit:
+        if unit and 'lease_type' not in validated_data:
             validated_data['lease_type'] = unit.property.management_type
 
         # Auto-upgrade tenant account_type to 'both' if assigning to a different management_type
         tenant = validated_data.get('tenant')
-        if tenant and unit:
-            mgmt = unit.property.management_type
+        resolved_prop = prop or (unit.property if unit else None)
+        if tenant and resolved_prop:
+            mgmt = resolved_prop.management_type
             if tenant.account_type != 'both' and tenant.account_type != mgmt:
                 tenant.account_type = 'both'
                 tenant.save(update_fields=['account_type'])
