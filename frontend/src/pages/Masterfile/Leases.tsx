@@ -41,8 +41,10 @@ interface Lease {
   lease_number: string
   tenant: number
   tenant_name: string
-  unit: number
-  unit_display: string
+  unit: number | null
+  unit_display: string | null
+  property_name: string | null
+  property_id: number | null
   monthly_rent: number
   deposit_amount: number
   currency: string
@@ -653,7 +655,7 @@ export default function Leases() {
               </th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Lease</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
-              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit</th>
+              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Property / Unit</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Monthly Rent</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Period</th>
               <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
@@ -735,17 +737,31 @@ export default function Leases() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <Home className="w-4 h-4 text-gray-400" />
-                        {lease.unit ? (
+                        <Home className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        {lease.lease_type === 'levy' ? (
+                          lease.property_id ? (
+                            <button
+                              onClick={() => navigate(`/dashboard/properties/${lease.property_id}`)}
+                              onMouseEnter={() => prefetch(`/dashboard/properties/${lease.property_id}`)}
+                              className="text-primary-600 hover:text-primary-700 hover:underline truncate max-w-[180px]"
+                              title={lease.property_name || ''}
+                            >
+                              {lease.property_name}
+                            </button>
+                          ) : (
+                            <span className="text-gray-400 italic text-sm">No property</span>
+                          )
+                        ) : lease.unit ? (
                           <button
                             onClick={() => navigate(`/dashboard/units/${lease.unit}`)}
                             onMouseEnter={() => prefetch(`/dashboard/units/${lease.unit}`)}
-                            className="text-primary-600 hover:text-primary-700 hover:underline"
+                            className="text-primary-600 hover:text-primary-700 hover:underline truncate max-w-[180px]"
+                            title={lease.unit_display || ''}
                           >
                             {lease.unit_display}
                           </button>
                         ) : (
-                          <span className="text-gray-600">{lease.unit_display}</span>
+                          <span className="text-gray-400 italic text-sm">No unit</span>
                         )}
                       </div>
                     </td>
@@ -866,7 +882,7 @@ export default function Leases() {
         }}
         onConfirm={() => selectedLease && activateMutation.mutate(selectedLease.id)}
         title="Activate Lease"
-        description={`Are you sure you want to activate lease "${selectedLease?.lease_number}"? This will mark the unit as occupied and start the billing cycle.`}
+        description={`Are you sure you want to activate lease "${selectedLease?.lease_number}"? ${selectedLease?.lease_type === 'levy' ? 'This will start the levy billing cycle.' : 'This will mark the unit as occupied and start the billing cycle.'}`}
         confirmText="Activate"
         variant="default"
         loading={activateMutation.isPending}
@@ -881,7 +897,7 @@ export default function Leases() {
         }}
         onConfirm={() => selectedLease && terminateMutation.mutate({ id: selectedLease.id, reason: 'Terminated by user' })}
         title="Terminate Lease"
-        description={`Are you sure you want to terminate lease "${selectedLease?.lease_number}"? This will end the tenancy and mark the unit as vacant.`}
+        description={`Are you sure you want to terminate lease "${selectedLease?.lease_number}"? ${selectedLease?.lease_type === 'levy' ? 'This will end the levy agreement.' : 'This will end the tenancy and mark the unit as vacant.'}`}
         confirmText="Terminate"
         variant="danger"
         loading={terminateMutation.isPending}
