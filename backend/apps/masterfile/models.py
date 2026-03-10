@@ -645,7 +645,7 @@ class LeaseAgreement(SoftDeleteModel):
     def activate(self):
         """Activate the lease and mark unit as occupied."""
         self.status = self.Status.ACTIVE
-        if self.unit:
+        if self.unit and self.lease_type != 'levy':
             self.unit.is_occupied = True
             self.unit.save()
         self.save()
@@ -656,7 +656,7 @@ class LeaseAgreement(SoftDeleteModel):
         self.status = self.Status.TERMINATED
         self.terminated_at = timezone.now()
         self.termination_reason = reason
-        if self.unit:
+        if self.unit and self.lease_type != 'levy':
             self.unit.is_occupied = False
             self.unit.save()
         self.save()

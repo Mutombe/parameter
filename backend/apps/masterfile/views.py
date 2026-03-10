@@ -331,8 +331,8 @@ class LeaseAgreementViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewse
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Check if unit is already occupied (skip for levy leases with no unit)
-        if lease.unit and lease.unit.is_occupied:
+        # Check if unit is already occupied (skip for levy leases — they don't occupy units)
+        if lease.lease_type != 'levy' and lease.unit and lease.unit.is_occupied:
             return Response(
                 {'error': 'Unit is already occupied'},
                 status=status.HTTP_400_BAD_REQUEST
