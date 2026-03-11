@@ -1,6 +1,7 @@
 """Serializers for billing module."""
 from rest_framework import serializers
 from .models import Invoice, Receipt, Expense, LatePenaltyConfig, LatePenaltyExclusion
+from apps.accounting.models import IncomeType, BankAccount
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
@@ -55,6 +56,15 @@ class ReceiptSerializer(serializers.ModelSerializer):
 
 class ReceiptCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating receipts."""
+    invoice = serializers.PrimaryKeyRelatedField(
+        queryset=Invoice.objects.all(), required=False, allow_null=True
+    )
+    income_type = serializers.PrimaryKeyRelatedField(
+        queryset=IncomeType.objects.all(), required=False, allow_null=True
+    )
+    bank_account = serializers.PrimaryKeyRelatedField(
+        queryset=BankAccount.objects.all(), required=False, allow_null=True
+    )
 
     class Meta:
         model = Receipt
@@ -64,15 +74,21 @@ class ReceiptCreateSerializer(serializers.ModelSerializer):
             'notes'
         ]
 
+    def to_internal_value(self, data):
+        """Convert empty strings to None for nullable FK fields."""
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+        for field in ('invoice', 'income_type', 'bank_account'):
+            if field in data and data[field] in ('', None, 'null', 'undefined'):
+                data[field] = None
+        return super().to_internal_value(data)
+
     def validate(self, data):
         if not data.get('income_type'):
             # Auto-resolve from invoice type or default to first active income type
-            from apps.accounting.models import IncomeType
             invoice = data.get('invoice')
             if invoice:
-                invoice_type = invoice.invoice_type
                 income_type = IncomeType.objects.filter(
-                    code__iexact=invoice_type, is_active=True
+                    code__iexact=invoice.invoice_type, is_active=True
                 ).first()
                 if income_type:
                     data['income_type'] = income_type
