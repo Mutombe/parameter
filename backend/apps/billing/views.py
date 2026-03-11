@@ -602,7 +602,29 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
         return ReceiptSerializer
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            logger.info(f'[RECEIPT CREATE] Data: {serializer.validated_data}')
+            serializer.save(created_by=self.request.user)
+        except Exception as e:
+            logger.exception(f'[RECEIPT CREATE] Failed: {e}')
+            raise
+
+    def create(self, request, *args, **kwargs):
+        """Override create to return detailed errors."""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f'[RECEIPT CREATE] Raw request data: {request.data}')
+        try:
+            return super().create(request, *args, **kwargs)
+        except Exception as e:
+            logger.exception(f'[RECEIPT CREATE] Unhandled error: {e}')
+            import traceback
+            return Response(
+                {'error': f'{type(e).__name__}: {str(e)}', 'traceback': traceback.format_exc().split('\n')[-5:]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     @action(detail=True, methods=['post'])
     def post_to_ledger(self, request, pk=None):

@@ -161,12 +161,16 @@ export default function Receipts() {
       queryClient.invalidateQueries({ queryKey: ['receipts'] })
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
     },
-    onError: (error, _, context) => {
+    onError: (error: any, newData, context) => {
       // Rollback on error
       if (context?.previousReceipts) {
         queryClient.setQueryData(['receipts', debouncedSearch, currentPage], context.previousReceipts)
       }
-      showToast.error(parseApiError(error, 'Failed to record receipt'))
+      console.error('[RECEIPT CREATE] Error:', error)
+      console.error('[RECEIPT CREATE] Response:', error?.response?.status, error?.response?.data)
+      console.error('[RECEIPT CREATE] Submitted data:', newData)
+      const msg = parseApiError(error, 'Failed to record receipt')
+      showToast.error(msg)
     },
   })
 
