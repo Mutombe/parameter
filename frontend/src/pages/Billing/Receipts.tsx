@@ -150,8 +150,11 @@ export default function Receipts() {
       }
 
       queryClient.setQueryData(['receipts', debouncedSearch, currentPage], (old: any) => {
-        const items = old || []
-        return [optimisticReceipt, ...items]
+        if (!old) return old
+        if (old.results) {
+          return { ...old, results: [optimisticReceipt, ...old.results] }
+        }
+        return Array.isArray(old) ? [optimisticReceipt, ...old] : old
       })
 
       return { previousReceipts }
