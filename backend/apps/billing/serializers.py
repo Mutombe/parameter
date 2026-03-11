@@ -66,7 +66,20 @@ class ReceiptCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         if not data.get('income_type'):
-            raise serializers.ValidationError({'income_type': 'Income type is required.'})
+            # Auto-resolve from invoice type or default to first active income type
+            from apps.accounting.models import IncomeType
+            invoice = data.get('invoice')
+            if invoice:
+                invoice_type = invoice.invoice_type
+                income_type = IncomeType.objects.filter(
+                    code__iexact=invoice_type, is_active=True
+                ).first()
+                if income_type:
+                    data['income_type'] = income_type
+            if not data.get('income_type'):
+                default = IncomeType.objects.filter(is_active=True).order_by('display_order').first()
+                if default:
+                    data['income_type'] = default
         return data
 
 
