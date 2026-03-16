@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   Bell,
   CheckCheck,
@@ -146,11 +146,13 @@ export default function Notifications() {
   const { data, isLoading } = useQuery({
     queryKey: ['notifications', 'list', tab, typeFilter, currentPage],
     queryFn: () => notificationsApi.list(queryParams).then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data: unreadData } = useQuery({
     queryKey: ['notifications', 'unread-count'],
     queryFn: () => notificationsApi.unreadCount().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const markReadMutation = useMutation({

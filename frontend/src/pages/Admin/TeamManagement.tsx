@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Users,
@@ -115,12 +115,14 @@ export default function TeamManagement() {
   const { data: users, isLoading: usersLoading } = useQuery<{ results?: any[] } | any[]>({
     queryKey: ['users'],
     queryFn: () => usersApi.list().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data: invitations, isLoading: invitationsLoading } = useQuery<{ results?: any[] } | any[]>({
     queryKey: ['invitations'],
     queryFn: () => invitationsApi.list().then(r => r.data),
     enabled: canInvite, // Only fetch invitations if user can invite
+    placeholderData: keepPreviousData,
   })
 
   // Get allowed roles for this user
@@ -128,6 +130,7 @@ export default function TeamManagement() {
     queryKey: ['allowed-roles'],
     queryFn: () => invitationsApi.allowedRoles().then(r => r.data),
     enabled: canInvite,
+    placeholderData: keepPreviousData,
   })
 
   // Filter role options based on what user is allowed to invite

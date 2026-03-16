@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   Search as SearchIcon,
@@ -117,6 +117,7 @@ export default function Search() {
     staleTime: 30000,
     gcTime: 5 * 60 * 1000,
     retry: 1, // Only retry once
+    placeholderData: keepPreviousData,
   })
 
   // Fetch data for client-side search fallback when API fails
@@ -127,6 +128,7 @@ export default function Search() {
     queryFn: () => landlordApi.list({ page_size: 100 }).then(r => r.data.results || r.data || []),
     enabled: useClientSearch && (!activeFilter || activeFilter === 'landlord'),
     staleTime: 60000,
+    placeholderData: keepPreviousData,
   })
 
   const { data: properties } = useQuery({
@@ -134,6 +136,7 @@ export default function Search() {
     queryFn: () => propertyApi.list({ page_size: 100 }).then(r => r.data.results || r.data || []),
     enabled: useClientSearch && (!activeFilter || activeFilter === 'property'),
     staleTime: 60000,
+    placeholderData: keepPreviousData,
   })
 
   const { data: tenants } = useQuery({
@@ -141,6 +144,7 @@ export default function Search() {
     queryFn: () => tenantApi.list({ page_size: 100 }).then(r => r.data.results || r.data || []),
     enabled: useClientSearch && (!activeFilter || activeFilter === 'tenant'),
     staleTime: 60000,
+    placeholderData: keepPreviousData,
   })
 
   const { data: invoices } = useQuery({
@@ -148,6 +152,7 @@ export default function Search() {
     queryFn: () => invoiceApi.list({ page_size: 100 }).then(r => r.data.results || r.data || []),
     enabled: useClientSearch && (!activeFilter || activeFilter === 'invoice'),
     staleTime: 60000,
+    placeholderData: keepPreviousData,
   })
 
   // Client-side search results
@@ -251,6 +256,7 @@ export default function Search() {
     queryFn: () => searchApi.suggestions(debouncedQuery).then(r => r.data),
     enabled: debouncedQuery.length >= 1 && debouncedQuery.length < 3 && !useClientSearch,
     staleTime: 10000,
+    placeholderData: keepPreviousData,
   })
 
   // Use API results if available, otherwise use client-side results

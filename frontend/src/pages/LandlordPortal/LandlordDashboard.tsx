@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   Building2,
@@ -88,6 +88,7 @@ function LandlordDashboard() {
       const response = await api.get('/masterfile/landlord-portal/dashboard/')
       return response.data
     },
+    placeholderData: keepPreviousData,
   })
 
   if (isLoading) {

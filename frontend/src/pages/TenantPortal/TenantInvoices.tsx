@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { FileText, Download, Printer } from 'lucide-react'
 import { tenantPortalApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
@@ -17,6 +17,7 @@ export default function TenantInvoices() {
       if (statusFilter) params.status = statusFilter
       return tenantPortalApi.invoices(params).then(r => r.data)
     },
+    placeholderData: keepPreviousData,
   })
 
   const invoices = data?.invoices || data?.results || []

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -124,6 +124,7 @@ export default function MaintenanceDetail() {
     queryFn: () =>
       api.get(`/maintenance/requests/${requestId}/`).then((r) => r.data),
     enabled: !!requestId,
+    placeholderData: keepPreviousData,
   })
 
   // ---- Fetch work orders for this request ----
@@ -134,6 +135,7 @@ export default function MaintenanceDetail() {
         .get('/maintenance/work-orders/', { params: { request: requestId } })
         .then((r) => r.data),
     enabled: !!requestId,
+    placeholderData: keepPreviousData,
   })
 
   const workOrders: WorkOrder[] = workOrdersData?.results || workOrdersData || []

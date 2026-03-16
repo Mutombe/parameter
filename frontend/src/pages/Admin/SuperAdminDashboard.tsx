@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   Building2,
@@ -116,6 +116,7 @@ export default function SuperAdminDashboard() {
     queryFn: () => tenantsApi.dashboard().then(r => r.data),
     enabled: isSuperAdmin,
     retry: false,
+    placeholderData: keepPreviousData,
   })
 
   const stats = dashboardData?.overview
@@ -126,6 +127,7 @@ export default function SuperAdminDashboard() {
     queryKey: ['tenant-invitations'],
     queryFn: () => tenantInvitationsApi.list().then(r => r.data.results || r.data),
     enabled: isSuperAdmin && activeTab === 'invitations',
+    placeholderData: keepPreviousData,
   })
 
   const invitations: Invitation[] = invitationsData || []

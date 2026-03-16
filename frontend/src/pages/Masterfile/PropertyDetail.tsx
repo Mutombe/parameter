@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -171,6 +171,7 @@ export default function PropertyDetail() {
     queryKey: ['property', propertyId],
     queryFn: () => propertyApi.get(propertyId).then((r) => r.data),
     enabled: !!propertyId,
+    placeholderData: keepPreviousData,
   })
 
   // 2. Units list
@@ -178,6 +179,7 @@ export default function PropertyDetail() {
     queryKey: ['property-units', propertyId],
     queryFn: () => unitApi.list({ property: propertyId }).then((r) => r.data),
     enabled: !!propertyId,
+    placeholderData: keepPreviousData,
   })
 
   // 3. Lease charges
@@ -185,6 +187,7 @@ export default function PropertyDetail() {
     queryKey: ['property-lease-charges', propertyId],
     queryFn: () => reportsApi.leaseCharges({ property_id: propertyId }).then((r) => r.data),
     enabled: !!propertyId,
+    placeholderData: keepPreviousData,
   })
 
   // 4. Income vs expenditure
@@ -192,6 +195,7 @@ export default function PropertyDetail() {
     queryKey: ['property-income-exp', propertyId],
     queryFn: () => reportsApi.incomeExpenditure({ property_id: propertyId }).then((r) => r.data),
     enabled: !!propertyId,
+    placeholderData: keepPreviousData,
   })
 
   // 5. Aged analysis
@@ -199,6 +203,7 @@ export default function PropertyDetail() {
     queryKey: ['property-aged', propertyId],
     queryFn: () => reportsApi.agedAnalysis({ property_id: propertyId }).then((r) => r.data),
     enabled: !!propertyId,
+    placeholderData: keepPreviousData,
   })
 
   // 6. Deposit summary
@@ -206,13 +211,14 @@ export default function PropertyDetail() {
     queryKey: ['property-deposits', propertyId],
     queryFn: () => reportsApi.depositSummary({ property_id: propertyId }).then((r) => r.data),
     enabled: !!propertyId,
+    placeholderData: keepPreviousData,
   })
 
   // Landlords list for edit modal dropdown
   const { data: landlords } = useQuery({
     queryKey: ['landlords-select'],
     queryFn: () => landlordApi.list().then(r => r.data.results || r.data),
-    enabled: showEditModal,
+    placeholderData: keepPreviousData,
   })
 
   // Edit mutation

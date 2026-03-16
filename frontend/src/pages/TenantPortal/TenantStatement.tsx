@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { BookOpen, Printer } from 'lucide-react'
 import { tenantPortalApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
@@ -10,6 +10,7 @@ export default function TenantStatement() {
   const { data, isLoading } = useQuery({
     queryKey: ['tenant-statement'],
     queryFn: () => tenantPortalApi.statement().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const entries = data?.entries || data?.results || data || []

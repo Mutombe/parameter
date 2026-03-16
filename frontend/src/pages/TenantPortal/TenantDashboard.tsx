@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import {
   DollarSign,
   Calendar,
@@ -33,11 +33,13 @@ export default function TenantDashboard() {
   const { data: dashboard, isLoading } = useQuery({
     queryKey: ['tenant-dashboard'],
     queryFn: () => tenantPortalApi.dashboard().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data: paymentHistory } = useQuery({
     queryKey: ['tenant-payment-history'],
     queryFn: () => tenantPortalApi.paymentHistory().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const payments = paymentHistory?.monthly_payments || []

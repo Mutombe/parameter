@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Upload,
@@ -109,12 +109,14 @@ export default function DataImport() {
   const { data: templates } = useQuery<{ templates: ImportTemplate[] }>({
     queryKey: ['import-templates'],
     queryFn: () => importsApi.templates().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data: jobs, isLoading: jobsLoading } = useQuery<{ results?: ImportJob[] } | ImportJob[]>({
     queryKey: ['import-jobs'],
     queryFn: () => importsApi.list().then(r => r.data),
     refetchInterval: uploadResult ? 5000 : false, // Poll while processing
+    placeholderData: keepPreviousData,
   })
 
   // Mutations

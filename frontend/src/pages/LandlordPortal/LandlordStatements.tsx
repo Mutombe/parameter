@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Download, FileText, AlertCircle } from 'lucide-react'
 import api from '../../services/api'
@@ -66,6 +66,7 @@ function LandlordStatements() {
       const response = await api.get('/masterfile/landlord-portal/statements/')
       return response.data
     },
+    placeholderData: keepPreviousData,
   })
 
   if (isLoading) {

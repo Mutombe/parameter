@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -166,18 +166,21 @@ export default function UnitDetail() {
     queryKey: ['unit', unitId],
     queryFn: () => unitApi.get(unitId).then((r) => r.data),
     enabled: !!unitId,
+    placeholderData: keepPreviousData,
   })
 
   const { data: leasesData, isLoading: loadingLeases } = useQuery({
     queryKey: ['unit-leases', unitId],
     queryFn: () => leaseApi.list({ unit: unitId }).then((r) => r.data),
     enabled: !!unitId,
+    placeholderData: keepPreviousData,
   })
 
   const { data: invoicesData, isLoading: loadingInvoices } = useQuery({
     queryKey: ['unit-invoices', unitId],
     queryFn: () => invoiceApi.list({ unit: unitId }).then((r) => r.data),
     enabled: !!unitId,
+    placeholderData: keepPreviousData,
   })
 
   const createLeaseMutation = useMutation({

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -164,6 +164,7 @@ export default function TenantDetail() {
     queryKey: ['tenant', tenantId],
     queryFn: () => tenantApi.get(tenantId).then((r) => r.data),
     enabled: !!tenantId,
+    placeholderData: keepPreviousData,
   })
 
   // 2. Detail view (billing_summary, active_leases, recent_invoices, lease_history)
@@ -171,6 +172,7 @@ export default function TenantDetail() {
     queryKey: ['tenant-detail-view', tenantId],
     queryFn: () => tenantApi.detailView(tenantId).then((r) => r.data),
     enabled: !!tenantId,
+    placeholderData: keepPreviousData,
   })
 
   // 3. Ledger
@@ -178,6 +180,7 @@ export default function TenantDetail() {
     queryKey: ['tenant-ledger', tenantId],
     queryFn: () => tenantApi.ledger(tenantId).then((r) => r.data),
     enabled: !!tenantId,
+    placeholderData: keepPreviousData,
   })
 
   // 4. Account statement chart
@@ -185,6 +188,7 @@ export default function TenantDetail() {
     queryKey: ['tenant-account', tenantId],
     queryFn: () => reportsApi.tenantAccount({ tenant_id: tenantId }).then((r) => r.data),
     enabled: !!tenantId,
+    placeholderData: keepPreviousData,
   })
 
   // 5. Aged analysis
@@ -192,6 +196,7 @@ export default function TenantDetail() {
     queryKey: ['tenant-aged', tenantId],
     queryFn: () => reportsApi.agedAnalysis({ tenant_id: tenantId }).then((r) => r.data),
     enabled: !!tenantId,
+    placeholderData: keepPreviousData,
   })
 
   // 6. Deposit summary
@@ -199,14 +204,15 @@ export default function TenantDetail() {
     queryKey: ['tenant-deposit', tenantId],
     queryFn: () => reportsApi.depositSummary({ tenant_id: tenantId }).then((r) => r.data),
     enabled: !!tenantId,
+    placeholderData: keepPreviousData,
   })
 
   // Units for invoice form
   const { data: unitsForForm, isLoading: unitsFormLoading } = useQuery({
     queryKey: ['units-select'],
     queryFn: () => unitApi.list({ page_size: 500 }).then(r => r.data.results || r.data),
-    enabled: showInvoiceModal,
     staleTime: 30000,
+    placeholderData: keepPreviousData,
   })
 
   // Invoices for receipt form (only those with balance)
@@ -216,8 +222,8 @@ export default function TenantDetail() {
       const all = r.data.results || r.data
       return all.filter((inv: any) => ['sent', 'partial', 'overdue'].includes(inv.status) && Number(inv.balance) > 0)
     }),
-    enabled: showReceiptModal,
     staleTime: 30000,
+    placeholderData: keepPreviousData,
   })
 
   const createInvoiceMutation = useMutation({

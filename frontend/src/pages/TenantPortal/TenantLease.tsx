@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import {
   Home,
   DollarSign,
@@ -28,6 +28,7 @@ export default function TenantLease() {
   const { data, isLoading } = useQuery({
     queryKey: ['tenant-lease'],
     queryFn: () => tenantPortalApi.lease().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const lease = data?.active_lease || null

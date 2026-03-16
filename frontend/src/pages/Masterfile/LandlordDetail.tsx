@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -204,6 +204,7 @@ export default function LandlordDetail() {
     queryKey: ['landlord', landlordId],
     queryFn: () => landlordApi.get(landlordId).then((r) => r.data),
     enabled: !!landlordId,
+    placeholderData: keepPreviousData,
   })
 
   // 2. Landlord statement (property/unit counts, occupancy)
@@ -211,6 +212,7 @@ export default function LandlordDetail() {
     queryKey: ['landlord-statement', landlordId],
     queryFn: () => landlordApi.statement(landlordId).then((r) => r.data),
     enabled: !!landlordId,
+    placeholderData: keepPreviousData,
   })
 
   // 3. Landlord financial statement (invoiced, collected, commission, properties table)
@@ -218,6 +220,7 @@ export default function LandlordDetail() {
     queryKey: ['landlord-financial', landlordId],
     queryFn: () => reportsApi.landlordStatement({ landlord_id: landlordId }).then((r) => r.data),
     enabled: !!landlordId,
+    placeholderData: keepPreviousData,
   })
 
   // 4. Commission by property
@@ -225,6 +228,7 @@ export default function LandlordDetail() {
     queryKey: ['landlord-commission', landlordId],
     queryFn: () => reportsApi.commission({ landlord_id: landlordId }).then((r) => r.data),
     enabled: !!landlordId,
+    placeholderData: keepPreviousData,
   })
 
   // 5. Aged analysis
@@ -232,6 +236,7 @@ export default function LandlordDetail() {
     queryKey: ['landlord-aged', landlordId],
     queryFn: () => reportsApi.agedAnalysis({ landlord_id: landlordId }).then((r) => r.data),
     enabled: !!landlordId,
+    placeholderData: keepPreviousData,
   })
 
   // 6. Income vs expenditure
@@ -239,6 +244,7 @@ export default function LandlordDetail() {
     queryKey: ['landlord-income-exp', landlordId],
     queryFn: () => reportsApi.incomeExpenditure({ landlord_id: landlordId }).then((r) => r.data),
     enabled: !!landlordId,
+    placeholderData: keepPreviousData,
   })
 
   // 7. Lease charges
@@ -246,6 +252,7 @@ export default function LandlordDetail() {
     queryKey: ['landlord-lease-charges', landlordId],
     queryFn: () => reportsApi.leaseCharges({ landlord_id: landlordId }).then((r) => r.data),
     enabled: !!landlordId,
+    placeholderData: keepPreviousData,
   })
 
   // Edit mutation

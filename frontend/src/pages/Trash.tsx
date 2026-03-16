@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   Trash2,
   RotateCcw,
@@ -82,6 +82,7 @@ export default function Trash() {
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['trash', typeFilter],
     queryFn: () => trashApi.list(typeFilter ? { type: typeFilter } : undefined).then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const invalidateAll = () => {

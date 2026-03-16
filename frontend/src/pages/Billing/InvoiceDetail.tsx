@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -131,6 +131,7 @@ export default function InvoiceDetail() {
     queryKey: ['invoice', invoiceId],
     queryFn: () => invoiceApi.get(invoiceId).then((r) => r.data),
     enabled: !!invoiceId,
+    placeholderData: keepPreviousData,
   })
 
   // 2. Payment history (receipts for this invoice)
@@ -138,6 +139,7 @@ export default function InvoiceDetail() {
     queryKey: ['invoice-receipts', invoiceId],
     queryFn: () => receiptApi.list({ invoice: invoiceId }).then((r) => r.data),
     enabled: !!invoiceId,
+    placeholderData: keepPreviousData,
   })
 
   const receipts = receiptsData?.results || receiptsData || []

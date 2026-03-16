@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Building2, MapPin, DoorOpen, AlertCircle } from 'lucide-react'
 import api from '../../services/api'
@@ -36,6 +36,7 @@ function LandlordProperties() {
       const response = await api.get('/masterfile/landlord-portal/properties/')
       return response.data
     },
+    placeholderData: keepPreviousData,
   })
 
   if (isLoading) {

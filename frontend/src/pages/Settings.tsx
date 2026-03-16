@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   Settings as SettingsIcon,
   Building2,
@@ -97,6 +97,7 @@ export default function Settings() {
   const { data: serverSettings, isLoading: settingsLoading } = useQuery({
     queryKey: ['company-settings'],
     queryFn: () => companySettingsApi.get().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const [settings, setSettings] = useState({
@@ -173,6 +174,7 @@ export default function Settings() {
   const { data: notifPrefs, isLoading: prefsLoading } = useQuery({
     queryKey: ['notification-preferences'],
     queryFn: () => notificationsApi.getPreferences().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const updatePrefMutation = useMutation({

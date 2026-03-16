@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { Search, Shield, Clock, ChevronLeft, ChevronRight, Calendar, Monitor, Globe } from 'lucide-react'
 import { auditApi } from '../../services/api'
 import { Select, TimeAgo } from '../../components/ui'
@@ -25,6 +25,7 @@ export default function AuditTrail() {
       if (endDate) params.end_date = endDate
       return auditApi.list(params).then(r => r.data)
     },
+    placeholderData: keepPreviousData,
   })
 
   const auditLogs = data?.results || data || []

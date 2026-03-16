@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   Plus,
@@ -143,17 +143,20 @@ export default function BankReconciliation() {
     queryKey: ['bank-reconciliation-summary'],
     queryFn: () => bankReconciliationApi.summary().then(r => r.data),
     enabled: viewMode === 'list',
+    placeholderData: keepPreviousData,
   })
 
   const { data: reconciliationsData, isLoading: listLoading } = useQuery({
     queryKey: ['bank-reconciliations'],
     queryFn: () => bankReconciliationApi.list().then(r => r.data.results || r.data),
     enabled: viewMode === 'list',
+    placeholderData: keepPreviousData,
   })
 
   const { data: bankAccountsData } = useQuery({
     queryKey: ['bank-accounts'],
     queryFn: () => bankAccountApi.list().then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const summaries: ReconciliationSummary[] = Array.isArray(summaryData) ? summaryData : []

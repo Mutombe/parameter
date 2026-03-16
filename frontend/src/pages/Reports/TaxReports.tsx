@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   BarChart,
@@ -136,6 +136,7 @@ export default function TaxReports() {
         })
         .then((r) => r.data),
     enabled: activeTab === 'vat',
+    placeholderData: keepPreviousData,
   })
 
   // --- Withholding Tax Query ---
@@ -149,6 +150,7 @@ export default function TaxReports() {
           })
           .then((r) => r.data),
       enabled: activeTab === 'withholding',
+      placeholderData: keepPreviousData,
     })
 
   // --- Annual Summary Query ---
@@ -162,6 +164,7 @@ export default function TaxReports() {
           })
           .then((r) => r.data),
       enabled: activeTab === 'annual',
+      placeholderData: keepPreviousData,
     })
 
   // --- CSV Export Handlers ---

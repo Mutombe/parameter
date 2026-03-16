@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import {
   BookOpen,
   Search,
@@ -98,6 +98,7 @@ export default function SubsidiaryLedger() {
       page,
       page_size: PAGE_SIZE,
     }),
+    placeholderData: keepPreviousData,
   })
 
   const accounts: SubsidiaryAccount[] = accountsData?.data?.results || accountsData?.data || []
@@ -111,6 +112,7 @@ export default function SubsidiaryLedger() {
       period_end: periodEnd,
     }),
     enabled: !!selectedAccount,
+    placeholderData: keepPreviousData,
   })
 
   const statement: StatementData | null = statementData?.data || null

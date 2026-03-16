@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -167,6 +167,7 @@ export default function LeaseDetail() {
     queryKey: ['lease', leaseId],
     queryFn: () => leaseApi.get(leaseId).then((r) => r.data),
     enabled: !!leaseId,
+    placeholderData: keepPreviousData,
   })
 
   // 2. Related invoices
@@ -174,6 +175,7 @@ export default function LeaseDetail() {
     queryKey: ['lease-invoices', leaseId],
     queryFn: () => invoiceApi.list({ lease: leaseId }).then((r) => r.data),
     enabled: !!leaseId,
+    placeholderData: keepPreviousData,
   })
 
   const activateMutation = useMutation({
@@ -213,8 +215,9 @@ export default function LeaseDetail() {
       const all = r.data.results || r.data
       return all.filter((inv: any) => ['sent', 'partial', 'overdue'].includes(inv.status) && Number(inv.balance) > 0)
     }),
-    enabled: showReceiptModal && !!lease?.tenant,
+    enabled: !!lease?.tenant,
     staleTime: 30000,
+    placeholderData: keepPreviousData,
   })
 
   const createReceiptMutation = useMutation({

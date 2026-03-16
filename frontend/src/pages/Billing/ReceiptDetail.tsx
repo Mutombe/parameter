@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -95,6 +95,7 @@ export default function ReceiptDetail() {
     queryKey: ['receipt', receiptId],
     queryFn: () => receiptApi.get(receiptId).then((r) => r.data),
     enabled: !!receiptId,
+    placeholderData: keepPreviousData,
   })
 
   const handlePrint = () => {

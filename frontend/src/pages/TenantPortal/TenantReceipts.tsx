@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { Receipt, Download, Printer } from 'lucide-react'
 import { tenantPortalApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
@@ -10,6 +10,7 @@ export default function TenantReceipts() {
   const { data, isLoading } = useQuery({
     queryKey: ['tenant-receipts'],
     queryFn: () => tenantPortalApi.receipts().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const receipts = data?.receipts || data?.results || []

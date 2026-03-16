@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -113,6 +113,7 @@ export default function ExpenseDetail() {
     queryKey: ['expense', expenseId],
     queryFn: () => expenseApi.get(expenseId).then((r) => r.data),
     enabled: !!expenseId,
+    placeholderData: keepPreviousData,
   })
 
   const approveMutation = useMutation({

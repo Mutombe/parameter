@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   Clock,
@@ -80,16 +80,19 @@ export default function AgedAnalysis() {
       ...(propertyFilter ? { property_id: Number(propertyFilter) } : {}),
       ...(landlordFilter ? { landlord_id: Number(landlordFilter) } : {}),
     }).then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data: propertiesData } = useQuery({
     queryKey: ['properties-list'],
     queryFn: () => propertyApi.list().then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data: landlordsData } = useQuery({
     queryKey: ['landlords-list'],
     queryFn: () => landlordApi.list().then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const summary: AgedAnalysisSummary = analysisData?.summary || {

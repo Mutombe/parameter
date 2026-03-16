@@ -101,6 +101,26 @@ const detailApiMap: Record<string, { api: { get: (id: number) => Promise<any> };
   expenses: { api: expenseApi, keyPrefix: 'expense' },
 }
 
+// Related queries to prefetch alongside each entity's detail page.
+// These are the most important sub-queries that detail pages fire on mount.
+const detailRelatedQueries: Record<string, (id: number) => { queryKey: unknown[]; queryFn: () => Promise<unknown> }[]> = {
+  properties: (id) => [
+    { queryKey: ['property-units', id], queryFn: () => unitApi.list({ property: id }).then(r => r.data) },
+    { queryKey: ['property-lease-charges', id], queryFn: () => reportsApi.leaseCharges({ property_id: id }).then(r => r.data) },
+  ],
+  tenants: (id) => [
+    { queryKey: ['tenant-detail-view', id], queryFn: () => tenantApi.detailView(id).then(r => r.data) },
+    { queryKey: ['tenant-ledger', id], queryFn: () => tenantApi.ledger(id).then(r => r.data) },
+  ],
+  landlords: (id) => [
+    { queryKey: ['landlord-statement', id], queryFn: () => landlordApi.statement(id).then(r => r.data) },
+    { queryKey: ['landlord-financial', id], queryFn: () => reportsApi.landlordStatement({ landlord_id: id }).then(r => r.data) },
+  ],
+  leases: (id) => [
+    { queryKey: ['lease-invoices', id], queryFn: () => invoiceApi.list({ lease: id }).then(r => r.data) },
+  ],
+}
+
 export function usePrefetch() {
   const queryClient = useQueryClient()
 
@@ -129,6 +149,14 @@ export function usePrefetch() {
             queryFn: () => config.api.get(numericId).then((r: any) => r.data),
             staleTime: PREFETCH_STALE_TIME,
           })
+
+          // Also prefetch the most important related queries for this detail page
+          const relatedFn = detailRelatedQueries[entity]
+          if (relatedFn) {
+            for (const { queryKey, queryFn } of relatedFn(numericId)) {
+              queryClient.prefetchQuery({ queryKey, queryFn, staleTime: PREFETCH_STALE_TIME })
+            }
+          }
         }
       }
     },

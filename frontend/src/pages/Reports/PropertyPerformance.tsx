@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   BarChart,
@@ -76,6 +76,7 @@ export default function PropertyPerformance() {
       api
         .get('/masterfile/properties/')
         .then((r) => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const properties: Property[] = Array.isArray(propertiesData)
@@ -96,6 +97,7 @@ export default function PropertyPerformance() {
         })
         .then((r) => r.data),
     enabled: !!propertyId,
+    placeholderData: keepPreviousData,
   })
 
   const data = performanceData || {
