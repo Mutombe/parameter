@@ -209,15 +209,17 @@ def get_tenant_detail(tenant):
     total_invoiced = billing['total_invoiced'] or 0
     total_paid = receipt_agg['total_paid'] or 0
 
-    recent_invoices = tenant.invoices.order_by('-date')[:5]
-    recent_receipts = tenant.receipts.order_by('-date')[:5]
+    recent_invoices = tenant.invoices.order_by('-date')
+    recent_receipts = tenant.receipts.order_by('-date')
 
     return {
         'active_leases': [{
             'id': l.id,
             'lease_number': l.lease_number,
             'unit': str(l.unit),
+            'unit_id': l.unit_id,
             'property': l.unit.property.name if l.unit and l.unit.property else '-',
+            'property_id': l.property_id or (l.unit.property_id if l.unit and l.unit.property else None),
             'monthly_rent': str(l.monthly_rent),
             'currency': l.currency,
             'start_date': l.start_date,
@@ -228,8 +230,11 @@ def get_tenant_detail(tenant):
             'id': l.id,
             'lease_number': l.lease_number,
             'unit': str(l.unit),
+            'unit_id': l.unit_id,
             'property': l.unit.property.name if l.unit and l.unit.property else '-',
+            'property_id': l.property_id or (l.unit.property_id if l.unit and l.unit.property else None),
             'monthly_rent': str(l.monthly_rent),
+            'currency': l.currency,
             'start_date': l.start_date,
             'end_date': l.end_date,
             'status': l.status,

@@ -542,7 +542,9 @@ export default function Units() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: index * 0.02 }}
-                    className={cn("hover:bg-gray-50 transition-colors group", selection.isSelected(unit.id) ? 'bg-primary-50' : '')}
+                    onClick={() => navigate(`/dashboard/units/${unit.id}`)}
+                    onMouseEnter={() => prefetch(`/dashboard/units/${unit.id}`)}
+                    className={cn("hover:bg-gray-50 transition-colors group cursor-pointer", selection.isSelected(unit.id) ? 'bg-primary-50' : '')}
                   >
                     <td className="px-4 py-4 w-10" onClick={(e) => e.stopPropagation()}>
                       <SelectionCheckbox
@@ -563,7 +565,7 @@ export default function Units() {
                         <PiBuildingApartmentLight className="w-4 h-4 text-gray-400" />
                         {unit.property ? (
                           <button
-                            onClick={() => navigate(`/dashboard/properties/${unit.property}`)}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/properties/${unit.property}`) }}
                             onMouseEnter={() => prefetch(`/dashboard/properties/${unit.property}`)}
                             className="text-primary-600 hover:text-primary-700 hover:underline"
                           >
@@ -612,7 +614,7 @@ export default function Units() {
                         <div className="flex items-center gap-2">
                           <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
                           <button
-                            onClick={() => navigate(`/dashboard/tenants/${unit.current_tenant!.id}`)}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${unit.current_tenant!.id}`) }}
                             onMouseEnter={() => prefetch(`/dashboard/tenants/${unit.current_tenant!.id}`)}
                             className="text-primary-600 hover:text-primary-700 hover:underline"
                           >
@@ -623,7 +625,7 @@ export default function Units() {
                         <span className="text-gray-400">-</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => navigate(`/dashboard/units/${unit.id}`)}

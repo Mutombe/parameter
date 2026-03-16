@@ -724,9 +724,12 @@ export default function Invoices() {
                           initial={isOptimistic ? { opacity: 0.5, backgroundColor: 'rgb(239 246 255)' } : { opacity: 0 }}
                           animate={{ opacity: 1, backgroundColor: 'transparent' }}
                           transition={{ delay: isOptimistic ? 0 : index * 0.02, duration: 0.3 }}
+                          onClick={() => !isOptimistic && navigate(`/dashboard/invoices/${invoice.id}`)}
+                          onMouseEnter={() => !isOptimistic && prefetch(`/dashboard/invoices/${invoice.id}`)}
                           className={cn(
                             'transition-colors',
-                            isOptimistic ? 'bg-blue-50' : selection.isSelected(invoice.id) ? 'bg-primary-50' : 'hover:bg-gray-50'
+                            isOptimistic ? 'bg-blue-50' : selection.isSelected(invoice.id) ? 'bg-primary-50' : 'hover:bg-gray-50',
+                            !isOptimistic && 'cursor-pointer'
                           )}
                         >
                           <td className="px-4 py-4 w-10" onClick={(e) => e.stopPropagation()}>
@@ -818,7 +821,7 @@ export default function Invoices() {
                               </span>
                             </Tooltip>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                             {isOptimistic ? (
                               <span className="text-sm text-blue-600">Processing...</span>
                             ) : (

@@ -10,9 +10,12 @@ import {
   Home,
   DollarSign,
   Wallet,
-  Users,
   Shield,
   Plus,
+  FileText,
+  Receipt,
+  Wrench,
+  Clock,
 } from 'lucide-react'
 import {
   BarChart,
@@ -26,8 +29,8 @@ import {
   Pie,
   Cell,
 } from 'recharts'
-import { propertyApi, landlordApi, unitApi, reportsApi, leaseApi } from '../../services/api'
-import { formatCurrency, formatPercent, cn } from '../../lib/utils'
+import api, { propertyApi, landlordApi, unitApi, reportsApi, leaseApi, invoiceApi, receiptApi } from '../../services/api'
+import { formatCurrency, formatPercent, formatDate, cn } from '../../lib/utils'
 import { Modal, Button, Input, Select, TableFilter } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
@@ -214,6 +217,38 @@ export default function PropertyDetail() {
     placeholderData: keepPreviousData,
   })
 
+  // 7. Leases for this property
+  const { data: leasesData, isLoading: loadingLeases } = useQuery({
+    queryKey: ['property-leases', propertyId],
+    queryFn: () => leaseApi.list({ property: propertyId, page_size: 100 }).then((r) => r.data),
+    enabled: !!propertyId,
+    placeholderData: keepPreviousData,
+  })
+
+  // 8. Recent invoices for this property
+  const { data: invoicesData, isLoading: loadingInvoices } = useQuery({
+    queryKey: ['property-invoices', propertyId],
+    queryFn: () => invoiceApi.list({ property: propertyId, page_size: 10, ordering: '-created_at' }).then((r) => r.data),
+    enabled: !!propertyId,
+    placeholderData: keepPreviousData,
+  })
+
+  // 9. Recent receipts for this property
+  const { data: receiptsData, isLoading: loadingReceipts } = useQuery({
+    queryKey: ['property-receipts', propertyId],
+    queryFn: () => receiptApi.list({ property: propertyId, page_size: 10, ordering: '-created_at' }).then((r) => r.data),
+    enabled: !!propertyId,
+    placeholderData: keepPreviousData,
+  })
+
+  // 10. Maintenance requests for this property
+  const { data: maintenanceData, isLoading: loadingMaintenance } = useQuery({
+    queryKey: ['property-maintenance', propertyId],
+    queryFn: () => api.get('/maintenance/requests/', { params: { property: propertyId, page_size: 10 } }).then((r) => r.data),
+    enabled: !!propertyId,
+    placeholderData: keepPreviousData,
+  })
+
   // Landlords list for edit modal dropdown
   const { data: landlords } = useQuery({
     queryKey: ['landlords-select'],
@@ -391,6 +426,26 @@ export default function PropertyDetail() {
   // Lease charges table
   const leaseChargesTable = leaseChargesData?.leases || leaseChargesData?.charges || leaseChargesData?.items || (Array.isArray(leaseChargesData) ? leaseChargesData : [])
 
+  // Leases
+  const leases = leasesData?.results || leasesData || []
+
+  // Invoices
+  const invoices = invoicesData?.results || invoicesData || []
+
+  // Receipts
+  const receipts = receiptsData?.results || receiptsData || []
+
+  // Maintenance
+  const maintenanceRequests = maintenanceData?.results || maintenanceData || []
+
+  // Aged analysis detail table
+  const agedDetailRows = (() => {
+    if (!agedData) return []
+    const tenants = agedData.tenants || agedData.details || agedData.items
+    if (Array.isArray(tenants)) return tenants
+    return []
+  })()
+
   // --- Units table filter state ---
   const [unitsSearch, setUnitsSearch] = useState('')
   const [unitsStatus, setUnitsStatus] = useState('')
@@ -438,6 +493,30 @@ export default function PropertyDetail() {
   const { paginatedData: paginatedCharges, currentPage: chargesPage, totalPages: chargesTotalPages, setCurrentPage: setChargesPage, totalItems: chargesTotal, startIndex: chargesStart, endIndex: chargesEnd } = usePagination(filteredLeaseCharges, { pageSize: 10 })
 
   useEffect(() => { setChargesPage(1) }, [chargesSearch])
+
+  // --- Leases table filter state ---
+  const [leasesSearch, setLeasesSearch] = useState('')
+  const [leasesStatus, setLeasesStatus] = useState('')
+
+  const filteredLeases = useMemo(() => {
+    let result = leases || []
+    if (leasesSearch) {
+      const q = leasesSearch.toLowerCase()
+      result = result.filter((l: any) =>
+        (l.tenant_name || l.tenant?.name || '').toLowerCase().includes(q) ||
+        (l.unit_name || l.unit?.unit_number || '').toLowerCase().includes(q) ||
+        (l.lease_number || '').toLowerCase().includes(q)
+      )
+    }
+    if (leasesStatus) {
+      result = result.filter((l: any) => l.status === leasesStatus)
+    }
+    return result
+  }, [leases, leasesSearch, leasesStatus])
+
+  const { paginatedData: paginatedLeases, currentPage: leasesPage, totalPages: leasesTotalPages, setCurrentPage: setLeasesPage, totalItems: leasesTotal, startIndex: leasesStart, endIndex: leasesEnd } = usePagination(filteredLeases, { pageSize: 10 })
+
+  useEffect(() => { setLeasesPage(1) }, [leasesSearch, leasesStatus])
 
   return (
     <div className="space-y-6">
@@ -709,6 +788,164 @@ export default function PropertyDetail() {
                 <button
                   onClick={() => setUnitsPage(Math.min(unitsTotalPages, unitsPage + 1))}
                   disabled={unitsPage === unitsTotalPages}
+                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </motion.div>
+
+      {/* Leases Table */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.47 }}
+        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+      >
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Leases</h3>
+            <p className="text-sm text-gray-500">All leases for this property</p>
+          </div>
+          <button
+            onClick={() => setShowLeaseModal(true)}
+            className="flex items-center gap-1 text-primary-600 hover:text-primary-700 text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            Add Lease
+          </button>
+        </div>
+        {!loadingLeases && leases.length > 0 && (
+          <TableFilter
+            searchPlaceholder="Search by tenant, unit or lease number..."
+            searchValue={leasesSearch}
+            onSearchChange={setLeasesSearch}
+            showStatusFilter
+            statusOptions={[
+              { value: 'active', label: 'Active' },
+              { value: 'draft', label: 'Draft' },
+              { value: 'expired', label: 'Expired' },
+              { value: 'terminated', label: 'Terminated' },
+            ]}
+            statusValue={leasesStatus}
+            onStatusChange={setLeasesStatus}
+            resultCount={filteredLeases.length}
+          />
+        )}
+        <div className="overflow-x-auto">
+          {loadingLeases ? (
+            <div className="p-6"><TableSkeleton /></div>
+          ) : leases.length === 0 ? (
+            <div className="p-12 text-center text-sm text-gray-400">No leases found for this property</div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Lease #</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Tenant</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Unit</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Rent</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Start</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">End</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {paginatedLeases.map((lease: any) => {
+                  const statusColors: Record<string, string> = {
+                    active: 'bg-emerald-50 text-emerald-700',
+                    draft: 'bg-gray-100 text-gray-600',
+                    expired: 'bg-amber-50 text-amber-700',
+                    terminated: 'bg-red-50 text-red-700',
+                  }
+                  return (
+                    <tr key={lease.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 text-sm font-medium">
+                        <button
+                          onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
+                          onMouseEnter={() => prefetch(`/dashboard/leases/${lease.id}`)}
+                          className="text-primary-600 hover:text-primary-700 hover:underline"
+                        >
+                          {lease.lease_number || `#${lease.id}`}
+                        </button>
+                      </td>
+                      <td className="px-6 py-4 text-sm">
+                        {(lease.tenant_id || lease.tenant?.id) ? (
+                          <button
+                            onClick={() => navigate(`/dashboard/tenants/${lease.tenant_id || lease.tenant?.id}`)}
+                            onMouseEnter={() => prefetch(`/dashboard/tenants/${lease.tenant_id || lease.tenant?.id}`)}
+                            className="text-primary-600 hover:text-primary-700 hover:underline"
+                          >
+                            {lease.tenant_name || lease.tenant?.name || '-'}
+                          </button>
+                        ) : (
+                          <span className="text-gray-600">{lease.tenant_name || lease.tenant?.name || '-'}</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm">
+                        {(lease.unit_id || lease.unit?.id) ? (
+                          <button
+                            onClick={() => navigate(`/dashboard/units/${lease.unit_id || lease.unit?.id}`)}
+                            onMouseEnter={() => prefetch(`/dashboard/units/${lease.unit_id || lease.unit?.id}`)}
+                            className="text-primary-600 hover:text-primary-700 hover:underline"
+                          >
+                            {lease.unit_name || lease.unit?.unit_number || '-'}
+                          </button>
+                        ) : (
+                          <span className="text-gray-600">{lease.unit_name || lease.unit?.unit_number || '-'}</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(lease.rent_amount || lease.monthly_rent || 0)}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{lease.start_date ? formatDate(lease.start_date) : '-'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{lease.end_date ? formatDate(lease.end_date) : '-'}</td>
+                      <td className="px-6 py-4">
+                        <span className={cn(
+                          'inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize',
+                          statusColors[lease.status] || 'bg-gray-100 text-gray-600'
+                        )}>
+                          {lease.status || '-'}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+          {leasesTotalPages > 1 && (
+            <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+              <span className="text-sm text-gray-500">
+                Showing {leasesStart}-{leasesEnd} of {leasesTotal}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setLeasesPage(Math.max(1, leasesPage - 1))}
+                  disabled={leasesPage === 1}
+                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                {Array.from({ length: Math.min(leasesTotalPages, 5) }, (_, i) => {
+                  const page = leasesTotalPages <= 5 ? i + 1 :
+                    leasesPage <= 3 ? i + 1 :
+                    leasesPage >= leasesTotalPages - 2 ? leasesTotalPages - 4 + i :
+                    leasesPage - 2 + i
+                  return (
+                    <button
+                      key={page}
+                      onClick={() => setLeasesPage(page)}
+                      className={`px-3 py-1 text-sm rounded-lg ${page === leasesPage ? 'bg-primary-600 text-white' : 'border border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      {page}
+                    </button>
+                  )
+                })}
+                <button
+                  onClick={() => setLeasesPage(Math.min(leasesTotalPages, leasesPage + 1))}
+                  disabled={leasesPage === leasesTotalPages}
                   className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next
@@ -1005,6 +1242,297 @@ export default function PropertyDetail() {
           </div>
         </motion.div>
       </div>
+
+      {/* Recent Invoices & Recent Receipts - side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent Invoices */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.55 }}
+          className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+        >
+          <div className="p-6 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-blue-500" />
+              <h3 className="text-lg font-semibold text-gray-900">Recent Invoices</h3>
+            </div>
+            <p className="text-sm text-gray-500 mt-1">Latest invoices for this property</p>
+          </div>
+          <div className="overflow-x-auto">
+            {loadingInvoices ? (
+              <div className="p-6"><TableSkeleton rows={4} /></div>
+            ) : invoices.length === 0 ? (
+              <div className="p-12 text-center text-sm text-gray-400">No invoices found</div>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Invoice #</th>
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Tenant</th>
+                    <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {invoices.slice(0, 8).map((inv: any) => {
+                    const invStatusColors: Record<string, string> = {
+                      paid: 'bg-emerald-50 text-emerald-700',
+                      posted: 'bg-blue-50 text-blue-700',
+                      draft: 'bg-gray-100 text-gray-600',
+                      overdue: 'bg-red-50 text-red-700',
+                      partially_paid: 'bg-amber-50 text-amber-700',
+                    }
+                    return (
+                      <tr key={inv.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-3 text-sm font-medium">
+                          <button
+                            onClick={() => navigate(`/dashboard/invoices/${inv.id}`)}
+                            onMouseEnter={() => prefetch(`/dashboard/invoices/${inv.id}`)}
+                            className="text-primary-600 hover:text-primary-700 hover:underline"
+                          >
+                            {inv.invoice_number || `#${inv.id}`}
+                          </button>
+                        </td>
+                        <td className="px-6 py-3 text-sm">
+                          {(inv.tenant_id || inv.tenant?.id) ? (
+                            <button
+                              onClick={() => navigate(`/dashboard/tenants/${inv.tenant_id || inv.tenant?.id}`)}
+                              onMouseEnter={() => prefetch(`/dashboard/tenants/${inv.tenant_id || inv.tenant?.id}`)}
+                              className="text-primary-600 hover:text-primary-700 hover:underline"
+                            >
+                              {inv.tenant_name || inv.tenant?.name || '-'}
+                            </button>
+                          ) : (
+                            <span className="text-gray-600">{inv.tenant_name || inv.tenant?.name || '-'}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-3 text-sm text-gray-600 text-right">{formatCurrency(inv.total_amount || inv.amount || 0)}</td>
+                        <td className="px-6 py-3">
+                          <span className={cn(
+                            'inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize',
+                            invStatusColors[inv.status] || 'bg-gray-100 text-gray-600'
+                          )}>
+                            {(inv.status || '-').replace(/_/g, ' ')}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Recent Receipts */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+          className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+        >
+          <div className="p-6 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <Receipt className="w-5 h-5 text-emerald-500" />
+              <h3 className="text-lg font-semibold text-gray-900">Recent Receipts</h3>
+            </div>
+            <p className="text-sm text-gray-500 mt-1">Latest payments received</p>
+          </div>
+          <div className="overflow-x-auto">
+            {loadingReceipts ? (
+              <div className="p-6"><TableSkeleton rows={4} /></div>
+            ) : receipts.length === 0 ? (
+              <div className="p-12 text-center text-sm text-gray-400">No receipts found</div>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Receipt #</th>
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Tenant</th>
+                    <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {receipts.slice(0, 8).map((rec: any) => (
+                    <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-3 text-sm font-medium text-gray-900">
+                        {rec.receipt_number || `#${rec.id}`}
+                      </td>
+                      <td className="px-6 py-3 text-sm">
+                        {(rec.tenant_id || rec.tenant?.id) ? (
+                          <button
+                            onClick={() => navigate(`/dashboard/tenants/${rec.tenant_id || rec.tenant?.id}`)}
+                            onMouseEnter={() => prefetch(`/dashboard/tenants/${rec.tenant_id || rec.tenant?.id}`)}
+                            className="text-primary-600 hover:text-primary-700 hover:underline"
+                          >
+                            {rec.tenant_name || rec.tenant?.name || '-'}
+                          </button>
+                        ) : (
+                          <span className="text-gray-600">{rec.tenant_name || rec.tenant?.name || '-'}</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-3 text-sm text-gray-600 text-right">{formatCurrency(rec.amount || 0)}</td>
+                      <td className="px-6 py-3 text-sm text-gray-600">{rec.payment_date || rec.date ? formatDate(rec.payment_date || rec.date) : rec.created_at ? formatDate(rec.created_at) : '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Aged Analysis Detail Table */}
+      {agedDetailRows.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.65 }}
+          className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+        >
+          <div className="p-6 border-b border-gray-100">
+            <div className="flex items-center gap-2">
+              <Clock className="w-5 h-5 text-orange-500" />
+              <h3 className="text-lg font-semibold text-gray-900">Aged Analysis by Tenant</h3>
+            </div>
+            <p className="text-sm text-gray-500 mt-1">Outstanding balances broken down by aging period</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Tenant</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Current</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">1-30 Days</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">31-60 Days</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">61-90 Days</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">90+ Days</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {agedDetailRows.map((row: any, idx: number) => (
+                  <tr key={row.tenant_id || idx} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 text-sm font-medium">
+                      {row.tenant_id ? (
+                        <button
+                          onClick={() => navigate(`/dashboard/tenants/${row.tenant_id}`)}
+                          onMouseEnter={() => prefetch(`/dashboard/tenants/${row.tenant_id}`)}
+                          className="text-primary-600 hover:text-primary-700 hover:underline"
+                        >
+                          {row.tenant_name || row.tenant || '-'}
+                        </button>
+                      ) : (
+                        <span className="text-gray-900">{row.tenant_name || row.tenant || row.name || '-'}</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(row.current || 0)}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(row['30_days'] || row.days_30 || 0)}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(row['60_days'] || row.days_60 || 0)}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(row['90_days'] || row.days_90 || 0)}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(row['120_plus'] || row.days_120_plus || row.over_90 || 0)}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-right">
+                      <span className={(row.total || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>
+                        {formatCurrency(row.total || row.total_outstanding || row.balance || 0)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Maintenance Requests */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.7 }}
+        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+      >
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Wrench className="w-5 h-5 text-gray-500" />
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Maintenance Requests</h3>
+              <p className="text-sm text-gray-500">Recent maintenance activity for this property</p>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate('/dashboard/maintenance')}
+            className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+          >
+            View All
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          {loadingMaintenance ? (
+            <div className="p-6"><TableSkeleton rows={4} /></div>
+          ) : maintenanceRequests.length === 0 ? (
+            <div className="p-12 text-center text-sm text-gray-400">No maintenance requests found</div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Title</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Unit</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Priority</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {maintenanceRequests.slice(0, 10).map((req: any) => {
+                  const priorityColors: Record<string, string> = {
+                    low: 'bg-gray-100 text-gray-600',
+                    medium: 'bg-blue-50 text-blue-700',
+                    high: 'bg-amber-50 text-amber-700',
+                    emergency: 'bg-red-50 text-red-700',
+                  }
+                  const mStatusColors: Record<string, string> = {
+                    open: 'bg-amber-50 text-amber-700',
+                    in_progress: 'bg-blue-50 text-blue-700',
+                    completed: 'bg-emerald-50 text-emerald-700',
+                  }
+                  return (
+                    <tr key={req.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-3 text-sm font-medium text-gray-900">
+                        <button
+                          onClick={() => navigate(`/dashboard/maintenance/${req.id}`)}
+                          className="text-primary-600 hover:text-primary-700 hover:underline text-left"
+                        >
+                          {req.title}
+                        </button>
+                      </td>
+                      <td className="px-6 py-3 text-sm text-gray-600">{req.unit_name || '-'}</td>
+                      <td className="px-6 py-3">
+                        <span className={cn(
+                          'inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize',
+                          priorityColors[req.priority] || 'bg-gray-100 text-gray-600'
+                        )}>
+                          {req.priority || '-'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3">
+                        <span className={cn(
+                          'inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize',
+                          mStatusColors[req.status] || 'bg-gray-100 text-gray-600'
+                        )}>
+                          {(req.status || '-').replace(/_/g, ' ')}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3 text-sm text-gray-600">{req.created_at ? formatDate(req.created_at) : '-'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </motion.div>
 
       {/* Edit Property Modal */}
       <Modal

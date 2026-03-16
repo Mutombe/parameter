@@ -22,6 +22,11 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Plus,
+  Clock,
+  Wrench,
+  ScrollText,
+  BarChart3,
+  TrendingUp,
 } from 'lucide-react'
 import {
   BarChart,
@@ -36,11 +41,11 @@ import {
   Cell,
   Legend,
 } from 'recharts'
-import { landlordApi, reportsApi, propertyApi, leaseApi } from '../../services/api'
+import { landlordApi, reportsApi, propertyApi, leaseApi, tenantApi, invoiceApi, receiptApi } from '../../services/api'
 import PropertyForm from '../../components/forms/PropertyForm'
 import LeaseForm from '../../components/forms/LeaseForm'
 import { formatCurrency, formatPercent, cn } from '../../lib/utils'
-import { Modal, Button, Input, Select, Textarea, Tooltip as UiTooltip, TableFilter } from '../../components/ui'
+import { Modal, Button, Input, Select, Textarea, Tooltip as UiTooltip, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { usePrefetch } from '../../hooks/usePrefetch'
 import { usePagination } from '../../hooks/usePagination'
@@ -175,6 +180,56 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
   )
 }
 
+// Reusable pagination controls
+function PaginationControls({ currentPage, totalPages, setCurrentPage, startIndex, endIndex, totalItems }: {
+  currentPage: number
+  totalPages: number
+  setCurrentPage: (page: number) => void
+  startIndex: number
+  endIndex: number
+  totalItems: number
+}) {
+  if (totalPages <= 1) return null
+  return (
+    <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+      <span className="text-sm text-gray-500">
+        Showing {startIndex}-{endIndex} of {totalItems}
+      </span>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+          className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Previous
+        </button>
+        {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+          const page = totalPages <= 5 ? i + 1 :
+            currentPage <= 3 ? i + 1 :
+            currentPage >= totalPages - 2 ? totalPages - 4 + i :
+            currentPage - 2 + i
+          return (
+            <button
+              key={page}
+              onClick={() => setCurrentPage(page)}
+              className={`px-3 py-1 text-sm rounded-lg ${page === currentPage ? 'bg-primary-600 text-white' : 'border border-gray-200 hover:bg-gray-50'}`}
+            >
+              {page}
+            </button>
+          )
+        })}
+        <button
+          onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+          className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function LandlordDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -255,6 +310,38 @@ export default function LandlordDetail() {
     placeholderData: keepPreviousData,
   })
 
+  // 8. Leases for this landlord's properties
+  const { data: leasesData, isLoading: loadingLeases } = useQuery({
+    queryKey: ['landlord-leases', landlordId],
+    queryFn: () => leaseApi.list({ landlord: landlordId }).then((r) => r.data),
+    enabled: !!landlordId,
+    placeholderData: keepPreviousData,
+  })
+
+  // 9. Tenants for this landlord's properties
+  const { data: tenantsData, isLoading: loadingTenants } = useQuery({
+    queryKey: ['landlord-tenants', landlordId],
+    queryFn: () => tenantApi.list({ landlord: landlordId }).then((r) => r.data),
+    enabled: !!landlordId,
+    placeholderData: keepPreviousData,
+  })
+
+  // 10. Invoices for this landlord's properties
+  const { data: invoicesData, isLoading: loadingInvoices } = useQuery({
+    queryKey: ['landlord-invoices', landlordId],
+    queryFn: () => invoiceApi.list({ landlord: landlordId }).then((r) => r.data),
+    enabled: !!landlordId,
+    placeholderData: keepPreviousData,
+  })
+
+  // 11. Receipts for this landlord's properties
+  const { data: receiptsData, isLoading: loadingReceipts } = useQuery({
+    queryKey: ['landlord-receipts', landlordId],
+    queryFn: () => receiptApi.list({ landlord: landlordId }).then((r) => r.data),
+    enabled: !!landlordId,
+    placeholderData: keepPreviousData,
+  })
+
   // Edit mutation
   const editMutation = useMutation({
     mutationFn: (data: typeof editForm) => landlordApi.update(landlordId, data),
@@ -300,6 +387,7 @@ export default function LandlordDetail() {
       setShowLeaseModal(false)
       queryClient.invalidateQueries({ queryKey: ['landlord-lease-charges', landlordId] })
       queryClient.invalidateQueries({ queryKey: ['landlord-financial', landlordId] })
+      queryClient.invalidateQueries({ queryKey: ['landlord-leases', landlordId] })
       queryClient.invalidateQueries({ queryKey: ['leases'] })
     },
     onError: (error) => {
@@ -351,7 +439,6 @@ export default function LandlordDetail() {
   // Income vs Expenditure chart data
   const incomeExpChartData = (() => {
     if (!incomeExpData) return []
-    // Support both array and object response shapes
     if (Array.isArray(incomeExpData)) return incomeExpData
     const items: any[] = []
     if (incomeExpData.income_items) {
@@ -369,7 +456,6 @@ export default function LandlordDetail() {
         }
       })
     }
-    // Fallback: if summary-level data
     if (items.length === 0 && (incomeExpData.total_income || incomeExpData.total_expenses)) {
       items.push({
         name: 'Total',
@@ -384,13 +470,11 @@ export default function LandlordDetail() {
   const agedChartData = (() => {
     if (!agedData) return []
     if (Array.isArray(agedData)) {
-      // Each item might be a bucket
       return agedData.map((b: any) => ({
         name: b.bucket || b.period || b.label || b.name,
         amount: b.amount || b.total || b.balance || 0,
       }))
     }
-    // Object with bucket keys
     const buckets = agedData.buckets || agedData.aging_buckets
     if (Array.isArray(buckets)) {
       return buckets.map((b: any) => ({
@@ -398,7 +482,6 @@ export default function LandlordDetail() {
         amount: b.amount || b.total || b.balance || 0,
       }))
     }
-    // Fallback: key-value buckets
     const fallbackKeys = ['current', '30_days', '60_days', '90_days', '120_plus']
     const labels: Record<string, string> = {
       current: 'Current',
@@ -410,6 +493,14 @@ export default function LandlordDetail() {
     return fallbackKeys
       .filter((k) => agedData[k] !== undefined)
       .map((k) => ({ name: labels[k] || k, amount: agedData[k] || 0 }))
+  })()
+
+  // Aged analysis detail rows (tenant-level breakdown)
+  const agedDetailRows = (() => {
+    if (!agedData) return []
+    const tenants = agedData.tenants || agedData.details || agedData.items
+    if (Array.isArray(tenants)) return tenants
+    return []
   })()
 
   // Commission by property chart data
@@ -424,12 +515,41 @@ export default function LandlordDetail() {
     }))
   })()
 
+  // Commission detail rows
+  const commissionDetailRows = (() => {
+    if (!commissionData) return []
+    const items = commissionData.properties || commissionData.items || commissionData
+    if (!Array.isArray(items)) return []
+    return items
+  })()
+
   // Properties table data
   const propertiesTable =
     financialStatement?.properties || statement?.properties || []
 
   // Lease charges table data
   const leaseChargesTable = leaseChargesData?.charges || leaseChargesData?.items || (Array.isArray(leaseChargesData) ? leaseChargesData : [])
+
+  // Normalize list data (handle paginated vs array responses)
+  const normalizeList = (data: any) => {
+    if (!data) return []
+    if (Array.isArray(data)) return data
+    if (data.results && Array.isArray(data.results)) return data.results
+    return []
+  }
+
+  const leasesList = normalizeList(leasesData)
+  const tenantsList = normalizeList(tenantsData)
+  const invoicesList = normalizeList(invoicesData)
+  const receiptsList = normalizeList(receiptsData)
+
+  // Financial statement line items
+  const financialLineItems = (() => {
+    if (!financialStatement) return []
+    const items = financialStatement.line_items || financialStatement.transactions || financialStatement.entries
+    if (Array.isArray(items)) return items
+    return []
+  })()
 
   // --- Properties table filter state ---
   const [propsSearch, setPropsSearch] = useState('')
@@ -479,6 +599,115 @@ export default function LandlordDetail() {
   const { paginatedData: paginatedCharges, currentPage: chargesPage, totalPages: chargesTotalPages, setCurrentPage: setChargesPage, totalItems: chargesTotal, startIndex: chargesStart, endIndex: chargesEnd } = usePagination(filteredLeaseCharges, { pageSize: 10 })
 
   useEffect(() => { setChargesPage(1) }, [chargesSearch])
+
+  // --- Tenants filter state ---
+  const [tenantsSearch, setTenantsSearch] = useState('')
+  const filteredTenants = useMemo(() => {
+    if (!tenantsSearch) return tenantsList
+    const q = tenantsSearch.toLowerCase()
+    return tenantsList.filter((t: any) =>
+      (t.name || t.first_name || '').toLowerCase().includes(q) ||
+      (t.last_name || '').toLowerCase().includes(q) ||
+      (t.email || '').toLowerCase().includes(q) ||
+      (t.property_name || '').toLowerCase().includes(q) ||
+      (t.unit_name || '').toLowerCase().includes(q)
+    )
+  }, [tenantsList, tenantsSearch])
+  const tenantsPagination = usePagination(filteredTenants, { pageSize: 10 })
+  useEffect(() => { tenantsPagination.setCurrentPage(1) }, [tenantsSearch])
+
+  // --- Leases filter state ---
+  const [leasesSearch, setLeasesSearch] = useState('')
+  const filteredLeases = useMemo(() => {
+    if (!leasesSearch) return leasesList
+    const q = leasesSearch.toLowerCase()
+    return leasesList.filter((l: any) =>
+      (l.lease_number || l.reference || '').toLowerCase().includes(q) ||
+      (l.tenant_name || l.tenant || '').toLowerCase().includes(q) ||
+      (l.property_name || l.property || '').toLowerCase().includes(q) ||
+      (l.unit_name || l.unit || '').toLowerCase().includes(q) ||
+      (l.status || '').toLowerCase().includes(q)
+    )
+  }, [leasesList, leasesSearch])
+  const leasesPagination = usePagination(filteredLeases, { pageSize: 10 })
+  useEffect(() => { leasesPagination.setCurrentPage(1) }, [leasesSearch])
+
+  // --- Invoices filter state ---
+  const [invoicesSearch, setInvoicesSearch] = useState('')
+  const filteredInvoices = useMemo(() => {
+    if (!invoicesSearch) return invoicesList
+    const q = invoicesSearch.toLowerCase()
+    return invoicesList.filter((inv: any) =>
+      (inv.invoice_number || inv.reference || '').toLowerCase().includes(q) ||
+      (inv.tenant_name || inv.tenant || '').toLowerCase().includes(q) ||
+      (inv.property_name || inv.property || '').toLowerCase().includes(q) ||
+      (inv.status || '').toLowerCase().includes(q)
+    )
+  }, [invoicesList, invoicesSearch])
+  const invoicesPagination = usePagination(filteredInvoices, { pageSize: 10 })
+  useEffect(() => { invoicesPagination.setCurrentPage(1) }, [invoicesSearch])
+
+  // --- Receipts filter state ---
+  const [receiptsSearch, setReceiptsSearch] = useState('')
+  const filteredReceipts = useMemo(() => {
+    if (!receiptsSearch) return receiptsList
+    const q = receiptsSearch.toLowerCase()
+    return receiptsList.filter((r: any) =>
+      (r.receipt_number || r.reference || '').toLowerCase().includes(q) ||
+      (r.tenant_name || r.tenant || '').toLowerCase().includes(q) ||
+      (r.property_name || r.property || '').toLowerCase().includes(q)
+    )
+  }, [receiptsList, receiptsSearch])
+  const receiptsPagination = usePagination(filteredReceipts, { pageSize: 10 })
+  useEffect(() => { receiptsPagination.setCurrentPage(1) }, [receiptsSearch])
+
+  // --- Commission filter state ---
+  const [commissionSearch, setCommissionSearch] = useState('')
+  const filteredCommission = useMemo(() => {
+    if (!commissionSearch) return commissionDetailRows
+    const q = commissionSearch.toLowerCase()
+    return commissionDetailRows.filter((c: any) =>
+      (c.property_name || c.property || c.name || '').toLowerCase().includes(q)
+    )
+  }, [commissionDetailRows, commissionSearch])
+  const commissionPagination = usePagination(filteredCommission, { pageSize: 10 })
+  useEffect(() => { commissionPagination.setCurrentPage(1) }, [commissionSearch])
+
+  // --- Aged detail filter state ---
+  const [agedSearch, setAgedSearch] = useState('')
+  const filteredAged = useMemo(() => {
+    if (!agedSearch) return agedDetailRows
+    const q = agedSearch.toLowerCase()
+    return agedDetailRows.filter((a: any) =>
+      (a.tenant_name || a.tenant || a.name || '').toLowerCase().includes(q) ||
+      (a.property_name || a.property || '').toLowerCase().includes(q)
+    )
+  }, [agedDetailRows, agedSearch])
+  const agedPagination = usePagination(filteredAged, { pageSize: 10 })
+  useEffect(() => { agedPagination.setCurrentPage(1) }, [agedSearch])
+
+  // Status badge helper
+  const statusBadge = (status: string) => {
+    const s = (status || '').toLowerCase()
+    const config: Record<string, string> = {
+      active: 'bg-emerald-50 text-emerald-700',
+      paid: 'bg-emerald-50 text-emerald-700',
+      posted: 'bg-emerald-50 text-emerald-700',
+      completed: 'bg-emerald-50 text-emerald-700',
+      pending: 'bg-amber-50 text-amber-700',
+      draft: 'bg-gray-100 text-gray-600',
+      overdue: 'bg-red-50 text-red-700',
+      expired: 'bg-red-50 text-red-700',
+      terminated: 'bg-red-50 text-red-700',
+      cancelled: 'bg-red-50 text-red-700',
+      partial: 'bg-blue-50 text-blue-700',
+    }
+    return (
+      <span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize', config[s] || 'bg-gray-100 text-gray-600')}>
+        {status || '-'}
+      </span>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -689,601 +918,959 @@ export default function LandlordDetail() {
         />
       </motion.div>
 
-      {/* Properties Table */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.45 }}
-        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
-      >
-        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Properties</h3>
-            <p className="text-sm text-gray-500">Portfolio overview by property</p>
-          </div>
-          <button
-            onClick={() => setShowPropertyModal(true)}
-            className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
-          >
-            <Plus className="w-4 h-4" />
-            Add Property
-          </button>
-        </div>
-        {!loadingFinancial && propertiesTable.length > 0 && (
-          <TableFilter
-            searchPlaceholder="Search properties..."
-            searchValue={propsSearch}
-            onSearchChange={setPropsSearch}
-            showStatusFilter
-            statusOptions={[
-              { value: 'high', label: 'High (80%+)' },
-              { value: 'medium', label: 'Medium (50-79%)' },
-              { value: 'low', label: 'Low (<50%)' },
-            ]}
-            statusValue={propsOccupancy}
-            onStatusChange={setPropsOccupancy}
-            resultCount={filteredProperties.length}
-          />
-        )}
+      {/* ===== TABBED SECTIONS ===== */}
+      <Tabs defaultValue="properties" className="space-y-6">
         <div className="overflow-x-auto">
-          {loadingFinancial ? (
-            <div className="p-6">
-              <TableSkeleton />
+          <TabsList className="flex-wrap">
+            <TabsTrigger value="properties" icon={Building2}>Properties</TabsTrigger>
+            <TabsTrigger value="financial" icon={DollarSign}>Financial</TabsTrigger>
+            <TabsTrigger value="commission" icon={TrendingUp}>Commission</TabsTrigger>
+            <TabsTrigger value="income-exp" icon={BarChart3}>Income & Exp</TabsTrigger>
+            <TabsTrigger value="tenants" icon={Users}>Tenants</TabsTrigger>
+            <TabsTrigger value="leases" icon={ScrollText}>Leases</TabsTrigger>
+            <TabsTrigger value="invoices" icon={FileText}>Invoices</TabsTrigger>
+            <TabsTrigger value="receipts" icon={Receipt}>Receipts</TabsTrigger>
+            <TabsTrigger value="aged" icon={Clock}>Aged Analysis</TabsTrigger>
+            <TabsTrigger value="maintenance" icon={Wrench}>Maintenance</TabsTrigger>
+          </TabsList>
+        </div>
+
+        {/* ===== PROPERTIES TAB ===== */}
+        <TabsContent value="properties" className="space-y-6">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Properties</h3>
+                <p className="text-sm text-gray-500">Portfolio overview by property</p>
+              </div>
+              <button
+                onClick={() => setShowPropertyModal(true)}
+                className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+              >
+                <Plus className="w-4 h-4" />
+                Add Property
+              </button>
             </div>
-          ) : propertiesTable.length === 0 ? (
-            <div className="p-12 text-center text-sm text-gray-400">
-              No properties found for this landlord
-            </div>
-          ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
-                    Property
-                  </th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
-                    Units
-                  </th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
-                    Occupancy
-                  </th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
-                    Invoiced
-                  </th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
-                    Collected
-                  </th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
-                    Balance
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {paginatedProperties.map((prop: any, idx: number) => {
-                  const propOccupancy =
-                    prop.total_units > 0
-                      ? ((prop.occupied_units || 0) / prop.total_units) * 100
-                      : 0
-                  return (
-                    <tr
-                      key={prop.id || idx}
-                      onMouseEnter={() => prop.id && prefetch(`/dashboard/properties/${prop.id}`)}
-                      onClick={() =>
-                        prop.id && navigate(`/dashboard/properties/${prop.id}`)
-                      }
-                      className="hover:bg-gray-50 cursor-pointer transition-colors"
-                    >
-                      <td className="px-6 py-4 text-sm font-medium">
-                        <span className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer">
-                          {prop.property_name || prop.name}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 text-right">
-                        {prop.total_units ?? prop.units ?? '-'}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <span
-                          className={cn(
-                            'inline-flex px-2 py-0.5 rounded-full text-xs font-medium',
-                            propOccupancy >= 80
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : propOccupancy >= 50
-                                ? 'bg-amber-50 text-amber-700'
-                                : 'bg-red-50 text-red-700'
-                          )}
-                        >
-                          {formatPercent(propOccupancy)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 text-right">
-                        {formatCurrency(prop.invoiced || prop.total_invoiced || 0)}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 text-right">
-                        {formatCurrency(prop.collected || prop.total_collected || 0)}
-                      </td>
-                      <td className="px-6 py-4 text-sm font-medium text-right">
-                        <span
-                          className={
-                            (prop.balance || prop.outstanding || 0) > 0
-                              ? 'text-red-600'
-                              : 'text-gray-900'
-                          }
-                        >
-                          {formatCurrency(prop.balance || prop.outstanding || 0)}
-                        </span>
-                      </td>
+            {!loadingFinancial && propertiesTable.length > 0 && (
+              <TableFilter
+                searchPlaceholder="Search properties..."
+                searchValue={propsSearch}
+                onSearchChange={setPropsSearch}
+                showStatusFilter
+                statusOptions={[
+                  { value: 'high', label: 'High (80%+)' },
+                  { value: 'medium', label: 'Medium (50-79%)' },
+                  { value: 'low', label: 'Low (<50%)' },
+                ]}
+                statusValue={propsOccupancy}
+                onStatusChange={setPropsOccupancy}
+                resultCount={filteredProperties.length}
+              />
+            )}
+            <div className="overflow-x-auto">
+              {loadingFinancial ? (
+                <div className="p-6"><TableSkeleton /></div>
+              ) : propertiesTable.length === 0 ? (
+                <div className="p-12 text-center text-sm text-gray-400">
+                  No properties found for this landlord
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Property</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Units</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Occupancy</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Invoiced</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Collected</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
                     </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-          {propsTotalPages > 1 && (
-            <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
-              <span className="text-sm text-gray-500">
-                Showing {propsStart}-{propsEnd} of {propsTotal}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setPropsPage(Math.max(1, propsPage - 1))}
-                  disabled={propsPage === 1}
-                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-                {Array.from({ length: Math.min(propsTotalPages, 5) }, (_, i) => {
-                  const page = propsTotalPages <= 5 ? i + 1 :
-                    propsPage <= 3 ? i + 1 :
-                    propsPage >= propsTotalPages - 2 ? propsTotalPages - 4 + i :
-                    propsPage - 2 + i
-                  return (
-                    <button
-                      key={page}
-                      onClick={() => setPropsPage(page)}
-                      className={`px-3 py-1 text-sm rounded-lg ${page === propsPage ? 'bg-primary-600 text-white' : 'border border-gray-200 hover:bg-gray-50'}`}
-                    >
-                      {page}
-                    </button>
-                  )
-                })}
-                <button
-                  onClick={() => setPropsPage(Math.min(propsTotalPages, propsPage + 1))}
-                  disabled={propsPage === propsTotalPages}
-                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </motion.div>
-
-      {/* Lease Charges Table */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
-      >
-        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Lease Charges</h3>
-            <p className="text-sm text-gray-500">Tenant charges across all properties</p>
-          </div>
-          <button
-            onClick={() => setShowLeaseModal(true)}
-            className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
-          >
-            <Plus className="w-4 h-4" />
-            Add Lease
-          </button>
-        </div>
-        {!loadingLeaseCharges && leaseChargesTable.length > 0 && (
-          <TableFilter
-            searchPlaceholder="Search by tenant, property, or unit..."
-            searchValue={chargesSearch}
-            onSearchChange={setChargesSearch}
-            resultCount={filteredLeaseCharges.length}
-          />
-        )}
-        <div className="overflow-x-auto">
-          {loadingLeaseCharges ? (
-            <div className="p-6">
-              <TableSkeleton rows={6} />
-            </div>
-          ) : leaseChargesTable.length === 0 ? (
-            <div className="p-12 text-center text-sm text-gray-400">
-              No lease charges found for this landlord
-            </div>
-          ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
-                    Lease
-                  </th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
-                    Tenant
-                  </th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
-                    Property
-                  </th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
-                    Unit
-                  </th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
-                    Monthly Rent
-                  </th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
-                    Total Charged
-                  </th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
-                    Paid
-                  </th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
-                    Balance
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {paginatedCharges.map((charge: any, idx: number) => (
-                  <tr key={charge.id || idx} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 text-sm font-medium">
-                      {charge.lease_id ? (
-                        <button
-                          onMouseEnter={() => prefetch(`/dashboard/leases/${charge.lease_id}`)}
-                          onClick={() => navigate(`/dashboard/leases/${charge.lease_id}`)}
-                          className="text-primary-600 hover:text-primary-700 hover:underline"
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {paginatedProperties.map((prop: any, idx: number) => {
+                      const propOccupancy = prop.total_units > 0 ? ((prop.occupied_units || 0) / prop.total_units) * 100 : 0
+                      return (
+                        <tr
+                          key={prop.id || idx}
+                          onMouseEnter={() => prop.id && prefetch(`/dashboard/properties/${prop.id}`)}
+                          onClick={() => prop.id && navigate(`/dashboard/properties/${prop.id}`)}
+                          className="hover:bg-gray-50 cursor-pointer transition-colors"
                         >
-                          {charge.lease_number || charge.lease_ref || `LSE-${charge.lease_id}`}
-                        </button>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm font-medium">
-                      {charge.tenant_id ? (
-                        <button onMouseEnter={() => prefetch(`/dashboard/tenants/${charge.tenant_id}`)} onClick={() => navigate(`/dashboard/tenants/${charge.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
-                          {charge.tenant_name || charge.tenant}
-                        </button>
-                      ) : (
-                        <span className="text-gray-900">{charge.tenant_name || charge.tenant}</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm">
-                      {charge.property_id ? (
-                        <button onMouseEnter={() => prefetch(`/dashboard/properties/${charge.property_id}`)} onClick={() => navigate(`/dashboard/properties/${charge.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
-                          {charge.property_name || charge.property}
-                        </button>
-                      ) : (
-                        <span className="text-gray-600">{charge.property_name || charge.property}</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm">
-                      {charge.unit_id ? (
-                        <button onMouseEnter={() => prefetch(`/dashboard/units/${charge.unit_id}`)} onClick={() => navigate(`/dashboard/units/${charge.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
-                          {charge.unit_name || charge.unit}
-                        </button>
-                      ) : (
-                        <span className="text-gray-600">{charge.unit_name || charge.unit}</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 text-right">
-                      {formatCurrency(charge.monthly_rent || charge.rent || 0)}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 text-right">
-                      {formatCurrency(charge.total_charged || charge.charged || 0)}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600 text-right">
-                      {formatCurrency(charge.total_paid || charge.paid || 0)}
-                    </td>
-                    <td className="px-6 py-4 text-sm font-medium text-right">
-                      <span
-                        className={
-                          (charge.balance || 0) > 0 ? 'text-red-600' : 'text-gray-900'
-                        }
-                      >
-                        {formatCurrency(charge.balance || 0)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          {chargesTotalPages > 1 && (
-            <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
-              <span className="text-sm text-gray-500">
-                Showing {chargesStart}-{chargesEnd} of {chargesTotal}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setChargesPage(Math.max(1, chargesPage - 1))}
-                  disabled={chargesPage === 1}
-                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-                {Array.from({ length: Math.min(chargesTotalPages, 5) }, (_, i) => {
-                  const page = chargesTotalPages <= 5 ? i + 1 :
-                    chargesPage <= 3 ? i + 1 :
-                    chargesPage >= chargesTotalPages - 2 ? chargesTotalPages - 4 + i :
-                    chargesPage - 2 + i
-                  return (
-                    <button
-                      key={page}
-                      onClick={() => setChargesPage(page)}
-                      className={`px-3 py-1 text-sm rounded-lg ${page === chargesPage ? 'bg-primary-600 text-white' : 'border border-gray-200 hover:bg-gray-50'}`}
-                    >
-                      {page}
-                    </button>
-                  )
-                })}
-                <button
-                  onClick={() => setChargesPage(Math.min(chargesTotalPages, chargesPage + 1))}
-                  disabled={chargesPage === chargesTotalPages}
-                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
-              </div>
+                          <td className="px-6 py-4 text-sm font-medium">
+                            <span className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer">
+                              {prop.property_name || prop.name}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600 text-right">{prop.total_units ?? prop.units ?? '-'}</td>
+                          <td className="px-6 py-4 text-right">
+                            <span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium', propOccupancy >= 80 ? 'bg-emerald-50 text-emerald-700' : propOccupancy >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700')}>
+                              {formatPercent(propOccupancy)}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(prop.invoiced || prop.total_invoiced || 0)}</td>
+                          <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(prop.collected || prop.total_collected || 0)}</td>
+                          <td className="px-6 py-4 text-sm font-medium text-right">
+                            <span className={(prop.balance || prop.outstanding || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>
+                              {formatCurrency(prop.balance || prop.outstanding || 0)}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+              <PaginationControls currentPage={propsPage} totalPages={propsTotalPages} setCurrentPage={setPropsPage} startIndex={propsStart} endIndex={propsEnd} totalItems={propsTotal} />
             </div>
-          )}
-        </div>
-      </motion.div>
+          </div>
 
-      {/* Charts Row 1 - Income vs Expenditure (2/3) + Occupancy Donut (1/3) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Income vs Expenditure */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Income vs Expenditure</h3>
-              <p className="text-sm text-gray-500">Breakdown by category</p>
+          {/* Occupancy Donut */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Occupancy</h3>
+              <p className="text-sm text-gray-500">Unit status breakdown</p>
             </div>
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                <span className="text-gray-600">Income</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
-                <span className="text-gray-600">Expense</span>
-              </div>
+            <div className="h-48 relative">
+              {loadingStatement ? (
+                <div className="h-full flex items-center justify-center">
+                  <div className="h-36 w-36 rounded-full border-8 border-gray-200 animate-pulse" />
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={occupancyPieData} innerRadius={55} outerRadius={75} paddingAngle={4} dataKey="value">
+                      {occupancyPieData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+              {!loadingStatement && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-3xl font-bold text-gray-900">{formatPercent(occupancyRate)}</p>
+                    <p className="text-xs text-gray-500">Occupied</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-center gap-6 mt-4">
+              {occupancyPieData.map((entry) => (
+                <div key={entry.name} className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
+                  <span className="text-sm text-gray-600">{entry.name}</span>
+                  {loadingStatement ? (
+                    <div className="h-4 w-6 bg-gray-200 rounded animate-pulse" />
+                  ) : (
+                    <span className="text-sm font-semibold text-gray-900">{entry.value}</span>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
-          <div className="h-72">
-            {loadingIncomeExp ? (
-              <ChartSkeleton />
-            ) : incomeExpChartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-sm text-gray-400">
-                No income/expenditure data available
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={incomeExpChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis
-                    dataKey="name"
-                    stroke="#94a3b8"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    stroke="#94a3b8"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
-                  />
-                  <Tooltip
-                    formatter={(value: number) => formatCurrency(value)}
-                    contentStyle={{
-                      borderRadius: '12px',
-                      border: '1px solid #e2e8f0',
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                    }}
-                  />
-                  <Bar dataKey="income" fill="#10b981" radius={[4, 4, 0, 0]} name="Income" />
-                  <Bar dataKey="expense" fill="#f43f5e" radius={[4, 4, 0, 0]} name="Expense" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </motion.div>
+        </TabsContent>
 
-        {/* Occupancy Donut */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-white rounded-xl border border-gray-200 p-6"
-        >
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Occupancy</h3>
-            <p className="text-sm text-gray-500">Unit status breakdown</p>
+        {/* ===== FINANCIAL STATEMENT TAB ===== */}
+        <TabsContent value="financial" className="space-y-6">
+          {/* Summary cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Total Invoiced</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(totalInvoiced)}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Total Collected</p>
+              <p className="text-2xl font-bold text-emerald-600 mt-1">{formatCurrency(totalCollected)}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Net Payable to Landlord</p>
+              <p className="text-2xl font-bold text-primary-600 mt-1">{formatCurrency(netPayable)}</p>
+              <p className="text-xs text-gray-400 mt-1">After {commissionRate}% commission</p>
+            </div>
           </div>
-          <div className="h-48 relative">
-            {loadingStatement ? (
-              <div className="h-full flex items-center justify-center">
-                <div className="h-36 w-36 rounded-full border-8 border-gray-200 animate-pulse" />
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={occupancyPieData}
-                    innerRadius={55}
-                    outerRadius={75}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {occupancyPieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
+
+          {/* Financial statement line items */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="p-6 border-b border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-900">Financial Statement</h3>
+              <p className="text-sm text-gray-500">Detailed transaction breakdown</p>
+            </div>
+            <div className="overflow-x-auto">
+              {loadingFinancial ? (
+                <div className="p-6"><TableSkeleton /></div>
+              ) : financialLineItems.length === 0 ? (
+                <div className="p-12 text-center text-sm text-gray-400">
+                  Financial statement data is shown in the summary cards above. Detailed line items will appear here when available.
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Description</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Property</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Debit</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Credit</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {financialLineItems.map((item: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm text-gray-600">{item.date || '-'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-900">{item.description || item.narration || '-'}</td>
+                        <td className="px-6 py-4 text-sm">
+                          {item.property_id ? (
+                            <button onClick={() => navigate(`/dashboard/properties/${item.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {item.property_name || item.property}
+                            </button>
+                          ) : (
+                            <span className="text-gray-600">{item.property_name || item.property || '-'}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{item.debit ? formatCurrency(item.debit) : '-'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{item.credit ? formatCurrency(item.credit) : '-'}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-right">{formatCurrency(item.balance || item.running_balance || 0)}</td>
+                      </tr>
                     ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          {/* Lease Charges */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Lease Charges</h3>
+                <p className="text-sm text-gray-500">Tenant charges across all properties</p>
+              </div>
+              <button
+                onClick={() => setShowLeaseModal(true)}
+                className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+              >
+                <Plus className="w-4 h-4" />
+                Add Lease
+              </button>
+            </div>
+            {!loadingLeaseCharges && leaseChargesTable.length > 0 && (
+              <TableFilter
+                searchPlaceholder="Search by tenant, property, or unit..."
+                searchValue={chargesSearch}
+                onSearchChange={setChargesSearch}
+                resultCount={filteredLeaseCharges.length}
+              />
             )}
-            {!loadingStatement && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <p className="text-3xl font-bold text-gray-900">
-                    {formatPercent(occupancyRate)}
-                  </p>
-                  <p className="text-xs text-gray-500">Occupied</p>
+            <div className="overflow-x-auto">
+              {loadingLeaseCharges ? (
+                <div className="p-6"><TableSkeleton rows={6} /></div>
+              ) : leaseChargesTable.length === 0 ? (
+                <div className="p-12 text-center text-sm text-gray-400">No lease charges found for this landlord</div>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Lease</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Tenant</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Property</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Unit</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Monthly Rent</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Total Charged</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Paid</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {paginatedCharges.map((charge: any, idx: number) => (
+                      <tr key={charge.id || idx} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 text-sm font-medium">
+                          {charge.lease_id ? (
+                            <button onMouseEnter={() => prefetch(`/dashboard/leases/${charge.lease_id}`)} onClick={() => navigate(`/dashboard/leases/${charge.lease_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {charge.lease_number || charge.lease_ref || `LSE-${charge.lease_id}`}
+                            </button>
+                          ) : <span className="text-gray-400">-</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm font-medium">
+                          {charge.tenant_id ? (
+                            <button onMouseEnter={() => prefetch(`/dashboard/tenants/${charge.tenant_id}`)} onClick={() => navigate(`/dashboard/tenants/${charge.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {charge.tenant_name || charge.tenant}
+                            </button>
+                          ) : <span className="text-gray-900">{charge.tenant_name || charge.tenant}</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {charge.property_id ? (
+                            <button onMouseEnter={() => prefetch(`/dashboard/properties/${charge.property_id}`)} onClick={() => navigate(`/dashboard/properties/${charge.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {charge.property_name || charge.property}
+                            </button>
+                          ) : <span className="text-gray-600">{charge.property_name || charge.property}</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {charge.unit_id ? (
+                            <button onMouseEnter={() => prefetch(`/dashboard/units/${charge.unit_id}`)} onClick={() => navigate(`/dashboard/units/${charge.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {charge.unit_name || charge.unit}
+                            </button>
+                          ) : <span className="text-gray-600">{charge.unit_name || charge.unit}</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(charge.monthly_rent || charge.rent || 0)}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(charge.total_charged || charge.charged || 0)}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(charge.total_paid || charge.paid || 0)}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-right">
+                          <span className={(charge.balance || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>
+                            {formatCurrency(charge.balance || 0)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <PaginationControls currentPage={chargesPage} totalPages={chargesTotalPages} setCurrentPage={setChargesPage} startIndex={chargesStart} endIndex={chargesEnd} totalItems={chargesTotal} />
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* ===== COMMISSION TAB ===== */}
+        <TabsContent value="commission" className="space-y-6">
+          {/* Commission summary */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Commission Rate</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{commissionRate}%</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Total Commission</p>
+              <p className="text-2xl font-bold text-purple-600 mt-1">{formatCurrency(commissionData?.summary?.total_commission || commissionData?.total_commission || 0)}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Properties with Commission</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{commissionDetailRows.length}</p>
+            </div>
+          </div>
+
+          {/* Commission chart */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Commission by Property</h3>
+                <p className="text-sm text-gray-500">Collected vs commission per property</p>
+              </div>
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-blue-500" />
+                  <span className="text-gray-600">Collected</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-purple-500" />
+                  <span className="text-gray-600">Commission</span>
                 </div>
               </div>
-            )}
-          </div>
-          <div className="flex justify-center gap-6 mt-4">
-            {occupancyPieData.map((entry) => (
-              <div key={entry.name} className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
-                <span className="text-sm text-gray-600">{entry.name}</span>
-                {loadingStatement ? (
-                  <div className="h-4 w-6 bg-gray-200 rounded animate-pulse" />
-                ) : (
-                  <span className="text-sm font-semibold text-gray-900">{entry.value}</span>
-                )}
-              </div>
-            ))}
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Charts Row 2 - Aged Outstanding (1/3) + Commission by Property (2/3) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Aged Outstanding */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35 }}
-          className="bg-white rounded-xl border border-gray-200 p-6"
-        >
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-900">Aged Outstanding</h3>
-            <p className="text-sm text-gray-500">Receivables aging</p>
-          </div>
-          <div className="h-72">
-            {loadingAged ? (
-              <ChartSkeleton />
-            ) : agedChartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-sm text-gray-400">
-                No aged analysis data available
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={agedChartData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                  <XAxis
-                    type="number"
-                    stroke="#94a3b8"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    stroke="#94a3b8"
-                    fontSize={11}
-                    tickLine={false}
-                    axisLine={false}
-                    width={80}
-                  />
-                  <Tooltip
-                    formatter={(value: number) => formatCurrency(value)}
-                    contentStyle={{
-                      borderRadius: '12px',
-                      border: '1px solid #e2e8f0',
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                    }}
-                  />
-                  <Bar dataKey="amount" fill="#f59e0b" radius={[0, 4, 4, 0]} name="Outstanding" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Commission by Property */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Commission by Property</h3>
-              <p className="text-sm text-gray-500">Collected vs commission per property</p>
             </div>
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-blue-500" />
-                <span className="text-gray-600">Collected</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-purple-500" />
-                <span className="text-gray-600">Commission</span>
-              </div>
+            <div className="h-72">
+              {loadingCommission ? <ChartSkeleton /> : commissionChartData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-sm text-gray-400">No commission data available</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={commissionChartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+                    <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                    <Bar dataKey="collected" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Collected" />
+                    <Bar dataKey="commission" fill="#8b5cf6" radius={[4, 4, 0, 0]} name="Commission" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
-          <div className="h-72">
-            {loadingCommission ? (
-              <ChartSkeleton />
-            ) : commissionChartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-sm text-gray-400">
-                No commission data available
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={commissionChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis
-                    dataKey="name"
-                    stroke="#94a3b8"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <YAxis
-                    stroke="#94a3b8"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
-                  />
-                  <Tooltip
-                    formatter={(value: number) => formatCurrency(value)}
-                    contentStyle={{
-                      borderRadius: '12px',
-                      border: '1px solid #e2e8f0',
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                    }}
-                  />
-                  <Bar dataKey="collected" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Collected" />
-                  <Bar
-                    dataKey="commission"
-                    fill="#8b5cf6"
-                    radius={[4, 4, 0, 0]}
-                    name="Commission"
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+
+          {/* Commission table */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="p-6 border-b border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-900">Commission Detail</h3>
+              <p className="text-sm text-gray-500">Breakdown by property</p>
+            </div>
+            {commissionDetailRows.length > 0 && (
+              <TableFilter searchPlaceholder="Search properties..." searchValue={commissionSearch} onSearchChange={setCommissionSearch} resultCount={filteredCommission.length} />
             )}
+            <div className="overflow-x-auto">
+              {loadingCommission ? (
+                <div className="p-6"><TableSkeleton /></div>
+              ) : commissionDetailRows.length === 0 ? (
+                <div className="p-12 text-center text-sm text-gray-400">No commission data available</div>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Property</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Rate</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Collected</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Commission</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Net Payable</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {commissionPagination.paginatedData.map((c: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 text-sm font-medium">
+                          {c.property_id ? (
+                            <button onMouseEnter={() => prefetch(`/dashboard/properties/${c.property_id}`)} onClick={() => navigate(`/dashboard/properties/${c.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {c.property_name || c.property || c.name}
+                            </button>
+                          ) : <span className="text-gray-900">{c.property_name || c.property || c.name}</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{c.commission_rate || commissionRate}%</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(c.collected || c.total_collected || 0)}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-purple-600 text-right">{formatCurrency(c.commission || c.commission_amount || 0)}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-right">{formatCurrency((c.collected || c.total_collected || 0) - (c.commission || c.commission_amount || 0))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <PaginationControls {...commissionPagination} />
+            </div>
           </div>
-        </motion.div>
-      </div>
+        </TabsContent>
+
+        {/* ===== INCOME & EXPENDITURE TAB ===== */}
+        <TabsContent value="income-exp" className="space-y-6">
+          {/* Summary cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Total Income</p>
+              <p className="text-2xl font-bold text-emerald-600 mt-1">{formatCurrency(incomeExpData?.total_income || 0)}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Total Expenses</p>
+              <p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(incomeExpData?.total_expenses || 0)}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Net Income</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency((incomeExpData?.total_income || 0) - (incomeExpData?.total_expenses || 0))}</p>
+            </div>
+          </div>
+
+          {/* Chart */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Income vs Expenditure</h3>
+                <p className="text-sm text-gray-500">Breakdown by category</p>
+              </div>
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                  <span className="text-gray-600">Income</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-500" />
+                  <span className="text-gray-600">Expense</span>
+                </div>
+              </div>
+            </div>
+            <div className="h-72">
+              {loadingIncomeExp ? <ChartSkeleton /> : incomeExpChartData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-sm text-gray-400">No income/expenditure data available</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={incomeExpChartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+                    <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                    <Bar dataKey="income" fill="#10b981" radius={[4, 4, 0, 0]} name="Income" />
+                    <Bar dataKey="expense" fill="#f43f5e" radius={[4, 4, 0, 0]} name="Expense" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+          {/* Income items table */}
+          {incomeExpData?.income_items && (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="p-6 border-b border-gray-100">
+                <h3 className="text-lg font-semibold text-gray-900">Income Breakdown</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Category</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {incomeExpData.income_items.map((item: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm text-gray-900">{item.name || item.category}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-emerald-600 text-right">{formatCurrency(item.amount || item.total || 0)}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-gray-50 font-semibold">
+                      <td className="px-6 py-4 text-sm text-gray-900">Total Income</td>
+                      <td className="px-6 py-4 text-sm text-emerald-700 text-right">{formatCurrency(incomeExpData.total_income || 0)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Expense items table */}
+          {incomeExpData?.expense_items && (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="p-6 border-b border-gray-100">
+                <h3 className="text-lg font-semibold text-gray-900">Expenditure Breakdown</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Category</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {incomeExpData.expense_items.map((item: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm text-gray-900">{item.name || item.category}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-red-600 text-right">{formatCurrency(item.amount || item.total || 0)}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-gray-50 font-semibold">
+                      <td className="px-6 py-4 text-sm text-gray-900">Total Expenses</td>
+                      <td className="px-6 py-4 text-sm text-red-700 text-right">{formatCurrency(incomeExpData.total_expenses || 0)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ===== TENANTS TAB ===== */}
+        <TabsContent value="tenants" className="space-y-6">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="p-6 border-b border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-900">Tenants</h3>
+              <p className="text-sm text-gray-500">All tenants across this landlord's properties</p>
+            </div>
+            {tenantsList.length > 0 && (
+              <TableFilter searchPlaceholder="Search tenants..." searchValue={tenantsSearch} onSearchChange={setTenantsSearch} resultCount={filteredTenants.length} />
+            )}
+            <div className="overflow-x-auto">
+              {loadingTenants ? (
+                <div className="p-6"><TableSkeleton /></div>
+              ) : tenantsList.length === 0 ? (
+                <div className="p-12 text-center text-sm text-gray-400">No tenants found for this landlord's properties</div>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Name</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Email</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Phone</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Property</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Unit</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {tenantsPagination.paginatedData.map((t: any, idx: number) => (
+                      <tr key={t.id || idx} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 text-sm font-medium">
+                          <button
+                            onMouseEnter={() => t.id && prefetch(`/dashboard/tenants/${t.id}`)}
+                            onClick={() => t.id && navigate(`/dashboard/tenants/${t.id}`)}
+                            className="text-primary-600 hover:text-primary-700 hover:underline"
+                          >
+                            {t.name || `${t.first_name || ''} ${t.last_name || ''}`.trim() || '-'}
+                          </button>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{t.email || '-'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{t.phone || '-'}</td>
+                        <td className="px-6 py-4 text-sm">
+                          {t.property_id ? (
+                            <button onMouseEnter={() => prefetch(`/dashboard/properties/${t.property_id}`)} onClick={() => navigate(`/dashboard/properties/${t.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {t.property_name || t.property || '-'}
+                            </button>
+                          ) : <span className="text-gray-600">{t.property_name || t.property || '-'}</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {t.unit_id ? (
+                            <button onMouseEnter={() => prefetch(`/dashboard/units/${t.unit_id}`)} onClick={() => navigate(`/dashboard/units/${t.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {t.unit_name || t.unit || '-'}
+                            </button>
+                          ) : <span className="text-gray-600">{t.unit_name || t.unit || '-'}</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm font-medium text-right">
+                          <span className={(t.balance || t.outstanding || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>
+                            {formatCurrency(t.balance || t.outstanding || 0)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <PaginationControls {...tenantsPagination} />
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* ===== LEASES TAB ===== */}
+        <TabsContent value="leases" className="space-y-6">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Leases</h3>
+                <p className="text-sm text-gray-500">All leases for this landlord's properties</p>
+              </div>
+              <button
+                onClick={() => setShowLeaseModal(true)}
+                className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+              >
+                <Plus className="w-4 h-4" />
+                Add Lease
+              </button>
+            </div>
+            {leasesList.length > 0 && (
+              <TableFilter searchPlaceholder="Search leases..." searchValue={leasesSearch} onSearchChange={setLeasesSearch} resultCount={filteredLeases.length} />
+            )}
+            <div className="overflow-x-auto">
+              {loadingLeases ? (
+                <div className="p-6"><TableSkeleton /></div>
+              ) : leasesList.length === 0 ? (
+                <div className="p-12 text-center text-sm text-gray-400">No leases found for this landlord's properties</div>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Lease #</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Tenant</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Property</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Unit</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Start</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">End</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Rent</th>
+                      <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {leasesPagination.paginatedData.map((l: any, idx: number) => (
+                      <tr key={l.id || idx} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 text-sm font-medium">
+                          <button
+                            onMouseEnter={() => l.id && prefetch(`/dashboard/leases/${l.id}`)}
+                            onClick={() => l.id && navigate(`/dashboard/leases/${l.id}`)}
+                            className="text-primary-600 hover:text-primary-700 hover:underline"
+                          >
+                            {l.lease_number || l.reference || `LSE-${l.id}`}
+                          </button>
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {l.tenant_id || l.tenant?.id ? (
+                            <button onMouseEnter={() => prefetch(`/dashboard/tenants/${l.tenant_id || l.tenant?.id}`)} onClick={() => navigate(`/dashboard/tenants/${l.tenant_id || l.tenant?.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {l.tenant_name || l.tenant?.name || l.tenant}
+                            </button>
+                          ) : <span className="text-gray-600">{l.tenant_name || l.tenant?.name || l.tenant || '-'}</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {l.property_id || l.property?.id ? (
+                            <button onMouseEnter={() => prefetch(`/dashboard/properties/${l.property_id || l.property?.id}`)} onClick={() => navigate(`/dashboard/properties/${l.property_id || l.property?.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {l.property_name || l.property?.name || l.property}
+                            </button>
+                          ) : <span className="text-gray-600">{l.property_name || l.property?.name || l.property || '-'}</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {l.unit_id || l.unit?.id ? (
+                            <button onMouseEnter={() => prefetch(`/dashboard/units/${l.unit_id || l.unit?.id}`)} onClick={() => navigate(`/dashboard/units/${l.unit_id || l.unit?.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {l.unit_name || l.unit?.name || l.unit}
+                            </button>
+                          ) : <span className="text-gray-600">{l.unit_name || l.unit?.name || l.unit || '-'}</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{l.start_date || '-'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{l.end_date || '-'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(l.monthly_rent || l.rent_amount || l.rent || 0)}</td>
+                        <td className="px-6 py-4 text-center">{statusBadge(l.status)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <PaginationControls {...leasesPagination} />
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* ===== INVOICES TAB ===== */}
+        <TabsContent value="invoices" className="space-y-6">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="p-6 border-b border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-900">Invoices</h3>
+              <p className="text-sm text-gray-500">All invoices for this landlord's properties</p>
+            </div>
+            {invoicesList.length > 0 && (
+              <TableFilter searchPlaceholder="Search invoices..." searchValue={invoicesSearch} onSearchChange={setInvoicesSearch} resultCount={filteredInvoices.length} />
+            )}
+            <div className="overflow-x-auto">
+              {loadingInvoices ? (
+                <div className="p-6"><TableSkeleton /></div>
+              ) : invoicesList.length === 0 ? (
+                <div className="p-12 text-center text-sm text-gray-400">No invoices found for this landlord's properties</div>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Invoice #</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Tenant</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Property</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Type</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
+                      <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {invoicesPagination.paginatedData.map((inv: any, idx: number) => (
+                      <tr key={inv.id || idx} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 text-sm font-medium">
+                          <button
+                            onMouseEnter={() => inv.id && prefetch(`/dashboard/invoices/${inv.id}`)}
+                            onClick={() => inv.id && navigate(`/dashboard/invoices/${inv.id}`)}
+                            className="text-primary-600 hover:text-primary-700 hover:underline"
+                          >
+                            {inv.invoice_number || inv.reference || `INV-${inv.id}`}
+                          </button>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{inv.date || inv.invoice_date || inv.created_at?.split('T')[0] || '-'}</td>
+                        <td className="px-6 py-4 text-sm">
+                          {inv.tenant_id || inv.tenant?.id ? (
+                            <button onMouseEnter={() => prefetch(`/dashboard/tenants/${inv.tenant_id || inv.tenant?.id}`)} onClick={() => navigate(`/dashboard/tenants/${inv.tenant_id || inv.tenant?.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {inv.tenant_name || inv.tenant?.name || inv.tenant}
+                            </button>
+                          ) : <span className="text-gray-600">{inv.tenant_name || inv.tenant?.name || inv.tenant || '-'}</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {inv.property_id || inv.property?.id ? (
+                            <button onMouseEnter={() => prefetch(`/dashboard/properties/${inv.property_id || inv.property?.id}`)} onClick={() => navigate(`/dashboard/properties/${inv.property_id || inv.property?.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {inv.property_name || inv.property?.name || inv.property}
+                            </button>
+                          ) : <span className="text-gray-600">{inv.property_name || inv.property?.name || inv.property || '-'}</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600 capitalize">{inv.invoice_type || inv.type || '-'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(inv.amount || inv.total || 0)}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-right">
+                          <span className={(inv.balance || inv.amount_due || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>
+                            {formatCurrency(inv.balance || inv.amount_due || 0)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">{statusBadge(inv.status)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <PaginationControls {...invoicesPagination} />
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* ===== RECEIPTS TAB ===== */}
+        <TabsContent value="receipts" className="space-y-6">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="p-6 border-b border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-900">Receipts</h3>
+              <p className="text-sm text-gray-500">All payments received for this landlord's properties</p>
+            </div>
+            {receiptsList.length > 0 && (
+              <TableFilter searchPlaceholder="Search receipts..." searchValue={receiptsSearch} onSearchChange={setReceiptsSearch} resultCount={filteredReceipts.length} />
+            )}
+            <div className="overflow-x-auto">
+              {loadingReceipts ? (
+                <div className="p-6"><TableSkeleton /></div>
+              ) : receiptsList.length === 0 ? (
+                <div className="p-12 text-center text-sm text-gray-400">No receipts found for this landlord's properties</div>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Receipt #</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Tenant</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Property</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Method</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                      <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {receiptsPagination.paginatedData.map((r: any, idx: number) => (
+                      <tr key={r.id || idx} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 text-sm font-medium">
+                          <button
+                            onMouseEnter={() => r.id && prefetch(`/dashboard/receipts/${r.id}`)}
+                            onClick={() => r.id && navigate(`/dashboard/receipts/${r.id}`)}
+                            className="text-primary-600 hover:text-primary-700 hover:underline"
+                          >
+                            {r.receipt_number || r.reference || `RCT-${r.id}`}
+                          </button>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{r.date || r.receipt_date || r.payment_date || r.created_at?.split('T')[0] || '-'}</td>
+                        <td className="px-6 py-4 text-sm">
+                          {r.tenant_id || r.tenant?.id ? (
+                            <button onMouseEnter={() => prefetch(`/dashboard/tenants/${r.tenant_id || r.tenant?.id}`)} onClick={() => navigate(`/dashboard/tenants/${r.tenant_id || r.tenant?.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {r.tenant_name || r.tenant?.name || r.tenant}
+                            </button>
+                          ) : <span className="text-gray-600">{r.tenant_name || r.tenant?.name || r.tenant || '-'}</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {r.property_id || r.property?.id ? (
+                            <button onMouseEnter={() => prefetch(`/dashboard/properties/${r.property_id || r.property?.id}`)} onClick={() => navigate(`/dashboard/properties/${r.property_id || r.property?.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {r.property_name || r.property?.name || r.property}
+                            </button>
+                          ) : <span className="text-gray-600">{r.property_name || r.property?.name || r.property || '-'}</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600 capitalize">{r.payment_method || r.method || '-'}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-emerald-600 text-right">{formatCurrency(r.amount || r.total || 0)}</td>
+                        <td className="px-6 py-4 text-center">{statusBadge(r.status)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <PaginationControls {...receiptsPagination} />
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* ===== AGED ANALYSIS TAB ===== */}
+        <TabsContent value="aged" className="space-y-6">
+          {/* Chart */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-gray-900">Aged Outstanding</h3>
+              <p className="text-sm text-gray-500">Receivables aging analysis</p>
+            </div>
+            <div className="h-72">
+              {loadingAged ? <ChartSkeleton /> : agedChartData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-sm text-gray-400">No aged analysis data available</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={agedChartData} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                    <XAxis type="number" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+                    <YAxis type="category" dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} width={80} />
+                    <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                    <Bar dataKey="amount" fill="#f59e0b" radius={[0, 4, 4, 0]} name="Outstanding" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+          {/* Aged summary buckets */}
+          {agedChartData.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {agedChartData.map((bucket: any, idx: number) => (
+                <div key={idx} className="bg-white rounded-xl border border-gray-200 p-4">
+                  <p className="text-xs text-gray-500">{bucket.name}</p>
+                  <p className={cn('text-lg font-bold mt-1', bucket.amount > 0 ? 'text-amber-600' : 'text-gray-900')}>
+                    {formatCurrency(bucket.amount)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Aged detail table */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="p-6 border-b border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-900">Aged Detail by Tenant</h3>
+              <p className="text-sm text-gray-500">Outstanding balances by aging period</p>
+            </div>
+            {agedDetailRows.length > 0 && (
+              <TableFilter searchPlaceholder="Search tenants..." searchValue={agedSearch} onSearchChange={setAgedSearch} resultCount={filteredAged.length} />
+            )}
+            <div className="overflow-x-auto">
+              {loadingAged ? (
+                <div className="p-6"><TableSkeleton /></div>
+              ) : agedDetailRows.length === 0 ? (
+                <div className="p-12 text-center text-sm text-gray-400">
+                  Aged analysis summary is shown in the chart above. Tenant-level detail will appear here when available.
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Tenant</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Property</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Current</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">1-30 days</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">31-60 days</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">61-90 days</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">90+ days</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {agedPagination.paginatedData.map((a: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 text-sm font-medium">
+                          {a.tenant_id ? (
+                            <button onMouseEnter={() => prefetch(`/dashboard/tenants/${a.tenant_id}`)} onClick={() => navigate(`/dashboard/tenants/${a.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {a.tenant_name || a.tenant || a.name}
+                            </button>
+                          ) : <span className="text-gray-900">{a.tenant_name || a.tenant || a.name}</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {a.property_id ? (
+                            <button onMouseEnter={() => prefetch(`/dashboard/properties/${a.property_id}`)} onClick={() => navigate(`/dashboard/properties/${a.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                              {a.property_name || a.property}
+                            </button>
+                          ) : <span className="text-gray-600">{a.property_name || a.property || '-'}</span>}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(a.current || 0)}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(a['30_days'] || a.days_30 || 0)}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(a['60_days'] || a.days_60 || 0)}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(a['90_days'] || a.days_90 || 0)}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(a['120_plus'] || a.days_120_plus || a.over_90 || 0)}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-right">
+                          <span className={(a.total || a.balance || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>
+                            {formatCurrency(a.total || a.balance || 0)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <PaginationControls {...agedPagination} />
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* ===== MAINTENANCE TAB ===== */}
+        <TabsContent value="maintenance" className="space-y-6">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="p-6 border-b border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-900">Maintenance Requests</h3>
+              <p className="text-sm text-gray-500">Work orders and maintenance for this landlord's properties</p>
+            </div>
+            <div className="p-12 text-center">
+              <div className="mx-auto w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mb-4">
+                <Wrench className="w-6 h-6 text-gray-400" />
+              </div>
+              <p className="text-sm font-medium text-gray-600">Maintenance module coming soon</p>
+              <p className="text-xs text-gray-400 mt-1">Track work orders, repair requests, and maintenance schedules for this landlord's properties</p>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Edit Landlord Modal */}
       <Modal

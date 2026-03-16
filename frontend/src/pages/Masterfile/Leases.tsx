@@ -702,7 +702,9 @@ export default function Leases() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: index * 0.02 }}
-                    className={cn('hover:bg-gray-50 transition-colors group', selection.isSelected(lease.id) && 'bg-primary-50/60')}
+                    onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
+                    onMouseEnter={() => prefetch(`/dashboard/leases/${lease.id}`)}
+                    className={cn('hover:bg-gray-50 transition-colors group cursor-pointer', selection.isSelected(lease.id) && 'bg-primary-50/60')}
                   >
                     <td className="px-4 py-4 w-10" onClick={(e) => e.stopPropagation()}>
                       <SelectionCheckbox
@@ -724,7 +726,7 @@ export default function Leases() {
                         <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
                         {lease.tenant ? (
                           <button
-                            onClick={() => navigate(`/dashboard/tenants/${lease.tenant}`)}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${lease.tenant}`) }}
                             onMouseEnter={() => prefetch(`/dashboard/tenants/${lease.tenant}`)}
                             className="text-primary-600 hover:text-primary-700 hover:underline"
                           >
@@ -741,7 +743,7 @@ export default function Leases() {
                         {lease.lease_type === 'levy' ? (
                           lease.property_id ? (
                             <button
-                              onClick={() => navigate(`/dashboard/properties/${lease.property_id}`)}
+                              onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/properties/${lease.property_id}`) }}
                               onMouseEnter={() => prefetch(`/dashboard/properties/${lease.property_id}`)}
                               className="text-primary-600 hover:text-primary-700 hover:underline truncate max-w-[180px]"
                               title={lease.property_name || ''}
@@ -753,7 +755,7 @@ export default function Leases() {
                           )
                         ) : lease.unit ? (
                           <button
-                            onClick={() => navigate(`/dashboard/units/${lease.unit}`)}
+                            onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/units/${lease.unit}`) }}
                             onMouseEnter={() => prefetch(`/dashboard/units/${lease.unit}`)}
                             className="text-primary-600 hover:text-primary-700 hover:underline truncate max-w-[180px]"
                             title={lease.unit_display || ''}
@@ -811,7 +813,7 @@ export default function Leases() {
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => navigate(`/dashboard/leases/${lease.id}`)}

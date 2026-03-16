@@ -411,8 +411,11 @@ export default function Receipts() {
                   initial={receipt._isOptimistic ? { opacity: 0.5, backgroundColor: 'rgb(239 246 255)' } : { opacity: 0 }}
                   animate={{ opacity: 1, backgroundColor: 'transparent' }}
                   transition={{ duration: 0.3, delay: receipt._isOptimistic ? 0 : index * 0.02 }}
+                  onClick={() => !receipt._isOptimistic && navigate(`/dashboard/receipts/${receipt.id}`)}
+                  onMouseEnter={() => !receipt._isOptimistic && prefetch(`/dashboard/receipts/${receipt.id}`)}
                   className={cn(
                     'hover:bg-gray-50 transition-colors',
+                    !receipt._isOptimistic && 'cursor-pointer',
                     receipt._isOptimistic && 'bg-blue-50',
                     selection.isSelected(receipt.id) && 'bg-primary-50'
                   )}
@@ -468,12 +471,18 @@ export default function Receipts() {
                   </td>
                   <td className="px-6 py-4 text-gray-600">{receipt.reference || '-'}</td>
                   <td className="px-6 py-4 text-gray-600">{formatDate(receipt.date)}</td>
-                  <td className="px-6 py-4">
+                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                     {receipt._isOptimistic ? (
                       <span className="text-blue-600 text-sm">Processing...</span>
                     ) : receipt.journal ? (
                       <Tooltip content="Posted to general ledger">
-                        <span className="text-green-600 text-sm">{receipt.journal_number}</span>
+                        <button
+                          onClick={() => navigate(`/dashboard/journals/${receipt.journal}`)}
+                          onMouseEnter={() => prefetch(`/dashboard/journals/${receipt.journal}`)}
+                          className="text-green-600 hover:text-green-700 hover:underline text-sm"
+                        >
+                          {receipt.journal_number}
+                        </button>
                       </Tooltip>
                     ) : (
                       <button
@@ -493,7 +502,7 @@ export default function Receipts() {
                       </button>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                     {!receipt._isOptimistic && (
                       <button
                         onClick={() => handleViewDetails(receipt)}

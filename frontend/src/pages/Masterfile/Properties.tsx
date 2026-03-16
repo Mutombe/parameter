@@ -634,8 +634,10 @@ export default function Properties() {
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.02 }}
+                onClick={() => navigate(`/dashboard/properties/${property.id}`)}
+                onMouseEnter={() => prefetch(`/dashboard/properties/${property.id}`)}
                 className={cn(
-                  'relative bg-white rounded-xl border border-gray-200 p-4 pl-10 hover:shadow-md hover:border-gray-300 transition-all group',
+                  'relative bg-white rounded-xl border border-gray-200 p-4 pl-10 hover:shadow-md hover:border-gray-300 transition-all group cursor-pointer',
                   selection.isSelected(property.id) && 'ring-2 ring-primary-500 bg-primary-50/30'
                 )}
               >
@@ -745,7 +747,7 @@ export default function Properties() {
                   </div>
 
                   {/* Actions - always visible on mobile, hover on desktop */}
-                  <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => handleViewDetails(property)}
                       onMouseEnter={() => prefetch(`/dashboard/properties/${property.id}`)}

@@ -17,6 +17,8 @@ import {
   Briefcase,
   Eye,
   Plus,
+  Shield,
+  Wrench,
 } from 'lucide-react'
 import {
   BarChart,
@@ -27,6 +29,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
+import api from '../../services/api'
 import { tenantApi, reportsApi, invoiceApi, receiptApi, unitApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { Modal, Button, Input, Select, Textarea, TableFilter } from '../../components/ui'
@@ -167,7 +170,7 @@ export default function TenantDetail() {
     placeholderData: keepPreviousData,
   })
 
-  // 2. Detail view (billing_summary, active_leases, recent_invoices, lease_history)
+  // 2. Detail view (billing_summary, active_leases, recent_invoices, recent_receipts, lease_history)
   const { data: detail, isLoading: loadingDetail } = useQuery({
     queryKey: ['tenant-detail-view', tenantId],
     queryFn: () => tenantApi.detailView(tenantId).then((r) => r.data),
@@ -204,6 +207,35 @@ export default function TenantDetail() {
     queryKey: ['tenant-deposit', tenantId],
     queryFn: () => reportsApi.depositSummary({ tenant_id: tenantId }).then((r) => r.data),
     enabled: !!tenantId,
+    placeholderData: keepPreviousData,
+  })
+
+  // 7. Maintenance requests for this tenant's units
+  const { data: maintenanceData, isLoading: loadingMaintenance } = useQuery({
+    queryKey: ['tenant-maintenance', tenantId],
+    queryFn: async () => {
+      // Get all leases for this tenant to find their units
+      const leases = detail?.active_leases || []
+      const unitIds = leases.map((l: any) => l.unit_id).filter(Boolean)
+      if (unitIds.length === 0) return []
+      // Fetch maintenance requests for each unit and merge
+      const results = await Promise.all(
+        unitIds.map((uid: number) =>
+          api.get('/maintenance/requests/', { params: { unit: uid, page_size: 100 } })
+            .then(r => r.data.results || r.data)
+            .catch(() => [])
+        )
+      )
+      // Flatten and dedupe by id
+      const all = results.flat()
+      const seen = new Set()
+      return all.filter((m: any) => {
+        if (seen.has(m.id)) return false
+        seen.add(m.id)
+        return true
+      })
+    },
+    enabled: !!tenantId && !!detail,
     placeholderData: keepPreviousData,
   })
 
@@ -255,9 +287,22 @@ export default function TenantDetail() {
   const billing = detail?.billing_summary || {}
   const activeLeases = detail?.active_leases || []
   const recentInvoices = detail?.recent_invoices || []
+  const recentReceipts = detail?.recent_receipts || []
+  const leaseHistory = detail?.lease_history || []
   const ledger = ledgerData?.entries || ledgerData?.items || (Array.isArray(ledgerData) ? ledgerData : [])
+  const maintenanceRequests = Array.isArray(maintenanceData) ? maintenanceData : []
 
   const hasActiveLease = activeLeases.length > 0 || tenant?.has_active_lease
+
+  // Deposit items
+  const depositItems = (() => {
+    if (!depositData) return []
+    if (Array.isArray(depositData)) return depositData
+    if (depositData.deposits && Array.isArray(depositData.deposits)) return depositData.deposits
+    if (depositData.items && Array.isArray(depositData.items)) return depositData.items
+    if (depositData.results && Array.isArray(depositData.results)) return depositData.results
+    return []
+  })()
 
   // Payment history chart
   const paymentChartData = (() => {
@@ -282,7 +327,8 @@ export default function TenantDetail() {
       const q = leasesSearch.toLowerCase()
       result = result.filter((l: any) =>
         (l.lease_number || '').toLowerCase().includes(q) ||
-        (l.unit || '').toLowerCase().includes(q)
+        (l.unit || '').toLowerCase().includes(q) ||
+        (l.property || '').toLowerCase().includes(q)
       )
     }
     return result
@@ -328,6 +374,34 @@ export default function TenantDetail() {
 
   useEffect(() => { setInvPage(1) }, [invSearch, invDateFrom, invDateTo, invStatus])
 
+  // --- Receipts/Payments filter state ---
+  const [rcptSearch, setRcptSearch] = useState('')
+  const [rcptDateFrom, setRcptDateFrom] = useState('')
+  const [rcptDateTo, setRcptDateTo] = useState('')
+
+  const filteredReceipts = useMemo(() => {
+    let result = recentReceipts || []
+    if (rcptSearch) {
+      const q = rcptSearch.toLowerCase()
+      result = result.filter((r: any) =>
+        (r.receipt_number || '').toLowerCase().includes(q) ||
+        (r.reference || '').toLowerCase().includes(q) ||
+        (r.payment_method || '').toLowerCase().includes(q)
+      )
+    }
+    if (rcptDateFrom) {
+      result = result.filter((r: any) => (r.date || '') >= rcptDateFrom)
+    }
+    if (rcptDateTo) {
+      result = result.filter((r: any) => (r.date || '') <= rcptDateTo)
+    }
+    return result
+  }, [recentReceipts, rcptSearch, rcptDateFrom, rcptDateTo])
+
+  const { paginatedData: paginatedReceipts, currentPage: rcptPage, totalPages: rcptTotalPages, setCurrentPage: setRcptPage, totalItems: rcptTotal, startIndex: rcptStart, endIndex: rcptEnd } = usePagination(filteredReceipts, { pageSize: 10 })
+
+  useEffect(() => { setRcptPage(1) }, [rcptSearch, rcptDateFrom, rcptDateTo])
+
   // --- Ledger filter state ---
   const [ledgerSearch, setLedgerSearch] = useState('')
   const [ledgerDateFrom, setLedgerDateFrom] = useState('')
@@ -355,6 +429,30 @@ export default function TenantDetail() {
 
   useEffect(() => { setLedgerPage(1) }, [ledgerSearch, ledgerDateFrom, ledgerDateTo])
 
+  // --- Maintenance filter state ---
+  const [maintSearch, setMaintSearch] = useState('')
+  const [maintStatus, setMaintStatus] = useState('')
+
+  const filteredMaintenance = useMemo(() => {
+    let result = maintenanceRequests
+    if (maintSearch) {
+      const q = maintSearch.toLowerCase()
+      result = result.filter((m: any) =>
+        (m.title || '').toLowerCase().includes(q) ||
+        (m.property_name || '').toLowerCase().includes(q) ||
+        (m.unit_name || '').toLowerCase().includes(q)
+      )
+    }
+    if (maintStatus) {
+      result = result.filter((m: any) => m.status === maintStatus)
+    }
+    return result
+  }, [maintenanceRequests, maintSearch, maintStatus])
+
+  const { paginatedData: paginatedMaintenance, currentPage: maintPage, totalPages: maintTotalPages, setCurrentPage: setMaintPage, totalItems: maintTotal, startIndex: maintStart, endIndex: maintEnd } = usePagination(filteredMaintenance, { pageSize: 10 })
+
+  useEffect(() => { setMaintPage(1) }, [maintSearch, maintStatus])
+
   // Aged chart
   const agedChartData = (() => {
     if (!agedData) return []
@@ -379,6 +477,72 @@ export default function TenantDetail() {
       .filter((k) => agedData[k] !== undefined)
       .map((k) => ({ name: labels[k] || k, amount: agedData[k] || 0 }))
   })()
+
+  // Helper: render pagination controls (reusable)
+  const renderPagination = (
+    currentPage: number,
+    totalPages: number,
+    setPage: (p: number) => void,
+    startIdx: number,
+    endIdx: number,
+    totalItems: number,
+  ) => {
+    if (totalPages <= 1) return null
+    return (
+      <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+        <span className="text-sm text-gray-500">
+          Showing {startIdx}-{endIdx} of {totalItems}
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setPage(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Previous
+          </button>
+          {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+            const page = totalPages <= 5 ? i + 1 :
+              currentPage <= 3 ? i + 1 :
+              currentPage >= totalPages - 2 ? totalPages - 4 + i :
+              currentPage - 2 + i
+            return (
+              <button
+                key={page}
+                onClick={() => setPage(page)}
+                className={`px-3 py-1 text-sm rounded-lg ${page === currentPage ? 'bg-primary-600 text-white' : 'border border-gray-200 hover:bg-gray-50'}`}
+              >
+                {page}
+              </button>
+            )
+          })}
+          <button
+            onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage === totalPages}
+            className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Helper for priority badge colors
+  const priorityColors: Record<string, string> = {
+    low: 'bg-gray-50 text-gray-700',
+    medium: 'bg-blue-50 text-blue-700',
+    high: 'bg-orange-50 text-orange-700',
+    emergency: 'bg-red-50 text-red-700',
+  }
+
+  // Helper for maintenance status badge colors
+  const maintStatusColors: Record<string, string> = {
+    open: 'bg-amber-50 text-amber-700',
+    in_progress: 'bg-blue-50 text-blue-700',
+    completed: 'bg-emerald-50 text-emerald-700',
+    cancelled: 'bg-gray-50 text-gray-600',
+  }
 
   return (
     <div className="space-y-6">
@@ -413,6 +577,11 @@ export default function TenantDetail() {
                 )}>
                   {hasActiveLease ? 'Active' : 'Inactive'}
                 </span>
+                {tenantInfo?.account_type && (
+                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-600">
+                    {tenantInfo.account_type === 'rental' ? 'Rental' : tenantInfo.account_type === 'levy' ? 'Levy' : tenantInfo.account_type}
+                  </span>
+                )}
               </>
             )}
           </div>
@@ -595,7 +764,7 @@ export default function TenantDetail() {
         </div>
         {!loadingDetail && activeLeases.length > 0 && (
           <TableFilter
-            searchPlaceholder="Search by lease number or unit..."
+            searchPlaceholder="Search by lease number, unit, or property..."
             searchValue={leasesSearch}
             onSearchChange={setLeasesSearch}
             resultCount={filteredActiveLeases.length}
@@ -611,6 +780,7 @@ export default function TenantDetail() {
               <thead>
                 <tr className="bg-gray-50">
                   <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Lease #</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Property</th>
                   <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Unit</th>
                   <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Rent</th>
                   <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Period</th>
@@ -621,19 +791,43 @@ export default function TenantDetail() {
                 {paginatedLeases.map((lease: any) => (
                   <tr
                     key={lease.id}
-                    onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
-                    onMouseEnter={() => prefetch(`/dashboard/leases/${lease.id}`)}
-                    className="hover:bg-gray-50 cursor-pointer transition-colors"
+                    className="hover:bg-gray-50 transition-colors"
                   >
                     <td className="px-6 py-4 text-sm font-medium">
                       <button
-                        onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/leases/${lease.id}`) }}
+                        onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
+                        onMouseEnter={() => prefetch(`/dashboard/leases/${lease.id}`)}
                         className="text-primary-600 hover:text-primary-700 hover:underline"
                       >
                         {lease.lease_number}
                       </button>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{lease.unit}</td>
+                    <td className="px-6 py-4 text-sm">
+                      {lease.property_id ? (
+                        <button
+                          onClick={() => navigate(`/dashboard/properties/${lease.property_id}`)}
+                          onMouseEnter={() => prefetch(`/dashboard/properties/${lease.property_id}`)}
+                          className="text-primary-600 hover:text-primary-700 hover:underline"
+                        >
+                          {lease.property}
+                        </button>
+                      ) : (
+                        <span className="text-gray-600">{lease.property}</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                      {lease.unit_id ? (
+                        <button
+                          onClick={() => navigate(`/dashboard/units/${lease.unit_id}`)}
+                          onMouseEnter={() => prefetch(`/dashboard/units/${lease.unit_id}`)}
+                          className="text-primary-600 hover:text-primary-700 hover:underline"
+                        >
+                          {lease.unit}
+                        </button>
+                      ) : (
+                        <span className="text-gray-600">{lease.unit}</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{lease.currency} {lease.monthly_rent}/mo</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{formatDate(lease.start_date)} - {formatDate(lease.end_date)}</td>
                     <td className="px-6 py-4">
@@ -644,48 +838,11 @@ export default function TenantDetail() {
               </tbody>
             </table>
           )}
-          {leasesTotalPages > 1 && (
-            <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
-              <span className="text-sm text-gray-500">
-                Showing {leasesStart}-{leasesEnd} of {leasesTotal}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setLeasesPage(Math.max(1, leasesPage - 1))}
-                  disabled={leasesPage === 1}
-                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-                {Array.from({ length: Math.min(leasesTotalPages, 5) }, (_, i) => {
-                  const page = leasesTotalPages <= 5 ? i + 1 :
-                    leasesPage <= 3 ? i + 1 :
-                    leasesPage >= leasesTotalPages - 2 ? leasesTotalPages - 4 + i :
-                    leasesPage - 2 + i
-                  return (
-                    <button
-                      key={page}
-                      onClick={() => setLeasesPage(page)}
-                      className={`px-3 py-1 text-sm rounded-lg ${page === leasesPage ? 'bg-primary-600 text-white' : 'border border-gray-200 hover:bg-gray-50'}`}
-                    >
-                      {page}
-                    </button>
-                  )
-                })}
-                <button
-                  onClick={() => setLeasesPage(Math.min(leasesTotalPages, leasesPage + 1))}
-                  disabled={leasesPage === leasesTotalPages}
-                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
+          {renderPagination(leasesPage, leasesTotalPages, setLeasesPage, leasesStart, leasesEnd, leasesTotal)}
         </div>
       </motion.div>
 
-      {/* Recent Invoices Table */}
+      {/* Invoices Table */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -694,8 +851,8 @@ export default function TenantDetail() {
       >
         <div className="p-6 border-b border-gray-100 flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Recent Invoices</h3>
-            <p className="text-sm text-gray-500">Latest billing activity</p>
+            <h3 className="text-lg font-semibold text-gray-900">Invoices</h3>
+            <p className="text-sm text-gray-500">{recentInvoices.length} invoice(s)</p>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -799,44 +956,90 @@ export default function TenantDetail() {
               </tbody>
             </table>
           )}
-          {invTotalPages > 1 && (
-            <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
-              <span className="text-sm text-gray-500">
-                Showing {invStart}-{invEnd} of {invTotal}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setInvPage(Math.max(1, invPage - 1))}
-                  disabled={invPage === 1}
-                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-                {Array.from({ length: Math.min(invTotalPages, 5) }, (_, i) => {
-                  const page = invTotalPages <= 5 ? i + 1 :
-                    invPage <= 3 ? i + 1 :
-                    invPage >= invTotalPages - 2 ? invTotalPages - 4 + i :
-                    invPage - 2 + i
-                  return (
-                    <button
-                      key={page}
-                      onClick={() => setInvPage(page)}
-                      className={`px-3 py-1 text-sm rounded-lg ${page === invPage ? 'bg-primary-600 text-white' : 'border border-gray-200 hover:bg-gray-50'}`}
-                    >
-                      {page}
-                    </button>
-                  )
-                })}
-                <button
-                  onClick={() => setInvPage(Math.min(invTotalPages, invPage + 1))}
-                  disabled={invPage === invTotalPages}
-                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
+          {renderPagination(invPage, invTotalPages, setInvPage, invStart, invEnd, invTotal)}
+        </div>
+      </motion.div>
+
+      {/* Receipts / Payments Table */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.42 }}
+        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+      >
+        <div className="p-6 border-b border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-900">Receipts / Payments</h3>
+          <p className="text-sm text-gray-500">{recentReceipts.length} payment(s) recorded</p>
+        </div>
+        {!loadingDetail && recentReceipts.length > 0 && (
+          <TableFilter
+            searchPlaceholder="Search by receipt number, reference, or method..."
+            searchValue={rcptSearch}
+            onSearchChange={setRcptSearch}
+            showDateFilter
+            dateFrom={rcptDateFrom}
+            dateTo={rcptDateTo}
+            onDateFromChange={setRcptDateFrom}
+            onDateToChange={setRcptDateTo}
+            resultCount={filteredReceipts.length}
+          />
+        )}
+        <div className="overflow-x-auto">
+          {loadingDetail ? (
+            <div className="p-6"><TableSkeleton /></div>
+          ) : recentReceipts.length === 0 ? (
+            <div className="p-12 text-center text-sm text-gray-400">No payments recorded</div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Receipt #</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Invoice #</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Method</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Reference</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {paginatedReceipts.map((rcpt: any) => (
+                  <tr key={rcpt.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 text-sm font-medium">
+                      <button
+                        onClick={() => navigate(`/dashboard/receipts/${rcpt.id}`)}
+                        onMouseEnter={() => prefetch(`/dashboard/receipts/${rcpt.id}`)}
+                        className="text-primary-600 hover:text-primary-700 hover:underline"
+                      >
+                        {rcpt.receipt_number}
+                      </button>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{formatDate(rcpt.date)}</td>
+                    <td className="px-6 py-4 text-sm">
+                      {rcpt.invoice ? (
+                        <button
+                          onClick={() => navigate(`/dashboard/invoices/${rcpt.invoice}`)}
+                          onMouseEnter={() => prefetch(`/dashboard/invoices/${rcpt.invoice}`)}
+                          className="text-primary-600 hover:text-primary-700 hover:underline"
+                        >
+                          {rcpt.invoice_number || `INV-${rcpt.invoice}`}
+                        </button>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">
+                      {formatCurrency(rcpt.amount || 0)}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      <span className="capitalize">{(rcpt.payment_method || '').replace(/_/g, ' ')}</span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{rcpt.reference || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
+          {renderPagination(rcptPage, rcptTotalPages, setRcptPage, rcptStart, rcptEnd, rcptTotal)}
         </div>
       </motion.div>
 
@@ -848,8 +1051,8 @@ export default function TenantDetail() {
         className="bg-white rounded-xl border border-gray-200 overflow-hidden"
       >
         <div className="p-6 border-b border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900">Ledger</h3>
-          <p className="text-sm text-gray-500">Transaction history</p>
+          <h3 className="text-lg font-semibold text-gray-900">Account Statement / Ledger</h3>
+          <p className="text-sm text-gray-500">Full transaction history</p>
         </div>
         {!loadingLedger && ledger.length > 0 && (
           <TableFilter
@@ -911,44 +1114,7 @@ export default function TenantDetail() {
               </tbody>
             </table>
           )}
-          {ledgerTotalPages > 1 && (
-            <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
-              <span className="text-sm text-gray-500">
-                Showing {ledgerStart}-{ledgerEnd} of {ledgerTotal}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setLedgerPage(Math.max(1, ledgerPage - 1))}
-                  disabled={ledgerPage === 1}
-                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-                {Array.from({ length: Math.min(ledgerTotalPages, 5) }, (_, i) => {
-                  const page = ledgerTotalPages <= 5 ? i + 1 :
-                    ledgerPage <= 3 ? i + 1 :
-                    ledgerPage >= ledgerTotalPages - 2 ? ledgerTotalPages - 4 + i :
-                    ledgerPage - 2 + i
-                  return (
-                    <button
-                      key={page}
-                      onClick={() => setLedgerPage(page)}
-                      className={`px-3 py-1 text-sm rounded-lg ${page === ledgerPage ? 'bg-primary-600 text-white' : 'border border-gray-200 hover:bg-gray-50'}`}
-                    >
-                      {page}
-                    </button>
-                  )
-                })}
-                <button
-                  onClick={() => setLedgerPage(Math.min(ledgerTotalPages, ledgerPage + 1))}
-                  disabled={ledgerPage === ledgerTotalPages}
-                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
+          {renderPagination(ledgerPage, ledgerTotalPages, setLedgerPage, ledgerStart, ledgerEnd, ledgerTotal)}
         </div>
       </motion.div>
 
@@ -1025,6 +1191,206 @@ export default function TenantDetail() {
           </div>
         </motion.div>
       </div>
+
+      {/* Deposits Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+      >
+        <div className="p-6 border-b border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-900">Deposits</h3>
+          <p className="text-sm text-gray-500">Security and other deposit tracking</p>
+        </div>
+        <div className="overflow-x-auto">
+          {loadingDeposit ? (
+            <div className="p-6"><TableSkeleton rows={3} /></div>
+          ) : depositItems.length === 0 ? (
+            <div className="p-12 text-center">
+              <Shield className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-sm text-gray-400">No deposit records found</p>
+              {/* Show lease-level deposit info if available */}
+              {activeLeases.some((l: any) => l.deposit_amount || l.deposit_paid !== undefined) && (
+                <div className="mt-4 space-y-2">
+                  {activeLeases.filter((l: any) => l.deposit_amount).map((l: any) => (
+                    <div key={l.id} className="text-sm text-gray-600">
+                      Lease {l.lease_number}: {formatCurrency(l.deposit_amount)} deposit {l.deposit_paid ? '(paid)' : '(unpaid)'}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Property / Unit</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Type</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Paid</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {depositItems.map((dep: any, idx: number) => (
+                  <tr key={dep.id || idx} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      <div className="space-y-0.5">
+                        {dep.property_id ? (
+                          <button
+                            onClick={() => navigate(`/dashboard/properties/${dep.property_id}`)}
+                            className="text-primary-600 hover:text-primary-700 hover:underline block"
+                          >
+                            {dep.property_name || dep.property || '-'}
+                          </button>
+                        ) : (
+                          <span>{dep.property_name || dep.property || '-'}</span>
+                        )}
+                        {dep.unit_id ? (
+                          <button
+                            onClick={() => navigate(`/dashboard/units/${dep.unit_id}`)}
+                            className="text-primary-600 hover:text-primary-700 hover:underline block text-xs"
+                          >
+                            {dep.unit_name || dep.unit || ''}
+                          </button>
+                        ) : dep.unit_name || dep.unit ? (
+                          <span className="text-xs text-gray-400">{dep.unit_name || dep.unit}</span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600 capitalize">{dep.deposit_type || dep.type || 'Security'}</td>
+                    <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{formatCurrency(dep.amount || dep.deposit_amount || 0)}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(dep.paid || dep.amount_paid || 0)}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-right">
+                      <span className={(dep.balance || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>
+                        {formatCurrency(dep.balance || (dep.amount || 0) - (dep.paid || dep.amount_paid || 0))}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={cn(
+                        'inline-flex px-2 py-0.5 rounded-full text-xs font-medium',
+                        dep.status === 'paid' || dep.is_paid ? 'bg-emerald-50 text-emerald-700' :
+                        dep.status === 'refunded' ? 'bg-blue-50 text-blue-700' :
+                        dep.status === 'partial' ? 'bg-amber-50 text-amber-700' :
+                        'bg-gray-50 text-gray-600'
+                      )}>
+                        {dep.status || (dep.is_paid ? 'Paid' : 'Pending')}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </motion.div>
+
+      {/* Maintenance Requests */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.55 }}
+        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+      >
+        <div className="p-6 border-b border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-900">Maintenance Requests</h3>
+          <p className="text-sm text-gray-500">{maintenanceRequests.length} request(s)</p>
+        </div>
+        {!loadingMaintenance && maintenanceRequests.length > 0 && (
+          <TableFilter
+            searchPlaceholder="Search by title, property, or unit..."
+            searchValue={maintSearch}
+            onSearchChange={setMaintSearch}
+            showStatusFilter
+            statusOptions={[
+              { value: 'open', label: 'Open' },
+              { value: 'in_progress', label: 'In Progress' },
+              { value: 'completed', label: 'Completed' },
+              { value: 'cancelled', label: 'Cancelled' },
+            ]}
+            statusValue={maintStatus}
+            onStatusChange={setMaintStatus}
+            resultCount={filteredMaintenance.length}
+          />
+        )}
+        <div className="overflow-x-auto">
+          {loadingMaintenance ? (
+            <div className="p-6"><TableSkeleton rows={3} /></div>
+          ) : maintenanceRequests.length === 0 ? (
+            <div className="p-12 text-center">
+              <Wrench className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-sm text-gray-400">No maintenance requests</p>
+            </div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">ID</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Title</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Property / Unit</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Priority</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {paginatedMaintenance.map((mr: any) => (
+                  <tr
+                    key={mr.id}
+                    onClick={() => navigate(`/dashboard/maintenance/${mr.id}`)}
+                    className="hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
+                    <td className="px-6 py-4 text-sm font-medium text-primary-600">MR-{mr.id}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900">{mr.title}</td>
+                    <td className="px-6 py-4 text-sm">
+                      <div className="space-y-0.5">
+                        {mr.property ? (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/properties/${mr.property}`) }}
+                            className="text-primary-600 hover:text-primary-700 hover:underline block"
+                          >
+                            {mr.property_name || `Property #${mr.property}`}
+                          </button>
+                        ) : (
+                          <span className="text-gray-600">{mr.property_name || '-'}</span>
+                        )}
+                        {mr.unit ? (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/units/${mr.unit}`) }}
+                            className="text-primary-600 hover:text-primary-700 hover:underline block text-xs"
+                          >
+                            {mr.unit_name || `Unit #${mr.unit}`}
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={cn(
+                        'inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize',
+                        priorityColors[mr.priority] || 'bg-gray-50 text-gray-600'
+                      )}>
+                        {mr.priority}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={cn(
+                        'inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize',
+                        maintStatusColors[mr.status] || 'bg-gray-50 text-gray-600'
+                      )}>
+                        {(mr.status || '').replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{formatDate(mr.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {renderPagination(maintPage, maintTotalPages, setMaintPage, maintStart, maintEnd, maintTotal)}
+        </div>
+      </motion.div>
 
       {/* Create Invoice Modal */}
       <Modal

@@ -485,7 +485,12 @@ export default function Tenants() {
               />
             </div>
           ) : tenants?.map((tenant: any) => (
-              <div key={tenant.id} className={cn('card p-5 pl-10 hover:shadow-md transition-shadow relative', selection.isSelected(tenant.id) && 'ring-2 ring-primary-500 bg-primary-50/30')}>
+              <div
+                key={tenant.id}
+                onClick={() => navigate(`/dashboard/tenants/${tenant.id}`)}
+                onMouseEnter={() => prefetch(`/dashboard/tenants/${tenant.id}`)}
+                className={cn('card p-5 pl-10 hover:shadow-md transition-shadow relative cursor-pointer', selection.isSelected(tenant.id) && 'ring-2 ring-primary-500 bg-primary-50/30')}
+              >
                 <div className="absolute top-3 left-3" onClick={(e) => e.stopPropagation()}>
                   <SelectionCheckbox
                     checked={selection.isSelected(tenant.id)}
@@ -511,7 +516,7 @@ export default function Tenants() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => handleViewDetails(tenant.id)}
                       onMouseEnter={() => prefetch(`/dashboard/tenants/${tenant.id}`)}
@@ -627,17 +632,19 @@ export default function Tenants() {
                     initial={isOptimistic ? { opacity: 0.5, backgroundColor: 'rgb(239 246 255)' } : { opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0, backgroundColor: 'transparent' }}
                     transition={{ delay: isOptimistic ? 0 : index * 0.02, duration: 0.3 }}
+                    onClick={() => !isOptimistic && !isUpdating && navigate(`/dashboard/tenants/${tenant.id}`)}
+                    onMouseEnter={() => !isOptimistic && !isUpdating && prefetch(`/dashboard/tenants/${tenant.id}`)}
                     className={cn(
                       'bg-white rounded-xl border p-4 pl-10 transition-all group relative',
                       isOptimistic || isUpdating
                         ? 'border-primary-200 bg-primary-50/50'
-                        : 'border-gray-200 hover:shadow-md hover:border-gray-300',
+                        : 'border-gray-200 hover:shadow-md hover:border-gray-300 cursor-pointer',
                       !isOptimistic && selection.isSelected(tenant.id) && 'ring-2 ring-primary-500 bg-primary-50/30'
                     )}
                   >
                     {/* Selection checkbox */}
                     {!isOptimistic && !isUpdating && (
-                      <div className="absolute left-2.5 top-1/2 -translate-y-1/2">
+                      <div className="absolute left-2.5 top-1/2 -translate-y-1/2" onClick={(e) => e.stopPropagation()}>
                         <SelectionCheckbox
                           checked={selection.isSelected(tenant.id)}
                           onChange={() => selection.toggle(tenant.id)}
@@ -731,7 +738,7 @@ export default function Tenants() {
 
                       {/* Actions */}
                       {!isOptimistic && !isUpdating ? (
-                        <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
                           <button
                             onMouseEnter={() => prefetch(`/dashboard/tenants/${tenant.id}`)}
                             onClick={() => handleViewDetails(tenant.id)}
