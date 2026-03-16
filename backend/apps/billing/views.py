@@ -582,7 +582,8 @@ class BulkMailingViewSet(viewsets.ViewSet):
 class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Receipts."""
     queryset = Receipt.objects.select_related(
-        'tenant', 'invoice', 'invoice__unit', 'created_by', 'journal'
+        'tenant', 'invoice', 'invoice__unit', 'invoice__unit__property',
+        'created_by', 'journal', 'income_type'
     ).all()
     permission_classes = [IsAuthenticated]
     filterset_fields = [
@@ -762,7 +763,7 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
 class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Expenses."""
     queryset = Expense.objects.select_related(
-        'created_by', 'approved_by', 'journal'
+        'expense_category', 'income_type', 'journal', 'created_by', 'approved_by'
     ).all()
     serializer_class = ExpenseSerializer
     permission_classes = [IsAuthenticated]

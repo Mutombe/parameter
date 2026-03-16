@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueryClient, QueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import {
   propertyApi,
@@ -13,9 +13,14 @@ import {
   journalApi,
   accountApi,
   bankAccountApi,
+  incomeTypeApi,
+  expenseCategoryApi,
+  auditApi,
+  subsidiaryApi,
 } from '../services/api'
+import api from '../services/api'
 
-const PREFETCH_STALE_TIME = 5 * 60 * 1000 // 5 minutes
+const PREFETCH_STALE_TIME = 10 * 60 * 1000 // 10 minutes
 
 // Map of sidebar route paths to their primary query prefetch configs.
 // Query keys must match the EXACT keys used in each page's useQuery call.
@@ -65,6 +70,21 @@ const prefetchMap: Record<string, () => { queryKey: unknown[]; queryFn: () => Pr
   ],
   '/dashboard/accounting/bank-accounts': () => [
     { queryKey: ['bank-accounts'], queryFn: () => bankAccountApi.list().then(r => r.data.results || r.data) },
+  ],
+  '/dashboard/maintenance': () => [
+    { queryKey: ['maintenance-requests', { page: 1, page_size: 25 }], queryFn: () => api.get('/maintenance/requests/', { params: { page: 1, page_size: 25 } }).then(r => r.data) },
+  ],
+  '/dashboard/audit-trail': () => [
+    { queryKey: ['audit-trail'], queryFn: () => auditApi.list().then(r => r.data.results || r.data) },
+  ],
+  '/dashboard/income-types': () => [
+    { queryKey: ['income-types'], queryFn: () => incomeTypeApi.list().then(r => r.data.results || r.data) },
+  ],
+  '/dashboard/expense-categories': () => [
+    { queryKey: ['expense-categories'], queryFn: () => expenseCategoryApi.list().then(r => r.data.results || r.data) },
+  ],
+  '/dashboard/subsidiary-ledger': () => [
+    { queryKey: ['subsidiary-accounts'], queryFn: () => subsidiaryApi.list().then(r => r.data.results || r.data) },
   ],
 }
 
@@ -116,4 +136,37 @@ export function usePrefetch() {
   )
 
   return prefetch
+}
+
+/**
+ * Prefetch all core data endpoints in parallel.
+ * Call on login success to warm the cache so pages load instantly.
+ */
+export function prefetchAllCoreData(queryClient: QueryClient) {
+  const stale = PREFETCH_STALE_TIME
+
+  // Dashboard
+  queryClient.prefetchQuery({ queryKey: ['dashboard-stats'], queryFn: () => reportsApi.dashboard().then(r => r.data), staleTime: stale })
+
+  // Masterfile
+  queryClient.prefetchQuery({ queryKey: ['properties', '', 1], queryFn: () => propertyApi.list({ search: '', page: 1, page_size: 12 }).then(r => r.data), staleTime: stale })
+  queryClient.prefetchQuery({ queryKey: ['landlords', '', 1], queryFn: () => landlordApi.list({ search: '', page: 1, page_size: 12 }).then(r => r.data), staleTime: stale })
+  queryClient.prefetchQuery({ queryKey: ['tenants', '', 1, '', ''], queryFn: () => tenantApi.list({ search: '', page: 1, page_size: 12 }).then(r => r.data), staleTime: stale })
+  queryClient.prefetchQuery({ queryKey: ['units', '', 'all'], queryFn: () => unitApi.list({ search: '' }).then(r => r.data.results || r.data), staleTime: stale })
+  queryClient.prefetchQuery({ queryKey: ['leases', '', ''], queryFn: () => leaseApi.list({ search: '' }).then(r => r.data.results || r.data), staleTime: stale })
+
+  // Billing
+  queryClient.prefetchQuery({ queryKey: ['invoices', '', ''], queryFn: () => invoiceApi.list({}).then(r => r.data.results || r.data), staleTime: stale })
+  queryClient.prefetchQuery({ queryKey: ['receipts', ''], queryFn: () => receiptApi.list({ search: '' }).then(r => r.data.results || r.data), staleTime: stale })
+  queryClient.prefetchQuery({ queryKey: ['expenses', '', '', ''], queryFn: () => expenseApi.list({}).then(r => r.data.results || r.data), staleTime: stale })
+
+  // Accounting
+  queryClient.prefetchQuery({ queryKey: ['accounts'], queryFn: () => accountApi.list().then(r => r.data.results || r.data), staleTime: stale })
+  queryClient.prefetchQuery({ queryKey: ['journals', '', ''], queryFn: () => journalApi.list({}).then(r => r.data.results || r.data), staleTime: stale })
+  queryClient.prefetchQuery({ queryKey: ['bank-accounts'], queryFn: () => bankAccountApi.list().then(r => r.data.results || r.data), staleTime: stale })
+  queryClient.prefetchQuery({ queryKey: ['income-types'], queryFn: () => incomeTypeApi.list().then(r => r.data.results || r.data), staleTime: stale })
+  queryClient.prefetchQuery({ queryKey: ['expense-categories'], queryFn: () => expenseCategoryApi.list().then(r => r.data.results || r.data), staleTime: stale })
+
+  // Reports
+  queryClient.prefetchQuery({ queryKey: ['trial-balance'], queryFn: () => reportsApi.trialBalance().then(r => r.data), staleTime: stale })
 }

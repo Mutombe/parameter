@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus,
@@ -76,6 +76,7 @@ export default function IncomeTypes() {
   const { data, isLoading } = useQuery({
     queryKey: ['income-types'],
     queryFn: () => incomeTypeApi.list().then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data: glAccounts } = useQuery({

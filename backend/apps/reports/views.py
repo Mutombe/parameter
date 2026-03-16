@@ -61,7 +61,7 @@ class DashboardStatsView(APIView):
     """Dashboard KPIs and statistics. Optimized to ~5 queries instead of 15+."""
     permission_classes = [IsAuthenticated]
 
-    @_cache_report('dashboard', ttl=30)
+    @_cache_report('dashboard', ttl=300)
     def get(self, request):
         from django.db import connection
         if connection.schema_name == 'public':
@@ -183,33 +183,65 @@ class TrialBalanceReportView(APIView):
     """Trial Balance Report."""
     permission_classes = [IsAuthenticated]
 
-    @_cache_report('trial_balance', ttl=60)
+    @_cache_report('trial_balance', ttl=300)
     def get(self, request):
         as_of_date = request.query_params.get('as_of_date', timezone.now().date())
 
-        accounts = ChartOfAccount.objects.filter(is_active=True).order_by('code')
+        # Use values() to avoid loading full model instances; annotate debit/credit
+        # columns in the DB to reduce Python-side work.
+        accounts = ChartOfAccount.objects.filter(
+            is_active=True
+        ).exclude(
+            current_balance=Decimal('0')
+        ).annotate(
+            _debit=Case(
+                # Debit-normal accounts: positive balance -> debit, negative -> credit
+                When(
+                    Q(account_type__in=['asset', 'expense']) & Q(current_balance__gte=0),
+                    then=F('current_balance'),
+                ),
+                When(
+                    Q(account_type__in=['asset', 'expense']) & Q(current_balance__lt=0),
+                    then=Value(Decimal('0')),
+                ),
+                # Credit-normal accounts: negative balance -> debit (abs), positive -> 0
+                When(
+                    ~Q(account_type__in=['asset', 'expense']) & Q(current_balance__lt=0),
+                    then=-F('current_balance'),
+                ),
+                default=Value(Decimal('0')),
+                output_field=DecimalField(max_digits=18, decimal_places=2),
+            ),
+            _credit=Case(
+                # Debit-normal accounts: negative balance -> credit (abs), positive -> 0
+                When(
+                    Q(account_type__in=['asset', 'expense']) & Q(current_balance__lt=0),
+                    then=-F('current_balance'),
+                ),
+                # Credit-normal accounts: positive balance -> credit
+                When(
+                    ~Q(account_type__in=['asset', 'expense']) & Q(current_balance__gte=0),
+                    then=F('current_balance'),
+                ),
+                default=Value(Decimal('0')),
+                output_field=DecimalField(max_digits=18, decimal_places=2),
+            ),
+        ).order_by('code').values('code', 'name', 'account_type', '_debit', '_credit')
 
         report_data = []
         total_debits = Decimal('0')
         total_credits = Decimal('0')
 
-        for account in accounts:
-            balance = account.current_balance
-
-            if account.normal_balance == 'debit':
-                debit = balance if balance >= 0 else Decimal('0')
-                credit = abs(balance) if balance < 0 else Decimal('0')
-            else:
-                credit = balance if balance >= 0 else Decimal('0')
-                debit = abs(balance) if balance < 0 else Decimal('0')
-
+        for row in accounts:
+            debit = row['_debit'] or Decimal('0')
+            credit = row['_credit'] or Decimal('0')
             if debit or credit:
                 report_data.append({
-                    'code': account.code,
-                    'name': account.name,
-                    'type': account.account_type,
+                    'code': row['code'],
+                    'name': row['name'],
+                    'type': row['account_type'],
                     'debit': float(debit),
-                    'credit': float(credit)
+                    'credit': float(credit),
                 })
                 total_debits += debit
                 total_credits += credit
@@ -231,22 +263,32 @@ class IncomeStatementView(APIView):
     """Profit & Loss Statement."""
     permission_classes = [IsAuthenticated]
 
-    @_cache_report('income_statement', ttl=60)
+    @_cache_report('income_statement', ttl=300)
     def get(self, request):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date', timezone.now().date())
 
-        # Revenue accounts
-        revenue_accounts = ChartOfAccount.objects.filter(
-            account_type='revenue', is_active=True
-        )
-        total_revenue = sum(acc.current_balance for acc in revenue_accounts)
+        # Fetch revenue and expense accounts with non-zero balances in a single query
+        accounts = ChartOfAccount.objects.filter(
+            account_type__in=['revenue', 'expense'],
+            is_active=True,
+        ).exclude(current_balance=Decimal('0')).values(
+            'code', 'name', 'account_type', 'current_balance'
+        ).order_by('code')
 
-        # Expense accounts
-        expense_accounts = ChartOfAccount.objects.filter(
-            account_type='expense', is_active=True
-        )
-        total_expenses = sum(acc.current_balance for acc in expense_accounts)
+        revenue_list = []
+        expense_list = []
+        total_revenue = Decimal('0')
+        total_expenses = Decimal('0')
+
+        for row in accounts:
+            entry = {'code': row['code'], 'name': row['name'], 'balance': float(row['current_balance'])}
+            if row['account_type'] == 'revenue':
+                revenue_list.append(entry)
+                total_revenue += row['current_balance']
+            else:
+                expense_list.append(entry)
+                total_expenses += row['current_balance']
 
         net_income = total_revenue - total_expenses
 
@@ -257,17 +299,11 @@ class IncomeStatementView(APIView):
                 'end': str(end_date)
             },
             'revenue': {
-                'accounts': [
-                    {'code': a.code, 'name': a.name, 'balance': float(a.current_balance)}
-                    for a in revenue_accounts if a.current_balance
-                ],
+                'accounts': revenue_list,
                 'total': float(total_revenue)
             },
             'expenses': {
-                'accounts': [
-                    {'code': a.code, 'name': a.name, 'balance': float(a.current_balance)}
-                    for a in expense_accounts if a.current_balance
-                ],
+                'accounts': expense_list,
                 'total': float(total_expenses)
             },
             'net_income': float(net_income),
@@ -279,53 +315,52 @@ class BalanceSheetView(APIView):
     """Balance Sheet Report."""
     permission_classes = [IsAuthenticated]
 
-    @_cache_report('balance_sheet', ttl=60)
+    @_cache_report('balance_sheet', ttl=300)
     def get(self, request):
         as_of_date = request.query_params.get('as_of_date', timezone.now().date())
 
-        # Assets
-        asset_accounts = ChartOfAccount.objects.filter(
-            account_type='asset', is_active=True
-        )
-        total_assets = sum(acc.current_balance for acc in asset_accounts)
+        # Fetch all three account types in a single query
+        accounts = ChartOfAccount.objects.filter(
+            account_type__in=['asset', 'liability', 'equity'],
+            is_active=True,
+        ).exclude(current_balance=Decimal('0')).values(
+            'code', 'name', 'account_type', 'current_balance'
+        ).order_by('code')
 
-        # Liabilities
-        liability_accounts = ChartOfAccount.objects.filter(
-            account_type='liability', is_active=True
-        )
-        total_liabilities = sum(acc.current_balance for acc in liability_accounts)
+        asset_list = []
+        liability_list = []
+        equity_list = []
+        total_assets = Decimal('0')
+        total_liabilities = Decimal('0')
+        total_equity = Decimal('0')
 
-        # Equity
-        equity_accounts = ChartOfAccount.objects.filter(
-            account_type='equity', is_active=True
-        )
-        total_equity = sum(acc.current_balance for acc in equity_accounts)
+        for row in accounts:
+            entry = {'code': row['code'], 'name': row['name'], 'balance': float(row['current_balance'])}
+            if row['account_type'] == 'asset':
+                asset_list.append(entry)
+                total_assets += row['current_balance']
+            elif row['account_type'] == 'liability':
+                liability_list.append(entry)
+                total_liabilities += row['current_balance']
+            else:
+                equity_list.append(entry)
+                total_equity += row['current_balance']
 
-        # Check balance
         total_liab_equity = total_liabilities + total_equity
 
         return Response({
             'report_name': 'Balance Sheet',
             'as_of_date': str(as_of_date),
             'assets': {
-                'accounts': [
-                    {'code': a.code, 'name': a.name, 'balance': float(a.current_balance)}
-                    for a in asset_accounts if a.current_balance
-                ],
+                'accounts': asset_list,
                 'total': float(total_assets)
             },
             'liabilities': {
-                'accounts': [
-                    {'code': a.code, 'name': a.name, 'balance': float(a.current_balance)}
-                    for a in liability_accounts if a.current_balance
-                ],
+                'accounts': liability_list,
                 'total': float(total_liabilities)
             },
             'equity': {
-                'accounts': [
-                    {'code': a.code, 'name': a.name, 'balance': float(a.current_balance)}
-                    for a in equity_accounts if a.current_balance
-                ],
+                'accounts': equity_list,
                 'total': float(total_equity)
             },
             'totals': {
@@ -340,7 +375,7 @@ class VacancyReportView(APIView):
     """Vacancy Report by Property."""
     permission_classes = [IsAuthenticated]
 
-    @_cache_report('vacancy', ttl=120)
+    @_cache_report('vacancy', ttl=300)
     def get(self, request):
         properties = Property.objects.filter(
             management_type='rental'
@@ -387,7 +422,7 @@ class RentRollView(APIView):
     """Rent Roll Report - All active leases with rental amounts."""
     permission_classes = [IsAuthenticated]
 
-    @_cache_report('rent_roll', ttl=120)
+    @_cache_report('rent_roll', ttl=300)
     def get(self, request):
         leases = LeaseAgreement.objects.filter(
             status='active'
@@ -755,7 +790,7 @@ class CashFlowStatementView(APIView):
     """Cash Flow Statement Report."""
     permission_classes = [IsAuthenticated]
 
-    @_cache_report('cash_flow', ttl=120)
+    @_cache_report('cash_flow', ttl=300)
     def get(self, request):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date', timezone.now().date())
@@ -902,7 +937,7 @@ class AgedAnalysisView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    @_cache_report('aged_analysis', ttl=120)
+    @_cache_report('aged_analysis', ttl=300)
     def get(self, request):
         today = timezone.now().date()
         as_of_date = request.query_params.get('as_of_date', today)
@@ -2482,7 +2517,7 @@ class DataVisualizationView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    @_cache_report('charts', ttl=60)
+    @_cache_report('charts', ttl=300)
     def get(self, request):
         chart_type = request.query_params.get('chart_type')
 

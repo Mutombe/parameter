@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -1893,6 +1893,7 @@ function RentRolloverReport() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['rent-rollover', startDate, endDate],
     queryFn: () => reportsApi.rentRollover({ start_date: startDate, end_date: endDate }).then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   // Level 2 query
@@ -2596,6 +2597,7 @@ function AgedAnalysisReport() {
       ...(propertyFilter ? { property_id: Number(propertyFilter) } : {}),
       ...(landlordFilter ? { landlord_id: Number(landlordFilter) } : {}),
     }).then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data: propertiesData } = useQuery({
@@ -2814,6 +2816,7 @@ function TenantAccountReport() {
     queryKey: ['tenant-account', selectedTenant],
     queryFn: () => reportsApi.tenantAccount({ tenant_id: Number(selectedTenant) }).then(r => r.data),
     enabled: !!selectedTenant,
+    placeholderData: keepPreviousData,
   })
 
   if (data) currentReportData = data
@@ -2928,6 +2931,7 @@ function LandlordAccountReport() {
     queryKey: ['landlord-account', selectedLandlord, startDate, endDate],
     queryFn: () => reportsApi.landlordStatement({ landlord_id: Number(selectedLandlord), start_date: startDate, end_date: endDate }).then(r => r.data),
     enabled: !!selectedLandlord,
+    placeholderData: keepPreviousData,
   })
 
   if (data) currentReportData = data
@@ -3712,6 +3716,7 @@ function LeaseChargeSummaryReport() {
       ...(propertyFilter ? { property_id: Number(propertyFilter) } : {}),
       ...(landlordFilter ? { landlord_id: Number(landlordFilter) } : {}),
     }).then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   if (data) currentReportData = data
@@ -3864,6 +3869,7 @@ function IncomeExpenditureReport() {
     queryFn: () => reportsApi.incomeExpenditure({ landlord_id: Number(selectedLandlord), start_date: startDate, end_date: endDate }).then(r => r.data),
     enabled: !!selectedLandlord,
     retry: 1,
+    placeholderData: keepPreviousData,
   })
 
   if (data) { currentReportData = data; currentReportType = 'income-expenditure' }

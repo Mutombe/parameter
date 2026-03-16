@@ -247,7 +247,8 @@ class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets
 class LeaseAgreementViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Lease Agreements."""
     queryset = LeaseAgreement.objects.select_related(
-        'tenant', 'unit', 'unit__property', 'unit__property__landlord', 'created_by'
+        'tenant', 'unit', 'unit__property', 'unit__property__landlord',
+        'property', 'property__landlord', 'created_by'
     ).all()
     serializer_class = LeaseAgreementSerializer
     permission_classes = [IsAuthenticated]

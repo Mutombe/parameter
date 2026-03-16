@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   Wrench,
@@ -97,7 +97,7 @@ export default function MaintenanceRequests() {
     queryKey: ['maintenance-requests', queryParams],
     queryFn: () =>
       api.get('/maintenance/requests/', { params: queryParams }).then((r) => r.data),
-    placeholderData: (prev: any) => prev,
+    placeholderData: keepPreviousData,
   })
 
   const requests: MaintenanceRequest[] = data?.results || data || []

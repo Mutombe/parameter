@@ -104,6 +104,10 @@ class PropertySerializer(serializers.ModelSerializer):
         return obj.get_defined_unit_count()
 
     def get_valid_units(self, obj):
+        # Only compute on detail views to avoid expense in list contexts
+        view = self.context.get('view')
+        if view and getattr(view, 'action', None) == 'list':
+            return []
         # Return first 50 units to avoid huge responses
         units = obj.get_valid_units()
         return units[:50] if len(units) > 50 else units

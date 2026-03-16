@@ -133,6 +133,8 @@ export default function Dashboard() {
   const { data: stats, isLoading } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: () => reportsApi.dashboard().then(r => r.data),
+    staleTime: 60 * 1000, // 60 seconds — live-updating stats
+    refetchInterval: 60 * 1000, // Auto-refresh every 60 seconds
   })
 
   const occupancyRate = stats?.properties?.occupancy_rate || 0

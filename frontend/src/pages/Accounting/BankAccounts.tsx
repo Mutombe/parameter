@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   Plus,
@@ -59,6 +59,7 @@ export default function BankAccounts() {
   const { data, isLoading } = useQuery({
     queryKey: ['bank-accounts'],
     queryFn: () => bankAccountApi.list().then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data: summary } = useQuery({

@@ -1,5 +1,6 @@
 """Serializers for accounting module."""
 from decimal import Decimal
+from django.db.models import Sum
 from rest_framework import serializers
 from .models import (
     ChartOfAccount, ExchangeRate, Journal, JournalEntry,
@@ -87,10 +88,14 @@ class JournalSerializer(serializers.ModelSerializer):
         ]
 
     def get_total_debit(self, obj):
-        return sum(e.debit_amount for e in obj.entries.all())
+        if hasattr(obj, '_total_debit'):
+            return obj._total_debit
+        return obj.entries.aggregate(total=Sum('debit_amount'))['total'] or Decimal('0')
 
     def get_total_credit(self, obj):
-        return sum(e.credit_amount for e in obj.entries.all())
+        if hasattr(obj, '_total_credit'):
+            return obj._total_credit
+        return obj.entries.aggregate(total=Sum('credit_amount'))['total'] or Decimal('0')
 
 
 class JournalCreateSerializer(serializers.ModelSerializer):

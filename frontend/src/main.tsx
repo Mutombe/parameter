@@ -9,10 +9,13 @@ import './index.css'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000, // 5 minutes — data considered fresh, prevents refetch flicker
-      gcTime: 10 * 60 * 1000, // 10 minutes — keep unused data in cache
+      staleTime: 30 * 1000, // 30 seconds — data fresh for 30s, background refetch after
+      gcTime: 30 * 60 * 1000, // 30 minutes — keep cache much longer
       retry: 1,
-      refetchOnWindowFocus: false, // Don't refetch on tab focus — rely on mutations to invalidate
+      refetchOnWindowFocus: 'always', // Silently refresh when user tabs back
+      refetchOnMount: true,
+      refetchOnReconnect: true,
+      structuralSharing: true, // Smooth transitions between data updates
     },
     mutations: {
       retry: 0, // Don't retry mutations

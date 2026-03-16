@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   BookOpen,
@@ -145,6 +145,7 @@ export default function ChartOfAccounts() {
   const { data: accounts, isLoading } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => accountApi.list().then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const seedMutation = useMutation({
