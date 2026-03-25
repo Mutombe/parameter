@@ -650,7 +650,10 @@ class Receipt(SoftDeleteModel):
         )
 
         if landlord:
-            landlord_sub = SubsidiaryAccount.get_or_create_for_landlord(landlord)
+            # Use category-specific landlord sub-account based on invoice type
+            landlord_sub = SubsidiaryAccount.get_or_create_for_landlord_category(
+                landlord, category=invoice_type, currency=self.currency
+            )
 
             # Activity 3 Txn 6: Cr Landlord Account (rent income transfer)
             SubsidiaryTransaction.create_entry(
@@ -910,7 +913,13 @@ class Expense(SoftDeleteModel):
             from apps.masterfile.models import Landlord
             try:
                 landlord = Landlord.objects.get(id=self.payee_id)
-                landlord_sub = SubsidiaryAccount.get_or_create_for_landlord(landlord)
+                # Resolve category from income_type code or default to 'general'
+                expense_category_name = 'general'
+                if self.income_type and self.income_type.code:
+                    expense_category_name = self.income_type.code.lower()
+                landlord_sub = SubsidiaryAccount.get_or_create_for_landlord_category(
+                    landlord, category=expense_category_name, currency=self.currency
+                )
 
                 # Get expense GL code for contra reference
                 expense_contra = expense_account.code if expense_account else '2000/001'

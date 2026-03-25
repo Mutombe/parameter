@@ -618,7 +618,9 @@ class RentRolloverView(APIView):
 
 
 class LandlordStatementView(APIView):
-    """Landlord Account Summary - receipts, commissions and expenses."""
+    """Landlord Account Summary - receipts, commissions and expenses.
+    Supports both unit-based (rental) and property-based (levy) invoices,
+    and optional currency filtering."""
     permission_classes = [IsAuthenticated]
 
     def _compute_commission(self, receipt, landlord):
@@ -629,10 +631,23 @@ class LandlordStatementView(APIView):
             rate = landlord.commission_rate / 100
         return receipt.amount * rate
 
+    @staticmethod
+    def _receipt_base_qs(unit_id_list, property_id_list, currency=None):
+        """Build a receipt queryset covering both unit-based and property-based
+        invoices (levy leases may have no unit)."""
+        qs = Receipt.objects.filter(
+            Q(invoice__unit_id__in=unit_id_list) |
+            Q(invoice__property_id__in=property_id_list)
+        )
+        if currency:
+            qs = qs.filter(currency=currency)
+        return qs
+
     def get(self, request):
         landlord_id = request.query_params.get('landlord_id')
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
+        currency = request.query_params.get('currency', '').upper() or None
 
         if not landlord_id:
             return Response({'error': 'landlord_id is required'}, status=400)
@@ -655,39 +670,59 @@ class LandlordStatementView(APIView):
 
         # Get properties and units
         properties = landlord.properties.all()
+        property_id_list = list(properties.values_list('id', flat=True))
         units = Unit.objects.filter(property__in=properties)
+        unit_id_list = list(units.values_list('id', flat=True))
+
+        # Commission SQL expression for DB-level aggregation
+        commission_expr = Case(
+            When(
+                income_type__isnull=False,
+                income_type__is_commissionable=True,
+                then=F('amount') * F('income_type__default_commission_rate') / Value(Decimal('100')),
+            ),
+            default=F('amount') * Value(landlord.commission_rate) / Value(Decimal('100')),
+            output_field=DecimalField(max_digits=18, decimal_places=2),
+        )
 
         # ── Opening balance (all transactions before start_date) ──
-        prior_receipts = Receipt.objects.filter(
-            invoice__unit__in=units, date__lt=start_date
-        ).select_related('income_type')
-        prior_receipts_total = Decimal('0')
-        prior_commissions_total = Decimal('0')
-        for r in prior_receipts:
-            prior_receipts_total += r.amount
-            prior_commissions_total += self._compute_commission(r, landlord)
+        # Use DB aggregation instead of Python loops to avoid OOM for large histories
+        prior_receipt_qs = self._receipt_base_qs(unit_id_list, property_id_list, currency).filter(
+            date__lt=start_date,
+        )
+        prior_agg = prior_receipt_qs.aggregate(
+            receipts_total=Sum('amount'),
+            commissions_total=Sum(commission_expr),
+        )
+        prior_receipts_total = prior_agg['receipts_total'] or Decimal('0')
+        prior_commissions_total = prior_agg['commissions_total'] or Decimal('0')
 
-        prior_expenses_total = Expense.objects.filter(
+        prior_expense_qs = Expense.objects.filter(
             payee_type='landlord', payee_id=landlord.id,
             status='paid', date__lt=start_date,
-        ).aggregate(t=Sum('amount'))['t'] or Decimal('0')
+        )
+        if currency:
+            prior_expense_qs = prior_expense_qs.filter(currency=currency)
+        prior_expenses_total = prior_expense_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
 
         opening_balance = prior_receipts_total - prior_commissions_total - prior_expenses_total
 
         # ── Period transactions ──
-        receipts = Receipt.objects.filter(
-            invoice__unit__in=units,
+        receipts = self._receipt_base_qs(unit_id_list, property_id_list, currency).filter(
             date__gte=start_date, date__lte=end_date,
         ).select_related(
             'tenant', 'invoice', 'invoice__unit', 'invoice__unit__property',
             'invoice__lease', 'income_type',
         ).order_by('date')
 
-        expenses = Expense.objects.filter(
+        expense_qs = Expense.objects.filter(
             payee_type='landlord', payee_id=landlord.id,
             status='paid',
             date__gte=start_date, date__lte=end_date,
-        ).order_by('date')
+        )
+        if currency:
+            expense_qs = expense_qs.filter(currency=currency)
+        expenses = expense_qs.order_by('date')
 
         transactions = []
         total_receipts = Decimal('0')
@@ -764,6 +799,7 @@ class LandlordStatementView(APIView):
                 'start': str(start_date),
                 'end': str(end_date),
             },
+            'currency': currency or 'USD',
             'summary': {
                 'opening_balance': float(opening_balance),
                 'total_receipts': float(total_receipts),
@@ -2127,13 +2163,15 @@ class IncomeItemDrilldownView(APIView):
 class IncomeExpenditureReportView(APIView):
     """
     Income & Expenditure Report – monthly columnar view matching the
-    Sunset Financials spreadsheet.
+    A1-A5 spec (Sunset Financials spreadsheet).
 
     Sections returned:
-    1. months[]        – per-month income, expenditure by category, balance
-    2. consolidated    – year-to-date totals
-    3. income_summary  – per-tenant account status
-    4. working_capital – debtors, creditors, net working capital
+    1. months[]          – per-month income by category, expenditure by category, balance
+    2. consolidated      – year-to-date totals
+    3. income_summary    – per-tenant/account-holder rollover
+    4. working_capital   – debtors, creditors, net working capital
+    5. income_items[]    – category-level income totals (for chart in LandlordDetail)
+    6. expense_items[]   – category-level expense totals (for chart in LandlordDetail)
     """
     permission_classes = [IsAuthenticated]
 
@@ -2170,6 +2208,39 @@ class IncomeExpenditureReportView(APIView):
         'other': 'Other Expenses',
     }
 
+    # ── income category display names ─────────────────────────────────
+    INVOICE_TYPE_LABELS = {
+        'rent': 'Rent',
+        'levy': 'Levy',
+        'special_levy': 'Special Levy',
+        'maintenance': 'Maintenance',
+        'parking': 'Parking',
+        'rates': 'Rates',
+        'deposit': 'Deposit',
+        'penalty': 'Late Payment Penalty',
+        'utility': 'Utility',
+        'vat': 'VAT',
+        'other': 'Other',
+    }
+
+    # Category ordering by management type
+    LEVY_INCOME_ORDER = ['levy', 'special_levy', 'maintenance', 'parking', 'rates']
+    RENTAL_INCOME_ORDER = ['rent', 'rates', 'maintenance', 'parking']
+
+    # ── receipt base queryset helper ─────────────────────────────────
+
+    @staticmethod
+    def _receipt_base_qs(unit_id_list, property_id_list, currency=None):
+        """Build a receipt queryset covering both unit-based and property-based
+        invoices (levy leases may have no unit)."""
+        qs = Receipt.objects.filter(
+            Q(invoice__unit_id__in=unit_id_list) |
+            Q(invoice__property_id__in=property_id_list)
+        )
+        if currency:
+            qs = qs.filter(currency=currency)
+        return qs
+
     # ── main handler ─────────────────────────────────────────────────
 
     def get(self, request):
@@ -2199,7 +2270,13 @@ class IncomeExpenditureReportView(APIView):
             entity_type = 'property'
 
         property_names = list(properties.values_list('name', flat=True))
+        property_id_list = list(properties.values_list('id', flat=True))
         units = Unit.objects.filter(property__in=properties)
+
+        # Determine management type(s) for income category ordering
+        mgmt_types = set(properties.values_list('management_type', flat=True))
+        is_levy = 'levy' in mgmt_types
+        income_order = self.LEVY_INCOME_ORDER if is_levy else self.RENTAL_INCOME_ORDER
 
         # Date range – default to full current year
         today = timezone.now().date()
@@ -2214,76 +2291,110 @@ class IncomeExpenditureReportView(APIView):
         else:
             end_date = date.fromisoformat(str(end_date))
 
+        # Currency filter – default to USD
+        currency = request.query_params.get('currency', '').upper() or None
+
         commission_rate = float(landlord.commission_rate)
 
         # ── 1. Opening balance (all transactions BEFORE start_date) ──
         # Pre-evaluate unit IDs to avoid repeated subquery evaluation
         unit_id_list = list(units.values_list('id', flat=True))
 
+        # Commission SQL expression (reused in multiple aggregations)
+        commission_expr = Case(
+            When(
+                income_type__isnull=False,
+                income_type__is_commissionable=True,
+                then=F('amount') * F('income_type__default_commission_rate') / Value(Decimal('100')),
+            ),
+            default=F('amount') * Value(landlord.commission_rate) / Value(Decimal('100')),
+            output_field=DecimalField(max_digits=18, decimal_places=2),
+        )
+
         # Aggregate prior receipts total and commission in SQL (avoids loading
         # every historical receipt into Python memory — the old per-receipt loop
         # caused OOM / connection drops for landlords with large history).
-        prior_agg = Receipt.objects.filter(
-            invoice__unit_id__in=unit_id_list, date__lt=start_date,
-        ).aggregate(
+        prior_receipt_qs = self._receipt_base_qs(unit_id_list, property_id_list, currency).filter(
+            date__lt=start_date,
+        )
+        prior_agg = prior_receipt_qs.aggregate(
             receipts_total=Sum('amount'),
-            commissions_total=Sum(
-                Case(
-                    When(
-                        income_type__isnull=False,
-                        income_type__is_commissionable=True,
-                        then=F('amount') * F('income_type__default_commission_rate') / Value(Decimal('100')),
-                    ),
-                    default=F('amount') * Value(landlord.commission_rate) / Value(Decimal('100')),
-                    output_field=DecimalField(max_digits=18, decimal_places=2),
-                )
-            ),
+            commissions_total=Sum(commission_expr),
         )
         prior_receipts_total = prior_agg['receipts_total'] or Decimal('0')
         prior_commissions_total = prior_agg['commissions_total'] or Decimal('0')
 
-        prior_expenses_total = Expense.objects.filter(
+        prior_expense_qs = Expense.objects.filter(
             payee_type='landlord', payee_id=landlord.id,
             status='paid', date__lt=start_date,
-        ).aggregate(t=Sum('amount'))['t'] or Decimal('0')
+        )
+        if currency:
+            prior_expense_qs = prior_expense_qs.filter(currency=currency)
+        prior_expenses_total = prior_expense_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
 
         opening_balance = prior_receipts_total - prior_commissions_total - prior_expenses_total
 
         # ── 2. Period receipts + expenses (eager load once) ──
-        period_receipts = list(
-            Receipt.objects.filter(
-                invoice__unit_id__in=unit_id_list,
-                date__gte=start_date, date__lte=end_date,
-            ).select_related('income_type', 'tenant', 'invoice', 'invoice__unit')
-            .order_by('date')
+        period_receipt_qs = self._receipt_base_qs(unit_id_list, property_id_list, currency).filter(
+            date__gte=start_date, date__lte=end_date,
+        ).select_related(
+            'income_type', 'tenant', 'invoice', 'invoice__unit',
+            'invoice__unit__property',
+        ).order_by('date')
+
+        period_receipts = list(period_receipt_qs)
+
+        period_expense_qs = Expense.objects.filter(
+            payee_type='landlord', payee_id=landlord.id,
+            status='paid',
+            date__gte=start_date, date__lte=end_date,
         )
+        if currency:
+            period_expense_qs = period_expense_qs.filter(currency=currency)
         period_expenses = list(
-            Expense.objects.filter(
-                payee_type='landlord', payee_id=landlord.id,
-                status='paid',
-                date__gte=start_date, date__lte=end_date,
-            ).order_by('date')
+            period_expense_qs.select_related('expense_category').order_by('date')
         )
 
         # ── 3. Build per-month data ─────────────────────────────────
         months = []
-        running_balance_usd = opening_balance
-        # Collect all unique expense types seen
+        running_balance = opening_balance
+        # Collect all unique income and expense category keys seen
+        all_income_types = set()
         all_expense_types = set()
+
+        def _get_expense_key(e):
+            """Return a stable category key for an expense, preferring
+            expense_category.name if set, falling back to expense_type."""
+            if e.expense_category_id and e.expense_category:
+                return e.expense_category.name
+            return e.expense_type
+
+        def _invoice_type_key(receipt):
+            """Return the invoice_type from the linked invoice, or 'other'."""
+            if receipt.invoice and receipt.invoice.invoice_type:
+                return receipt.invoice.invoice_type
+            return 'other'
 
         for m_start, m_end, m_label in self._month_range(start_date, end_date):
             # Filter receipts and expenses for this month
             m_receipts = [r for r in period_receipts if m_start <= r.date <= m_end]
             m_expenses = [e for e in period_expenses if m_start <= e.date <= m_end]
 
-            levies_usd = sum((r.amount for r in m_receipts), Decimal('0'))
-            amount_before = running_balance_usd + levies_usd
+            # ── Income grouped by invoice_type ──
+            income_by_cat = {}
+            for r in m_receipts:
+                itype = _invoice_type_key(r)
+                income_by_cat[itype] = income_by_cat.get(itype, Decimal('0')) + r.amount
+            all_income_types.update(income_by_cat.keys())
 
-            # Expenses grouped by expense_type
+            total_income = sum(income_by_cat.values(), Decimal('0'))
+            amount_before = running_balance + total_income
+
+            # ── Expenses grouped by category ──
             exp_by_type = {}
             for e in m_expenses:
-                exp_by_type.setdefault(e.expense_type, Decimal('0'))
-                exp_by_type[e.expense_type] += e.amount
+                ekey = _get_expense_key(e)
+                exp_by_type[ekey] = exp_by_type.get(ekey, Decimal('0')) + e.amount
             all_expense_types.update(exp_by_type.keys())
 
             # Management commission (from receipts)
@@ -2294,13 +2405,19 @@ class IncomeExpenditureReportView(APIView):
 
             total_exp = sum(exp_by_type.values(), Decimal('0')) + mgmt_commission
             balance_cf = amount_before - total_exp
-            running_balance_usd = balance_cf
+            running_balance = balance_cf
 
             months.append({
                 'month': m_start.strftime('%Y-%m'),
                 'label': m_label,
-                'balance_bf': float(amount_before - levies_usd),
-                'levies': float(levies_usd),
+                'balance_bf': float(amount_before - total_income),
+                # Keep backward-compat 'levies' key (sum of all income categories)
+                'levies': float(total_income),
+                'total_income': float(total_income),
+                # New: per-category income breakdown
+                'income_categories': {
+                    itype: float(amt) for itype, amt in income_by_cat.items()
+                },
                 'amount_before_expenditure': float(amount_before),
                 'expenditure_categories': {
                     etype: float(amt) for etype, amt in exp_by_type.items()
@@ -2310,13 +2427,19 @@ class IncomeExpenditureReportView(APIView):
                 'balance_cf': float(balance_cf),
             })
 
-        # Ensure every month has every expense category key (fill missing with 0)
+        # Ensure every month has every category key (fill missing with 0)
         for m in months:
+            for itype in all_income_types:
+                m['income_categories'].setdefault(itype, 0.0)
             for etype in all_expense_types:
                 m['expenditure_categories'].setdefault(etype, 0.0)
 
         # ── 4. Consolidated totals ───────────────────────────────────
         con_levies = sum(m['levies'] for m in months)
+        con_income_by_cat = {}
+        for m in months:
+            for itype, amt in m['income_categories'].items():
+                con_income_by_cat[itype] = con_income_by_cat.get(itype, 0.0) + amt
         con_exp_by_type = {}
         for m in months:
             for etype, amt in m['expenditure_categories'].items():
@@ -2328,76 +2451,197 @@ class IncomeExpenditureReportView(APIView):
             'balance_bf': float(opening_balance),
             'levies': con_levies,
             'total_income': float(opening_balance) + con_levies,
+            'income_categories': con_income_by_cat,
             'expenditure_categories': con_exp_by_type,
             'management_commission': con_commission,
             'total_expenditure': con_total_exp,
-            'balance_cf': float(running_balance_usd),
+            'balance_cf': float(running_balance),
         }
 
-        # ── 5. Expense category labels (ordered, with nice names) ────
+        # ── 5. Income + Expense category labels (ordered, with nice names) ──
+
+        # Income category labels
+        income_category_labels = []
+        seen_income = set()
+        for itype in income_order:
+            if itype in all_income_types:
+                income_category_labels.append({
+                    'key': itype,
+                    'label': self.INVOICE_TYPE_LABELS.get(itype, itype.replace('_', ' ').title()),
+                })
+                seen_income.add(itype)
+        for itype in sorted(all_income_types - seen_income):
+            income_category_labels.append({
+                'key': itype,
+                'label': self.INVOICE_TYPE_LABELS.get(itype, itype.replace('_', ' ').title()),
+            })
+
+        # Expense category labels
         expense_category_labels = []
         ordered_types = ['maintenance', 'utility', 'commission', 'landlord_payment', 'other']
-        seen = set()
+        # Also match by ExpenseCategory name
+        ordered_names = ['Repairs and Maintenance', 'Electricity', 'Utilities',
+                         'Salaries', 'Security', 'Rates']
+        seen_exp = set()
+        # First: known expense_type keys
         for etype in ordered_types:
             if etype in all_expense_types:
                 expense_category_labels.append({
                     'key': etype,
                     'label': self.EXPENSE_LABELS.get(etype, etype),
                 })
-                seen.add(etype)
-        for etype in sorted(all_expense_types - seen):
+                seen_exp.add(etype)
+        # Second: known expense category names in spec order
+        for ename in ordered_names:
+            if ename in all_expense_types and ename not in seen_exp:
+                expense_category_labels.append({
+                    'key': ename,
+                    'label': ename,
+                })
+                seen_exp.add(ename)
+        # Remaining
+        for etype in sorted(all_expense_types - seen_exp):
             expense_category_labels.append({
                 'key': etype,
-                'label': self.EXPENSE_LABELS.get(etype, etype.replace('_', ' ').title()),
+                'label': self.EXPENSE_LABELS.get(etype, etype.replace('_', ' ').title())
+                         if etype in self.EXPENSE_LABELS else etype,
             })
 
-        # ── 6. Income summary per tenant ─────────────────────────────
-        # Batched queries to avoid N+1 (one query per aggregation instead of per-lease)
+        # ── 6. Income summary per tenant/account holder ──────────────
+        # Fetch leases by unit OR by property (levy leases may have no unit)
         leases = LeaseAgreement.objects.filter(
-            unit_id__in=unit_id_list,
-        ).select_related('tenant', 'unit', 'unit__property')
+            Q(unit_id__in=unit_id_list) | Q(property_id__in=property_id_list)
+        ).select_related('tenant', 'unit', 'unit__property', 'property')
 
-        # Build deduplicated (tenant_id, unit_id) sets for efficient IN clauses
         lease_list = list(leases)
-        unit_ids = list({l.unit_id for l in lease_list})
+
+        # Determine lookup key: (tenant_id, unit_id) for rental, (tenant_id, property_id) for levy without unit
+        def _lease_key(lease):
+            if lease.unit_id:
+                return ('unit', lease.tenant_id, lease.unit_id)
+            return ('property', lease.tenant_id, lease.property_id)
+
+        # Collect all tenant and unit/property IDs
         tenant_ids = list({l.tenant_id for l in lease_list})
+        unit_ids = list({l.unit_id for l in lease_list if l.unit_id})
+        prop_ids_for_leases = list({l.property_id for l in lease_list if l.property_id and not l.unit_id})
 
         valid_statuses = ['sent', 'partial', 'overdue', 'paid']
 
-        # Batch: prior invoices total per (tenant, unit)
-        prior_inv_qs = Invoice.objects.filter(
+        # ── Batch queries for unit-based leases ──
+        inv_currency_filter = Q()
+        rct_currency_filter = Q()
+        if currency:
+            inv_currency_filter = Q(currency=currency)
+            rct_currency_filter = Q(currency=currency)
+
+        # Prior invoices per (tenant, unit)
+        prior_inv_unit_qs = Invoice.objects.filter(
+            inv_currency_filter,
             tenant_id__in=tenant_ids, unit_id__in=unit_ids,
             date__lt=start_date, status__in=valid_statuses,
         ).values('tenant_id', 'unit_id').annotate(total=Sum('total_amount'))
-        prior_inv_map = {(r['tenant_id'], r['unit_id']): r['total'] or Decimal('0') for r in prior_inv_qs}
+        prior_inv_unit_map = {
+            ('unit', r['tenant_id'], r['unit_id']): r['total'] or Decimal('0')
+            for r in prior_inv_unit_qs
+        }
 
-        # Batch: prior payments per (tenant, unit)
-        prior_pay_qs = Receipt.objects.filter(
+        # Prior invoices per (tenant, property) for levy leases without unit
+        prior_inv_prop_qs = Invoice.objects.filter(
+            inv_currency_filter,
+            tenant_id__in=tenant_ids, property_id__in=prop_ids_for_leases,
+            unit__isnull=True,
+            date__lt=start_date, status__in=valid_statuses,
+        ).values('tenant_id', 'property_id').annotate(total=Sum('total_amount'))
+        prior_inv_prop_map = {
+            ('property', r['tenant_id'], r['property_id']): r['total'] or Decimal('0')
+            for r in prior_inv_prop_qs
+        }
+        prior_inv_map = {**prior_inv_unit_map, **prior_inv_prop_map}
+
+        # Prior payments per (tenant, unit)
+        prior_pay_unit_qs = Receipt.objects.filter(
+            rct_currency_filter,
             tenant_id__in=tenant_ids, invoice__unit_id__in=unit_ids,
             date__lt=start_date,
         ).values('tenant_id', 'invoice__unit_id').annotate(total=Sum('amount'))
-        prior_pay_map = {(r['tenant_id'], r['invoice__unit_id']): r['total'] or Decimal('0') for r in prior_pay_qs}
+        prior_pay_unit_map = {
+            ('unit', r['tenant_id'], r['invoice__unit_id']): r['total'] or Decimal('0')
+            for r in prior_pay_unit_qs
+        }
 
-        # Batch: period charges per (tenant, unit)
-        period_inv_qs = Invoice.objects.filter(
+        # Prior payments per (tenant, property) for levy leases without unit
+        prior_pay_prop_qs = Receipt.objects.filter(
+            rct_currency_filter,
+            tenant_id__in=tenant_ids, invoice__property_id__in=prop_ids_for_leases,
+            invoice__unit__isnull=True,
+            date__lt=start_date,
+        ).values('tenant_id', 'invoice__property_id').annotate(total=Sum('amount'))
+        prior_pay_prop_map = {
+            ('property', r['tenant_id'], r['invoice__property_id']): r['total'] or Decimal('0')
+            for r in prior_pay_prop_qs
+        }
+        prior_pay_map = {**prior_pay_unit_map, **prior_pay_prop_map}
+
+        # Period charges per (tenant, unit)
+        period_inv_unit_qs = Invoice.objects.filter(
+            inv_currency_filter,
             tenant_id__in=tenant_ids, unit_id__in=unit_ids,
             date__gte=start_date, date__lte=end_date, status__in=valid_statuses,
         ).values('tenant_id', 'unit_id').annotate(total=Sum('total_amount'))
-        period_inv_map = {(r['tenant_id'], r['unit_id']): r['total'] or Decimal('0') for r in period_inv_qs}
+        period_inv_unit_map = {
+            ('unit', r['tenant_id'], r['unit_id']): r['total'] or Decimal('0')
+            for r in period_inv_unit_qs
+        }
 
-        # Batch: penalties per (tenant, unit)
-        penalty_qs = Invoice.objects.filter(
+        # Period charges per (tenant, property) for levy leases without unit
+        period_inv_prop_qs = Invoice.objects.filter(
+            inv_currency_filter,
+            tenant_id__in=tenant_ids, property_id__in=prop_ids_for_leases,
+            unit__isnull=True,
+            date__gte=start_date, date__lte=end_date, status__in=valid_statuses,
+        ).values('tenant_id', 'property_id').annotate(total=Sum('total_amount'))
+        period_inv_prop_map = {
+            ('property', r['tenant_id'], r['property_id']): r['total'] or Decimal('0')
+            for r in period_inv_prop_qs
+        }
+        period_inv_map = {**period_inv_unit_map, **period_inv_prop_map}
+
+        # Penalties per (tenant, unit)
+        penalty_unit_qs = Invoice.objects.filter(
+            inv_currency_filter,
             tenant_id__in=tenant_ids, unit_id__in=unit_ids,
             invoice_type='penalty',
             date__gte=start_date, date__lte=end_date, status__in=valid_statuses,
         ).values('tenant_id', 'unit_id').annotate(total=Sum('total_amount'))
-        penalty_map = {(r['tenant_id'], r['unit_id']): r['total'] or Decimal('0') for r in penalty_qs}
+        penalty_unit_map = {
+            ('unit', r['tenant_id'], r['unit_id']): r['total'] or Decimal('0')
+            for r in penalty_unit_qs
+        }
 
-        # Build per-receipt lookup: (tenant_id, unit_id) -> total paid
+        # Penalties per (tenant, property)
+        penalty_prop_qs = Invoice.objects.filter(
+            inv_currency_filter,
+            tenant_id__in=tenant_ids, property_id__in=prop_ids_for_leases,
+            unit__isnull=True, invoice_type='penalty',
+            date__gte=start_date, date__lte=end_date, status__in=valid_statuses,
+        ).values('tenant_id', 'property_id').annotate(total=Sum('total_amount'))
+        penalty_prop_map = {
+            ('property', r['tenant_id'], r['property_id']): r['total'] or Decimal('0')
+            for r in penalty_prop_qs
+        }
+        penalty_map = {**penalty_unit_map, **penalty_prop_map}
+
+        # Build per-receipt lookup: key -> total paid in period
         receipt_paid_map = {}
         for r in period_receipts:
-            if r.invoice and r.invoice.unit_id:
-                key = (r.tenant_id, r.invoice.unit_id)
+            if r.invoice:
+                if r.invoice.unit_id:
+                    key = ('unit', r.tenant_id, r.invoice.unit_id)
+                elif r.invoice.property_id:
+                    key = ('property', r.tenant_id, r.invoice.property_id)
+                else:
+                    continue
                 receipt_paid_map[key] = receipt_paid_map.get(key, Decimal('0')) + r.amount
 
         income_summary_tenants = []
@@ -2405,31 +2649,45 @@ class IncomeExpenditureReportView(APIView):
         totals_charge = Decimal('0')
         totals_paid = Decimal('0')
         totals_penalty = Decimal('0')
+        seen_lease_keys = set()
 
         for lease in lease_list:
-            tid, uid = lease.tenant_id, lease.unit_id
+            lkey = _lease_key(lease)
+            if lkey in seen_lease_keys:
+                continue
+            seen_lease_keys.add(lkey)
+
             tenant = lease.tenant
             unit = lease.unit
 
-            prior_invoices_total = prior_inv_map.get((tid, uid), Decimal('0'))
-            prior_payments = prior_pay_map.get((tid, uid), Decimal('0'))
+            prior_invoices_total = prior_inv_map.get(lkey, Decimal('0'))
+            prior_payments = prior_pay_map.get(lkey, Decimal('0'))
             balance_bf = prior_invoices_total - prior_payments
 
-            period_charges = period_inv_map.get((tid, uid), Decimal('0'))
-            penalty = penalty_map.get((tid, uid), Decimal('0'))
+            period_charges = period_inv_map.get(lkey, Decimal('0'))
+            penalty = penalty_map.get(lkey, Decimal('0'))
             charge = period_charges - penalty
 
             amount_due = balance_bf + charge + penalty
-            amount_paid = receipt_paid_map.get((tid, uid), Decimal('0'))
+            amount_paid = receipt_paid_map.get(lkey, Decimal('0'))
             carried_forward = amount_due - amount_paid
 
-            prop_name = unit.property.name if unit.property else ''
-            display_name = f"{tenant.name} {unit.unit_number} {prop_name}".strip()
+            if unit:
+                prop_name = unit.property.name if unit.property else ''
+                display_name = f"{tenant.name} {unit.unit_number} {prop_name}".strip()
+                unit_label = unit.unit_number
+            else:
+                prop_obj = lease.property
+                prop_name = prop_obj.name if prop_obj else ''
+                display_name = f"{tenant.name} {prop_name}".strip()
+                unit_label = ''
 
             income_summary_tenants.append({
-                'tenant_id': tid,
+                'tenant_id': lease.tenant_id,
+                'account_holder_id': lease.tenant_id,
+                'account_holder': display_name,
                 'name': display_name,
-                'unit': unit.unit_number,
+                'unit': unit_label,
                 'balance_bf': float(balance_bf),
                 'charge': float(charge),
                 'amount_due': float(amount_due),
@@ -2457,7 +2715,7 @@ class IncomeExpenditureReportView(APIView):
         }
 
         # ── 7. Working Capital ───────────────────────────────────────
-        cash_balance = float(running_balance_usd)
+        cash_balance = float(running_balance)
         levies_in_arrears = sum(
             t['carried_forward'] for t in income_summary_tenants if t['carried_forward'] > 0
         )
@@ -2474,15 +2732,40 @@ class IncomeExpenditureReportView(APIView):
             'debtors': {
                 'cash_balances': cash_balance if cash_balance > 0 else 0.0,
                 'levies_in_arrears': levies_in_arrears,
+                'arrears': levies_in_arrears,
+                'total': total_debtors,
                 'subtotal': total_debtors,
             },
             'creditors': {
                 'overdraft': overdraft,
                 'prepayments': prepayments,
+                'total': total_creditors,
                 'subtotal': total_creditors,
             },
             'net_working_capital': total_debtors - total_creditors,
         }
+
+        # ── 8. income_items / expense_items for LandlordDetail chart ─
+        income_items = [
+            {'name': self.INVOICE_TYPE_LABELS.get(cat['key'], cat['key']),
+             'category': cat['key'],
+             'amount': con_income_by_cat.get(cat['key'], 0.0),
+             'total': con_income_by_cat.get(cat['key'], 0.0)}
+            for cat in income_category_labels
+        ]
+        expense_items = [
+            {'name': cat['label'], 'category': cat['key'],
+             'amount': con_exp_by_type.get(cat['key'], 0.0),
+             'total': con_exp_by_type.get(cat['key'], 0.0)}
+            for cat in expense_category_labels
+        ]
+        # Always include commission as an expense item
+        expense_items.append({
+            'name': f"Management Commission {commission_rate}% (Inc VAT)",
+            'category': 'management_commission',
+            'amount': con_commission,
+            'total': con_commission,
+        })
 
         # ── Response ─────────────────────────────────────────────────
         return Response({
@@ -2493,16 +2776,24 @@ class IncomeExpenditureReportView(APIView):
                 'name': entity_name,
             },
             'properties': property_names,
+            'management_type': 'levy' if is_levy else 'rental',
             'period': {
                 'start': str(start_date),
                 'end': str(end_date),
             },
+            'currency': currency or 'USD',
             'commission_rate': commission_rate,
+            'income_category_labels': income_category_labels,
             'expense_category_labels': expense_category_labels,
             'months': months,
             'consolidated': consolidated,
             'income_summary': income_summary,
             'working_capital': working_capital,
+            # Flat totals for LandlordDetail chart compatibility
+            'total_income': con_levies,
+            'total_expenses': con_total_exp,
+            'income_items': income_items,
+            'expense_items': expense_items,
         })
 
 

@@ -3853,7 +3853,9 @@ function LeaseChargeSummaryReport() {
 // ─── Income & Expenditure Report ────────────────────────────────────────────
 
 function IncomeExpenditureReport() {
+  const navigate = useNavigate()
   const [selectedLandlord, setSelectedLandlord] = useState<string>('')
+  const [currency, setCurrency] = useState<string>('USD')
   const [startDate, setStartDate] = useState(() => {
     const d = new Date(); return `${d.getFullYear()}-01-01`
   })
@@ -3865,8 +3867,8 @@ function IncomeExpenditureReport() {
   })
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['income-expenditure', selectedLandlord, startDate, endDate],
-    queryFn: () => reportsApi.incomeExpenditure({ landlord_id: Number(selectedLandlord), start_date: startDate, end_date: endDate }).then(r => r.data),
+    queryKey: ['income-expenditure', selectedLandlord, startDate, endDate, currency],
+    queryFn: () => reportsApi.incomeExpenditure({ landlord_id: Number(selectedLandlord), start_date: startDate, end_date: endDate, currency }).then(r => r.data),
     enabled: !!selectedLandlord,
     retry: 1,
     placeholderData: keepPreviousData,
@@ -3877,7 +3879,9 @@ function IncomeExpenditureReport() {
   const landlordsList: any[] = Array.isArray(landlordsData) ? landlordsData : []
   const months: any[] = data?.months || []
   const consolidated: any = data?.consolidated || {}
-  const categoryLabels: any[] = data?.expense_category_labels || []
+  const managementType: string = data?.management_type || 'rental'
+  const incomeCategoryLabels: any[] = data?.income_category_labels || []
+  const expenseCategoryLabels: any[] = data?.expense_category_labels || []
   const incomeSummary: any = data?.income_summary || {}
   const workingCapital: any = data?.working_capital || {}
   const tenants: any[] = incomeSummary?.tenants || []
@@ -3904,6 +3908,9 @@ function IncomeExpenditureReport() {
   const balColor = (v: number) => v < 0 ? 'text-red-600 font-semibold' : 'text-emerald-700 font-semibold'
   const fmtNum = (v: number | undefined) => formatCurrency(v ?? 0)
 
+  // Column header label for income summary
+  const accountHolderLabel = managementType === 'levy' ? 'Account Holder' : 'Tenant'
+
   return (
     <div className="space-y-4">
       {/* ── Controls ── */}
@@ -3914,6 +3921,27 @@ function IncomeExpenditureReport() {
             <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
             <span className="text-gray-400 text-sm">to</span>
             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+          </div>
+          {/* Currency toggle */}
+          <div className="flex items-center gap-1 mt-4 bg-gray-100 rounded-lg p-0.5">
+            <button
+              onClick={() => setCurrency('USD')}
+              className={cn(
+                'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+                currency === 'USD' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              )}
+            >
+              USD
+            </button>
+            <button
+              onClick={() => setCurrency('ZWG')}
+              className={cn(
+                'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+                currency === 'ZWG' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              )}
+            >
+              ZWG
+            </button>
           </div>
           {selectedLandlord && (
             <button onClick={() => refetch()} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors mt-4">
@@ -3948,7 +3976,7 @@ function IncomeExpenditureReport() {
               <p className={cn('text-xl font-bold', balColor(consolidated.balance_bf || 0))}>{fmtNum(consolidated.balance_bf)}</p>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <p className="text-sm text-gray-500">Total Levies</p>
+              <p className="text-sm text-gray-500">Total Income</p>
               <p className="text-xl font-bold text-emerald-600">{fmtNum(consolidated.levies)}</p>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -3963,11 +3991,16 @@ function IncomeExpenditureReport() {
 
           {/* ── Section 1: Monthly Income & Expenditure table ── */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h2 className="text-lg font-semibold text-gray-900">
-                {(data.properties || []).join(', ') || data.entity?.name}
-              </h2>
-              <p className="text-sm text-gray-500">Income and Expenditure for the period {data.period?.start} to {data.period?.end}</p>
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {(data.properties || []).join(', ') || data.entity?.name}
+                </h2>
+                <p className="text-sm text-gray-500">Income and Expenditure for the period {data.period?.start} to {data.period?.end}</p>
+              </div>
+              {data.currency && (
+                <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full uppercase">{data.currency}</span>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
@@ -3993,14 +4026,27 @@ function IncomeExpenditureReport() {
                     ))}
                     <td className={cn('px-4 py-2.5 text-right tabular-nums bg-gray-50 font-bold', balColor(consolidated.balance_bf))}>{fmtNum(consolidated.balance_bf)}</td>
                   </tr>
-                  {/* Levies */}
-                  <tr className="hover:bg-gray-50">
-                    <td className="px-4 py-2.5 text-gray-700 sticky left-0 bg-white pl-8">Levies</td>
-                    {months.map(m => (
-                      <td key={m.month} className="px-4 py-2.5 text-right tabular-nums text-gray-900">{fmtNum(m.levies)}</td>
-                    ))}
-                    <td className="px-4 py-2.5 text-right tabular-nums bg-gray-50 font-bold text-gray-900">{fmtNum(consolidated.levies)}</td>
-                  </tr>
+                  {/* Income category rows */}
+                  {incomeCategoryLabels.length > 0 ? (
+                    incomeCategoryLabels.map(cat => (
+                      <tr key={cat.key} className="hover:bg-gray-50">
+                        <td className="px-4 py-2.5 text-gray-700 sticky left-0 bg-white pl-8">{cat.label}</td>
+                        {months.map(m => (
+                          <td key={m.month} className="px-4 py-2.5 text-right tabular-nums text-gray-900">{fmtNum(m.income_categories?.[cat.key])}</td>
+                        ))}
+                        <td className="px-4 py-2.5 text-right tabular-nums bg-gray-50 font-bold text-gray-900">{fmtNum(consolidated.income_categories?.[cat.key])}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    /* Fallback: single Levies row when income_category_labels not provided */
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-4 py-2.5 text-gray-700 sticky left-0 bg-white pl-8">Levies</td>
+                      {months.map(m => (
+                        <td key={m.month} className="px-4 py-2.5 text-right tabular-nums text-gray-900">{fmtNum(m.levies)}</td>
+                      ))}
+                      <td className="px-4 py-2.5 text-right tabular-nums bg-gray-50 font-bold text-gray-900">{fmtNum(consolidated.levies)}</td>
+                    </tr>
+                  )}
                   {/* Amount before Expenditure */}
                   <tr className="bg-emerald-50/30 border-t border-emerald-200">
                     <td className="px-4 py-2.5 font-semibold text-emerald-800 sticky left-0 bg-emerald-50/30">Amount before Expenditure</td>
@@ -4015,7 +4061,7 @@ function IncomeExpenditureReport() {
                     <td colSpan={months.length + 2} className="px-4 py-2 text-xs font-bold text-red-800 uppercase tracking-wider">Expenditure</td>
                   </tr>
                   {/* Expense category rows */}
-                  {categoryLabels.map(cat => (
+                  {expenseCategoryLabels.map(cat => (
                     <tr key={cat.key} className="hover:bg-gray-50">
                       <td className="px-4 py-2.5 text-gray-700 sticky left-0 bg-white pl-8">{cat.label}</td>
                       {months.map(m => (
@@ -4054,7 +4100,7 @@ function IncomeExpenditureReport() {
             </div>
           </div>
 
-          {/* ── Section 2: Income Summary (per tenant) ── */}
+          {/* ── Section 2: Income Summary (per tenant/account holder) ── */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900">Income Summary</h2>
@@ -4064,7 +4110,7 @@ function IncomeExpenditureReport() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Account Holder</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">{accountHolderLabel}</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Balance B/F</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Charge</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount Due</th>
@@ -4074,17 +4120,33 @@ function IncomeExpenditureReport() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {tenants.map((t: any, i: number) => (
-                    <tr key={i} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 text-gray-900 font-medium">{t.name}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{fmtNum(t.balance_bf)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{fmtNum(t.charge)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-gray-900 font-medium">{fmtNum(t.amount_due)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-emerald-600">{fmtNum(t.amount_paid)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-amber-600">{fmtNum(t.penalty)}</td>
-                      <td className={cn('px-4 py-2.5 text-right tabular-nums font-semibold', t.carried_forward > 0 ? 'text-red-600' : t.carried_forward < 0 ? 'text-emerald-600' : 'text-gray-700')}>{fmtNum(t.carried_forward)}</td>
-                    </tr>
-                  ))}
+                  {tenants.map((t: any, i: number) => {
+                    const displayName = managementType === 'levy' ? (t.account_holder || t.name) : t.name
+                    const linkId = t.account_holder_id || t.tenant_id || t.id
+                    const linkPath = managementType === 'levy'
+                      ? (linkId ? `/dashboard/tenants/${linkId}` : null)
+                      : (linkId ? `/dashboard/tenants/${linkId}` : null)
+                    return (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="px-4 py-2.5 text-gray-900 font-medium">
+                          {linkPath ? (
+                            <button
+                              onClick={() => navigate(linkPath)}
+                              className="text-primary-600 hover:text-primary-700 hover:underline text-left"
+                            >
+                              {displayName}
+                            </button>
+                          ) : displayName}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{fmtNum(t.balance_bf)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{fmtNum(t.charge)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-gray-900 font-medium">{fmtNum(t.amount_due)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-emerald-600">{fmtNum(t.amount_paid)}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-amber-600">{fmtNum(t.penalty)}</td>
+                        <td className={cn('px-4 py-2.5 text-right tabular-nums font-semibold', t.carried_forward > 0 ? 'text-red-600' : t.carried_forward < 0 ? 'text-emerald-600' : 'text-gray-700')}>{fmtNum(t.carried_forward)}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
                 <tfoot>
                   <tr className="bg-gray-100 border-t-2 border-gray-300 font-bold">
@@ -4120,7 +4182,7 @@ function IncomeExpenditureReport() {
                     </div>
                     <div className="flex justify-between py-2 border-b border-gray-100">
                       <span className="text-gray-600">Levies in arrears</span>
-                      <span className="tabular-nums font-medium text-red-600">{fmtNum(workingCapital.debtors?.levies_in_arrears)}</span>
+                      <span className="tabular-nums font-medium text-red-600">{fmtNum(workingCapital.debtors?.levies_in_arrears ?? workingCapital.debtors?.arrears)}</span>
                     </div>
                     {/* Custom debtor items */}
                     {customDebtors.map((item, i) => (
@@ -4147,7 +4209,7 @@ function IncomeExpenditureReport() {
                     </button>
                     {/* Subtotal */}
                     <div className="flex justify-between py-2 bg-blue-50 rounded px-2 -mx-2">
-                      <span className="font-semibold text-gray-900">Subtotal</span>
+                      <span className="font-semibold text-gray-900">Total Debtors</span>
                       <span className="tabular-nums font-bold text-blue-700">{fmtNum(adjDebtorsSubtotal)}</span>
                     </div>
                   </div>
@@ -4191,7 +4253,7 @@ function IncomeExpenditureReport() {
                     </button>
                     {/* Subtotal */}
                     <div className="flex justify-between py-2 bg-orange-50 rounded px-2 -mx-2">
-                      <span className="font-semibold text-gray-900">Subtotal</span>
+                      <span className="font-semibold text-gray-900">Total Creditors</span>
                       <span className="tabular-nums font-bold text-orange-700">{fmtNum(adjCreditorsSubtotal)}</span>
                     </div>
                   </div>

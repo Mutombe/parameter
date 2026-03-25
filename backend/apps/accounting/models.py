@@ -1005,7 +1005,8 @@ class SubsidiaryAccount(models.Model):
     and account holders. These are sub-ledgers that feed into GL control accounts.
 
     Tenant accounts (TN/xxxxx) track what each tenant owes.
-    Landlord accounts (LD/xxxxx) track what the agent owes each landlord (trust money).
+    Landlord accounts (LD/xxxxx/SS) track what the agent owes each landlord (trust money).
+      Each landlord can have multiple accounts, one per category+currency combo.
     Account Holder accounts (AC/xxxxx) track levy payers.
     """
 
@@ -1014,18 +1015,51 @@ class SubsidiaryAccount(models.Model):
         LANDLORD = 'landlord', 'Landlord'
         ACCOUNT_HOLDER = 'account_holder', 'Account Holder'
 
+    class AccountCategory(models.TextChoices):
+        RENT = 'rent', 'Rent'
+        LEVY = 'levy', 'Levy'
+        SPECIAL_LEVY = 'special_levy', 'Special Levy'
+        MAINTENANCE = 'maintenance', 'Maintenance'
+        PARKING = 'parking', 'Parking'
+        RATES = 'rates', 'Rates'
+        VAT = 'vat', 'VAT'
+        GENERAL = 'general', 'General'
+
+    # Suffix map for landlord category-specific accounts: (category, currency) -> suffix
+    CATEGORY_SUFFIX_MAP = {
+        # Levy management (ZWG first, then USD)
+        ('levy', 'ZWG'): '01', ('special_levy', 'ZWG'): '02', ('maintenance', 'ZWG'): '03',
+        ('parking', 'ZWG'): '04', ('rates', 'ZWG'): '05',
+        ('levy', 'USD'): '06', ('special_levy', 'USD'): '07', ('maintenance', 'USD'): '08',
+        ('parking', 'USD'): '09', ('rates', 'USD'): '10',
+        # Rental management
+        ('rent', 'USD'): '01', ('rent', 'ZWG'): '02',
+        ('rates_rental', 'USD'): '03', ('rates_rental', 'ZWG'): '04',
+        ('maintenance_rental', 'USD'): '05', ('maintenance_rental', 'ZWG'): '06',
+        ('parking_rental', 'USD'): '07', ('parking_rental', 'ZWG'): '08',
+        ('vat', 'USD'): '09', ('vat', 'ZWG'): '10',
+        # General fallback
+        ('general', 'USD'): '00', ('general', 'ZWG'): '50',
+    }
+
     code = models.CharField(max_length=20, unique=True, db_index=True)
     name = models.CharField(max_length=255)
     entity_type = models.CharField(max_length=20, choices=EntityType.choices)
+    category = models.CharField(
+        max_length=20, choices=AccountCategory.choices,
+        default='general', db_index=True
+    )
 
     # Polymorphic links — exactly one should be set
+    # Tenants: OneToOne (one account per tenant)
     tenant = models.OneToOneField(
         'masterfile.RentalTenant', on_delete=models.CASCADE,
         null=True, blank=True, related_name='subsidiary_account'
     )
-    landlord = models.OneToOneField(
+    # Landlords: ForeignKey (multiple category-specific accounts per landlord)
+    landlord = models.ForeignKey(
         'masterfile.Landlord', on_delete=models.CASCADE,
-        null=True, blank=True, related_name='subsidiary_account'
+        null=True, blank=True, related_name='subsidiary_accounts'
     )
 
     currency = models.CharField(max_length=3, default='USD')
@@ -1050,19 +1084,30 @@ class SubsidiaryAccount(models.Model):
 
     @classmethod
     def get_or_create_for_tenant(cls, tenant):
-        """Get or create a subsidiary account for a rental tenant."""
+        """Get or create a subsidiary account for a rental tenant.
+
+        Rental tenants get TN/ prefix; levy tenants get AC/ prefix.
+        """
+        # Determine prefix and entity type based on account type
+        if tenant.account_type == 'levy':
+            prefix = 'AC'
+            entity_type = cls.EntityType.ACCOUNT_HOLDER
+        else:
+            prefix = 'TN'
+            entity_type = cls.EntityType.TENANT
+
+        code = f'{prefix}/{tenant.code.replace("TN", "").lstrip("0") or "0"}'
+
         account, created = cls.objects.get_or_create(
             tenant=tenant,
             defaults={
-                'code': f'TN/{tenant.code.replace("TN", "").lstrip("0") or "0"}',
+                'code': code,
                 'name': tenant.name,
-                'entity_type': cls.EntityType.TENANT
-                if tenant.account_type == 'rental'
-                else cls.EntityType.ACCOUNT_HOLDER,
+                'entity_type': entity_type,
                 'currency': 'USD',
             }
         )
-        # Fix code format if account_type is levy and code starts with TN/
+        # Fix code format if account was previously created with wrong prefix
         if tenant.account_type == 'levy' and account.code.startswith('TN/'):
             account.code = f'AC/{tenant.code.replace("TN", "").lstrip("0") or "0"}'
             account.entity_type = cls.EntityType.ACCOUNT_HOLDER
@@ -1070,18 +1115,41 @@ class SubsidiaryAccount(models.Model):
         return account
 
     @classmethod
-    def get_or_create_for_landlord(cls, landlord):
-        """Get or create a subsidiary account for a landlord."""
+    def get_or_create_for_landlord_category(cls, landlord, category='general', currency='USD'):
+        """Get or create a category-specific subsidiary account for a landlord."""
+        suffix = cls.CATEGORY_SUFFIX_MAP.get((category, currency), '00')
+        code = f'LD/{landlord.id:05d}/{suffix}'
+
+        # Category display name
+        category_label = dict(cls.AccountCategory.choices).get(
+            category, category.replace('_', ' ').title()
+        )
+        name = f'{landlord.name} - {category_label} ({currency})'
+
         account, created = cls.objects.get_or_create(
-            landlord=landlord,
+            code=code,
             defaults={
-                'code': f'LD/{landlord.code.replace("LL", "").lstrip("0") or "0"}',
-                'name': landlord.name,
+                'name': name,
                 'entity_type': cls.EntityType.LANDLORD,
-                'currency': landlord.preferred_currency,
+                'landlord': landlord,
+                'category': category,
+                'currency': currency,
             }
         )
         return account
+
+    @classmethod
+    def get_or_create_for_landlord(cls, landlord, currency=None):
+        """Get or create a subsidiary account for a landlord.
+
+        Backward-compatible wrapper — delegates to get_or_create_for_landlord_category
+        with category='general'.
+        """
+        if currency is None:
+            currency = getattr(landlord, 'preferred_currency', 'USD') or 'USD'
+        return cls.get_or_create_for_landlord_category(
+            landlord, category='general', currency=currency
+        )
 
 
 class SubsidiaryTransaction(models.Model):

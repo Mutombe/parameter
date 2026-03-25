@@ -181,16 +181,9 @@ class Command(BaseCommand):
                 created += 1
 
         for landlord in Landlord.objects.filter(is_active=True, is_deleted=False):
-            _, was_created = SubsidiaryAccount.objects.get_or_create(
-                landlord=landlord,
-                defaults={
-                    'code': f'LD/{landlord.code.replace("LL", "").lstrip("0") or "0"}',
-                    'name': landlord.name,
-                    'entity_type': SubsidiaryAccount.EntityType.LANDLORD,
-                    'currency': landlord.preferred_currency,
-                }
-            )
-            if was_created:
+            account = SubsidiaryAccount.get_or_create_for_landlord(landlord)
+            # Check if it was just created (no transactions yet)
+            if not account.transactions.exists():
                 created += 1
 
         return created

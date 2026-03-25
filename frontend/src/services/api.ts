@@ -253,7 +253,7 @@ export const reportsApi = {
     api.get('/reports/income-item-analysis/', { params }),
   incomeItemDrilldown: (params: { level: number; bank_account_id: number; income_type?: string; start_date?: string; end_date?: string }) =>
     api.get('/reports/income-item-analysis/drilldown/', { params }),
-  incomeExpenditure: (params: { landlord_id?: number; property_id?: number; start_date?: string; end_date?: string }) =>
+  incomeExpenditure: (params: { landlord_id?: number; property_id?: number; start_date?: string; end_date?: string; currency?: string }) =>
     api.get('/reports/income-expenditure/', { params }),
   charts: (params: { chart_type: string; tenant_id?: number; property_id?: number; months?: number; start_date?: string; end_date?: string }) =>
     api.get('/reports/charts/', { params }),

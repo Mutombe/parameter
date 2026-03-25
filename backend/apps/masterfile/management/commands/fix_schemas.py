@@ -176,13 +176,14 @@ class Command(BaseCommand):
                         """)
                         self.stdout.write("  - Added/verified maintenance tables")
 
-                        # Trust Accounting: Create subsidiary ledger tables (accounting.0009)
+                        # Trust Accounting: Create subsidiary ledger tables (accounting.0009+0010)
                         cursor.execute("""
                             CREATE TABLE IF NOT EXISTS accounting_subsidiaryaccount (
                                 id bigserial PRIMARY KEY,
                                 code varchar(20) NOT NULL UNIQUE,
                                 name varchar(255) NOT NULL,
                                 entity_type varchar(20) NOT NULL,
+                                category varchar(20) NOT NULL DEFAULT 'general',
                                 currency varchar(3) NOT NULL DEFAULT 'USD',
                                 current_balance numeric(18,2) NOT NULL DEFAULT 0,
                                 is_active boolean NOT NULL DEFAULT true,
@@ -190,7 +191,7 @@ class Command(BaseCommand):
                                 updated_at timestamp with time zone NOT NULL DEFAULT now(),
                                 tenant_id bigint UNIQUE REFERENCES masterfile_rentaltenant(id)
                                     ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
-                                landlord_id bigint UNIQUE REFERENCES masterfile_landlord(id)
+                                landlord_id bigint REFERENCES masterfile_landlord(id)
                                     ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
                             )
                         """)
@@ -239,6 +240,52 @@ class Command(BaseCommand):
                             ON CONFLICT (code) DO NOTHING
                         """)
                         self.stdout.write("  - Added/verified subsidiary ledger tables and trust GL accounts")
+
+                        # Phase 1 trust upgrade: Add category column to subsidiary accounts
+                        cursor.execute(
+                            "ALTER TABLE accounting_subsidiaryaccount "
+                            "ADD COLUMN IF NOT EXISTS category VARCHAR(20) NOT NULL DEFAULT 'general'"
+                        )
+                        cursor.execute(
+                            "CREATE INDEX IF NOT EXISTS accounting_sub_category_idx "
+                            "ON accounting_subsidiaryaccount(category)"
+                        )
+                        self.stdout.write("  - Added/verified category column in accounting_subsidiaryaccount")
+
+                        # Phase 1 trust upgrade: Drop UNIQUE constraint on landlord_id
+                        # (landlords now have multiple category-specific accounts)
+                        cursor.execute("""
+                            DO $$
+                            BEGIN
+                                -- Drop unique index if it exists
+                                IF EXISTS (
+                                    SELECT 1 FROM pg_indexes
+                                    WHERE schemaname = current_schema()
+                                    AND tablename = 'accounting_subsidiaryaccount'
+                                    AND indexdef LIKE '%landlord_id%'
+                                    AND indexdef LIKE '%UNIQUE%'
+                                ) THEN
+                                    DROP INDEX IF EXISTS accounting_subsidiaryaccount_landlord_id_key;
+                                END IF;
+                                -- Also try the Django-generated name
+                                IF EXISTS (
+                                    SELECT 1 FROM pg_constraint
+                                    WHERE conname = 'accounting_subsidiaryac_landlord_id_key'
+                                    AND connamespace = (SELECT oid FROM pg_namespace WHERE nspname = current_schema())
+                                ) THEN
+                                    ALTER TABLE accounting_subsidiaryaccount
+                                    DROP CONSTRAINT accounting_subsidiaryac_landlord_id_key;
+                                END IF;
+                            EXCEPTION WHEN OTHERS THEN
+                                NULL;
+                            END $$;
+                        """)
+                        # Create a regular (non-unique) index on landlord_id
+                        cursor.execute(
+                            "CREATE INDEX IF NOT EXISTS accounting_sub_landlord_idx "
+                            "ON accounting_subsidiaryaccount(landlord_id)"
+                        )
+                        self.stdout.write("  - Converted landlord_id from UNIQUE to regular index")
 
                         self.stdout.write(self.style.SUCCESS(f"  Schema {schema} fixed successfully"))
 

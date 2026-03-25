@@ -245,6 +245,10 @@ export default function LandlordDetail() {
 
   // Lease creation modal
   const [showLeaseModal, setShowLeaseModal] = useState(false)
+
+  // I&E currency toggle
+  const [ieCurrency, setIeCurrency] = useState<string>('USD')
+
   const [editForm, setEditForm] = useState({
     name: '',
     landlord_type: 'individual',
@@ -296,8 +300,8 @@ export default function LandlordDetail() {
 
   // 6. Income vs expenditure
   const { data: incomeExpData, isLoading: loadingIncomeExp } = useQuery({
-    queryKey: ['landlord-income-exp', landlordId],
-    queryFn: () => reportsApi.incomeExpenditure({ landlord_id: landlordId }).then((r) => r.data),
+    queryKey: ['landlord-income-exp', landlordId, ieCurrency],
+    queryFn: () => reportsApi.incomeExpenditure({ landlord_id: landlordId, currency: ieCurrency }).then((r) => r.data),
     enabled: !!landlordId,
     placeholderData: keepPreviousData,
   })
@@ -1336,82 +1340,158 @@ export default function LandlordDetail() {
 
         {/* ===== INCOME & EXPENDITURE TAB ===== */}
         <TabsContent value="income-exp" className="space-y-6">
+          {/* Currency toggle */}
+          <div className="flex items-center justify-between">
+            <div />
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+              <button
+                onClick={() => setIeCurrency('USD')}
+                className={cn(
+                  'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+                  ieCurrency === 'USD' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                )}
+              >
+                USD
+              </button>
+              <button
+                onClick={() => setIeCurrency('ZWG')}
+                className={cn(
+                  'px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+                  ieCurrency === 'ZWG' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                )}
+              >
+                ZWG
+              </button>
+            </div>
+          </div>
+
           {/* Summary cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <p className="text-sm text-gray-500">Opening Balance</p>
+              <p className={cn('text-2xl font-bold mt-1', (incomeExpData?.consolidated?.balance_bf || 0) < 0 ? 'text-red-600' : 'text-emerald-600')}>{formatCurrency(incomeExpData?.consolidated?.balance_bf || incomeExpData?.total_income || 0)}</p>
+            </div>
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <p className="text-sm text-gray-500">Total Income</p>
-              <p className="text-2xl font-bold text-emerald-600 mt-1">{formatCurrency(incomeExpData?.total_income || 0)}</p>
+              <p className="text-2xl font-bold text-emerald-600 mt-1">{formatCurrency(incomeExpData?.consolidated?.levies || incomeExpData?.total_income || 0)}</p>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <p className="text-sm text-gray-500">Total Expenses</p>
-              <p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(incomeExpData?.total_expenses || 0)}</p>
+              <p className="text-sm text-gray-500">Total Expenditure</p>
+              <p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(incomeExpData?.consolidated?.total_expenditure || incomeExpData?.total_expenses || 0)}</p>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <p className="text-sm text-gray-500">Net Income</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency((incomeExpData?.total_income || 0) - (incomeExpData?.total_expenses || 0))}</p>
+              <p className="text-sm text-gray-500">Closing Balance</p>
+              <p className={cn('text-2xl font-bold mt-1', (incomeExpData?.consolidated?.balance_cf || 0) < 0 ? 'text-red-600' : 'text-gray-900')}>{formatCurrency(incomeExpData?.consolidated?.balance_cf ?? ((incomeExpData?.total_income || 0) - (incomeExpData?.total_expenses || 0)))}</p>
             </div>
           </div>
 
-          {/* Chart */}
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Income vs Expenditure</h3>
-                <p className="text-sm text-gray-500">Breakdown by category</p>
-              </div>
-              <div className="flex items-center gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                  <span className="text-gray-600">Income</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-red-500" />
-                  <span className="text-gray-600">Expense</span>
-                </div>
-              </div>
-            </div>
-            <div className="h-72">
-              {loadingIncomeExp ? <ChartSkeleton /> : incomeExpChartData.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-sm text-gray-400">No income/expenditure data available</div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={incomeExpChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                    <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Bar dataKey="income" fill="#10b981" radius={[4, 4, 0, 0]} name="Income" />
-                    <Bar dataKey="expense" fill="#f43f5e" radius={[4, 4, 0, 0]} name="Expense" />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </div>
-
-          {/* Income items table */}
-          {incomeExpData?.income_items && (
+          {/* Monthly I&E table (if months data available) */}
+          {incomeExpData?.months && incomeExpData.months.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="p-6 border-b border-gray-100">
-                <h3 className="text-lg font-semibold text-gray-900">Income Breakdown</h3>
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {(incomeExpData.properties || []).join(', ') || incomeExpData.entity?.name || 'Income & Expenditure'}
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    {incomeExpData.period ? `For the period ${incomeExpData.period.start} to ${incomeExpData.period.end}` : 'Monthly breakdown'}
+                  </p>
+                </div>
+                {incomeExpData.currency && (
+                  <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full uppercase">{incomeExpData.currency}</span>
+                )}
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="min-w-full text-sm">
                   <thead>
-                    <tr className="bg-gray-50">
-                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Category</th>
-                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider sticky left-0 bg-gray-50 min-w-[200px]">Item</th>
+                      {incomeExpData.months.map((m: any) => (
+                        <th key={m.month} className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider min-w-[120px]">{m.label}</th>
+                      ))}
+                      <th className="px-4 py-3 text-right text-xs font-bold text-gray-800 uppercase tracking-wider min-w-[130px] bg-gray-100">Consolidated</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {incomeExpData.income_items.map((item: any, idx: number) => (
-                      <tr key={idx} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm text-gray-900">{item.name || item.category}</td>
-                        <td className="px-6 py-4 text-sm font-medium text-emerald-600 text-right">{formatCurrency(item.amount || item.total || 0)}</td>
+                    {/* INCOME HEADER */}
+                    <tr className="bg-emerald-50/50">
+                      <td colSpan={incomeExpData.months.length + 2} className="px-4 py-2 text-xs font-bold text-emerald-800 uppercase tracking-wider">Income</td>
+                    </tr>
+                    {/* Balance b/forward */}
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-4 py-2.5 text-gray-700 sticky left-0 bg-white">Balance b/forward</td>
+                      {incomeExpData.months.map((m: any) => (
+                        <td key={m.month} className={cn('px-4 py-2.5 text-right tabular-nums', (m.balance_bf || 0) < 0 ? 'text-red-600 font-semibold' : 'text-emerald-700 font-semibold')}>{formatCurrency(m.balance_bf ?? 0)}</td>
+                      ))}
+                      <td className={cn('px-4 py-2.5 text-right tabular-nums bg-gray-50 font-bold', (incomeExpData.consolidated?.balance_bf || 0) < 0 ? 'text-red-600' : 'text-emerald-700')}>{formatCurrency(incomeExpData.consolidated?.balance_bf ?? 0)}</td>
+                    </tr>
+                    {/* Income category rows */}
+                    {incomeExpData.income_category_labels && incomeExpData.income_category_labels.length > 0 ? (
+                      incomeExpData.income_category_labels.map((cat: any) => (
+                        <tr key={cat.key} className="hover:bg-gray-50">
+                          <td className="px-4 py-2.5 text-gray-700 sticky left-0 bg-white pl-8">{cat.label}</td>
+                          {incomeExpData.months.map((m: any) => (
+                            <td key={m.month} className="px-4 py-2.5 text-right tabular-nums text-gray-900">{formatCurrency(m.income_categories?.[cat.key] ?? 0)}</td>
+                          ))}
+                          <td className="px-4 py-2.5 text-right tabular-nums bg-gray-50 font-bold text-gray-900">{formatCurrency(incomeExpData.consolidated?.income_categories?.[cat.key] ?? 0)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr className="hover:bg-gray-50">
+                        <td className="px-4 py-2.5 text-gray-700 sticky left-0 bg-white pl-8">Levies</td>
+                        {incomeExpData.months.map((m: any) => (
+                          <td key={m.month} className="px-4 py-2.5 text-right tabular-nums text-gray-900">{formatCurrency(m.levies ?? 0)}</td>
+                        ))}
+                        <td className="px-4 py-2.5 text-right tabular-nums bg-gray-50 font-bold text-gray-900">{formatCurrency(incomeExpData.consolidated?.levies ?? 0)}</td>
+                      </tr>
+                    )}
+                    {/* Amount before Expenditure */}
+                    <tr className="bg-emerald-50/30 border-t border-emerald-200">
+                      <td className="px-4 py-2.5 font-semibold text-emerald-800 sticky left-0 bg-emerald-50/30">Amount before Expenditure</td>
+                      {incomeExpData.months.map((m: any) => (
+                        <td key={m.month} className="px-4 py-2.5 text-right tabular-nums font-semibold text-emerald-800">{formatCurrency(m.amount_before_expenditure ?? 0)}</td>
+                      ))}
+                      <td className="px-4 py-2.5 text-right tabular-nums font-bold text-emerald-800 bg-emerald-50">{formatCurrency(incomeExpData.consolidated?.total_income ?? 0)}</td>
+                    </tr>
+
+                    {/* EXPENDITURE HEADER */}
+                    <tr className="bg-red-50/50">
+                      <td colSpan={incomeExpData.months.length + 2} className="px-4 py-2 text-xs font-bold text-red-800 uppercase tracking-wider">Expenditure</td>
+                    </tr>
+                    {/* Expense category rows */}
+                    {(incomeExpData.expense_category_labels || []).map((cat: any) => (
+                      <tr key={cat.key} className="hover:bg-gray-50">
+                        <td className="px-4 py-2.5 text-gray-700 sticky left-0 bg-white pl-8">{cat.label}</td>
+                        {incomeExpData.months.map((m: any) => (
+                          <td key={m.month} className="px-4 py-2.5 text-right tabular-nums text-gray-900">{formatCurrency(m.expenditure_categories?.[cat.key] ?? 0)}</td>
+                        ))}
+                        <td className="px-4 py-2.5 text-right tabular-nums bg-gray-50 font-bold text-gray-900">{formatCurrency(incomeExpData.consolidated?.expenditure_categories?.[cat.key] ?? 0)}</td>
                       </tr>
                     ))}
-                    <tr className="bg-gray-50 font-semibold">
-                      <td className="px-6 py-4 text-sm text-gray-900">Total Income</td>
-                      <td className="px-6 py-4 text-sm text-emerald-700 text-right">{formatCurrency(incomeExpData.total_income || 0)}</td>
+                    {/* Management Commission */}
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-4 py-2.5 text-gray-700 sticky left-0 bg-white pl-8">Management Commission {incomeExpData.commission_rate}% (inc VAT)</td>
+                      {incomeExpData.months.map((m: any) => (
+                        <td key={m.month} className="px-4 py-2.5 text-right tabular-nums text-gray-900">{formatCurrency(m.management_commission ?? 0)}</td>
+                      ))}
+                      <td className="px-4 py-2.5 text-right tabular-nums bg-gray-50 font-bold text-gray-900">{formatCurrency(incomeExpData.consolidated?.management_commission ?? 0)}</td>
+                    </tr>
+                    {/* Total Expenditure */}
+                    <tr className="bg-red-50/30 border-t border-red-200">
+                      <td className="px-4 py-2.5 font-semibold text-red-800 sticky left-0 bg-red-50/30">Total Expenditure</td>
+                      {incomeExpData.months.map((m: any) => (
+                        <td key={m.month} className="px-4 py-2.5 text-right tabular-nums font-semibold text-red-800">{formatCurrency(m.total_expenditure ?? 0)}</td>
+                      ))}
+                      <td className="px-4 py-2.5 text-right tabular-nums font-bold text-red-800 bg-red-50">{formatCurrency(incomeExpData.consolidated?.total_expenditure ?? 0)}</td>
+                    </tr>
+
+                    {/* BALANCE C/F */}
+                    <tr className="bg-gray-100 border-t-2 border-gray-300">
+                      <td className="px-4 py-3 font-bold text-gray-900 sticky left-0 bg-gray-100">Balance c/f</td>
+                      {incomeExpData.months.map((m: any) => (
+                        <td key={m.month} className={cn('px-4 py-3 text-right tabular-nums font-bold', (m.balance_cf || 0) < 0 ? 'text-red-600' : 'text-emerald-700')}>{formatCurrency(m.balance_cf ?? 0)}</td>
+                      ))}
+                      <td className={cn('px-4 py-3 text-right tabular-nums font-bold bg-gray-200', (incomeExpData.consolidated?.balance_cf || 0) < 0 ? 'text-red-600' : 'text-emerald-700')}>{formatCurrency(incomeExpData.consolidated?.balance_cf ?? 0)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1419,35 +1499,228 @@ export default function LandlordDetail() {
             </div>
           )}
 
-          {/* Expense items table */}
-          {incomeExpData?.expense_items && (
+          {/* Income Summary (per tenant/account holder) */}
+          {incomeExpData?.income_summary?.tenants && incomeExpData.income_summary.tenants.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="p-6 border-b border-gray-100">
-                <h3 className="text-lg font-semibold text-gray-900">Expenditure Breakdown</h3>
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h3 className="text-lg font-semibold text-gray-900">Income Summary</h3>
+                {incomeExpData.income_summary.as_of && <p className="text-sm text-gray-500">as at {incomeExpData.income_summary.as_of}</p>}
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="min-w-full text-sm">
                   <thead>
-                    <tr className="bg-gray-50">
-                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Category</th>
-                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">{incomeExpData.management_type === 'levy' ? 'Account Holder' : 'Tenant'}</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Balance B/F</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Charge</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount Due</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount Paid</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Penalty</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Carried Forward</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {incomeExpData.expense_items.map((item: any, idx: number) => (
-                      <tr key={idx} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm text-gray-900">{item.name || item.category}</td>
-                        <td className="px-6 py-4 text-sm font-medium text-red-600 text-right">{formatCurrency(item.amount || item.total || 0)}</td>
-                      </tr>
-                    ))}
-                    <tr className="bg-gray-50 font-semibold">
-                      <td className="px-6 py-4 text-sm text-gray-900">Total Expenses</td>
-                      <td className="px-6 py-4 text-sm text-red-700 text-right">{formatCurrency(incomeExpData.total_expenses || 0)}</td>
-                    </tr>
+                    {incomeExpData.income_summary.tenants.map((t: any, i: number) => {
+                      const displayName = incomeExpData.management_type === 'levy' ? (t.account_holder || t.name) : t.name
+                      const linkId = t.account_holder_id || t.tenant_id || t.id
+                      return (
+                        <tr key={i} className="hover:bg-gray-50">
+                          <td className="px-4 py-2.5 text-gray-900 font-medium">
+                            {linkId ? (
+                              <button
+                                onClick={() => navigate(`/dashboard/tenants/${linkId}`)}
+                                className="text-primary-600 hover:text-primary-700 hover:underline text-left"
+                              >
+                                {displayName}
+                              </button>
+                            ) : displayName}
+                          </td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{formatCurrency(t.balance_bf ?? 0)}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{formatCurrency(t.charge ?? 0)}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-gray-900 font-medium">{formatCurrency(t.amount_due ?? 0)}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-emerald-600">{formatCurrency(t.amount_paid ?? 0)}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-amber-600">{formatCurrency(t.penalty ?? 0)}</td>
+                          <td className={cn('px-4 py-2.5 text-right tabular-nums font-semibold', (t.carried_forward || 0) > 0 ? 'text-red-600' : (t.carried_forward || 0) < 0 ? 'text-emerald-600' : 'text-gray-700')}>{formatCurrency(t.carried_forward ?? 0)}</td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
+                  <tfoot>
+                    <tr className="bg-gray-100 border-t-2 border-gray-300 font-bold">
+                      <td className="px-4 py-3 text-gray-900">Total</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-900">{formatCurrency(incomeExpData.income_summary.totals?.balance_bf ?? 0)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-900">{formatCurrency(incomeExpData.income_summary.totals?.charge ?? 0)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-900">{formatCurrency(incomeExpData.income_summary.totals?.amount_due ?? 0)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-emerald-700">{formatCurrency(incomeExpData.income_summary.totals?.amount_paid ?? 0)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-amber-700">{formatCurrency(incomeExpData.income_summary.totals?.penalty ?? 0)}</td>
+                      <td className={cn('px-4 py-3 text-right tabular-nums', (incomeExpData.income_summary.totals?.carried_forward || 0) > 0 ? 'text-red-600' : 'text-emerald-600')}>{formatCurrency(incomeExpData.income_summary.totals?.carried_forward ?? 0)}</td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>
+          )}
+
+          {/* Working Capital */}
+          {incomeExpData?.working_capital && (
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h3 className="text-lg font-semibold text-gray-900">Working Capital</h3>
+                {incomeExpData.working_capital.as_of && <p className="text-sm text-gray-500">as at {incomeExpData.working_capital.as_of}</p>}
+              </div>
+              <div className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Debtors */}
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Debtors and Cash Balances</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between py-2 border-b border-gray-100">
+                        <span className="text-gray-600">Cash balances</span>
+                        <span className={cn('tabular-nums font-medium', (incomeExpData.working_capital.debtors?.cash_balances || 0) < 0 ? 'text-red-600' : 'text-emerald-700')}>{formatCurrency(incomeExpData.working_capital.debtors?.cash_balances ?? 0)}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-gray-100">
+                        <span className="text-gray-600">Levies in arrears</span>
+                        <span className="tabular-nums font-medium text-red-600">{formatCurrency(incomeExpData.working_capital.debtors?.levies_in_arrears ?? incomeExpData.working_capital.debtors?.arrears ?? 0)}</span>
+                      </div>
+                      <div className="flex justify-between py-2 bg-blue-50 rounded px-2 -mx-2">
+                        <span className="font-semibold text-gray-900">Total Debtors</span>
+                        <span className="tabular-nums font-bold text-blue-700">{formatCurrency(incomeExpData.working_capital.debtors?.subtotal ?? ((incomeExpData.working_capital.debtors?.cash_balances || 0) + (incomeExpData.working_capital.debtors?.levies_in_arrears ?? incomeExpData.working_capital.debtors?.arrears ?? 0)))}</span>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Creditors */}
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Creditors</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between py-2 border-b border-gray-100">
+                        <span className="text-gray-600">Overdraft</span>
+                        <span className="tabular-nums font-medium text-red-600">{formatCurrency(incomeExpData.working_capital.creditors?.overdraft ?? 0)}</span>
+                      </div>
+                      <div className="flex justify-between py-2 border-b border-gray-100">
+                        <span className="text-gray-600">Prepayments in levies</span>
+                        <span className="tabular-nums font-medium text-gray-700">{formatCurrency(incomeExpData.working_capital.creditors?.prepayments ?? 0)}</span>
+                      </div>
+                      <div className="flex justify-between py-2 bg-orange-50 rounded px-2 -mx-2">
+                        <span className="font-semibold text-gray-900">Total Creditors</span>
+                        <span className="tabular-nums font-bold text-orange-700">{formatCurrency(incomeExpData.working_capital.creditors?.subtotal ?? ((incomeExpData.working_capital.creditors?.overdraft || 0) + (incomeExpData.working_capital.creditors?.prepayments || 0)))}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {/* Net Working Capital */}
+                <div className="mt-6 pt-4 border-t-2 border-gray-300">
+                  <div className="flex justify-between items-center">
+                    <span className="text-lg font-bold text-gray-900">Net Working Capital</span>
+                    <span className={cn('text-2xl tabular-nums font-bold', (incomeExpData.working_capital.net_working_capital ?? ((incomeExpData.working_capital.debtors?.subtotal || 0) - (incomeExpData.working_capital.creditors?.subtotal || 0))) >= 0 ? 'text-emerald-700' : 'text-red-600')}>
+                      {formatCurrency(incomeExpData.working_capital.net_working_capital ?? ((incomeExpData.working_capital.debtors?.subtotal || 0) - (incomeExpData.working_capital.creditors?.subtotal || 0)))}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Fallback: Chart + simple tables when no monthly data */}
+          {(!incomeExpData?.months || incomeExpData.months.length === 0) && (
+            <>
+              {/* Chart */}
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Income vs Expenditure</h3>
+                    <p className="text-sm text-gray-500">Breakdown by category</p>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                      <span className="text-gray-600">Income</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-red-500" />
+                      <span className="text-gray-600">Expense</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="h-72">
+                  {loadingIncomeExp ? <ChartSkeleton /> : incomeExpChartData.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-sm text-gray-400">No income/expenditure data available</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={incomeExpChartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                        <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+                        <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                        <Bar dataKey="income" fill="#10b981" radius={[4, 4, 0, 0]} name="Income" />
+                        <Bar dataKey="expense" fill="#f43f5e" radius={[4, 4, 0, 0]} name="Expense" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              </div>
+
+              {/* Income items table */}
+              {incomeExpData?.income_items && (
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="p-6 border-b border-gray-100">
+                    <h3 className="text-lg font-semibold text-gray-900">Income Breakdown</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Category</th>
+                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {incomeExpData.income_items.map((item: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 text-sm text-gray-900">{item.name || item.category}</td>
+                            <td className="px-6 py-4 text-sm font-medium text-emerald-600 text-right">{formatCurrency(item.amount || item.total || 0)}</td>
+                          </tr>
+                        ))}
+                        <tr className="bg-gray-50 font-semibold">
+                          <td className="px-6 py-4 text-sm text-gray-900">Total Income</td>
+                          <td className="px-6 py-4 text-sm text-emerald-700 text-right">{formatCurrency(incomeExpData.total_income || 0)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Expense items table */}
+              {incomeExpData?.expense_items && (
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="p-6 border-b border-gray-100">
+                    <h3 className="text-lg font-semibold text-gray-900">Expenditure Breakdown</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Category</th>
+                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {incomeExpData.expense_items.map((item: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 text-sm text-gray-900">{item.name || item.category}</td>
+                            <td className="px-6 py-4 text-sm font-medium text-red-600 text-right">{formatCurrency(item.amount || item.total || 0)}</td>
+                          </tr>
+                        ))}
+                        <tr className="bg-gray-50 font-semibold">
+                          <td className="px-6 py-4 text-sm text-gray-900">Total Expenses</td>
+                          <td className="px-6 py-4 text-sm text-red-700 text-right">{formatCurrency(incomeExpData.total_expenses || 0)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </TabsContent>
 
