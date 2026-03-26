@@ -420,14 +420,25 @@ class Receipt(SoftDeleteModel):
         if self.invoice and self.invoice.unit:
             return self.invoice.unit.property.landlord
         if self.invoice and self.invoice.lease:
-            return self.invoice.lease.unit.property.landlord
+            # Levy leases have no unit — use property directly
+            lease = self.invoice.lease
+            if lease.unit:
+                return lease.unit.property.landlord
+            elif lease.property:
+                return lease.property.landlord
+        # Try via invoice property (levy invoices)
+        if self.invoice and self.invoice.property:
+            return self.invoice.property.landlord
         # Try via tenant's active lease
         from apps.masterfile.models import LeaseAgreement
         active_lease = LeaseAgreement.objects.filter(
             tenant=self.tenant, status='active'
-        ).select_related('unit__property__landlord').first()
+        ).select_related('unit__property__landlord', 'property__landlord').first()
         if active_lease:
-            return active_lease.unit.property.landlord
+            if active_lease.unit:
+                return active_lease.unit.property.landlord
+            elif active_lease.property:
+                return active_lease.property.landlord
         return None
 
     def _get_commission_settings(self):
@@ -451,14 +462,14 @@ class Receipt(SoftDeleteModel):
 
     def _calculate_commission(self, amount, gross_rate, vat_rate):
         """
-        Calculate commission using the trust accounting approach:
-        Net commission % is rounded to 4 significant figures for accuracy.
+        Calculate commission using gross-first approach per spec:
 
-        Given: gross_rate = 10% (inclusive of 15% VAT)
-        Net% = gross_rate / (1 + vat_rate) = 10 / 1.15 = 8.6957% (4 s.f.)
-        Net Commission = amount * Net%
-        VAT = 15% * Net Commission
-        Gross = Net + VAT
+        Gross Commission = amount * gross_rate (rounded to 2dp)
+        Net Commission = Gross / (1 + vat_rate) (rounded to 2dp)
+        VAT on Commission = Gross - Net
+
+        This ensures Gross is always exact (e.g., 8% of $1000 = $80.00 exactly)
+        and Net + VAT = Gross with zero rounding drift.
         """
         amount = Decimal(str(amount))
         gross_rate = Decimal(str(gross_rate))
@@ -467,21 +478,14 @@ class Receipt(SoftDeleteModel):
         if gross_rate <= 0:
             return Decimal('0'), Decimal('0'), Decimal('0')
 
-        # Calculate net commission rate to 4 significant figures
-        net_rate_raw = gross_rate / (Decimal('1') + vat_rate)
-        # Round to 4 significant figures
-        import math
-        if net_rate_raw > 0:
-            sig_figs = 4
-            magnitude = math.floor(math.log10(float(net_rate_raw)))
-            round_to = sig_figs - 1 - magnitude
-            net_rate = Decimal(str(round(float(net_rate_raw), round_to)))
-        else:
-            net_rate = Decimal('0')
+        # Step 1: Gross first (exact)
+        gross_commission = (amount * gross_rate).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
-        net_commission = (amount * net_rate).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        vat_on_commission = (vat_rate * net_commission).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        gross_commission = net_commission + vat_on_commission
+        # Step 2: Derive Net from Gross
+        net_commission = (gross_commission / (Decimal('1') + vat_rate)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+        # Step 3: VAT = Gross - Net (ensures no rounding drift)
+        vat_on_commission = gross_commission - net_commission
 
         return net_commission, vat_on_commission, gross_commission
 
