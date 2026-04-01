@@ -8,6 +8,7 @@ from .models import (
     BankTransaction, BankReconciliation, ReconciliationItem,
     ExpenseCategory, JournalReallocation, IncomeType,
     SubsidiaryAccount, SubsidiaryTransaction,
+    AccruedExpense, BalanceSheetMovement,
 )
 
 
@@ -468,3 +469,137 @@ class SubsidiaryStatementSerializer(serializers.Serializer):
     total_debits = serializers.DecimalField(max_digits=18, decimal_places=2)
     total_credits = serializers.DecimalField(max_digits=18, decimal_places=2)
     closing_balance = serializers.DecimalField(max_digits=18, decimal_places=2)
+
+
+# ── Layer 2: Accrued Expenses ──────────────────────────────────────────────
+
+class AccruedExpenseSerializer(serializers.ModelSerializer):
+    """Read serializer for AccruedExpense with computed display fields."""
+    landlord_name = serializers.CharField(source='landlord.name', read_only=True)
+    expense_account_name = serializers.CharField(source='expense_account.name', read_only=True)
+    expense_account_code = serializers.CharField(source='expense_account.code', read_only=True)
+    payable_account_name = serializers.CharField(source='payable_account.name', read_only=True)
+    payable_account_code = serializers.CharField(source='payable_account.code', read_only=True)
+    landlord_sub_account_code = serializers.CharField(
+        source='landlord_sub_account.code', read_only=True
+    )
+    accrual_sub_account_code = serializers.CharField(
+        source='accrual_sub_account.code', read_only=True
+    )
+    journal_number = serializers.CharField(
+        source='journal.journal_number', read_only=True
+    )
+    created_by_name = serializers.CharField(
+        source='created_by.get_full_name', read_only=True
+    )
+
+    class Meta:
+        model = AccruedExpense
+        fields = [
+            'id', 'expense_number', 'date', 'expense_account',
+            'expense_account_name', 'expense_account_code',
+            'expense_class', 'payable_account', 'payable_account_name',
+            'payable_account_code', 'funding_category',
+            'accrual_sub_account', 'accrual_sub_account_code',
+            'landlord_sub_account', 'landlord_sub_account_code',
+            'landlord', 'landlord_name', 'description', 'custom_description',
+            'amount', 'currency', 'status', 'journal', 'journal_number',
+            'cleared_by_expense', 'cleared_date',
+            'created_by', 'created_by_name', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'expense_number', 'status', 'journal', 'cleared_by_expense',
+            'cleared_date', 'created_by', 'created_at', 'updated_at',
+        ]
+
+
+class AccruedExpenseCreateSerializer(serializers.ModelSerializer):
+    """Create serializer for AccruedExpense with validation."""
+
+    class Meta:
+        model = AccruedExpense
+        fields = [
+            'date', 'expense_account', 'expense_class', 'payable_account',
+            'funding_category', 'accrual_sub_account', 'landlord_sub_account',
+            'landlord', 'description', 'custom_description', 'amount', 'currency',
+        ]
+
+    def validate(self, data):
+        if data.get('expense_class') == AccruedExpense.ExpenseClass.CLEARABLE:
+            if not data.get('accrual_sub_account'):
+                raise serializers.ValidationError(
+                    {'accrual_sub_account': 'Required for clearable expenses.'}
+                )
+        if data['amount'] <= 0:
+            raise serializers.ValidationError(
+                {'amount': 'Amount must be greater than zero.'}
+            )
+        return data
+
+    def create(self, validated_data):
+        validated_data['created_by'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+# ── Layer 3: Balance Sheet Movements ───────────────────────────────────────
+
+class BalanceSheetMovementSerializer(serializers.ModelSerializer):
+    """Read serializer for BalanceSheetMovement with computed display fields."""
+    landlord_name = serializers.CharField(source='landlord.name', read_only=True)
+    debit_account_name = serializers.CharField(source='debit_account.name', read_only=True)
+    debit_account_code = serializers.CharField(source='debit_account.code', read_only=True)
+    credit_account_name = serializers.CharField(source='credit_account.name', read_only=True)
+    credit_account_code = serializers.CharField(source='credit_account.code', read_only=True)
+    landlord_sub_account_code = serializers.CharField(
+        source='landlord_sub_account.code', read_only=True
+    )
+    journal_number = serializers.CharField(
+        source='journal.journal_number', read_only=True
+    )
+    created_by_name = serializers.CharField(
+        source='created_by.get_full_name', read_only=True
+    )
+
+    class Meta:
+        model = BalanceSheetMovement
+        fields = [
+            'id', 'movement_number', 'date', 'debit_account',
+            'debit_account_name', 'debit_account_code',
+            'credit_account', 'credit_account_name', 'credit_account_code',
+            'category', 'landlord', 'landlord_name',
+            'landlord_sub_account', 'landlord_sub_account_code',
+            'description', 'custom_description', 'amount', 'currency',
+            'status', 'journal', 'journal_number',
+            'created_by', 'created_by_name', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'movement_number', 'status', 'journal',
+            'created_by', 'created_at', 'updated_at',
+        ]
+
+
+class BalanceSheetMovementCreateSerializer(serializers.ModelSerializer):
+    """Create serializer for BalanceSheetMovement with validation."""
+
+    class Meta:
+        model = BalanceSheetMovement
+        fields = [
+            'date', 'debit_account', 'credit_account', 'category',
+            'landlord', 'landlord_sub_account',
+            'description', 'custom_description', 'amount', 'currency',
+        ]
+
+    def validate(self, data):
+        if data['amount'] <= 0:
+            raise serializers.ValidationError(
+                {'amount': 'Amount must be greater than zero.'}
+            )
+        if data['debit_account'] == data['credit_account']:
+            raise serializers.ValidationError(
+                'Debit and credit accounts must be different.'
+            )
+        return data
+
+    def create(self, validated_data):
+        validated_data['created_by'] = self.context['request'].user
+        return super().create(validated_data)

@@ -9,7 +9,9 @@ from .views import (
     LeaseChargeSummaryView,
     ReceiptListingView, CommissionAnalysisView, IncomeItemAnalysisView,
     IncomeItemDrilldownView, IncomeExpenditureReportView,
-    DataVisualizationView, StreamingCSVExportView
+    DataVisualizationView, StreamingCSVExportView,
+    ReceiptListingReportView, CommissionAnalysisReportView,
+    IncomeItemAnalysisReportView,
 )
 from .property_performance import PropertyPerformanceView
 from .tax_reports import VATReturnView, WithholdingTaxView, AnnualIncomeSummaryView
@@ -57,6 +59,11 @@ urlpatterns = [
 
     # Property performance P&L
     path('property-performance/<int:pk>/', PropertyPerformanceView.as_view(), name='property-performance'),
+
+    # New detailed report endpoints
+    path('receipt-listing/', ReceiptListingReportView.as_view(), name='receipt-listing-report'),
+    path('commission-analysis-report/', CommissionAnalysisReportView.as_view(), name='commission-analysis-report'),
+    path('income-analysis/', IncomeItemAnalysisReportView.as_view(), name='income-analysis-report'),
 
     # ZIMRA tax compliance reports
     path('tax/vat-return/', VATReturnView.as_view(), name='vat-return'),

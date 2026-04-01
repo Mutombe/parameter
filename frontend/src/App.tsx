@@ -52,6 +52,10 @@ const Notifications = lazy(() => import('./pages/Notifications'))
 const LatePenalties = lazy(() => import('./pages/Billing/LatePenalties'))
 const Trash = lazy(() => import('./pages/Trash'))
 
+// Accounting
+const AccruedExpenses = lazy(() => import('./pages/Accounting/AccruedExpenses'))
+const BalanceSheetMovements = lazy(() => import('./pages/Accounting/BalanceSheetMovements'))
+
 // Reports
 const PropertyPerformance = lazy(() => import('./pages/Reports/PropertyPerformance'))
 const TaxReports = lazy(() => import('./pages/Reports/TaxReports'))
@@ -202,6 +206,8 @@ export default function App() {
         <Route path="expense-categories" element={<LazyPage><ExpenseCategories /></LazyPage>} />
         <Route path="bank-reconciliation" element={<LazyPage><BankReconciliation /></LazyPage>} />
         <Route path="subsidiary-ledger" element={<LazyPage><SubsidiaryLedger /></LazyPage>} />
+        <Route path="accrued-expenses" element={<LazyPage><AccruedExpenses /></LazyPage>} />
+        <Route path="bs-movements" element={<LazyPage><BalanceSheetMovements /></LazyPage>} />
         <Route path="reports" element={<LazyPage><Reports /></LazyPage>} />
         <Route path="aged-analysis" element={<Navigate to="/dashboard/reports?report=aged-analysis" replace />} />
         <Route path="audit-trail" element={<LazyPage><AuditTrail /></LazyPage>} />

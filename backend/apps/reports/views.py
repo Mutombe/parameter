@@ -3162,3 +3162,296 @@ class StreamingCSVExportView(APIView):
         timestamp = timezone.now().strftime('%Y%m%d')
         response['Content-Disposition'] = f'attachment; filename="{export_type}_{timestamp}.csv"'
         return response
+
+
+class ReceiptListingReportView(APIView):
+    """
+    Receipt Listing Report – comprehensive receipt listing with grouping
+    by income type and bank account.
+
+    Parameters: period_start, period_end, landlord_id, bank_account,
+                income_type, currency
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        period_start = request.query_params.get('period_start')
+        period_end = request.query_params.get('period_end', str(timezone.now().date()))
+        landlord_id = request.query_params.get('landlord_id')
+        bank_account = request.query_params.get('bank_account')
+        income_type = request.query_params.get('income_type')
+        currency = request.query_params.get('currency')
+
+        receipts = Receipt.objects.select_related(
+            'tenant', 'invoice', 'invoice__unit', 'invoice__unit__property',
+            'invoice__unit__property__landlord', 'bank_account',
+        ).filter(date__lte=period_end)
+
+        if period_start:
+            receipts = receipts.filter(date__gte=period_start)
+        if landlord_id:
+            receipts = receipts.filter(
+                invoice__unit__property__landlord_id=landlord_id
+            )
+        if bank_account:
+            receipts = receipts.filter(bank_account_id=bank_account)
+        if income_type:
+            receipts = receipts.filter(invoice__invoice_type=income_type)
+        if currency:
+            receipts = receipts.filter(currency=currency)
+
+        receipts = receipts.order_by('-date', '-created_at')
+
+        receipt_list = []
+        total_amount = Decimal('0')
+        totals_by_income_type = {}
+        totals_by_bank = {}
+
+        for rcpt in receipts:
+            landlord_name = None
+            landlord_id_val = None
+            property_name = None
+            property_id_val = None
+            income_type_name = None
+
+            if rcpt.invoice and rcpt.invoice.unit:
+                unit = rcpt.invoice.unit
+                prop = unit.property
+                landlord = prop.landlord
+                landlord_name = landlord.name
+                landlord_id_val = landlord.id
+                property_name = prop.name
+                property_id_val = prop.id
+                income_type_name = rcpt.invoice.get_invoice_type_display()
+
+            bank_name = rcpt.bank_account.name if rcpt.bank_account else rcpt.bank_name
+
+            receipt_list.append({
+                'date': str(rcpt.date),
+                'transaction_id': rcpt.receipt_number,
+                'income_type_name': income_type_name,
+                'tenant_name': rcpt.tenant.name if rcpt.tenant else None,
+                'tenant_id': rcpt.tenant_id,
+                'landlord_name': landlord_name,
+                'landlord_id': landlord_id_val,
+                'property_name': property_name,
+                'property_id': property_id_val,
+                'bank_reference': rcpt.reference,
+                'currency': rcpt.currency,
+                'amount': float(rcpt.amount),
+                'payment_method': rcpt.get_payment_method_display(),
+            })
+
+            total_amount += rcpt.amount
+
+            # Aggregate by income type
+            type_key = income_type_name or 'Other'
+            if type_key not in totals_by_income_type:
+                totals_by_income_type[type_key] = Decimal('0')
+            totals_by_income_type[type_key] += rcpt.amount
+
+            # Aggregate by bank account
+            bank_key = bank_name or 'Unknown'
+            if bank_key not in totals_by_bank:
+                totals_by_bank[bank_key] = Decimal('0')
+            totals_by_bank[bank_key] += rcpt.amount
+
+        return Response({
+            'period': {'start': period_start, 'end': period_end},
+            'receipts': receipt_list,
+            'by_income_type': [
+                {'name': k, 'total': float(v)}
+                for k, v in totals_by_income_type.items()
+            ],
+            'by_bank_account': [
+                {'name': k, 'total': float(v)}
+                for k, v in totals_by_bank.items()
+            ],
+            'total': float(total_amount),
+        })
+
+
+class CommissionAnalysisReportView(APIView):
+    """
+    Commission Analysis Report – commission earned breakdown by income type
+    and by property.
+
+    Parameters: period_start, period_end, landlord_id, currency
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        period_start = request.query_params.get('period_start')
+        period_end = request.query_params.get('period_end', str(timezone.now().date()))
+        landlord_id = request.query_params.get('landlord_id')
+        currency = request.query_params.get('currency')
+
+        receipts = Receipt.objects.filter(
+            date__lte=period_end
+        ).select_related(
+            'invoice', 'invoice__unit', 'invoice__unit__property',
+            'invoice__unit__property__landlord',
+        )
+
+        if period_start:
+            receipts = receipts.filter(date__gte=period_start)
+        if landlord_id:
+            receipts = receipts.filter(
+                invoice__unit__property__landlord_id=landlord_id
+            )
+        if currency:
+            receipts = receipts.filter(currency=currency)
+
+        by_income_type = {}
+        by_property = {}
+        total_receipts = Decimal('0')
+        total_commission = Decimal('0')
+
+        for rcpt in receipts:
+            if not rcpt.invoice or not rcpt.invoice.unit:
+                continue
+
+            landlord = rcpt.invoice.unit.property.landlord
+            commission_rate = landlord.commission_rate / 100
+            commission = rcpt.amount * commission_rate
+            inv_type = rcpt.invoice.get_invoice_type_display()
+            prop = rcpt.invoice.unit.property
+
+            # By income type
+            if inv_type not in by_income_type:
+                by_income_type[inv_type] = {
+                    'total_receipts': Decimal('0'),
+                    'commission': Decimal('0'),
+                }
+            by_income_type[inv_type]['total_receipts'] += rcpt.amount
+            by_income_type[inv_type]['commission'] += commission
+
+            # By property
+            if prop.id not in by_property:
+                by_property[prop.id] = {
+                    'property': prop.name,
+                    'property_id': prop.id,
+                    'total_receipts': Decimal('0'),
+                    'commission': Decimal('0'),
+                }
+            by_property[prop.id]['total_receipts'] += rcpt.amount
+            by_property[prop.id]['commission'] += commission
+
+            total_receipts += rcpt.amount
+            total_commission += commission
+
+        income_type_data = [
+            {
+                'income_type': k,
+                'total_receipts': float(v['total_receipts']),
+                'commission': float(v['commission']),
+                'percentage': round(
+                    float(v['commission']) / float(total_commission) * 100, 1
+                ) if total_commission else 0,
+            }
+            for k, v in by_income_type.items()
+        ]
+        income_type_data.sort(key=lambda x: x['commission'], reverse=True)
+
+        property_data = [
+            {
+                'property': v['property'],
+                'property_id': v['property_id'],
+                'total_receipts': float(v['total_receipts']),
+                'commission': float(v['commission']),
+                'percentage': round(
+                    float(v['commission']) / float(total_commission) * 100, 1
+                ) if total_commission else 0,
+            }
+            for v in by_property.values()
+        ]
+        property_data.sort(key=lambda x: x['commission'], reverse=True)
+
+        return Response({
+            'period': {'start': period_start, 'end': period_end},
+            'by_income_type': income_type_data,
+            'by_property': property_data,
+            'total_receipts': float(total_receipts),
+            'total_commission': float(total_commission),
+        })
+
+
+class IncomeItemAnalysisReportView(APIView):
+    """
+    Income Item Analysis Report – total income per income type and breakdown
+    by bank account.
+
+    Parameters: period_start, period_end, landlord_id, bank_account, currency
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        period_start = request.query_params.get('period_start')
+        period_end = request.query_params.get('period_end', str(timezone.now().date()))
+        landlord_id = request.query_params.get('landlord_id')
+        bank_account = request.query_params.get('bank_account')
+        currency = request.query_params.get('currency')
+
+        receipts = Receipt.objects.filter(date__lte=period_end).select_related(
+            'invoice', 'invoice__unit', 'invoice__unit__property',
+            'invoice__unit__property__landlord', 'bank_account',
+        )
+
+        if period_start:
+            receipts = receipts.filter(date__gte=period_start)
+        if landlord_id:
+            receipts = receipts.filter(
+                invoice__unit__property__landlord_id=landlord_id
+            )
+        if bank_account:
+            receipts = receipts.filter(bank_account_id=bank_account)
+        if currency:
+            receipts = receipts.filter(currency=currency)
+
+        totals_by_type = {}
+        by_bank_and_income = {}
+        grand_total = Decimal('0')
+
+        for rcpt in receipts:
+            inv_type = rcpt.invoice.get_invoice_type_display() if rcpt.invoice else 'Other'
+            bank_name = rcpt.bank_account.name if rcpt.bank_account else (rcpt.bank_name or 'Cash')
+
+            # By income type
+            if inv_type not in totals_by_type:
+                totals_by_type[inv_type] = Decimal('0')
+            totals_by_type[inv_type] += rcpt.amount
+
+            # By bank + income type
+            combo_key = (bank_name, inv_type)
+            if combo_key not in by_bank_and_income:
+                by_bank_and_income[combo_key] = Decimal('0')
+            by_bank_and_income[combo_key] += rcpt.amount
+
+            grand_total += rcpt.amount
+
+        income_type_data = [
+            {
+                'income_type': k,
+                'total': float(v),
+                'percentage': round(float(v) / float(grand_total) * 100, 1) if grand_total else 0,
+            }
+            for k, v in totals_by_type.items()
+        ]
+        income_type_data.sort(key=lambda x: x['total'], reverse=True)
+
+        bank_income_data = [
+            {
+                'bank': k[0],
+                'income_type': k[1],
+                'total': float(v),
+            }
+            for k, v in by_bank_and_income.items()
+        ]
+        bank_income_data.sort(key=lambda x: x['total'], reverse=True)
+
+        return Response({
+            'period': {'start': period_start, 'end': period_end},
+            'by_income_type': income_type_data,
+            'by_bank_and_income': bank_income_data,
+            'total': float(grand_total),
+        })

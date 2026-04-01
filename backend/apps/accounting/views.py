@@ -17,6 +17,7 @@ from .models import (
     BankTransaction, BankReconciliation, ReconciliationItem,
     ExpenseCategory, JournalReallocation, IncomeType,
     SubsidiaryAccount, SubsidiaryTransaction,
+    AccruedExpense, BalanceSheetMovement,
 )
 from .serializers import (
     ChartOfAccountSerializer, ExchangeRateSerializer,
@@ -29,6 +30,8 @@ from .serializers import (
     ReallocationCreateSerializer, IncomeTypeSerializer,
     SubsidiaryAccountSerializer, SubsidiaryTransactionSerializer,
     SubsidiaryStatementSerializer,
+    AccruedExpenseSerializer, AccruedExpenseCreateSerializer,
+    BalanceSheetMovementSerializer, BalanceSheetMovementCreateSerializer,
 )
 from apps.accounts.mixins import TenantSchemaValidationMixin
 
@@ -1354,3 +1357,120 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
                 created += 1
 
         return Response({'message': f'Synced subsidiary accounts. Created {created} new accounts.'})
+
+
+class AccruedExpenseViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
+    """
+    Layer 2: Non-cash accrued expenses (salaries payable, NSSA, PAYE, rates,
+    depreciation). Supports CRUD, posting to GL, and clearing.
+    """
+    queryset = AccruedExpense.objects.select_related(
+        'expense_account', 'payable_account', 'landlord',
+        'landlord_sub_account', 'accrual_sub_account',
+        'journal', 'cleared_by_expense', 'created_by',
+    ).all()
+    serializer_class = AccruedExpenseSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['status', 'expense_class', 'funding_category', 'landlord', 'currency']
+    search_fields = ['expense_number', 'description', 'custom_description']
+    ordering_fields = ['date', 'amount', 'created_at']
+    ordering = ['-date', '-created_at']
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return AccruedExpenseCreateSerializer
+        return AccruedExpenseSerializer
+
+    @action(detail=True, methods=['post'])
+    def post_to_ledger(self, request, pk=None):
+        """Post a draft accrued expense to GL and subsidiary ledgers."""
+        accrued = self.get_object()
+        if accrued.status != AccruedExpense.Status.DRAFT:
+            return Response(
+                {'error': 'Only draft accrued expenses can be posted.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            accrued.post_to_ledger(user=request.user)
+            return Response(AccruedExpenseSerializer(accrued).data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def clear(self, request, pk=None):
+        """
+        Mark a clearable accrued expense as cleared by linking it to a cash
+        expense payment.
+        Expects: { "expense_id": <billing.Expense pk> }
+        """
+        accrued = self.get_object()
+        if accrued.status != AccruedExpense.Status.POSTED:
+            return Response(
+                {'error': 'Only posted accrued expenses can be cleared.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if accrued.expense_class != AccruedExpense.ExpenseClass.CLEARABLE:
+            return Response(
+                {'error': 'Only clearable expenses can be cleared.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        expense_id = request.data.get('expense_id')
+        if not expense_id:
+            return Response(
+                {'error': 'expense_id is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from apps.billing.models import Expense
+        try:
+            cash_expense = Expense.objects.get(pk=expense_id)
+        except Expense.DoesNotExist:
+            return Response(
+                {'error': 'Expense not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        accrued.cleared_by_expense = cash_expense
+        accrued.cleared_date = cash_expense.date
+        accrued.status = AccruedExpense.Status.CLEARED
+        accrued.save()
+
+        return Response(AccruedExpenseSerializer(accrued).data)
+
+
+class BalanceSheetMovementViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
+    """
+    Layer 3: Non-cash balance-sheet movements (asset/liability reshuffles).
+    Supports CRUD and posting to GL.
+    """
+    queryset = BalanceSheetMovement.objects.select_related(
+        'debit_account', 'credit_account', 'landlord',
+        'landlord_sub_account', 'journal', 'created_by',
+    ).all()
+    serializer_class = BalanceSheetMovementSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['status', 'category', 'landlord', 'currency']
+    search_fields = ['movement_number', 'description', 'custom_description']
+    ordering_fields = ['date', 'amount', 'created_at']
+    ordering = ['-date', '-created_at']
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return BalanceSheetMovementCreateSerializer
+        return BalanceSheetMovementSerializer
+
+    @action(detail=True, methods=['post'])
+    def post_to_ledger(self, request, pk=None):
+        """Post a draft balance sheet movement to GL."""
+        movement = self.get_object()
+        if movement.status != BalanceSheetMovement.Status.DRAFT:
+            return Response(
+                {'error': 'Only draft movements can be posted.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            movement.post_to_ledger(user=request.user)
+            return Response(BalanceSheetMovementSerializer(movement).data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

@@ -257,6 +257,10 @@ export const reportsApi = {
     api.get('/reports/income-expenditure/', { params }),
   charts: (params: { chart_type: string; tenant_id?: number; property_id?: number; months?: number; start_date?: string; end_date?: string }) =>
     api.get('/reports/charts/', { params }),
+  // New detailed report endpoints
+  receiptListingReport: (params: object) => api.get('/reports/receipt-listing/', { params }),
+  commissionAnalysisReport: (params: object) => api.get('/reports/commission-analysis-report/', { params }),
+  incomeAnalysis: (params: object) => api.get('/reports/income-analysis/', { params }),
   // Server-side streaming CSV export for large datasets
   streamExport: (type: string, filters?: Record<string, string>) =>
     api.get('/reports/export/', { params: { type, ...filters }, responseType: 'blob' }),
@@ -791,6 +795,25 @@ export const trashApi = {
   restore: (data: { type: string; ids: number[] }) => api.post('/trash/restore/', data),
   purge: (data: { type: string; ids: number[] }) => api.delete('/trash/purge/', { data }),
   purgeAll: () => api.delete('/trash/purge-all/'),
+}
+
+export const accruedExpenseApi = {
+  list: (params?: object) => api.get('/accounting/accrued-expenses/', { params }),
+  get: (id: number) => api.get(`/accounting/accrued-expenses/${id}/`),
+  create: (data: object) => api.post('/accounting/accrued-expenses/', data),
+  update: (id: number, data: object) => api.patch(`/accounting/accrued-expenses/${id}/`, data),
+  delete: (id: number) => api.delete(`/accounting/accrued-expenses/${id}/`),
+  postToLedger: (id: number) => api.post(`/accounting/accrued-expenses/${id}/post_to_ledger/`),
+  clear: (id: number, data: object) => api.post(`/accounting/accrued-expenses/${id}/clear/`, data),
+}
+
+export const bsMovementApi = {
+  list: (params?: object) => api.get('/accounting/bs-movements/', { params }),
+  get: (id: number) => api.get(`/accounting/bs-movements/${id}/`),
+  create: (data: object) => api.post('/accounting/bs-movements/', data),
+  update: (id: number, data: object) => api.patch(`/accounting/bs-movements/${id}/`, data),
+  delete: (id: number) => api.delete(`/accounting/bs-movements/${id}/`),
+  postToLedger: (id: number) => api.post(`/accounting/bs-movements/${id}/post_to_ledger/`),
 }
 
 export default api

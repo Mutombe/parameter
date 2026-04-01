@@ -53,6 +53,10 @@ class ChartOfAccount(models.Model):
         MAINTENANCE = 'maintenance', 'Maintenance & Repairs'
         UTILITIES = 'utilities', 'Utilities'
         CUSTOM_EXPENSE = 'custom_expense', 'Custom Expense'
+        DEPRECIATION = 'depreciation', 'Depreciation'
+        # Accrual / Accumulated
+        ACCRUED_LIABILITIES = 'accrued_liabilities', 'Accrued Liabilities'
+        ACCUMULATED_DEPRECIATION = 'accumulated_depreciation', 'Accumulated Depreciation'
 
     code = models.CharField(max_length=20, unique=True)
     name = models.CharField(max_length=255)
@@ -1276,3 +1280,277 @@ def build_transaction_description(txn_type, payment_method=None, tenant_name=Non
         desc += f' Ref-{user_ref}'
 
     return desc
+
+
+class AccruedExpense(models.Model):
+    """
+    Non-cash expense posting (Layer 2).
+    Handles accrued expenses and depreciation that don't involve cash.
+    """
+    class ExpenseClass(models.TextChoices):
+        CLEARABLE = 'clearable', 'Clearable'  # Will be paid in cash later (salaries, rates, NSSA)
+        NON_CLEARABLE = 'non_clearable', 'Non-Clearable'  # Never paid (depreciation)
+
+    class Status(models.TextChoices):
+        DRAFT = 'draft', 'Draft'
+        POSTED = 'posted', 'Posted'
+        CLEARED = 'cleared', 'Cleared'  # Clearable expense that has been paid
+
+    expense_number = models.CharField(max_length=50, unique=True)
+    date = models.DateField()
+
+    # Expense account (e.g., Salaries & Wages 2000/001, Depreciation 2500/000)
+    expense_account = models.ForeignKey(
+        ChartOfAccount, on_delete=models.PROTECT, related_name='accrued_expenses'
+    )
+
+    # Expense class
+    expense_class = models.CharField(max_length=20, choices=ExpenseClass.choices)
+
+    # Supplier/Payable account (e.g., Accrued Salary Payable, NSSA Payable, Accumulated Depreciation)
+    payable_account = models.ForeignKey(
+        ChartOfAccount, on_delete=models.PROTECT, related_name='accrued_payables'
+    )
+
+    # Category lock (rent, levy, special_levy, etc.)
+    funding_category = models.CharField(
+        max_length=20, choices=SubsidiaryAccount.AccountCategory.choices
+    )
+
+    # Lessor's Accrual sub-account (for clearable expenses)
+    accrual_sub_account = models.ForeignKey(
+        SubsidiaryAccount, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='accrued_expenses'
+    )
+
+    # Landlord sub-account affected
+    landlord_sub_account = models.ForeignKey(
+        SubsidiaryAccount, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='accrued_landlord_expenses'
+    )
+
+    # Landlord reference
+    landlord = models.ForeignKey(
+        'masterfile.Landlord', on_delete=models.PROTECT, related_name='accrued_expenses'
+    )
+
+    description = models.CharField(max_length=500)
+    custom_description = models.CharField(max_length=500, blank=True)
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+    currency = models.CharField(max_length=3, default='USD')
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    journal = models.ForeignKey(Journal, on_delete=models.SET_NULL, null=True, blank=True)
+
+    # For cleared expenses - link to the cash payment that cleared it
+    cleared_by_expense = models.ForeignKey(
+        'billing.Expense', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='cleared_accruals'
+    )
+    cleared_date = models.DateField(null=True, blank=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        return f'{self.expense_number} - {self.description}'
+
+    def save(self, *args, **kwargs):
+        if not self.expense_number:
+            self.expense_number = self._generate_number()
+        super().save(*args, **kwargs)
+
+    def _generate_number(self):
+        from django.utils import timezone
+        prefix = f'ACR{timezone.now().strftime("%Y%m%d")}'
+        last = AccruedExpense.objects.filter(
+            expense_number__startswith=prefix
+        ).order_by('-expense_number').first()
+        num = int(last.expense_number[len(prefix):]) + 1 if last else 1
+        return f'{prefix}{num:04d}'
+
+    @transaction.atomic
+    def post_to_ledger(self, user=None):
+        """Post accrued expense to GL and subsidiary ledgers."""
+        if self.journal:
+            return self.journal
+
+        journal = Journal.objects.create(
+            journal_type=Journal.JournalType.GENERAL,
+            date=self.date,
+            description=self.custom_description or self.description,
+            reference=self.expense_number,
+            currency=self.currency,
+            created_by=user,
+        )
+
+        # GL: Dr Expense Account, Cr Payable Account
+        JournalEntry.objects.create(
+            journal=journal, account=self.expense_account,
+            description=self.custom_description or self.description,
+            debit_amount=self.amount,
+            source_type='accrued_expense', source_id=self.id,
+        )
+        JournalEntry.objects.create(
+            journal=journal, account=self.payable_account,
+            description=self.custom_description or self.description,
+            credit_amount=self.amount,
+            source_type='accrued_expense', source_id=self.id,
+        )
+
+        journal.post(user)
+
+        # Subsidiary: Debit landlord sub-account (reduces what landlord has)
+        if self.landlord_sub_account:
+            SubsidiaryTransaction.create_entry(
+                account=self.landlord_sub_account,
+                date=self.date,
+                contra_account=self.expense_account.code,
+                reference=self.expense_number,
+                description=self.custom_description or self.description,
+                debit_amount=self.amount,
+                journal_entry=journal.entries.filter(debit_amount__gt=0).first(),
+            )
+
+        # For clearable expenses, also record on accrual sub-account
+        if self.expense_class == self.ExpenseClass.CLEARABLE and self.accrual_sub_account:
+            SubsidiaryTransaction.create_entry(
+                account=self.accrual_sub_account,
+                date=self.date,
+                contra_account=self.payable_account.code,
+                reference=self.expense_number,
+                description=self.custom_description or self.description,
+                credit_amount=self.amount,
+                journal_entry=journal.entries.filter(credit_amount__gt=0).first(),
+            )
+
+        self.journal = journal
+        self.status = self.Status.POSTED
+        self.save()
+        return journal
+
+
+class BalanceSheetMovement(models.Model):
+    """
+    Non-cash balance sheet value movements (Layer 3).
+    Pure asset-to-asset, asset-to-liability, liability-to-liability movements.
+    No cash or expense accounts involved.
+    """
+    class Status(models.TextChoices):
+        DRAFT = 'draft', 'Draft'
+        POSTED = 'posted', 'Posted'
+
+    movement_number = models.CharField(max_length=50, unique=True)
+    date = models.DateField()
+
+    # Debit account (asset or liability being increased)
+    debit_account = models.ForeignKey(
+        ChartOfAccount, on_delete=models.PROTECT, related_name='bs_movement_debits'
+    )
+
+    # Credit account (asset or liability being decreased)
+    credit_account = models.ForeignKey(
+        ChartOfAccount, on_delete=models.PROTECT, related_name='bs_movement_credits'
+    )
+
+    # Category lock
+    category = models.CharField(
+        max_length=20, choices=SubsidiaryAccount.AccountCategory.choices
+    )
+
+    # Landlord dimension - every BS movement belongs to a landlord
+    landlord = models.ForeignKey(
+        'masterfile.Landlord', on_delete=models.PROTECT, related_name='bs_movements'
+    )
+    landlord_sub_account = models.ForeignKey(
+        SubsidiaryAccount, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='bs_movements'
+    )
+
+    description = models.CharField(max_length=500)
+    custom_description = models.CharField(max_length=500, blank=True)
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+    currency = models.CharField(max_length=3, default='USD')
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    journal = models.ForeignKey(Journal, on_delete=models.SET_NULL, null=True, blank=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        return f'{self.movement_number} - {self.description}'
+
+    def save(self, *args, **kwargs):
+        if not self.movement_number:
+            self.movement_number = self._generate_number()
+        super().save(*args, **kwargs)
+
+    def _generate_number(self):
+        from django.utils import timezone
+        prefix = f'BSM{timezone.now().strftime("%Y%m%d")}'
+        last = BalanceSheetMovement.objects.filter(
+            movement_number__startswith=prefix
+        ).order_by('-movement_number').first()
+        num = int(last.movement_number[len(prefix):]) + 1 if last else 1
+        return f'{prefix}{num:04d}'
+
+    @transaction.atomic
+    def post_to_ledger(self, user=None):
+        """Post balance sheet movement to GL."""
+        if self.journal:
+            return self.journal
+
+        journal = Journal.objects.create(
+            journal_type=Journal.JournalType.GENERAL,
+            date=self.date,
+            description=self.custom_description or self.description,
+            reference=self.movement_number,
+            currency=self.currency,
+            created_by=user,
+        )
+
+        # GL: Dr debit_account, Cr credit_account
+        JournalEntry.objects.create(
+            journal=journal, account=self.debit_account,
+            description=self.custom_description or self.description,
+            debit_amount=self.amount,
+            source_type='bs_movement', source_id=self.id,
+        )
+        JournalEntry.objects.create(
+            journal=journal, account=self.credit_account,
+            description=self.custom_description or self.description,
+            credit_amount=self.amount,
+            source_type='bs_movement', source_id=self.id,
+        )
+
+        journal.post(user)
+
+        # Subsidiary: record on landlord sub-account for reporting
+        if self.landlord_sub_account:
+            SubsidiaryTransaction.create_entry(
+                account=self.landlord_sub_account,
+                date=self.date,
+                contra_account=f'{self.debit_account.code}/{self.credit_account.code}',
+                reference=self.movement_number,
+                description=self.custom_description or self.description,
+                debit_amount=self.amount,
+                journal_entry=journal.entries.filter(debit_amount__gt=0).first(),
+            )
+
+        self.journal = journal
+        self.status = self.Status.POSTED
+        self.save()
+        return journal
