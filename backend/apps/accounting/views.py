@@ -17,7 +17,7 @@ from .models import (
     BankTransaction, BankReconciliation, ReconciliationItem,
     ExpenseCategory, JournalReallocation, IncomeType,
     SubsidiaryAccount, SubsidiaryTransaction,
-    AccruedExpense, BalanceSheetMovement,
+    AccruedExpense, BalanceSheetMovement, OpeningBalance,
 )
 from .serializers import (
     ChartOfAccountSerializer, ExchangeRateSerializer,
@@ -32,6 +32,7 @@ from .serializers import (
     SubsidiaryStatementSerializer,
     AccruedExpenseSerializer, AccruedExpenseCreateSerializer,
     BalanceSheetMovementSerializer, BalanceSheetMovementCreateSerializer,
+    OpeningBalanceSerializer, OpeningBalanceCreateSerializer,
 )
 from apps.accounts.mixins import TenantSchemaValidationMixin
 
@@ -1560,5 +1561,41 @@ class BalanceSheetMovementViewSet(TenantSchemaValidationMixin, viewsets.ModelVie
         try:
             movement.post_to_ledger(user=request.user)
             return Response(BalanceSheetMovementSerializer(movement).data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class OpeningBalanceViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
+    """
+    CRUD for Opening/Takeover Balances (Layer 4).
+    Introduces pre-existing values when onboarding a new landlord.
+    """
+    queryset = OpeningBalance.objects.select_related(
+        'target_account', 'landlord', 'landlord_sub_account',
+        'tenant_sub_account', 'journal', 'created_by',
+    ).all()
+    serializer_class = OpeningBalanceSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['landlord', 'category', 'direction', 'status', 'currency']
+    search_fields = ['entry_number', 'description', 'custom_description', 'landlord__name']
+    ordering = ['-date', '-created_at']
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return OpeningBalanceCreateSerializer
+        return OpeningBalanceSerializer
+
+    @action(detail=True, methods=['post'])
+    def post_to_ledger(self, request, pk=None):
+        """Post opening balance to GL."""
+        entry = self.get_object()
+        if entry.status != OpeningBalance.Status.DRAFT:
+            return Response(
+                {'error': 'Only draft entries can be posted.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            entry.post_to_ledger(user=request.user)
+            return Response(OpeningBalanceSerializer(entry).data)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

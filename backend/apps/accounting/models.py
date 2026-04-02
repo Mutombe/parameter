@@ -1554,3 +1554,148 @@ class BalanceSheetMovement(models.Model):
         self.status = self.Status.POSTED
         self.save()
         return journal
+
+
+class OpeningBalance(models.Model):
+    """
+    Opening/Takeover balance entries (Layer 4).
+    Introduces pre-existing values when onboarding a new landlord.
+    One side is always the 'Opening Balances' contra account (9000).
+    """
+    class Status(models.TextChoices):
+        DRAFT = 'draft', 'Draft'
+        POSTED = 'posted', 'Posted'
+
+    class EntryDirection(models.TextChoices):
+        DEBIT = 'debit', 'Debit (introduce asset/receivable)'
+        CREDIT = 'credit', 'Credit (introduce liability/prepayment)'
+
+    entry_number = models.CharField(max_length=50, unique=True)
+    date = models.DateField()
+
+    target_account = models.ForeignKey(
+        ChartOfAccount, on_delete=models.PROTECT, related_name='opening_balances'
+    )
+    direction = models.CharField(max_length=10, choices=EntryDirection.choices)
+    category = models.CharField(max_length=20, choices=SubsidiaryAccount.AccountCategory.choices)
+
+    landlord = models.ForeignKey(
+        'masterfile.Landlord', on_delete=models.PROTECT, related_name='opening_balances'
+    )
+    landlord_sub_account = models.ForeignKey(
+        SubsidiaryAccount, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='opening_balances'
+    )
+    tenant_sub_account = models.ForeignKey(
+        SubsidiaryAccount, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='opening_balance_tenant'
+    )
+
+    description = models.CharField(max_length=500, default='Opening balance')
+    custom_description = models.CharField(max_length=500, blank=True)
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+    currency = models.CharField(max_length=3, default='USD')
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+    journal = models.ForeignKey(Journal, on_delete=models.SET_NULL, null=True, blank=True)
+
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+
+    def __str__(self):
+        return f'{self.entry_number} - {self.custom_description or self.description}'
+
+    def save(self, *args, **kwargs):
+        if not self.entry_number:
+            self.entry_number = self._generate_number()
+        super().save(*args, **kwargs)
+
+    def _generate_number(self):
+        from django.utils import timezone
+        prefix = f'OPB{timezone.now().strftime("%Y%m%d")}'
+        last = OpeningBalance.objects.filter(
+            entry_number__startswith=prefix
+        ).order_by('-entry_number').first()
+        num = int(last.entry_number[len(prefix):]) + 1 if last else 1
+        return f'{prefix}{num:04d}'
+
+    @transaction.atomic
+    def post_to_ledger(self, user=None):
+        """Post opening balance to GL and subsidiary ledgers."""
+        if self.journal:
+            return self.journal
+
+        opening_account, _ = ChartOfAccount.objects.get_or_create(
+            code='9000',
+            defaults={
+                'name': 'Opening Balances',
+                'account_type': 'equity',
+                'account_subtype': 'retained_earnings',
+                'is_system': True,
+            }
+        )
+
+        desc = self.custom_description or self.description
+
+        journal = Journal.objects.create(
+            journal_type=Journal.JournalType.GENERAL,
+            date=self.date, description=desc,
+            reference=self.entry_number, currency=self.currency,
+            created_by=user,
+        )
+
+        if self.direction == self.EntryDirection.DEBIT:
+            je_target = JournalEntry.objects.create(
+                journal=journal, account=self.target_account,
+                description=desc, debit_amount=self.amount,
+                source_type='opening_balance', source_id=self.id,
+            )
+            JournalEntry.objects.create(
+                journal=journal, account=opening_account,
+                description=desc, credit_amount=self.amount,
+                source_type='opening_balance', source_id=self.id,
+            )
+        else:
+            JournalEntry.objects.create(
+                journal=journal, account=opening_account,
+                description=desc, debit_amount=self.amount,
+                source_type='opening_balance', source_id=self.id,
+            )
+            je_target = JournalEntry.objects.create(
+                journal=journal, account=self.target_account,
+                description=desc, credit_amount=self.amount,
+                source_type='opening_balance', source_id=self.id,
+            )
+
+        journal.post(user)
+
+        # Subsidiary: landlord sub-account
+        if self.landlord_sub_account:
+            kwargs = {'account': self.landlord_sub_account, 'date': self.date,
+                      'contra_account': '9000', 'reference': self.entry_number,
+                      'description': desc, 'journal_entry': je_target}
+            if self.direction == self.EntryDirection.DEBIT:
+                kwargs['debit_amount'] = self.amount
+            else:
+                kwargs['credit_amount'] = self.amount
+            SubsidiaryTransaction.create_entry(**kwargs)
+
+        # Subsidiary: tenant sub-account (arrears or prepayment)
+        if self.tenant_sub_account:
+            kwargs = {'account': self.tenant_sub_account, 'date': self.date,
+                      'contra_account': '9000', 'reference': self.entry_number,
+                      'description': desc, 'journal_entry': je_target}
+            if self.direction == self.EntryDirection.DEBIT:
+                kwargs['debit_amount'] = self.amount
+            else:
+                kwargs['credit_amount'] = self.amount
+            SubsidiaryTransaction.create_entry(**kwargs)
+
+        self.journal = journal
+        self.status = self.Status.POSTED
+        self.save()
+        return journal

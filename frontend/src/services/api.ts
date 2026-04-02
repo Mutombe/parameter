@@ -816,4 +816,13 @@ export const bsMovementApi = {
   postToLedger: (id: number) => api.post(`/accounting/bs-movements/${id}/post_to_ledger/`),
 }
 
+export const openingBalanceApi = {
+  list: (params?: object) => api.get('/accounting/opening-balances/', { params }),
+  get: (id: number) => api.get(`/accounting/opening-balances/${id}/`),
+  create: (data: object) => api.post('/accounting/opening-balances/', data),
+  update: (id: number, data: object) => api.patch(`/accounting/opening-balances/${id}/`, data),
+  delete: (id: number) => api.delete(`/accounting/opening-balances/${id}/`),
+  postToLedger: (id: number) => api.post(`/accounting/opening-balances/${id}/post_to_ledger/`),
+}
+
 export default api

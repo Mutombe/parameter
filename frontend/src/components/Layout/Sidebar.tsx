@@ -105,6 +105,7 @@ const navigation: NavSection[] = [
       { name: 'Subsidiary Ledger', href: '/dashboard/subsidiary-ledger', icon: Wallet },
       { name: 'Accrued Expenses', href: '/dashboard/accrued-expenses', icon: FileSpreadsheet },
       { name: 'BS Movements', href: '/dashboard/bs-movements', icon: GitCompare },
+      { name: 'Opening Balances', href: '/dashboard/opening-balances', icon: BookOpen },
       { name: 'Income & Expenditure', href: '/dashboard/reports?report=income-expenditure', icon: BarChart3 },
     ],
   },

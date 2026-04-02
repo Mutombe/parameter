@@ -8,7 +8,7 @@ from .models import (
     BankTransaction, BankReconciliation, ReconciliationItem,
     ExpenseCategory, JournalReallocation, IncomeType,
     SubsidiaryAccount, SubsidiaryTransaction,
-    AccruedExpense, BalanceSheetMovement,
+    AccruedExpense, BalanceSheetMovement, OpeningBalance,
 )
 
 
@@ -598,6 +598,50 @@ class BalanceSheetMovementCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Debit and credit accounts must be different.'
             )
+        return data
+
+    def create(self, validated_data):
+        validated_data['created_by'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class OpeningBalanceSerializer(serializers.ModelSerializer):
+    """Read serializer for OpeningBalance."""
+    target_account_name = serializers.CharField(source='target_account.name', read_only=True)
+    target_account_code = serializers.CharField(source='target_account.code', read_only=True)
+    landlord_name = serializers.CharField(source='landlord.name', read_only=True)
+    landlord_sub_name = serializers.CharField(source='landlord_sub_account.name', read_only=True, default=None)
+    tenant_sub_name = serializers.CharField(source='tenant_sub_account.name', read_only=True, default=None)
+    journal_number = serializers.CharField(source='journal.journal_number', read_only=True, default=None)
+
+    class Meta:
+        model = OpeningBalance
+        fields = [
+            'id', 'entry_number', 'date', 'target_account', 'target_account_name',
+            'target_account_code', 'direction', 'category',
+            'landlord', 'landlord_name', 'landlord_sub_account', 'landlord_sub_name',
+            'tenant_sub_account', 'tenant_sub_name',
+            'description', 'custom_description', 'amount', 'currency',
+            'status', 'journal', 'journal_number',
+            'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['entry_number', 'journal', 'created_at', 'updated_at']
+
+
+class OpeningBalanceCreateSerializer(serializers.ModelSerializer):
+    """Create serializer for OpeningBalance."""
+
+    class Meta:
+        model = OpeningBalance
+        fields = [
+            'date', 'target_account', 'direction', 'category',
+            'landlord', 'landlord_sub_account', 'tenant_sub_account',
+            'description', 'custom_description', 'amount', 'currency',
+        ]
+
+    def validate(self, data):
+        if data['amount'] <= 0:
+            raise serializers.ValidationError({'amount': 'Amount must be greater than zero.'})
         return data
 
     def create(self, validated_data):
