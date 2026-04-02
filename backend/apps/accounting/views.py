@@ -937,38 +937,126 @@ class BankReconciliationViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def export_excel(self, request, pk=None):
-        """Export reconciliation to Excel/CSV format."""
+        """Export a formal Bank Reconciliation Statement in CSV format."""
         reconciliation = self.get_object()
-        items = reconciliation.items.all()
+        items = list(reconciliation.items.all().order_by('date', 'id'))
+
+        # Classify items
+        reconciled_receipts = [i for i in items if i.item_type == 'receipt' and i.is_reconciled]
+        reconciled_payments = [i for i in items if i.item_type == 'payment' and i.is_reconciled]
+        outstanding_receipts = [i for i in items if i.item_type == 'receipt' and not i.is_reconciled]
+        outstanding_payments = [i for i in items if i.item_type == 'payment' and not i.is_reconciled]
+
+        total_outstanding_deposits = sum(i.amount for i in outstanding_receipts)
+        total_outstanding_cheques = sum(i.amount for i in outstanding_payments)
+        adjusted_bank = reconciliation.statement_balance + total_outstanding_deposits - total_outstanding_cheques
+
+        # Book-side adjustments (items marked as bank-only would go here)
+        book_balance = reconciliation.book_balance
+        adjusted_book = reconciliation.adjusted_book_balance or book_balance
 
         response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="reconciliation_{reconciliation.id}.csv"'
+        filename = f'bank_reconciliation_{reconciliation.bank_account.name}_{reconciliation.period_end}.csv'
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
 
         writer = csv.writer(response)
 
-        writer.writerow(['Bank Reconciliation Report'])
-        writer.writerow([''])
-        writer.writerow(['Bank Account:', reconciliation.bank_account.name])
-        writer.writerow(['Period:', f'{reconciliation.period_start} to {reconciliation.period_end}'])
-        writer.writerow([''])
-        writer.writerow(['Statement Balance:', reconciliation.statement_balance])
-        writer.writerow(['Book Balance:', reconciliation.book_balance])
-        writer.writerow(['Difference:', reconciliation.difference])
-        writer.writerow(['Status:', 'Balanced' if reconciliation.is_balanced else 'Unbalanced'])
-        writer.writerow([''])
+        # === HEADER ===
+        writer.writerow(['BANK RECONCILIATION STATEMENT'])
+        writer.writerow([f'{reconciliation.bank_account.name} ({reconciliation.bank_account.currency})'])
+        writer.writerow([f'Period: {reconciliation.period_start} to {reconciliation.period_end}'])
+        writer.writerow([f'Prepared: {reconciliation.completed_at.strftime("%Y-%m-%d %H:%M") if reconciliation.completed_at else "Draft"}'])
+        writer.writerow([f'Prepared by: {reconciliation.completed_by or reconciliation.created_by or ""}'])
+        writer.writerow([])
 
-        writer.writerow(['Reconciliation Items'])
-        writer.writerow(['Date', 'Reference', 'Description', 'Type', 'Amount', 'Reconciled'])
+        # === SECTION 1: BANK STATEMENT SIDE ===
+        writer.writerow(['SECTION 1: BALANCE PER BANK STATEMENT'])
+        writer.writerow([])
+        writer.writerow(['Balance per bank statement', '', '', f'{reconciliation.statement_balance:.2f}'])
+        writer.writerow([])
 
-        for item in items:
-            writer.writerow([
-                item.date,
-                item.reference,
-                item.description,
-                item.item_type,
-                item.amount,
-                'Yes' if item.is_reconciled else 'No'
-            ])
+        # Deposits in transit
+        writer.writerow(['ADD: Deposits in transit (recorded in books, not yet on bank statement)'])
+        writer.writerow(['Date', 'Reference', 'Description', 'Amount'])
+        if outstanding_receipts:
+            for item in outstanding_receipts:
+                writer.writerow([item.date, item.reference, item.description, f'{item.amount:.2f}'])
+            writer.writerow(['', '', 'Total deposits in transit', f'{total_outstanding_deposits:.2f}'])
+        else:
+            writer.writerow(['', '', 'None', '0.00'])
+        writer.writerow([])
+
+        # Outstanding cheques/payments
+        writer.writerow(['LESS: Outstanding cheques/payments (recorded in books, not yet cleared by bank)'])
+        writer.writerow(['Date', 'Reference', 'Description', 'Amount'])
+        if outstanding_payments:
+            for item in outstanding_payments:
+                writer.writerow([item.date, item.reference, item.description, f'({item.amount:.2f})'])
+            writer.writerow(['', '', 'Total outstanding cheques', f'({total_outstanding_cheques:.2f})'])
+        else:
+            writer.writerow(['', '', 'None', '0.00'])
+        writer.writerow([])
+
+        writer.writerow(['ADJUSTED BANK BALANCE', '', '', f'{adjusted_bank:.2f}'])
+        writer.writerow([])
+
+        # === SECTION 2: BOOK BALANCE SIDE ===
+        writer.writerow(['SECTION 2: BALANCE PER BOOKS'])
+        writer.writerow([])
+        writer.writerow(['Balance per books (system)', '', '', f'{book_balance:.2f}'])
+        writer.writerow([])
+
+        if adjusted_book != book_balance:
+            writer.writerow(['Adjustments to books:'])
+            adjustment = adjusted_book - book_balance
+            if adjustment > 0:
+                writer.writerow(['ADD: Adjustments', '', '', f'{adjustment:.2f}'])
+            else:
+                writer.writerow(['LESS: Adjustments', '', '', f'({abs(adjustment):.2f})'])
+            writer.writerow([])
+
+        writer.writerow(['ADJUSTED BOOK BALANCE', '', '', f'{adjusted_book:.2f}'])
+        writer.writerow([])
+
+        # === SECTION 3: RECONCILIATION RESULT ===
+        writer.writerow(['RECONCILIATION RESULT'])
+        writer.writerow([])
+        difference = adjusted_bank - adjusted_book
+        writer.writerow(['Adjusted bank balance', '', '', f'{adjusted_bank:.2f}'])
+        writer.writerow(['Adjusted book balance', '', '', f'{adjusted_book:.2f}'])
+        writer.writerow(['Difference', '', '', f'{difference:.2f}'])
+        writer.writerow([])
+        if abs(difference) < Decimal('0.01'):
+            writer.writerow(['STATUS: RECONCILED'])
+        else:
+            writer.writerow([f'STATUS: UNRECONCILED (difference of {difference:.2f})'])
+        writer.writerow([])
+
+        # === SECTION 4: DETAILED ITEMS ===
+        writer.writerow(['DETAILED RECONCILIATION ITEMS'])
+        writer.writerow([])
+
+        writer.writerow(['RECONCILED RECEIPTS (Deposits matched to bank statement)'])
+        writer.writerow(['Date', 'Reference', 'Description', 'Amount', 'Status'])
+        for item in reconciled_receipts:
+            writer.writerow([item.date, item.reference, item.description, f'{item.amount:.2f}', 'Matched'])
+        writer.writerow(['', '', f'Total: {len(reconciled_receipts)} items', f'{sum(i.amount for i in reconciled_receipts):.2f}', ''])
+        writer.writerow([])
+
+        writer.writerow(['RECONCILED PAYMENTS (Withdrawals matched to bank statement)'])
+        writer.writerow(['Date', 'Reference', 'Description', 'Amount', 'Status'])
+        for item in reconciled_payments:
+            writer.writerow([item.date, item.reference, item.description, f'{item.amount:.2f}', 'Matched'])
+        writer.writerow(['', '', f'Total: {len(reconciled_payments)} items', f'{sum(i.amount for i in reconciled_payments):.2f}', ''])
+        writer.writerow([])
+
+        # === SUMMARY ===
+        writer.writerow(['SUMMARY'])
+        writer.writerow(['Total items', len(items)])
+        writer.writerow(['Reconciled items', len(reconciled_receipts) + len(reconciled_payments)])
+        writer.writerow(['Outstanding items', len(outstanding_receipts) + len(outstanding_payments)])
+        writer.writerow(['Outstanding deposits', f'{total_outstanding_deposits:.2f}'])
+        writer.writerow(['Outstanding cheques', f'{total_outstanding_cheques:.2f}'])
 
         return response
 
