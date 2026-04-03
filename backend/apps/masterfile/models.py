@@ -597,7 +597,8 @@ class LeaseAgreement(SoftDeleteModel):
         # Validate 1:1 constraints for ACTIVE leases only
         if self.status == self.Status.ACTIVE:
             self._validate_one_lease_per_tenant()
-            self._validate_one_lease_per_unit()
+            if self.unit:
+                self._validate_one_lease_per_unit()
 
         super().save(*args, **kwargs)
 
