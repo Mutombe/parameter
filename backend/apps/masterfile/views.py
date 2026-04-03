@@ -344,8 +344,16 @@ class LeaseAgreementViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewse
         except DjangoValidationError as e:
             msg = e.message if hasattr(e, 'message') else str(e.messages[0]) if e.messages else str(e)
             return Response({'error': msg}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            import logging, traceback
+            logging.getLogger(__name__).exception(f'[LEASE ACTIVATE] Failed: {e}')
+            return Response({'error': f'{type(e).__name__}: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
-        send_lease_activation_emails(lease, request.user)
+        try:
+            send_lease_activation_emails(lease, request.user)
+        except Exception:
+            pass  # Don't fail activation because of email
+
         return Response(LeaseAgreementSerializer(lease).data)
 
     @action(detail=True, methods=['post'])

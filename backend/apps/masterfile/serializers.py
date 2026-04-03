@@ -396,22 +396,16 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
             validated_data['property'] = prop
             # Don't create or assign a unit
         elif prop and unit_number:
-            # Rental leases: find or create the unit
+            # Rental leases: find or create the unit (don't mark occupied yet — that happens on activate)
             unit, created = Unit.objects.get_or_create(
                 property=prop,
                 unit_number=unit_number,
                 defaults={
                     'rental_amount': validated_data.get('monthly_rent', 0),
                     'currency': validated_data.get('currency', 'USD'),
-                    'is_occupied': True,
                 }
             )
             validated_data['unit'] = unit
-
-            # Update unit occupancy if existing unit
-            if not created:
-                unit.is_occupied = True
-                unit.save(update_fields=['is_occupied'])
 
         # Auto-set lease_type from unit's property (if not already set for levy)
         unit = validated_data.get('unit')
