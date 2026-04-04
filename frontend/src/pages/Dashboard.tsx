@@ -167,7 +167,11 @@ export default function Dashboard() {
   const landlordAccounts = normList(landlordSubAccounts)
   const tenantAccounts = normList(tenantSubAccounts)
 
-  const parseBal = (acc: any) => Number(acc.balance ?? acc.current_balance ?? 0) || 0
+  const parseBal = (acc: any) => {
+    const raw = acc.current_balance ?? acc.balance ?? 0
+    const num = Number(raw)
+    return isNaN(num) ? 0 : num
+  }
 
   const totalTrustLiability = landlordAccounts.reduce(
     (sum: number, acc: any) => sum + parseBal(acc), 0
