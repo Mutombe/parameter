@@ -763,6 +763,62 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
             'by_currency': list(by_currency)
         })
 
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def reverse(self, request, pk=None):
+        """Reverse a receipt -- creates negative entries on same sides."""
+        receipt = self.get_object()
+        if not receipt.journal:
+            return Response(
+                {'error': 'Receipt not yet posted'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        reason = request.data.get('reason', 'Mispost reversed')
+
+        # Create reversal receipt with negative amount
+        reversal = Receipt(
+            tenant=receipt.tenant,
+            invoice=receipt.invoice,
+            amount=-receipt.amount,  # NEGATIVE
+            currency=receipt.currency,
+            payment_method=receipt.payment_method,
+            reference=receipt.reference,
+            bank_account=receipt.bank_account,
+            income_type=receipt.income_type,
+            description=f'Mispost reversed-{receipt.description}',
+            date=receipt.date,  # Same date as original
+            created_by=request.user,
+        )
+        reversal.save()
+
+        # Post reversal -- the negative amount will create negative entries on SAME sides
+        reversal.post_to_ledger(request.user)
+
+        # Mark subsidiary entries as reversals and link to originals
+        from apps.accounting.models import SubsidiaryTransaction
+        original_sub_txns = list(SubsidiaryTransaction.objects.filter(
+            journal_entry__journal=receipt.journal
+        ).order_by('id'))
+        reversal_sub_txns = list(SubsidiaryTransaction.objects.filter(
+            journal_entry__journal=reversal.journal
+        ).order_by('id'))
+
+        for rev_txn in reversal_sub_txns:
+            rev_txn.is_reversal = True
+            # Try to link to matching original by account
+            for orig_txn in original_sub_txns:
+                if orig_txn.account_id == rev_txn.account_id:
+                    rev_txn.reversed_transaction = orig_txn
+                    break
+            rev_txn.save(update_fields=['is_reversal', 'reversed_transaction'])
+
+        return Response({
+            'message': f'Receipt reversed successfully. Reason: {reason}',
+            'original_receipt': ReceiptSerializer(receipt).data,
+            'reversal_receipt': ReceiptSerializer(reversal).data,
+        })
+
 
 class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Expenses."""

@@ -1194,6 +1194,23 @@ class SubsidiaryTransaction(models.Model):
         null=True, blank=True, related_name='subsidiary_transactions'
     )
 
+    # Transaction Normalization Engine fields
+    is_reversal = models.BooleanField(default=False)
+    reversed_transaction = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='reversals',
+        help_text='Points to the original transaction being reversed'
+    )
+    is_consolidated = models.BooleanField(default=False)
+    consolidation_marker = models.CharField(
+        max_length=1, blank=True, default='',
+        help_text="'C' if this is a consolidated result"
+    )
+    overwritten_description = models.CharField(
+        max_length=500, blank=True,
+        help_text='New description if narration was overwritten'
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1699,3 +1716,42 @@ class OpeningBalance(models.Model):
         self.status = self.Status.POSTED
         self.save()
         return journal
+
+
+class TransactionConsolidation(models.Model):
+    """
+    Transaction Normalization Engine.
+    Consolidates original transactions with their reversals into clean single entries.
+    The underlying transactions are preserved for audit but hidden in consolidated view.
+    """
+    # The consolidated/merged view transaction
+    consolidated_entry = models.OneToOneField(
+        SubsidiaryTransaction, on_delete=models.CASCADE,
+        related_name='consolidation', null=True, blank=True,
+        help_text='The visible merged transaction (created by consolidation)'
+    )
+
+    # The original transactions being merged (hidden in consolidated view)
+    source_transactions = models.ManyToManyField(
+        SubsidiaryTransaction, related_name='consolidated_into',
+        help_text='Original transactions that were merged'
+    )
+
+    # Which subsidiary account this consolidation belongs to
+    account = models.ForeignKey(
+        SubsidiaryAccount, on_delete=models.CASCADE,
+        related_name='consolidations'
+    )
+
+    # Metadata
+    reason = models.CharField(max_length=500, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Consolidation on {self.account.code} ({self.source_transactions.count()} txns)'

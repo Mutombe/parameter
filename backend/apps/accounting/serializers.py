@@ -7,7 +7,7 @@ from .models import (
     GeneralLedger, AuditTrail, FiscalPeriod, BankAccount,
     BankTransaction, BankReconciliation, ReconciliationItem,
     ExpenseCategory, JournalReallocation, IncomeType,
-    SubsidiaryAccount, SubsidiaryTransaction,
+    SubsidiaryAccount, SubsidiaryTransaction, TransactionConsolidation,
     AccruedExpense, BalanceSheetMovement, OpeningBalance,
 )
 
@@ -417,14 +417,22 @@ class IncomeTypeSerializer(serializers.ModelSerializer):
 
 class SubsidiaryTransactionSerializer(serializers.ModelSerializer):
     """Individual transaction line in a subsidiary account statement."""
+    display_description = serializers.SerializerMethodField()
 
     class Meta:
         model = SubsidiaryTransaction
         fields = [
             'id', 'transaction_number', 'date', 'contra_account',
-            'reference', 'description', 'debit_amount', 'credit_amount',
-            'balance', 'created_at'
+            'reference', 'description', 'display_description',
+            'debit_amount', 'credit_amount',
+            'balance', 'is_reversal', 'reversed_transaction',
+            'is_consolidated', 'consolidation_marker',
+            'overwritten_description', 'created_at'
         ]
+
+    def get_display_description(self, obj):
+        """Return overwritten description if set, otherwise original."""
+        return obj.overwritten_description or obj.description
 
 
 class SubsidiaryAccountSerializer(serializers.ModelSerializer):
@@ -469,6 +477,20 @@ class SubsidiaryStatementSerializer(serializers.Serializer):
     total_debits = serializers.DecimalField(max_digits=18, decimal_places=2)
     total_credits = serializers.DecimalField(max_digits=18, decimal_places=2)
     closing_balance = serializers.DecimalField(max_digits=18, decimal_places=2)
+
+
+class TransactionConsolidationSerializer(serializers.ModelSerializer):
+    """Serializer for TransactionConsolidation."""
+    source_transactions = SubsidiaryTransactionSerializer(many=True, read_only=True)
+    consolidated_entry = SubsidiaryTransactionSerializer(read_only=True)
+
+    class Meta:
+        model = TransactionConsolidation
+        fields = [
+            'id', 'consolidated_entry', 'source_transactions',
+            'account', 'reason', 'created_by', 'created_at',
+        ]
+        read_only_fields = ['created_at']
 
 
 # ── Layer 2: Accrued Expenses ──────────────────────────────────────────────

@@ -16,7 +16,7 @@ from .models import (
     GeneralLedger, AuditTrail, FiscalPeriod, BankAccount,
     BankTransaction, BankReconciliation, ReconciliationItem,
     ExpenseCategory, JournalReallocation, IncomeType,
-    SubsidiaryAccount, SubsidiaryTransaction,
+    SubsidiaryAccount, SubsidiaryTransaction, TransactionConsolidation,
     AccruedExpense, BalanceSheetMovement, OpeningBalance,
 )
 from .serializers import (
@@ -29,7 +29,7 @@ from .serializers import (
     ExpenseCategorySerializer, JournalReallocationSerializer,
     ReallocationCreateSerializer, IncomeTypeSerializer,
     SubsidiaryAccountSerializer, SubsidiaryTransactionSerializer,
-    SubsidiaryStatementSerializer,
+    SubsidiaryStatementSerializer, TransactionConsolidationSerializer,
     AccruedExpenseSerializer, AccruedExpenseCreateSerializer,
     BalanceSheetMovementSerializer, BalanceSheetMovementCreateSerializer,
     OpeningBalanceSerializer, OpeningBalanceCreateSerializer,
@@ -1323,6 +1323,7 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
     """
     Subsidiary Ledger Accounts — read-only view of tenant, landlord,
     and account holder sub-ledger accounts.
+    Includes Transaction Normalization Engine actions.
     """
     queryset = SubsidiaryAccount.objects.all()
     serializer_class = SubsidiaryAccountSerializer
@@ -1335,12 +1336,15 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
     def statement(self, request, pk=None):
         """
         Get a full statement for a subsidiary account.
-        Query params: period_start, period_end (YYYY-MM-DD)
+        Query params:
+          - period_start, period_end (YYYY-MM-DD)
+          - view: 'consolidated' (default) or 'audit'
         Returns: opening balance, transactions, totals, closing balance.
         """
         account = self.get_object()
         period_start = request.query_params.get('period_start')
         period_end = request.query_params.get('period_end')
+        view_mode = request.query_params.get('view', 'consolidated')
 
         if not period_start or not period_end:
             return Response(
@@ -1354,6 +1358,8 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
 
         # Calculate opening balance from transactions before the period
         prior_txns = account.transactions.filter(date__lt=start)
+        if view_mode == 'consolidated':
+            prior_txns = prior_txns.filter(is_consolidated=False)
         if prior_txns.exists():
             last_prior = prior_txns.order_by('-transaction_number').first()
             opening_balance = last_prior.balance
@@ -1363,7 +1369,13 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
         # Get transactions in the period
         transactions = account.transactions.filter(
             date__gte=start, date__lte=end
-        ).order_by('transaction_number')
+        )
+
+        # In consolidated view, hide merged source transactions
+        if view_mode == 'consolidated':
+            transactions = transactions.filter(is_consolidated=False)
+
+        transactions = transactions.order_by('transaction_number')
 
         totals = transactions.aggregate(
             total_debits=Sum('debit_amount'),
@@ -1379,6 +1391,7 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
             'account': SubsidiaryAccountSerializer(account).data,
             'period_start': period_start,
             'period_end': period_end,
+            'view_mode': view_mode,
             'opening_balance': opening_balance,
             'transactions': SubsidiaryTransactionSerializer(transactions, many=True).data,
             'total_debits': totals['total_debits'] or Decimal('0.00'),
@@ -1386,6 +1399,186 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
             'closing_balance': closing_balance,
         }
         return Response(data)
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def consolidate(self, request, pk=None):
+        """Consolidate/merge transactions into a single visible entry."""
+        account = self.get_object()
+        transaction_ids = request.data.get('transaction_ids', [])
+        new_description = request.data.get('description', '')
+
+        if len(transaction_ids) < 2:
+            return Response(
+                {'error': 'Need at least 2 transactions to consolidate'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        transactions_qs = SubsidiaryTransaction.objects.filter(
+            id__in=transaction_ids, account=account
+        ).order_by('date', 'id')
+
+        if transactions_qs.count() != len(transaction_ids):
+            return Response(
+                {'error': 'Some transactions not found in this account'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate: same date
+        dates = set(transactions_qs.values_list('date', flat=True))
+        if len(dates) > 1:
+            return Response(
+                {'error': 'Can only consolidate transactions on the same date'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        txn_list = list(transactions_qs)
+
+        # Calculate merged amounts
+        total_debit = sum(t.debit_amount for t in txn_list)
+        total_credit = sum(t.credit_amount for t in txn_list)
+
+        # Net the amounts
+        if total_debit >= total_credit:
+            net_debit = total_debit - total_credit
+            net_credit = Decimal('0')
+        else:
+            net_debit = Decimal('0')
+            net_credit = total_credit - total_debit
+
+        # Use first transaction as base for the consolidated entry
+        first = txn_list[0]
+        desc = new_description or first.description
+
+        # Create the consolidated visible entry
+        consolidated_txn = SubsidiaryTransaction.create_entry(
+            account=account,
+            date=first.date,
+            contra_account=first.contra_account,
+            reference=first.reference,
+            description=desc,
+            debit_amount=net_debit if net_debit > 0 else None,
+            credit_amount=net_credit if net_credit > 0 else None,
+        )
+        consolidated_txn.consolidation_marker = 'C'
+        consolidated_txn.save(update_fields=['consolidation_marker'])
+
+        # Mark source transactions as consolidated (hidden)
+        transactions_qs.update(is_consolidated=True)
+
+        # Create consolidation record
+        consolidation = TransactionConsolidation.objects.create(
+            consolidated_entry=consolidated_txn,
+            account=account,
+            reason=request.data.get('reason', ''),
+            created_by=request.user,
+        )
+        consolidation.source_transactions.set(txn_list)
+
+        return Response({
+            'message': f'Consolidated {len(transaction_ids)} transactions',
+            'consolidated_id': consolidated_txn.id,
+            'consolidation': TransactionConsolidationSerializer(consolidation).data,
+        })
+
+    @action(detail=True, methods=['post'])
+    @transaction.atomic
+    def unmerge(self, request, pk=None):
+        """Unmerge a previously consolidated transaction."""
+        account = self.get_object()
+        consolidation_id = request.data.get('consolidation_id')
+
+        if not consolidation_id:
+            return Response(
+                {'error': 'consolidation_id is required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            consolidation = TransactionConsolidation.objects.get(
+                id=consolidation_id, account=account
+            )
+        except TransactionConsolidation.DoesNotExist:
+            return Response(
+                {'error': 'Consolidation not found'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Restore source transactions
+        consolidation.source_transactions.update(is_consolidated=False)
+
+        # Delete the consolidated entry
+        if consolidation.consolidated_entry:
+            # Reverse the balance impact of the consolidated entry
+            entry = consolidation.consolidated_entry
+            if account.entity_type in ('tenant', 'account_holder'):
+                account.current_balance -= (entry.debit_amount - entry.credit_amount)
+            else:
+                account.current_balance -= (entry.credit_amount - entry.debit_amount)
+            account.save(update_fields=['current_balance', 'updated_at'])
+            entry.delete()
+
+        consolidation.delete()
+
+        return Response({'message': 'Transactions unmerged successfully'})
+
+    @action(detail=True, methods=['post'])
+    def overwrite_narration(self, request, pk=None):
+        """Overwrite a transaction's description without changing amounts."""
+        account = self.get_object()
+        transaction_id = request.data.get('transaction_id')
+        new_description = request.data.get('description', '')
+
+        if not transaction_id:
+            return Response(
+                {'error': 'transaction_id is required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not new_description:
+            return Response(
+                {'error': 'description is required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            txn = SubsidiaryTransaction.objects.get(id=transaction_id, account=account)
+        except SubsidiaryTransaction.DoesNotExist:
+            return Response(
+                {'error': 'Transaction not found'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        txn.overwritten_description = new_description
+        txn.save(update_fields=['overwritten_description'])
+
+        return Response({
+            'message': 'Narration updated',
+            'transaction': SubsidiaryTransactionSerializer(txn).data,
+        })
+
+    @action(detail=True, methods=['get'])
+    def consolidation_detail(self, request, pk=None):
+        """Get details of a specific consolidation by consolidated entry id."""
+        account = self.get_object()
+        entry_id = request.query_params.get('entry_id')
+
+        if not entry_id:
+            return Response(
+                {'error': 'entry_id query param is required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            consolidation = TransactionConsolidation.objects.get(
+                consolidated_entry_id=entry_id, account=account
+            )
+        except TransactionConsolidation.DoesNotExist:
+            return Response(
+                {'error': 'Consolidation not found'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response(TransactionConsolidationSerializer(consolidation).data)
 
     @action(detail=False, methods=['get'])
     def by_type(self, request):

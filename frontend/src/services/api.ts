@@ -391,6 +391,8 @@ export const receiptApi = {
   batchProcess: (receipts: object[]) =>
     api.post('/billing/receipts/batch_process/', { receipts }),
   summary: () => api.get('/billing/receipts/summary/'),
+  reverse: (id: number, data: { reason?: string }) =>
+    api.post(`/billing/receipts/${id}/reverse/`, data),
 }
 
 export const expenseApi = {
@@ -527,10 +529,18 @@ export const incomeTypeApi = {
 export const subsidiaryApi = {
   list: (params?: object) => api.get('/accounting/subsidiary-accounts/', { params }),
   get: (id: number) => api.get(`/accounting/subsidiary-accounts/${id}/`),
-  statement: (id: number, params: { period_start: string; period_end: string }) =>
+  statement: (id: number, params: { period_start: string; period_end: string; view?: string }) =>
     api.get(`/accounting/subsidiary-accounts/${id}/statement/`, { params }),
   byType: (params?: object) => api.get('/accounting/subsidiary-accounts/by_type/', { params }),
   syncAccounts: () => api.post('/accounting/subsidiary-accounts/sync_accounts/'),
+  consolidate: (accountId: number, data: { transaction_ids: number[]; description?: string; reason?: string }) =>
+    api.post(`/accounting/subsidiary-accounts/${accountId}/consolidate/`, data),
+  unmerge: (accountId: number, data: { consolidation_id: number }) =>
+    api.post(`/accounting/subsidiary-accounts/${accountId}/unmerge/`, data),
+  overwriteNarration: (accountId: number, data: { transaction_id: number; description: string }) =>
+    api.post(`/accounting/subsidiary-accounts/${accountId}/overwrite_narration/`, data),
+  consolidationDetail: (accountId: number, params: { entry_id: number }) =>
+    api.get(`/accounting/subsidiary-accounts/${accountId}/consolidation_detail/`, { params }),
 }
 
 // Tenant Portal API (for tenant portal users)
