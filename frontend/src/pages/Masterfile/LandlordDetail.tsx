@@ -2230,21 +2230,21 @@ export default function LandlordDetail() {
                     </button>
                   </div>
                   <button
-                    onClick={() => {
-                      const acc = normalizeList(subAccountsData).find((a: any) => a.id === selectedSubAccount)
-                      const csvRows = [
-                        ['Date', 'Reference', 'Description', 'Debit', 'Credit', 'Balance'].join(','),
-                        ...(subAccountStatement?.transactions || subAccountStatement?.entries || []).map((t: any) =>
-                          [t.date, t.reference || t.ref || '', `"${(t.description || t.narration || '').replace(/"/g, '""')}"`, t.debit || '', t.credit || '', t.balance || t.running_balance || ''].join(',')
-                        ),
-                      ].join('\n')
-                      const blob = new Blob([csvRows], { type: 'text/csv' })
-                      const url = URL.createObjectURL(blob)
-                      const a = document.createElement('a')
-                      a.href = url
-                      a.download = `statement-${acc?.account_code || selectedSubAccount}.csv`
-                      a.click()
-                      URL.revokeObjectURL(url)
+                    onClick={async () => {
+                      try {
+                        const res = await subsidiaryApi.exportStatement(selectedSubAccount!, {
+                          period_start: subAccountDateRange.period_start,
+                          period_end: subAccountDateRange.period_end,
+                          view: subAccountStatementView,
+                        })
+                        const url = URL.createObjectURL(new Blob([res.data]))
+                        const a = document.createElement('a')
+                        a.href = url
+                        const acc = normalizeList(subAccountsData).find((x: any) => x.id === selectedSubAccount)
+                        a.download = `statement-${(acc?.code || acc?.account_code || selectedSubAccount).replace(/\//g, '-')}.csv`
+                        a.click()
+                        URL.revokeObjectURL(url)
+                      } catch { /* ignore */ }
                     }}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                   >
@@ -2333,26 +2333,21 @@ export default function LandlordDetail() {
                   </p>
                 </div>
                 <button
-                  onClick={() => {
-                    const allTxns = (consolidatedStatements.data || []).flatMap((cs: any) =>
-                      (cs.statement?.transactions || cs.statement?.entries || []).map((t: any) => ({
-                        ...t,
-                        category: cs.account?.category_name || cs.account?.category || cs.account?.name || '',
-                      }))
-                    ).sort((a: any, b: any) => (a.date || '').localeCompare(b.date || ''))
-                    const csvRows = [
-                      ['Date', 'Category', 'Reference', 'Description', 'Debit', 'Credit', 'Balance'].join(','),
-                      ...allTxns.map((t: any) =>
-                        [t.date, `"${t.category}"`, t.reference || t.ref || '', `"${(t.description || t.narration || '').replace(/"/g, '""')}"`, t.debit || '', t.credit || '', t.balance || t.running_balance || ''].join(',')
-                      ),
-                    ].join('\n')
-                    const blob = new Blob([csvRows], { type: 'text/csv' })
-                    const url = URL.createObjectURL(blob)
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.download = `consolidated-statement-${landlord?.name || landlordId}.csv`
-                    a.click()
-                    URL.revokeObjectURL(url)
+                  onClick={async () => {
+                    try {
+                      const res = await subsidiaryApi.exportLandlordConsolidated({
+                        landlord_id: Number(landlordId),
+                        period_start: subAccountDateRange.period_start,
+                        period_end: subAccountDateRange.period_end,
+                        view: subAccountStatementView,
+                      })
+                      const url = URL.createObjectURL(new Blob([res.data]))
+                      const a = document.createElement('a')
+                      a.href = url
+                      a.download = `consolidated-statement-${landlord?.name || landlordId}.csv`
+                      a.click()
+                      URL.revokeObjectURL(url)
+                    } catch { /* ignore */ }
                   }}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                 >

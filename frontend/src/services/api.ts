@@ -541,6 +541,10 @@ export const subsidiaryApi = {
     api.post(`/accounting/subsidiary-accounts/${accountId}/overwrite_narration/`, data),
   consolidationDetail: (accountId: number, params: { entry_id: number }) =>
     api.get(`/accounting/subsidiary-accounts/${accountId}/consolidation_detail/`, { params }),
+  exportStatement: (accountId: number, params: { period_start: string; period_end: string; view?: string }) =>
+    api.get(`/accounting/subsidiary-accounts/${accountId}/export_statement/`, { params, responseType: 'blob' }),
+  exportLandlordConsolidated: (params: { landlord_id: number; period_start: string; period_end: string; view?: string }) =>
+    api.get('/accounting/subsidiary-accounts/export_landlord_consolidated/', { params, responseType: 'blob' }),
 }
 
 // Tenant Portal API (for tenant portal users)

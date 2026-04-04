@@ -1400,6 +1400,177 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
         }
         return Response(data)
 
+    @action(detail=True, methods=['get'])
+    def export_statement(self, request, pk=None):
+        """Export a subsidiary account statement as bank-statement style CSV."""
+        account = self.get_object()
+        period_start = request.query_params.get('period_start')
+        period_end = request.query_params.get('period_end')
+        view_mode = request.query_params.get('view', 'consolidated')
+
+        if not period_start or not period_end:
+            return Response({'error': 'period_start and period_end required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from datetime import datetime
+        start = datetime.strptime(period_start, '%Y-%m-%d').date()
+        end = datetime.strptime(period_end, '%Y-%m-%d').date()
+
+        prior_txns = account.transactions.filter(date__lt=start)
+        if view_mode == 'consolidated':
+            prior_txns = prior_txns.filter(is_consolidated=False)
+        opening_balance = prior_txns.order_by('-transaction_number').first()
+        opening = opening_balance.balance if opening_balance else Decimal('0')
+
+        transactions = account.transactions.filter(date__gte=start, date__lte=end)
+        if view_mode == 'consolidated':
+            transactions = transactions.filter(is_consolidated=False)
+        transactions = transactions.order_by('transaction_number')
+
+        response = HttpResponse(content_type='text/csv')
+        filename = f'{account.code.replace("/", "-")}_statement_{period_start}_to_{period_end}.csv'
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+        writer = csv.writer(response)
+        writer.writerow(['SUBSIDIARY ACCOUNT STATEMENT'])
+        writer.writerow([f'Account: {account.code} - {account.name}'])
+        writer.writerow([f'Category: {account.category.replace("_", " ").title()}'])
+        writer.writerow([f'Currency: {account.currency}'])
+        writer.writerow([f'Period: {period_start} to {period_end}'])
+        writer.writerow([f'View: {view_mode.title()}'])
+        writer.writerow([])
+
+        writer.writerow(['Txn #', 'Date', 'Contra Acc', 'Ref', 'Description', 'Debit', 'Credit', 'Balance'])
+        writer.writerow(['', '', '', '', 'Balance brought forward', '', '', f'{opening:.2f}'])
+
+        total_dr = Decimal('0')
+        total_cr = Decimal('0')
+        last_balance = opening
+        for t in transactions:
+            desc = t.overwritten_description or t.description
+            marker = ' [C]' if t.consolidation_marker == 'C' else ''
+            writer.writerow([
+                t.transaction_number, t.date, t.contra_account, t.reference,
+                f'{desc}{marker}',
+                f'{t.debit_amount:.2f}' if t.debit_amount else '',
+                f'{t.credit_amount:.2f}' if t.credit_amount else '',
+                f'{t.balance:.2f}',
+            ])
+            total_dr += t.debit_amount
+            total_cr += t.credit_amount
+            last_balance = t.balance
+
+        writer.writerow([])
+        writer.writerow(['', '', '', '', 'Totals', f'{total_dr:.2f}', f'{total_cr:.2f}', f'{last_balance:.2f}'])
+        return response
+
+    @action(detail=False, methods=['get'])
+    def export_landlord_consolidated(self, request):
+        """Export consolidated statement across ALL sub-accounts for a landlord."""
+        landlord_id = request.query_params.get('landlord_id')
+        period_start = request.query_params.get('period_start')
+        period_end = request.query_params.get('period_end')
+        view_mode = request.query_params.get('view', 'consolidated')
+
+        if not landlord_id or not period_start or not period_end:
+            return Response({'error': 'landlord_id, period_start, period_end required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from datetime import datetime
+        from apps.masterfile.models import Landlord
+        start = datetime.strptime(period_start, '%Y-%m-%d').date()
+        end = datetime.strptime(period_end, '%Y-%m-%d').date()
+        landlord = Landlord.objects.get(id=landlord_id)
+
+        accounts = SubsidiaryAccount.objects.filter(landlord=landlord, is_active=True)
+        if not accounts.exists():
+            return Response({'error': 'No sub-accounts found for this landlord'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Gather all transactions across all sub-accounts
+        all_entries = []
+        category_totals = {}
+
+        for acc in accounts:
+            prior = acc.transactions.filter(date__lt=start)
+            if view_mode == 'consolidated':
+                prior = prior.filter(is_consolidated=False)
+            ob = prior.order_by('-transaction_number').first()
+            acc_opening = ob.balance if ob else Decimal('0')
+
+            txns = acc.transactions.filter(date__gte=start, date__lte=end)
+            if view_mode == 'consolidated':
+                txns = txns.filter(is_consolidated=False)
+
+            cat_label = acc.category.replace('_', ' ').title()
+            cat_dr = Decimal('0')
+            cat_cr = Decimal('0')
+
+            for t in txns.order_by('transaction_number'):
+                desc = t.overwritten_description or t.description
+                marker = ' [C]' if t.consolidation_marker == 'C' else ''
+                all_entries.append({
+                    'date': t.date,
+                    'txn': t.transaction_number,
+                    'account': acc.code,
+                    'category': cat_label,
+                    'contra': t.contra_account,
+                    'ref': t.reference,
+                    'desc': f'{desc}{marker}',
+                    'dr': t.debit_amount,
+                    'cr': t.credit_amount,
+                    'balance': t.balance,
+                })
+                cat_dr += t.debit_amount
+                cat_cr += t.credit_amount
+
+            category_totals[cat_label] = {
+                'opening': acc_opening,
+                'debits': cat_dr,
+                'credits': cat_cr,
+                'closing': acc.current_balance if not acc.transactions.filter(date__gt=end).exists()
+                    else (txns.order_by('-transaction_number').first().balance if txns.exists() else acc_opening),
+            }
+
+        all_entries.sort(key=lambda e: (e['date'], e['txn']))
+
+        response = HttpResponse(content_type='text/csv')
+        filename = f'LD-{landlord.id:05d}_consolidated_{period_start}_to_{period_end}.csv'
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+        writer = csv.writer(response)
+        writer.writerow(['CONSOLIDATED LANDLORD SUBSIDIARY STATEMENT'])
+        writer.writerow([f'Landlord: {landlord.name}'])
+        writer.writerow([f'Period: {period_start} to {period_end}'])
+        writer.writerow([f'View: {view_mode.title()}'])
+        writer.writerow([])
+
+        # Category summary
+        writer.writerow(['CATEGORY SUMMARY'])
+        writer.writerow(['Category', 'Opening Balance', 'Total Debits', 'Total Credits', 'Closing Balance'])
+        grand_opening = Decimal('0')
+        grand_dr = Decimal('0')
+        grand_cr = Decimal('0')
+        grand_closing = Decimal('0')
+        for cat, totals in sorted(category_totals.items()):
+            writer.writerow([cat, f'{totals["opening"]:.2f}', f'{totals["debits"]:.2f}', f'{totals["credits"]:.2f}', f'{totals["closing"]:.2f}'])
+            grand_opening += totals['opening']
+            grand_dr += totals['debits']
+            grand_cr += totals['credits']
+            grand_closing += totals['closing']
+        writer.writerow(['TOTAL', f'{grand_opening:.2f}', f'{grand_dr:.2f}', f'{grand_cr:.2f}', f'{grand_closing:.2f}'])
+        writer.writerow([])
+
+        # Detailed transactions
+        writer.writerow(['DETAILED TRANSACTIONS'])
+        writer.writerow(['Date', 'Txn #', 'Account', 'Category', 'Contra', 'Ref', 'Description', 'Debit', 'Credit', 'Balance'])
+        for e in all_entries:
+            writer.writerow([
+                e['date'], e['txn'], e['account'], e['category'], e['contra'], e['ref'], e['desc'],
+                f'{e["dr"]:.2f}' if e['dr'] else '', f'{e["cr"]:.2f}' if e['cr'] else '', f'{e["balance"]:.2f}',
+            ])
+        writer.writerow([])
+        writer.writerow(['', '', '', '', '', '', 'Grand Totals', f'{grand_dr:.2f}', f'{grand_cr:.2f}', f'{grand_closing:.2f}'])
+
+        return response
+
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def consolidate(self, request, pk=None):

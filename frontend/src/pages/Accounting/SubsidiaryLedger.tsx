@@ -166,29 +166,24 @@ export default function SubsidiaryLedger() {
     }
   }
 
-  const handleExport = () => {
-    if (!statement) return
-    const rows = statement.transactions.map(t => ({
-      'Txn #': t.transaction_number,
-      Date: t.date,
-      'Contra Acc': t.contra_account,
-      Ref: t.reference,
-      Description: t.display_description || t.description,
-      Debit: t.debit_amount,
-      Credit: t.credit_amount,
-      Balance: t.balance,
-    }))
-    const columns = [
-      { key: 'Txn #', header: 'Txn #' },
-      { key: 'Date', header: 'Date' },
-      { key: 'Contra Acc', header: 'Contra Acc' },
-      { key: 'Ref', header: 'Ref' },
-      { key: 'Description', header: 'Description' },
-      { key: 'Debit', header: 'Debit' },
-      { key: 'Credit', header: 'Credit' },
-      { key: 'Balance', header: 'Balance' },
-    ]
-    exportTableData(rows, columns, `${statement.account.code}_statement`)
+  const handleExport = async () => {
+    if (!selectedAccount) return
+    try {
+      const res = await subsidiaryApi.exportStatement(selectedAccount.id, {
+        period_start: periodStart,
+        period_end: periodEnd,
+        view: viewMode,
+      })
+      const url = URL.createObjectURL(new Blob([res.data]))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${selectedAccount.code.replace(/\//g, '-')}_statement.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Statement exported')
+    } catch {
+      toast.error('Failed to export statement')
+    }
   }
 
   // Toggle transaction selection for consolidation
