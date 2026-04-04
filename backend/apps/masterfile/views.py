@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
 from .models import Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager
 from .serializers import (
@@ -357,6 +358,43 @@ class LeaseAgreementViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewse
             pass  # Don't fail activation because of email
 
         return Response(LeaseAgreementSerializer(lease).data)
+
+    @action(detail=False, methods=['post'])
+    @transaction.atomic
+    def bulk_activate(self, request):
+        """Activate all draft leases for a given property."""
+        property_id = request.data.get('property_id')
+        lease_ids = request.data.get('lease_ids', [])
+
+        if not property_id and not lease_ids:
+            return Response(
+                {'error': 'Provide property_id or lease_ids'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        from django.db.models import Q
+        leases = LeaseAgreement.objects.filter(status=LeaseAgreement.Status.DRAFT)
+        if property_id:
+            leases = leases.filter(
+                Q(unit__property_id=property_id) | Q(property_id=property_id)
+            )
+        if lease_ids:
+            leases = leases.filter(id__in=lease_ids)
+
+        activated = []
+        errors = []
+        for lease in leases:
+            try:
+                lease.activate()
+                activated.append(lease.lease_number)
+            except Exception as e:
+                errors.append(f'{lease.lease_number}: {str(e)}')
+
+        return Response({
+            'activated': len(activated),
+            'activated_leases': activated,
+            'errors': errors,
+        })
 
     @action(detail=True, methods=['post'])
     def terminate(self, request, pk=None):

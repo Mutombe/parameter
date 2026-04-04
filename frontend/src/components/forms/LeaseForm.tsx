@@ -93,15 +93,7 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
       }
     }, [form.start_date])
 
-    // Auto-fill deposit as 2x rent when rent changes and deposit is empty
-    useEffect(() => {
-      if (form.monthly_rent && !form.deposit_amount) {
-        const rent = parseFloat(form.monthly_rent)
-        if (rent > 0) {
-          setForm(prev => prev.deposit_amount ? prev : { ...prev, deposit_amount: (rent * 2).toFixed(2) })
-        }
-      }
-    }, [form.monthly_rent])
+    // Deposit defaults to 0 — optional for all lease types, especially levy leases
 
     const handleSubmit = (e?: React.FormEvent) => {
       e?.preventDefault()

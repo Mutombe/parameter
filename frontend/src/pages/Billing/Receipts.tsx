@@ -25,6 +25,7 @@ interface Receipt {
   tenant_name: string
   invoice?: number
   invoice_number?: string
+  income_type_name?: string
   date: string
   amount: number
   payment_method: string
@@ -365,6 +366,7 @@ export default function Receipts() {
               </th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Receipt</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Tenant</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Paid For</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Amount</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Method</th>
               <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Reference</th>
@@ -459,6 +461,15 @@ export default function Receipts() {
                       </button>
                     ) : (
                       <span className="text-gray-600">{receipt.tenant_name}</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4">
+                    {receipt.income_type_name ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">
+                        {receipt.income_type_name}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 text-sm">-</span>
                     )}
                   </td>
                   <td className="px-6 py-4 font-medium text-green-600" title={String(receipt.amount)}>{formatCurrency(receipt.amount)}</td>

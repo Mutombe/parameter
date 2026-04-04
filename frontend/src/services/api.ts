@@ -313,6 +313,8 @@ export const leaseApi = {
   create: (data: object) => api.post('/masterfile/leases/', data),
   update: (id: number, data: object) => api.patch(`/masterfile/leases/${id}/`, data),
   activate: (id: number) => api.post(`/masterfile/leases/${id}/activate/`),
+  bulkActivate: (data: { property_id?: number; lease_ids?: number[] }) =>
+    api.post('/masterfile/leases/bulk_activate/', data),
   terminate: (id: number, reason: string) =>
     api.post(`/masterfile/leases/${id}/terminate/`, { reason }),
   expiringSoon: () => api.get('/masterfile/leases/expiring_soon/'),

@@ -490,6 +490,34 @@ export default function Leases() {
     })
   }
 
+  const handleBulkActivate = () => {
+    const selectedDraftIds = selectableItems
+      .filter((l: any) => selection.isSelected(l.id) && l.status === 'draft')
+      .map((l: any) => l.id)
+    if (selectedDraftIds.length === 0) {
+      showToast.warning('No draft leases selected')
+      return
+    }
+    setBulkConfirm({
+      open: true,
+      title: `Activate ${selectedDraftIds.length} leases?`,
+      message: `This will activate ${selectedDraftIds.length} draft lease${selectedDraftIds.length !== 1 ? 's' : ''} and mark their units as occupied.`,
+      onConfirm: async () => {
+        try {
+          const res = await leaseApi.bulkActivate({ lease_ids: selectedDraftIds })
+          const count = res.data?.activated || 0
+          const errors = res.data?.errors || []
+          showToast.success(`Activated ${count} lease${count !== 1 ? 's' : ''}${errors.length ? ` (${errors.length} errors)` : ''}`)
+          selection.clearSelection()
+          queryClient.invalidateQueries({ queryKey: ['leases'] })
+        } catch (error: any) {
+          showToast.error(parseApiError(error, 'Failed to bulk activate'))
+        }
+        setBulkConfirm(d => ({ ...d, open: false }))
+      },
+    })
+  }
+
   // Calculate total monthly rent (guard against null/undefined monthly_rent values)
   const totalMonthlyRent = leases
     ?.filter((l: Lease) => l.status === 'active')
@@ -923,6 +951,7 @@ export default function Leases() {
         onClearSelection={selection.clearSelection}
         entityName="leases"
         actions={[
+          { label: 'Activate', icon: Play, onClick: handleBulkActivate },
           { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
           { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger' },
         ]}
