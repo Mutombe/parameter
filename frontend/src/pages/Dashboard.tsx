@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import {
   Building2,
   Home,
@@ -21,6 +21,9 @@ import {
   UserPlus,
   CreditCard,
   ArrowRight,
+  Layers,
+  Download,
+  Banknote,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -38,7 +41,7 @@ import {
   LineChart,
   Line,
 } from 'recharts'
-import { reportsApi } from '../services/api'
+import { reportsApi, subsidiaryApi } from '../services/api'
 import { formatCurrency, formatPercent, formatDate, formatDistanceToNow, cn } from '../lib/utils'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { OnboardingChecklist } from '../components/dashboard/OnboardingChecklist'
@@ -136,6 +139,64 @@ export default function Dashboard() {
     staleTime: 60 * 1000, // 60 seconds — live-updating stats
     refetchInterval: 60 * 1000, // Auto-refresh every 60 seconds
   })
+
+  // Subsidiary accounts for financial overview
+  const { data: landlordSubAccounts, isLoading: loadingSubAccounts } = useQuery({
+    queryKey: ['dashboard-landlord-sub-accounts'],
+    queryFn: () => subsidiaryApi.list({ entity_type: 'landlord' }).then((r) => r.data),
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
+  })
+
+  const { data: tenantSubAccounts, isLoading: loadingTenantSubAccounts } = useQuery({
+    queryKey: ['dashboard-tenant-sub-accounts'],
+    queryFn: () => subsidiaryApi.list({ entity_type: 'tenant' }).then((r) => r.data),
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
+  })
+
+  // Normalize list responses
+  const normList = (data: any) => {
+    if (!data) return []
+    if (Array.isArray(data)) return data
+    if (data.results && Array.isArray(data.results)) return data.results
+    return []
+  }
+
+  // Compute financial overview KPIs from subsidiary accounts
+  const landlordAccounts = normList(landlordSubAccounts)
+  const tenantAccounts = normList(tenantSubAccounts)
+
+  const totalTrustLiability = landlordAccounts.reduce(
+    (sum: number, acc: any) => sum + (acc.balance ?? acc.current_balance ?? 0), 0
+  )
+  const totalTenantReceivables = tenantAccounts.reduce(
+    (sum: number, acc: any) => sum + (acc.balance ?? acc.current_balance ?? 0), 0
+  )
+
+  // Group landlord accounts by landlord for summary table
+  const landlordSummary = (() => {
+    const byLandlord: Record<string, { id: number; name: string; categories: Record<string, number>; total: number }> = {}
+    landlordAccounts.forEach((acc: any) => {
+      const lid = acc.landlord_id || acc.landlord || acc.entity_id || 0
+      const lname = acc.landlord_name || acc.entity_name || 'Unknown'
+      if (!byLandlord[lid]) {
+        byLandlord[lid] = { id: lid, name: lname, categories: {}, total: 0 }
+      }
+      const cat = acc.category_name || acc.category || acc.name || 'Other'
+      const bal = acc.balance ?? acc.current_balance ?? 0
+      byLandlord[lid].categories[cat] = (byLandlord[lid].categories[cat] || 0) + bal
+      byLandlord[lid].total += bal
+    })
+    return Object.values(byLandlord)
+  })()
+
+  // Collect all unique categories across landlords
+  const allCategories = (() => {
+    const cats = new Set<string>()
+    landlordSummary.forEach((l) => Object.keys(l.categories).forEach((c) => cats.add(c)))
+    return Array.from(cats).sort()
+  })()
 
   const occupancyRate = stats?.properties?.occupancy_rate || 0
   const collectionRate = stats?.financial?.collection_rate || 0
@@ -904,6 +965,266 @@ export default function Dashboard() {
           </div>
         </motion.div>
       </div>
+
+      {/* ===== FINANCIAL OVERVIEW SECTION ===== */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.65 }}
+        className="space-y-6"
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Trust Account Summary</h2>
+            <p className="text-sm text-gray-500">Subsidiary account balances across all landlords</p>
+          </div>
+          <button
+            onClick={() => navigate('/dashboard/subsidiary-ledger')}
+            className="text-sm text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
+          >
+            View Full Ledger <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Financial KPI Cards */}
+        <motion.div
+          variants={container}
+          initial="hidden"
+          animate="show"
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+        >
+          <StatCard
+            title="Total Trust Liability"
+            value={formatCurrency(totalTrustLiability)}
+            subtitle={`${landlordAccounts.length} sub-accounts`}
+            icon={Banknote}
+            color="blue"
+            isLoading={loadingSubAccounts}
+            tooltip="Sum of all landlord sub-account balances (what we owe landlords)"
+          />
+          <StatCard
+            title="Tenant Receivables"
+            value={formatCurrency(totalTenantReceivables)}
+            subtitle={`${tenantAccounts.length} sub-accounts`}
+            icon={Receipt}
+            color="orange"
+            isLoading={loadingTenantSubAccounts}
+            tooltip="Sum of all tenant sub-account balances (what tenants owe us)"
+          />
+          <StatCard
+            title="Commission Earned (MTD)"
+            value={formatCurrency(stats?.monthly?.commission || stats?.financial?.commission_mtd || 0)}
+            subtitle="This month"
+            icon={TrendingUp}
+            color="purple"
+            isLoading={isLoading}
+            tooltip="Month-to-date commission revenue"
+          />
+          <StatCard
+            title="Net Cash Position"
+            value={formatCurrency(stats?.financial?.bank_balance || stats?.financial?.cash_position || 0)}
+            subtitle="Total bank balances"
+            icon={Wallet}
+            color="green"
+            isLoading={isLoading}
+            tooltip="Total cash available across all bank accounts"
+          />
+        </motion.div>
+
+        {/* Landlord Balance Summary Table */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.7 }}
+          className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow duration-300"
+        >
+          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Landlord Balance Summary</h3>
+              <p className="text-sm text-gray-500">Total balance by landlord across all sub-account categories</p>
+            </div>
+            <button
+              onClick={() => {
+                const csvRows = [
+                  ['Landlord', ...allCategories, 'Total'].join(','),
+                  ...landlordSummary.map((l) =>
+                    [
+                      `"${l.name}"`,
+                      ...allCategories.map((c) => l.categories[c] || 0),
+                      l.total,
+                    ].join(',')
+                  ),
+                ].join('\n')
+                const blob = new Blob([csvRows], { type: 'text/csv' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = 'landlord-balance-summary.csv'
+                a.click()
+                URL.revokeObjectURL(url)
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Download
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            {loadingSubAccounts ? (
+              <div className="p-6">
+                <div className="space-y-3">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="flex gap-4 animate-pulse">
+                      <div className="h-4 flex-[2] bg-gray-200 rounded" />
+                      <div className="h-4 flex-1 bg-gray-200 rounded" />
+                      <div className="h-4 flex-1 bg-gray-200 rounded" />
+                      <div className="h-4 flex-1 bg-gray-200 rounded" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : landlordSummary.length === 0 ? (
+              <div className="p-12 text-center text-sm text-gray-400">
+                <Layers className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                No subsidiary account data available
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Landlord</th>
+                    {allCategories.map((cat) => (
+                      <th key={cat} className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">{cat}</th>
+                    ))}
+                    <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3 bg-gray-100">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {landlordSummary.map((ll) => (
+                    <tr key={ll.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4 text-sm font-medium">
+                        <button
+                          onClick={() => navigate(`/dashboard/landlords/${ll.id}`)}
+                          className="text-primary-600 hover:text-primary-700 hover:underline"
+                        >
+                          {ll.name}
+                        </button>
+                      </td>
+                      {allCategories.map((cat) => {
+                        const val = ll.categories[cat] || 0
+                        return (
+                          <td key={cat} className="px-6 py-4 text-sm text-right tabular-nums">
+                            {val !== 0 ? (
+                              <button
+                                onClick={() => {
+                                  // Navigate to landlord detail sub-accounts tab
+                                  navigate(`/dashboard/landlords/${ll.id}`)
+                                }}
+                                className={cn(
+                                  'hover:underline',
+                                  val > 0 ? 'text-emerald-600' : 'text-red-600'
+                                )}
+                              >
+                                {formatCurrency(val)}
+                              </button>
+                            ) : (
+                              <span className="text-gray-300">-</span>
+                            )}
+                          </td>
+                        )
+                      })}
+                      <td className="px-6 py-4 text-sm font-bold text-right tabular-nums bg-gray-50">
+                        <span className={ll.total > 0 ? 'text-emerald-600' : ll.total < 0 ? 'text-red-600' : 'text-gray-900'}>
+                          {formatCurrency(ll.total)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-100 border-t-2 border-gray-300">
+                    <td className="px-6 py-3 text-sm font-bold text-gray-900">Total</td>
+                    {allCategories.map((cat) => {
+                      const catTotal = landlordSummary.reduce((sum, ll) => sum + (ll.categories[cat] || 0), 0)
+                      return (
+                        <td key={cat} className="px-6 py-3 text-sm font-bold text-right tabular-nums">
+                          <span className={catTotal > 0 ? 'text-emerald-600' : catTotal < 0 ? 'text-red-600' : 'text-gray-900'}>
+                            {catTotal !== 0 ? formatCurrency(catTotal) : '-'}
+                          </span>
+                        </td>
+                      )
+                    })}
+                    <td className="px-6 py-3 text-sm font-bold text-right tabular-nums">
+                      <span className={totalTrustLiability > 0 ? 'text-emerald-600' : totalTrustLiability < 0 ? 'text-red-600' : 'text-gray-900'}>
+                        {formatCurrency(totalTrustLiability)}
+                      </span>
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Quick Actions for Financial */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.75 }}
+          className="grid grid-cols-1 sm:grid-cols-3 gap-4"
+        >
+          <motion.button
+            whileHover={{ scale: 1.02, y: -2 }}
+            whileTap={{ scale: 0.98 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+            onClick={() => navigate('/dashboard/subsidiary-ledger')}
+            className="flex items-center gap-3 p-4 bg-white rounded-xl border border-gray-200 hover:shadow-md hover:border-gray-300 transition-all"
+          >
+            <div className="p-2 bg-blue-50 rounded-lg">
+              <Layers className="w-5 h-5 text-blue-600" />
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-medium text-gray-900">View Full Subsidiary Ledger</p>
+              <p className="text-xs text-gray-500">Browse all sub-accounts</p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-gray-400 ml-auto" />
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.02, y: -2 }}
+            whileTap={{ scale: 0.98 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+            onClick={() => navigate('/dashboard/invoices?action=generate')}
+            className="flex items-center gap-3 p-4 bg-white rounded-xl border border-gray-200 hover:shadow-md hover:border-gray-300 transition-all"
+          >
+            <div className="p-2 bg-purple-50 rounded-lg">
+              <FileText className="w-5 h-5 text-purple-600" />
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-medium text-gray-900">Generate Monthly Billing</p>
+              <p className="text-xs text-gray-500">Create invoices for all tenants</p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-gray-400 ml-auto" />
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.02, y: -2 }}
+            whileTap={{ scale: 0.98 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+            onClick={() => navigate('/dashboard/receipts?action=create')}
+            className="flex items-center gap-3 p-4 bg-white rounded-xl border border-gray-200 hover:shadow-md hover:border-gray-300 transition-all"
+          >
+            <div className="p-2 bg-emerald-50 rounded-lg">
+              <DollarSign className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-medium text-gray-900">Record Receipt</p>
+              <p className="text-xs text-gray-500">Record a new payment</p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-gray-400 ml-auto" />
+          </motion.button>
+        </motion.div>
+      </motion.div>
     </div>
   )
 }
