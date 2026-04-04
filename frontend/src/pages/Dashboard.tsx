@@ -167,11 +167,13 @@ export default function Dashboard() {
   const landlordAccounts = normList(landlordSubAccounts)
   const tenantAccounts = normList(tenantSubAccounts)
 
+  const parseBal = (acc: any) => Number(acc.balance ?? acc.current_balance ?? 0) || 0
+
   const totalTrustLiability = landlordAccounts.reduce(
-    (sum: number, acc: any) => sum + (acc.balance ?? acc.current_balance ?? 0), 0
+    (sum: number, acc: any) => sum + parseBal(acc), 0
   )
   const totalTenantReceivables = tenantAccounts.reduce(
-    (sum: number, acc: any) => sum + (acc.balance ?? acc.current_balance ?? 0), 0
+    (sum: number, acc: any) => sum + parseBal(acc), 0
   )
 
   // Group landlord accounts by landlord for summary table
@@ -183,8 +185,9 @@ export default function Dashboard() {
       if (!byLandlord[lid]) {
         byLandlord[lid] = { id: lid, name: lname, categories: {}, total: 0 }
       }
-      const cat = acc.category_name || acc.category || acc.name || 'Other'
-      const bal = acc.balance ?? acc.current_balance ?? 0
+      const rawCat = acc.category || 'general'
+      const cat = rawCat.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+      const bal = parseBal(acc)
       byLandlord[lid].categories[cat] = (byLandlord[lid].categories[cat] || 0) + bal
       byLandlord[lid].total += bal
     })

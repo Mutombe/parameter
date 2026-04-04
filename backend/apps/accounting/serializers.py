@@ -444,7 +444,7 @@ class SubsidiaryAccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = SubsidiaryAccount
         fields = [
-            'id', 'code', 'name', 'entity_type', 'entity_name', 'entity_id',
+            'id', 'code', 'name', 'entity_type', 'category', 'entity_name', 'entity_id',
             'currency', 'current_balance', 'is_active',
             'transaction_count', 'created_at', 'updated_at'
         ]
