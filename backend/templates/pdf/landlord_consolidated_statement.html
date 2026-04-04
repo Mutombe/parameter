@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    @page {
+        size: A4;
+        margin: 1.5cm;
+    }
+    body {
+        font-family: Helvetica, Arial, sans-serif;
+        font-size: 9pt;
+        color: #1a1a1a;
+        line-height: 1.4;
+    }
+    .header {
+        text-align: center;
+        margin-bottom: 18pt;
+        border-bottom: 2pt solid #333;
+        padding-bottom: 10pt;
+    }
+    .header h1 {
+        font-size: 14pt;
+        margin: 0 0 4pt 0;
+        color: #111;
+        letter-spacing: 1pt;
+        text-transform: uppercase;
+    }
+    .header h2 {
+        font-size: 10pt;
+        margin: 0;
+        color: #555;
+        font-weight: normal;
+    }
+    .section-title {
+        font-size: 10pt;
+        font-weight: bold;
+        color: #333;
+        margin: 14pt 0 6pt 0;
+        padding-bottom: 3pt;
+        border-bottom: 1pt solid #999;
+        text-transform: uppercase;
+        letter-spacing: 0.5pt;
+    }
+    table.summary-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 16pt;
+    }
+    table.summary-table th {
+        background-color: #444;
+        color: #fff;
+        font-size: 7.5pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 0.5pt;
+        padding: 5pt 6pt;
+        text-align: left;
+        border: 0.5pt solid #444;
+    }
+    table.summary-table th.right {
+        text-align: right;
+    }
+    table.summary-table td {
+        padding: 4pt 6pt;
+        font-size: 8.5pt;
+        border-bottom: 0.5pt solid #ddd;
+    }
+    table.summary-table td.right {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+    table.summary-table tr.alt {
+        background-color: #f7f7f7;
+    }
+    table.summary-table tr.grand-total td {
+        font-weight: bold;
+        border-top: 1.5pt solid #333;
+        border-bottom: 1.5pt double #333;
+        background-color: #eee;
+        padding-top: 6pt;
+        padding-bottom: 6pt;
+    }
+    table.txn-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 10pt;
+    }
+    table.txn-table th {
+        background-color: #333;
+        color: #fff;
+        font-size: 7pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 0.5pt;
+        padding: 5pt 3pt;
+        text-align: left;
+        border: 0.5pt solid #333;
+    }
+    table.txn-table th.right {
+        text-align: right;
+    }
+    table.txn-table td {
+        padding: 3pt 3pt;
+        font-size: 7.5pt;
+        border-bottom: 0.5pt solid #ddd;
+        vertical-align: top;
+    }
+    table.txn-table td.right {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+    table.txn-table td.mono {
+        font-family: Courier, monospace;
+        font-size: 7pt;
+    }
+    table.txn-table tr.alt {
+        background-color: #f7f7f7;
+    }
+    table.txn-table tr.grand-total td {
+        font-weight: bold;
+        border-top: 1.5pt solid #333;
+        border-bottom: 1.5pt double #333;
+        background-color: #f0f0f0;
+        padding-top: 6pt;
+        padding-bottom: 6pt;
+    }
+    .footer {
+        margin-top: 20pt;
+        font-size: 7.5pt;
+        color: #888;
+        border-top: 0.5pt solid #ccc;
+        padding-top: 6pt;
+        text-align: center;
+    }
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Consolidated Landlord Statement</h1>
+    <h2>{{ landlord_name }} &mdash; {{ period_start }} to {{ period_end }}</h2>
+</div>
+
+<div class="section-title">Category Summary</div>
+
+<table class="summary-table">
+    <thead>
+        <tr>
+            <th>Category</th>
+            <th class="right">Opening Balance</th>
+            <th class="right">Total Debits</th>
+            <th class="right">Total Credits</th>
+            <th class="right">Closing Balance</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for cat in category_rows %}
+        <tr{% if forloop.counter|divisibleby:2 %} class="alt"{% endif %}>
+            <td>{{ cat.label }}</td>
+            <td class="right">{{ cat.opening }}</td>
+            <td class="right">{{ cat.debits }}</td>
+            <td class="right">{{ cat.credits }}</td>
+            <td class="right">{{ cat.closing }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="grand-total">
+            <td>TOTAL</td>
+            <td class="right">{{ grand_opening }}</td>
+            <td class="right">{{ grand_dr }}</td>
+            <td class="right">{{ grand_cr }}</td>
+            <td class="right">{{ grand_closing }}</td>
+        </tr>
+    </tbody>
+</table>
+
+<div class="section-title">Detailed Transactions</div>
+
+<table class="txn-table">
+    <thead>
+        <tr>
+            <th style="width:9%">Date</th>
+            <th style="width:7%">Txn #</th>
+            <th style="width:9%">Account</th>
+            <th style="width:11%">Category</th>
+            <th style="width:10%">Contra</th>
+            <th style="width:8%">Ref</th>
+            <th style="width:22%">Description</th>
+            <th class="right" style="width:8%">Debit</th>
+            <th class="right" style="width:8%">Credit</th>
+            <th class="right" style="width:8%">Balance</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for e in entries %}
+        <tr{% if forloop.counter|divisibleby:2 %} class="alt"{% endif %}>
+            <td>{{ e.date }}</td>
+            <td class="mono">{{ e.txn }}</td>
+            <td>{{ e.account }}</td>
+            <td>{{ e.category }}</td>
+            <td>{{ e.contra }}</td>
+            <td>{{ e.ref }}</td>
+            <td>{{ e.desc }}</td>
+            <td class="right">{% if e.dr %}{{ e.dr }}{% endif %}</td>
+            <td class="right">{% if e.cr %}{{ e.cr }}{% endif %}</td>
+            <td class="right">{{ e.balance }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="grand-total">
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td>Grand Totals</td>
+            <td class="right">{{ grand_dr }}</td>
+            <td class="right">{{ grand_cr }}</td>
+            <td class="right">{{ grand_closing }}</td>
+        </tr>
+    </tbody>
+</table>
+
+<div class="footer">
+    Generated on {{ generated_at }} &bull; Consolidated Landlord Subsidiary Statement
+</div>
+
+</body>
+</html>

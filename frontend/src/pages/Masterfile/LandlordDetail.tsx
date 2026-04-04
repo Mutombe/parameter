@@ -2229,28 +2229,41 @@ export default function LandlordDetail() {
                       Audit
                     </button>
                   </div>
-                  <button
-                    onClick={async () => {
-                      try {
-                        const res = await subsidiaryApi.exportStatement(selectedSubAccount!, {
-                          period_start: subAccountDateRange.period_start,
-                          period_end: subAccountDateRange.period_end,
-                          view: subAccountStatementView,
-                        })
-                        const url = URL.createObjectURL(new Blob([res.data]))
-                        const a = document.createElement('a')
-                        a.href = url
-                        const acc = normalizeList(subAccountsData).find((x: any) => x.id === selectedSubAccount)
-                        a.download = `statement-${(acc?.code || acc?.account_code || selectedSubAccount).replace(/\//g, '-')}.csv`
-                        a.click()
-                        URL.revokeObjectURL(url)
-                      } catch { /* ignore */ }
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Export
-                  </button>
+                  <div className="relative group">
+                    <button
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Export
+                    </button>
+                    <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg hidden group-hover:block z-10 min-w-[100px]">
+                      {(['csv', 'pdf'] as const).map(fmt => (
+                        <button
+                          key={fmt}
+                          onClick={async () => {
+                            try {
+                              const res = await subsidiaryApi.exportStatement(selectedSubAccount!, {
+                                period_start: subAccountDateRange.period_start,
+                                period_end: subAccountDateRange.period_end,
+                                view: subAccountStatementView,
+                                format: fmt,
+                              })
+                              const url = URL.createObjectURL(new Blob([res.data]))
+                              const a = document.createElement('a')
+                              a.href = url
+                              const acc = normalizeList(subAccountsData).find((x: any) => x.id === selectedSubAccount)
+                              a.download = `statement-${(acc?.code || acc?.account_code || selectedSubAccount).replace(/\//g, '-')}.${fmt}`
+                              a.click()
+                              URL.revokeObjectURL(url)
+                            } catch { /* ignore */ }
+                          }}
+                          className="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left first:rounded-t-lg last:rounded-b-lg"
+                        >
+                          {fmt.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -2332,28 +2345,41 @@ export default function LandlordDetail() {
                     All categories merged &middot; {subAccountDateRange.period_start} to {subAccountDateRange.period_end}
                   </p>
                 </div>
-                <button
-                  onClick={async () => {
-                    try {
-                      const res = await subsidiaryApi.exportLandlordConsolidated({
-                        landlord_id: Number(landlordId),
-                        period_start: subAccountDateRange.period_start,
-                        period_end: subAccountDateRange.period_end,
-                        view: subAccountStatementView,
-                      })
-                      const url = URL.createObjectURL(new Blob([res.data]))
-                      const a = document.createElement('a')
-                      a.href = url
-                      a.download = `consolidated-statement-${landlord?.name || landlordId}.csv`
-                      a.click()
-                      URL.revokeObjectURL(url)
-                    } catch { /* ignore */ }
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Export
-                </button>
+                <div className="relative group">
+                  <button
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Export
+                  </button>
+                  <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg hidden group-hover:block z-10 min-w-[100px]">
+                    {(['csv', 'pdf'] as const).map(fmt => (
+                      <button
+                        key={fmt}
+                        onClick={async () => {
+                          try {
+                            const res = await subsidiaryApi.exportLandlordConsolidated({
+                              landlord_id: Number(landlordId),
+                              period_start: subAccountDateRange.period_start,
+                              period_end: subAccountDateRange.period_end,
+                              view: subAccountStatementView,
+                              format: fmt,
+                            })
+                            const url = URL.createObjectURL(new Blob([res.data]))
+                            const a = document.createElement('a')
+                            a.href = url
+                            a.download = `consolidated-statement-${landlord?.name || landlordId}.${fmt}`
+                            a.click()
+                            URL.revokeObjectURL(url)
+                          } catch { /* ignore */ }
+                        }}
+                        className="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left first:rounded-t-lg last:rounded-b-lg"
+                      >
+                        {fmt.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="overflow-x-auto">

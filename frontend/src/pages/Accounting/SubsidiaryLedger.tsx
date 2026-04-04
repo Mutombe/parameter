@@ -166,18 +166,19 @@ export default function SubsidiaryLedger() {
     }
   }
 
-  const handleExport = async () => {
+  const handleExport = async (format: 'csv' | 'pdf' = 'csv') => {
     if (!selectedAccount) return
     try {
       const res = await subsidiaryApi.exportStatement(selectedAccount.id, {
         period_start: periodStart,
         period_end: periodEnd,
         view: viewMode,
+        format,
       })
       const url = URL.createObjectURL(new Blob([res.data]))
       const a = document.createElement('a')
       a.href = url
-      a.download = `${selectedAccount.code.replace(/\//g, '-')}_statement.csv`
+      a.download = `${selectedAccount.code.replace(/\//g, '-')}_statement.${format}`
       a.click()
       URL.revokeObjectURL(url)
       toast.success('Statement exported')
@@ -458,10 +459,16 @@ export default function SubsidiaryLedger() {
                       onChange={e => setPeriodEnd(e.target.value)}
                     />
                   </div>
-                  <Button variant="outline" size="sm" onClick={handleExport} disabled={!statement}>
-                    <Download className="w-4 h-4 mr-1.5" />
-                    Export
-                  </Button>
+                  <div className="relative group">
+                    <Button variant="outline" size="sm" disabled={!statement}>
+                      <Download className="w-4 h-4 mr-1.5" />
+                      Export
+                    </Button>
+                    <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg hidden group-hover:block z-10 min-w-[100px]">
+                      <button onClick={() => handleExport('csv')} className="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left rounded-t-lg">CSV</button>
+                      <button onClick={() => handleExport('pdf')} className="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left rounded-b-lg">PDF</button>
+                    </div>
+                  </div>
                 </div>
               </div>
 

@@ -296,13 +296,13 @@ export default function BankReconciliation() {
     },
   })
 
-  const handleExport = async (id: number) => {
+  const handleExport = async (id: number, format: 'csv' | 'pdf' = 'csv') => {
     try {
-      const response = await bankReconciliationApi.exportExcel(id)
+      const response = await bankReconciliationApi.exportExcel(id, format)
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement('a')
       link.href = url
-      link.setAttribute('download', `reconciliation-${id}.csv`)
+      link.setAttribute('download', `reconciliation-${id}.${format}`)
       document.body.appendChild(link)
       link.click()
       link.remove()
@@ -501,13 +501,18 @@ export default function BankReconciliation() {
               Deselect All
             </button>
             <div className="flex-1" />
-            <button
-              onClick={() => handleExport(workspaceData.id)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Export
-            </button>
+            <div className="relative group">
+              <button
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Export
+              </button>
+              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg hidden group-hover:block z-10 min-w-[100px]">
+                <button onClick={() => handleExport(workspaceData.id, 'csv')} className="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left rounded-t-lg">CSV</button>
+                <button onClick={() => handleExport(workspaceData.id, 'pdf')} className="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left rounded-b-lg">PDF</button>
+              </div>
+            </div>
             <button
               onClick={() => completeMutation.mutate()}
               disabled={completeMutation.isPending}
@@ -804,13 +809,19 @@ export default function BankReconciliation() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleExport(rec.id) }}
-                            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
-                            title="Export reconciliation"
-                          >
-                            <Download className="w-4 h-4" />
-                          </button>
+                          <div className="relative group/export">
+                            <button
+                              onClick={(e) => { e.stopPropagation() }}
+                              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                              title="Export reconciliation"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg hidden group-hover/export:block z-10 min-w-[100px]">
+                              <button onClick={(e) => { e.stopPropagation(); handleExport(rec.id, 'csv') }} className="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left rounded-t-lg">CSV</button>
+                              <button onClick={(e) => { e.stopPropagation(); handleExport(rec.id, 'pdf') }} className="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left rounded-b-lg">PDF</button>
+                            </div>
+                          </div>
                         </div>
                       </td>
                     </motion.tr>

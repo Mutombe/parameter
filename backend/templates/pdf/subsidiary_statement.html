@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    @page {
+        size: A4;
+        margin: 1.5cm;
+    }
+    body {
+        font-family: Helvetica, Arial, sans-serif;
+        font-size: 9pt;
+        color: #1a1a1a;
+        line-height: 1.4;
+    }
+    .header {
+        text-align: center;
+        margin-bottom: 18pt;
+        border-bottom: 2pt solid #333;
+        padding-bottom: 10pt;
+    }
+    .header h1 {
+        font-size: 14pt;
+        margin: 0 0 4pt 0;
+        color: #111;
+        letter-spacing: 1pt;
+        text-transform: uppercase;
+    }
+    .header h2 {
+        font-size: 10pt;
+        margin: 0;
+        color: #555;
+        font-weight: normal;
+    }
+    .details-table {
+        width: 100%;
+        margin-bottom: 14pt;
+    }
+    .details-table td {
+        padding: 2pt 6pt;
+        font-size: 8.5pt;
+    }
+    .details-table .label {
+        color: #666;
+        font-weight: bold;
+        width: 100pt;
+    }
+    .details-table .value {
+        color: #222;
+    }
+    table.txn-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 10pt;
+    }
+    table.txn-table th {
+        background-color: #333;
+        color: #fff;
+        font-size: 7.5pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 0.5pt;
+        padding: 5pt 4pt;
+        text-align: left;
+        border: 0.5pt solid #333;
+    }
+    table.txn-table th.right {
+        text-align: right;
+    }
+    table.txn-table td {
+        padding: 4pt 4pt;
+        font-size: 8pt;
+        border-bottom: 0.5pt solid #ddd;
+        vertical-align: top;
+    }
+    table.txn-table td.right {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+    table.txn-table td.mono {
+        font-family: Courier, monospace;
+        font-size: 7.5pt;
+    }
+    table.txn-table tr.alt {
+        background-color: #f7f7f7;
+    }
+    table.txn-table tr.bf-row td {
+        font-style: italic;
+        color: #555;
+        border-bottom: 1pt solid #bbb;
+    }
+    table.txn-table tr.totals-row td {
+        font-weight: bold;
+        border-top: 1.5pt solid #333;
+        border-bottom: 1.5pt double #333;
+        padding-top: 6pt;
+        padding-bottom: 6pt;
+        background-color: #f0f0f0;
+    }
+    .footer {
+        margin-top: 20pt;
+        font-size: 7.5pt;
+        color: #888;
+        border-top: 0.5pt solid #ccc;
+        padding-top: 6pt;
+        text-align: center;
+    }
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Subsidiary Account Statement</h1>
+    <h2>{{ account.code }} &mdash; {{ account.name }}</h2>
+</div>
+
+<table class="details-table">
+    <tr>
+        <td class="label">Account Code:</td>
+        <td class="value">{{ account.code }}</td>
+        <td class="label">Currency:</td>
+        <td class="value">{{ account.currency }}</td>
+    </tr>
+    <tr>
+        <td class="label">Account Name:</td>
+        <td class="value">{{ account.name }}</td>
+        <td class="label">Period:</td>
+        <td class="value">{{ period_start }} to {{ period_end }}</td>
+    </tr>
+    <tr>
+        <td class="label">Category:</td>
+        <td class="value">{{ category }}</td>
+        <td class="label">View:</td>
+        <td class="value">{{ view_mode }}</td>
+    </tr>
+</table>
+
+<table class="txn-table">
+    <thead>
+        <tr>
+            <th style="width:7%">Txn #</th>
+            <th style="width:10%">Date</th>
+            <th style="width:12%">Contra</th>
+            <th style="width:10%">Ref</th>
+            <th style="width:29%">Description</th>
+            <th class="right" style="width:11%">Debit</th>
+            <th class="right" style="width:11%">Credit</th>
+            <th class="right" style="width:11%">Balance</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr class="bf-row">
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td>Balance brought forward</td>
+            <td class="right"></td>
+            <td class="right"></td>
+            <td class="right">{{ opening_balance }}</td>
+        </tr>
+        {% for t in transactions %}
+        <tr{% if forloop.counter|divisibleby:2 %} class="alt"{% endif %}>
+            <td class="mono">{{ t.transaction_number }}</td>
+            <td>{{ t.date }}</td>
+            <td>{{ t.contra_account }}</td>
+            <td>{{ t.reference }}</td>
+            <td>{{ t.description }}{% if t.marker %} [C]{% endif %}</td>
+            <td class="right">{% if t.debit_amount %}{{ t.debit_amount }}{% endif %}</td>
+            <td class="right">{% if t.credit_amount %}{{ t.credit_amount }}{% endif %}</td>
+            <td class="right">{{ t.balance }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="totals-row">
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td>Totals</td>
+            <td class="right">{{ total_debits }}</td>
+            <td class="right">{{ total_credits }}</td>
+            <td class="right">{{ closing_balance }}</td>
+        </tr>
+    </tbody>
+</table>
+
+<div class="footer">
+    Generated on {{ generated_at }} &bull; Subsidiary Account Statement
+</div>
+
+</body>
+</html>

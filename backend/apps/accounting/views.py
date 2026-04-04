@@ -938,8 +938,9 @@ class BankReconciliationViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def export_excel(self, request, pk=None):
-        """Export a formal Bank Reconciliation Statement in CSV format."""
+        """Export a formal Bank Reconciliation Statement in CSV or PDF format."""
         reconciliation = self.get_object()
+        export_format = request.query_params.get('format', 'csv')
         items = list(reconciliation.items.all().order_by('date', 'id'))
 
         # Classify items
@@ -955,7 +956,54 @@ class BankReconciliationViewSet(viewsets.ModelViewSet):
         # Book-side adjustments (items marked as bank-only would go here)
         book_balance = reconciliation.book_balance
         adjusted_book = reconciliation.adjusted_book_balance or book_balance
+        difference = adjusted_bank - adjusted_book
 
+        total_reconciled_receipts = sum(i.amount for i in reconciled_receipts)
+        total_reconciled_payments = sum(i.amount for i in reconciled_payments)
+
+        if export_format == 'pdf':
+            from .pdf_utils import render_pdf
+
+            adjustment = adjusted_book - book_balance
+            has_adjustments = adjusted_book != book_balance
+
+            # Format items for template
+            def fmt_items(item_list):
+                return [{'date': i.date, 'reference': i.reference, 'description': i.description, 'amount': f'{i.amount:.2f}'} for i in item_list]
+
+            context = {
+                'bank_account_name': reconciliation.bank_account.name,
+                'currency': reconciliation.bank_account.currency,
+                'period_start': reconciliation.period_start,
+                'period_end': reconciliation.period_end,
+                'prepared_at': reconciliation.completed_at.strftime('%Y-%m-%d %H:%M') if reconciliation.completed_at else 'Draft',
+                'prepared_by': str(reconciliation.completed_by or reconciliation.created_by or ''),
+                'statement_balance': f'{reconciliation.statement_balance:.2f}',
+                'outstanding_receipts': fmt_items(outstanding_receipts),
+                'total_outstanding_deposits': f'{total_outstanding_deposits:.2f}',
+                'outstanding_payments': fmt_items(outstanding_payments),
+                'total_outstanding_cheques': f'{total_outstanding_cheques:.2f}',
+                'adjusted_bank': f'{adjusted_bank:.2f}',
+                'book_balance': f'{book_balance:.2f}',
+                'has_adjustments': has_adjustments,
+                'adjustment_positive': adjustment > 0 if has_adjustments else False,
+                'adjustment_amount': f'{abs(adjustment):.2f}',
+                'adjusted_book': f'{adjusted_book:.2f}',
+                'difference': f'{difference:.2f}',
+                'is_reconciled': abs(difference) < Decimal('0.01'),
+                'reconciled_receipts': fmt_items(reconciled_receipts),
+                'total_reconciled_receipts': f'{total_reconciled_receipts:.2f}',
+                'reconciled_payments': fmt_items(reconciled_payments),
+                'total_reconciled_payments': f'{total_reconciled_payments:.2f}',
+                'total_items': len(items),
+                'reconciled_count': len(reconciled_receipts) + len(reconciled_payments),
+                'outstanding_count': len(outstanding_receipts) + len(outstanding_payments),
+                'generated_at': timezone.now().strftime('%Y-%m-%d %H:%M'),
+            }
+            filename = f'bank_reconciliation_{reconciliation.bank_account.name}_{reconciliation.period_end}.pdf'
+            return render_pdf('pdf/bank_reconciliation.html', context, filename)
+
+        # CSV export (default)
         response = HttpResponse(content_type='text/csv')
         filename = f'bank_reconciliation_{reconciliation.bank_account.name}_{reconciliation.period_end}.csv'
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
@@ -1022,7 +1070,6 @@ class BankReconciliationViewSet(viewsets.ModelViewSet):
         # === SECTION 3: RECONCILIATION RESULT ===
         writer.writerow(['RECONCILIATION RESULT'])
         writer.writerow([])
-        difference = adjusted_bank - adjusted_book
         writer.writerow(['Adjusted bank balance', '', '', f'{adjusted_bank:.2f}'])
         writer.writerow(['Adjusted book balance', '', '', f'{adjusted_book:.2f}'])
         writer.writerow(['Difference', '', '', f'{difference:.2f}'])
@@ -1041,14 +1088,14 @@ class BankReconciliationViewSet(viewsets.ModelViewSet):
         writer.writerow(['Date', 'Reference', 'Description', 'Amount', 'Status'])
         for item in reconciled_receipts:
             writer.writerow([item.date, item.reference, item.description, f'{item.amount:.2f}', 'Matched'])
-        writer.writerow(['', '', f'Total: {len(reconciled_receipts)} items', f'{sum(i.amount for i in reconciled_receipts):.2f}', ''])
+        writer.writerow(['', '', f'Total: {len(reconciled_receipts)} items', f'{total_reconciled_receipts:.2f}', ''])
         writer.writerow([])
 
         writer.writerow(['RECONCILED PAYMENTS (Withdrawals matched to bank statement)'])
         writer.writerow(['Date', 'Reference', 'Description', 'Amount', 'Status'])
         for item in reconciled_payments:
             writer.writerow([item.date, item.reference, item.description, f'{item.amount:.2f}', 'Matched'])
-        writer.writerow(['', '', f'Total: {len(reconciled_payments)} items', f'{sum(i.amount for i in reconciled_payments):.2f}', ''])
+        writer.writerow(['', '', f'Total: {len(reconciled_payments)} items', f'{total_reconciled_payments:.2f}', ''])
         writer.writerow([])
 
         # === SUMMARY ===
@@ -1402,11 +1449,12 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
 
     @action(detail=True, methods=['get'])
     def export_statement(self, request, pk=None):
-        """Export a subsidiary account statement as bank-statement style CSV."""
+        """Export a subsidiary account statement as CSV or PDF."""
         account = self.get_object()
         period_start = request.query_params.get('period_start')
         period_end = request.query_params.get('period_end')
         view_mode = request.query_params.get('view', 'consolidated')
+        export_format = request.query_params.get('format', 'csv')
 
         if not period_start or not period_end:
             return Response({'error': 'period_start and period_end required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1426,6 +1474,47 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
             transactions = transactions.filter(is_consolidated=False)
         transactions = transactions.order_by('transaction_number')
 
+        total_dr = Decimal('0')
+        total_cr = Decimal('0')
+        last_balance = opening
+        txn_list = []
+        for t in transactions:
+            desc = t.overwritten_description or t.description
+            marker = t.consolidation_marker == 'C'
+            txn_list.append({
+                'transaction_number': t.transaction_number,
+                'date': t.date,
+                'contra_account': t.contra_account,
+                'reference': t.reference,
+                'description': desc,
+                'marker': marker,
+                'debit_amount': t.debit_amount if t.debit_amount else None,
+                'credit_amount': t.credit_amount if t.credit_amount else None,
+                'balance': f'{t.balance:.2f}',
+            })
+            total_dr += t.debit_amount
+            total_cr += t.credit_amount
+            last_balance = t.balance
+
+        if export_format == 'pdf':
+            from .pdf_utils import render_pdf
+            context = {
+                'account': account,
+                'category': account.category.replace('_', ' ').title(),
+                'period_start': period_start,
+                'period_end': period_end,
+                'view_mode': view_mode.title(),
+                'opening_balance': f'{opening:.2f}',
+                'transactions': txn_list,
+                'total_debits': f'{total_dr:.2f}',
+                'total_credits': f'{total_cr:.2f}',
+                'closing_balance': f'{last_balance:.2f}',
+                'generated_at': timezone.now().strftime('%Y-%m-%d %H:%M'),
+            }
+            filename = f'{account.code.replace("/", "-")}_statement_{period_start}_to_{period_end}.pdf'
+            return render_pdf('pdf/subsidiary_statement.html', context, filename)
+
+        # CSV export (default)
         response = HttpResponse(content_type='text/csv')
         filename = f'{account.code.replace("/", "-")}_statement_{period_start}_to_{period_end}.csv'
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
@@ -1442,22 +1531,15 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
         writer.writerow(['Txn #', 'Date', 'Contra Acc', 'Ref', 'Description', 'Debit', 'Credit', 'Balance'])
         writer.writerow(['', '', '', '', 'Balance brought forward', '', '', f'{opening:.2f}'])
 
-        total_dr = Decimal('0')
-        total_cr = Decimal('0')
-        last_balance = opening
-        for t in transactions:
-            desc = t.overwritten_description or t.description
-            marker = ' [C]' if t.consolidation_marker == 'C' else ''
+        for t in txn_list:
+            marker_str = ' [C]' if t['marker'] else ''
             writer.writerow([
-                t.transaction_number, t.date, t.contra_account, t.reference,
-                f'{desc}{marker}',
-                f'{t.debit_amount:.2f}' if t.debit_amount else '',
-                f'{t.credit_amount:.2f}' if t.credit_amount else '',
-                f'{t.balance:.2f}',
+                t['transaction_number'], t['date'], t['contra_account'], t['reference'],
+                f'{t["description"]}{marker_str}',
+                f'{t["debit_amount"]:.2f}' if t['debit_amount'] else '',
+                f'{t["credit_amount"]:.2f}' if t['credit_amount'] else '',
+                t['balance'],
             ])
-            total_dr += t.debit_amount
-            total_cr += t.credit_amount
-            last_balance = t.balance
 
         writer.writerow([])
         writer.writerow(['', '', '', '', 'Totals', f'{total_dr:.2f}', f'{total_cr:.2f}', f'{last_balance:.2f}'])
@@ -1470,6 +1552,7 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
         period_start = request.query_params.get('period_start')
         period_end = request.query_params.get('period_end')
         view_mode = request.query_params.get('view', 'consolidated')
+        export_format = request.query_params.get('format', 'csv')
 
         if not landlord_id or not period_start or not period_end:
             return Response({'error': 'landlord_id, period_start, period_end required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1531,6 +1614,60 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
 
         all_entries.sort(key=lambda e: (e['date'], e['txn']))
 
+        # Calculate grand totals
+        grand_opening = Decimal('0')
+        grand_dr = Decimal('0')
+        grand_cr = Decimal('0')
+        grand_closing = Decimal('0')
+        category_rows = []
+        for cat, totals in sorted(category_totals.items()):
+            category_rows.append({
+                'label': cat,
+                'opening': f'{totals["opening"]:.2f}',
+                'debits': f'{totals["debits"]:.2f}',
+                'credits': f'{totals["credits"]:.2f}',
+                'closing': f'{totals["closing"]:.2f}',
+            })
+            grand_opening += totals['opening']
+            grand_dr += totals['debits']
+            grand_cr += totals['credits']
+            grand_closing += totals['closing']
+
+        # Format entries for display
+        formatted_entries = []
+        for e in all_entries:
+            formatted_entries.append({
+                'date': e['date'],
+                'txn': e['txn'],
+                'account': e['account'],
+                'category': e['category'],
+                'contra': e['contra'],
+                'ref': e['ref'],
+                'desc': e['desc'],
+                'dr': f'{e["dr"]:.2f}' if e['dr'] else None,
+                'cr': f'{e["cr"]:.2f}' if e['cr'] else None,
+                'balance': f'{e["balance"]:.2f}',
+            })
+
+        if export_format == 'pdf':
+            from .pdf_utils import render_pdf
+            context = {
+                'landlord_name': landlord.name,
+                'period_start': period_start,
+                'period_end': period_end,
+                'view_mode': view_mode.title(),
+                'category_rows': category_rows,
+                'grand_opening': f'{grand_opening:.2f}',
+                'grand_dr': f'{grand_dr:.2f}',
+                'grand_cr': f'{grand_cr:.2f}',
+                'grand_closing': f'{grand_closing:.2f}',
+                'entries': formatted_entries,
+                'generated_at': timezone.now().strftime('%Y-%m-%d %H:%M'),
+            }
+            filename = f'LD-{landlord.id:05d}_consolidated_{period_start}_to_{period_end}.pdf'
+            return render_pdf('pdf/landlord_consolidated_statement.html', context, filename)
+
+        # CSV export (default)
         response = HttpResponse(content_type='text/csv')
         filename = f'LD-{landlord.id:05d}_consolidated_{period_start}_to_{period_end}.csv'
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
@@ -1545,26 +1682,18 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
         # Category summary
         writer.writerow(['CATEGORY SUMMARY'])
         writer.writerow(['Category', 'Opening Balance', 'Total Debits', 'Total Credits', 'Closing Balance'])
-        grand_opening = Decimal('0')
-        grand_dr = Decimal('0')
-        grand_cr = Decimal('0')
-        grand_closing = Decimal('0')
-        for cat, totals in sorted(category_totals.items()):
-            writer.writerow([cat, f'{totals["opening"]:.2f}', f'{totals["debits"]:.2f}', f'{totals["credits"]:.2f}', f'{totals["closing"]:.2f}'])
-            grand_opening += totals['opening']
-            grand_dr += totals['debits']
-            grand_cr += totals['credits']
-            grand_closing += totals['closing']
+        for row in category_rows:
+            writer.writerow([row['label'], row['opening'], row['debits'], row['credits'], row['closing']])
         writer.writerow(['TOTAL', f'{grand_opening:.2f}', f'{grand_dr:.2f}', f'{grand_cr:.2f}', f'{grand_closing:.2f}'])
         writer.writerow([])
 
         # Detailed transactions
         writer.writerow(['DETAILED TRANSACTIONS'])
         writer.writerow(['Date', 'Txn #', 'Account', 'Category', 'Contra', 'Ref', 'Description', 'Debit', 'Credit', 'Balance'])
-        for e in all_entries:
+        for e in formatted_entries:
             writer.writerow([
                 e['date'], e['txn'], e['account'], e['category'], e['contra'], e['ref'], e['desc'],
-                f'{e["dr"]:.2f}' if e['dr'] else '', f'{e["cr"]:.2f}' if e['cr'] else '', f'{e["balance"]:.2f}',
+                e['dr'] or '', e['cr'] or '', e['balance'],
             ])
         writer.writerow([])
         writer.writerow(['', '', '', '', '', '', 'Grand Totals', f'{grand_dr:.2f}', f'{grand_cr:.2f}', f'{grand_closing:.2f}'])

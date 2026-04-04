@@ -489,8 +489,8 @@ export const bankReconciliationApi = {
     api.patch(`/accounting/bank-reconciliations/${id}/`, { statement_balance: statementBalance }),
   complete: (id: number) =>
     api.post(`/accounting/bank-reconciliations/${id}/complete/`),
-  exportExcel: (id: number) =>
-    api.get(`/accounting/bank-reconciliations/${id}/export_excel/`, { responseType: 'blob' }),
+  exportExcel: (id: number, format: 'csv' | 'pdf' = 'csv') =>
+    api.get(`/accounting/bank-reconciliations/${id}/export_excel/`, { params: { format }, responseType: 'blob' }),
   summary: () => api.get('/accounting/bank-reconciliations/summary/'),
 }
 
@@ -541,9 +541,9 @@ export const subsidiaryApi = {
     api.post(`/accounting/subsidiary-accounts/${accountId}/overwrite_narration/`, data),
   consolidationDetail: (accountId: number, params: { entry_id: number }) =>
     api.get(`/accounting/subsidiary-accounts/${accountId}/consolidation_detail/`, { params }),
-  exportStatement: (accountId: number, params: { period_start: string; period_end: string; view?: string }) =>
+  exportStatement: (accountId: number, params: { period_start: string; period_end: string; view?: string; format?: string }) =>
     api.get(`/accounting/subsidiary-accounts/${accountId}/export_statement/`, { params, responseType: 'blob' }),
-  exportLandlordConsolidated: (params: { landlord_id: number; period_start: string; period_end: string; view?: string }) =>
+  exportLandlordConsolidated: (params: { landlord_id: number; period_start: string; period_end: string; view?: string; format?: string }) =>
     api.get('/accounting/subsidiary-accounts/export_landlord_consolidated/', { params, responseType: 'blob' }),
 }
 

@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+    @page {
+        size: A4;
+        margin: 1.5cm;
+    }
+    body {
+        font-family: Helvetica, Arial, sans-serif;
+        font-size: 9pt;
+        color: #1a1a1a;
+        line-height: 1.4;
+    }
+    .header {
+        text-align: center;
+        margin-bottom: 18pt;
+        border-bottom: 2pt solid #333;
+        padding-bottom: 10pt;
+    }
+    .header h1 {
+        font-size: 14pt;
+        margin: 0 0 4pt 0;
+        color: #111;
+        letter-spacing: 1pt;
+        text-transform: uppercase;
+    }
+    .header h2 {
+        font-size: 10pt;
+        margin: 0 0 2pt 0;
+        color: #555;
+        font-weight: normal;
+    }
+    .header p {
+        font-size: 8pt;
+        color: #777;
+        margin: 0;
+    }
+    .section-title {
+        font-size: 10pt;
+        font-weight: bold;
+        color: #333;
+        margin: 14pt 0 6pt 0;
+        padding: 4pt 6pt;
+        background-color: #e8e8e8;
+        border-left: 3pt solid #333;
+        text-transform: uppercase;
+        letter-spacing: 0.5pt;
+    }
+    .balance-line {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 6pt;
+    }
+    .balance-line td {
+        padding: 4pt 6pt;
+        font-size: 9pt;
+    }
+    .balance-line .label {
+        font-weight: bold;
+    }
+    .balance-line .amount {
+        text-align: right;
+        font-weight: bold;
+        width: 120pt;
+        font-variant-numeric: tabular-nums;
+    }
+    .balance-line.highlight td {
+        background-color: #f0f0f0;
+        border-top: 1.5pt solid #333;
+        border-bottom: 1.5pt double #333;
+        padding-top: 6pt;
+        padding-bottom: 6pt;
+        font-size: 10pt;
+    }
+    table.items-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 10pt;
+    }
+    table.items-table th {
+        background-color: #555;
+        color: #fff;
+        font-size: 7.5pt;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 0.5pt;
+        padding: 4pt 4pt;
+        text-align: left;
+        border: 0.5pt solid #555;
+    }
+    table.items-table th.right {
+        text-align: right;
+    }
+    table.items-table td {
+        padding: 3pt 4pt;
+        font-size: 8pt;
+        border-bottom: 0.5pt solid #ddd;
+    }
+    table.items-table td.right {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+    table.items-table tr.alt {
+        background-color: #f7f7f7;
+    }
+    table.items-table tr.subtotal td {
+        font-weight: bold;
+        border-top: 1pt solid #999;
+        background-color: #f0f0f0;
+    }
+    .result-box {
+        margin-top: 14pt;
+        border: 1.5pt solid #333;
+        padding: 8pt 10pt;
+    }
+    .result-box table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .result-box td {
+        padding: 3pt 6pt;
+        font-size: 9pt;
+    }
+    .result-box .amount {
+        text-align: right;
+        width: 120pt;
+        font-weight: bold;
+        font-variant-numeric: tabular-nums;
+    }
+    .result-box .status {
+        text-align: center;
+        font-size: 10pt;
+        font-weight: bold;
+        padding-top: 6pt;
+        margin-top: 4pt;
+        border-top: 0.5pt solid #999;
+    }
+    .status-reconciled { color: #166534; }
+    .status-unreconciled { color: #991b1b; }
+    .summary-box {
+        margin-top: 14pt;
+        background-color: #f7f7f7;
+        padding: 8pt 10pt;
+        border: 0.5pt solid #ddd;
+    }
+    .summary-box table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .summary-box td {
+        padding: 2pt 6pt;
+        font-size: 8.5pt;
+    }
+    .summary-box .label {
+        color: #666;
+    }
+    .summary-box .value {
+        text-align: right;
+        width: 80pt;
+        font-weight: bold;
+    }
+    .footer {
+        margin-top: 20pt;
+        font-size: 7.5pt;
+        color: #888;
+        border-top: 0.5pt solid #ccc;
+        padding-top: 6pt;
+        text-align: center;
+    }
+    .spacer { height: 8pt; }
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Bank Reconciliation Statement</h1>
+    <h2>{{ bank_account_name }} ({{ currency }})</h2>
+    <p>Period: {{ period_start }} to {{ period_end }} &bull;
+       Prepared: {{ prepared_at }} &bull;
+       By: {{ prepared_by }}</p>
+</div>
+
+<!-- SECTION 1: BANK STATEMENT SIDE -->
+<div class="section-title">Section 1: Balance Per Bank Statement</div>
+
+<table class="balance-line">
+    <tr>
+        <td class="label">Balance per bank statement</td>
+        <td class="amount">{{ statement_balance }}</td>
+    </tr>
+</table>
+
+<p style="font-size:8pt; font-weight:bold; color:#444; margin:6pt 0 3pt 0;">
+    ADD: Deposits in transit (recorded in books, not yet on bank statement)
+</p>
+{% if outstanding_receipts %}
+<table class="items-table">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Reference</th>
+            <th>Description</th>
+            <th class="right">Amount</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in outstanding_receipts %}
+        <tr{% if forloop.counter|divisibleby:2 %} class="alt"{% endif %}>
+            <td>{{ item.date }}</td>
+            <td>{{ item.reference }}</td>
+            <td>{{ item.description }}</td>
+            <td class="right">{{ item.amount }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="subtotal">
+            <td></td>
+            <td></td>
+            <td>Total deposits in transit</td>
+            <td class="right">{{ total_outstanding_deposits }}</td>
+        </tr>
+    </tbody>
+</table>
+{% else %}
+<p style="font-size:8pt; color:#888; margin-left:10pt;">None</p>
+{% endif %}
+
+<p style="font-size:8pt; font-weight:bold; color:#444; margin:6pt 0 3pt 0;">
+    LESS: Outstanding cheques/payments (recorded in books, not yet cleared by bank)
+</p>
+{% if outstanding_payments %}
+<table class="items-table">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Reference</th>
+            <th>Description</th>
+            <th class="right">Amount</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in outstanding_payments %}
+        <tr{% if forloop.counter|divisibleby:2 %} class="alt"{% endif %}>
+            <td>{{ item.date }}</td>
+            <td>{{ item.reference }}</td>
+            <td>{{ item.description }}</td>
+            <td class="right">({{ item.amount }})</td>
+        </tr>
+        {% endfor %}
+        <tr class="subtotal">
+            <td></td>
+            <td></td>
+            <td>Total outstanding cheques</td>
+            <td class="right">({{ total_outstanding_cheques }})</td>
+        </tr>
+    </tbody>
+</table>
+{% else %}
+<p style="font-size:8pt; color:#888; margin-left:10pt;">None</p>
+{% endif %}
+
+<table class="balance-line highlight">
+    <tr>
+        <td class="label">ADJUSTED BANK BALANCE</td>
+        <td class="amount">{{ adjusted_bank }}</td>
+    </tr>
+</table>
+
+<!-- SECTION 2: BOOK BALANCE SIDE -->
+<div class="section-title">Section 2: Balance Per Books</div>
+
+<table class="balance-line">
+    <tr>
+        <td class="label">Balance per books (system)</td>
+        <td class="amount">{{ book_balance }}</td>
+    </tr>
+</table>
+
+{% if has_adjustments %}
+<table class="balance-line">
+    <tr>
+        <td class="label">{% if adjustment_positive %}ADD{% else %}LESS{% endif %}: Adjustments</td>
+        <td class="amount">{% if adjustment_positive %}{{ adjustment_amount }}{% else %}({{ adjustment_amount }}){% endif %}</td>
+    </tr>
+</table>
+{% endif %}
+
+<table class="balance-line highlight">
+    <tr>
+        <td class="label">ADJUSTED BOOK BALANCE</td>
+        <td class="amount">{{ adjusted_book }}</td>
+    </tr>
+</table>
+
+<!-- SECTION 3: RECONCILIATION RESULT -->
+<div class="result-box">
+    <table>
+        <tr>
+            <td>Adjusted bank balance</td>
+            <td class="amount">{{ adjusted_bank }}</td>
+        </tr>
+        <tr>
+            <td>Adjusted book balance</td>
+            <td class="amount">{{ adjusted_book }}</td>
+        </tr>
+        <tr>
+            <td>Difference</td>
+            <td class="amount">{{ difference }}</td>
+        </tr>
+    </table>
+    <div class="status {% if is_reconciled %}status-reconciled{% else %}status-unreconciled{% endif %}">
+        {% if is_reconciled %}RECONCILED{% else %}UNRECONCILED (difference of {{ difference }}){% endif %}
+    </div>
+</div>
+
+<!-- SECTION 4: DETAILED ITEMS -->
+<div class="section-title">Reconciled Receipts</div>
+{% if reconciled_receipts %}
+<table class="items-table">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Reference</th>
+            <th>Description</th>
+            <th class="right">Amount</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in reconciled_receipts %}
+        <tr{% if forloop.counter|divisibleby:2 %} class="alt"{% endif %}>
+            <td>{{ item.date }}</td>
+            <td>{{ item.reference }}</td>
+            <td>{{ item.description }}</td>
+            <td class="right">{{ item.amount }}</td>
+            <td>Matched</td>
+        </tr>
+        {% endfor %}
+        <tr class="subtotal">
+            <td></td>
+            <td></td>
+            <td>Total: {{ reconciled_receipts|length }} items</td>
+            <td class="right">{{ total_reconciled_receipts }}</td>
+            <td></td>
+        </tr>
+    </tbody>
+</table>
+{% else %}
+<p style="font-size:8pt; color:#888; margin-left:10pt;">None</p>
+{% endif %}
+
+<div class="section-title">Reconciled Payments</div>
+{% if reconciled_payments %}
+<table class="items-table">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Reference</th>
+            <th>Description</th>
+            <th class="right">Amount</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in reconciled_payments %}
+        <tr{% if forloop.counter|divisibleby:2 %} class="alt"{% endif %}>
+            <td>{{ item.date }}</td>
+            <td>{{ item.reference }}</td>
+            <td>{{ item.description }}</td>
+            <td class="right">{{ item.amount }}</td>
+            <td>Matched</td>
+        </tr>
+        {% endfor %}
+        <tr class="subtotal">
+            <td></td>
+            <td></td>
+            <td>Total: {{ reconciled_payments|length }} items</td>
+            <td class="right">{{ total_reconciled_payments }}</td>
+            <td></td>
+        </tr>
+    </tbody>
+</table>
+{% else %}
+<p style="font-size:8pt; color:#888; margin-left:10pt;">None</p>
+{% endif %}
+
+<!-- SUMMARY -->
+<div class="summary-box">
+    <table>
+        <tr><td class="label">Total items</td><td class="value">{{ total_items }}</td></tr>
+        <tr><td class="label">Reconciled items</td><td class="value">{{ reconciled_count }}</td></tr>
+        <tr><td class="label">Outstanding items</td><td class="value">{{ outstanding_count }}</td></tr>
+        <tr><td class="label">Outstanding deposits</td><td class="value">{{ total_outstanding_deposits }}</td></tr>
+        <tr><td class="label">Outstanding cheques</td><td class="value">{{ total_outstanding_cheques }}</td></tr>
+    </table>
+</div>
+
+<div class="footer">
+    Generated on {{ generated_at }} &bull; Bank Reconciliation Statement
+</div>
+
+</body>
+</html>
