@@ -253,22 +253,83 @@ def get_tenant_detail(tenant):
     }
 
 
-def get_tenant_ledger(tenant):
-    """Compute tenant ledger data via DB queries."""
+def get_tenant_ledger(tenant, period_start=None, period_end=None):
+    """
+    Compute tenant ledger in bank-statement style with running balance.
+    Supports optional date range filtering.
+    """
     from apps.billing.serializers import InvoiceSerializer, ReceiptSerializer
+    from decimal import Decimal
 
-    invoices = tenant.invoices.order_by('-date')
-    receipts = tenant.receipts.order_by('-date')
+    all_invoices = tenant.invoices.order_by('date', 'id')
+    all_receipts = tenant.receipts.order_by('date', 'id')
 
+    # Build combined entries for statement view
+    entries = []
+    for inv in all_invoices:
+        entries.append({
+            'id': inv.id,
+            'type': 'invoice',
+            'date': str(inv.date),
+            'reference': inv.invoice_number,
+            'description': inv.description or f'{inv.get_invoice_type_display()} charge',
+            'debit': float(inv.total_amount),
+            'credit': 0,
+            'invoice_type': inv.invoice_type,
+        })
+    for rct in all_receipts:
+        entries.append({
+            'id': rct.id,
+            'type': 'receipt',
+            'date': str(rct.date),
+            'reference': rct.receipt_number,
+            'description': rct.description or f'Payment - {rct.get_payment_method_display()}',
+            'debit': 0,
+            'credit': float(rct.amount),
+            'payment_method': rct.payment_method,
+        })
+
+    # Sort by date then type (invoices before receipts on same day)
+    entries.sort(key=lambda e: (e['date'], 0 if e['type'] == 'invoice' else 1, e['id']))
+
+    # Calculate opening balance and filter by period
+    opening_balance = Decimal('0')
+    period_entries = []
+
+    if period_start:
+        ps = str(period_start)
+        for e in entries:
+            if e['date'] < ps:
+                opening_balance += Decimal(str(e['debit'])) - Decimal(str(e['credit']))
+            else:
+                period_entries.append(e)
+        if period_end:
+            pe = str(period_end)
+            period_entries = [e for e in period_entries if e['date'] <= pe]
+    else:
+        period_entries = entries
+
+    # Add running balance
+    balance = float(opening_balance)
+    for e in period_entries:
+        balance += e['debit'] - e['credit']
+        e['balance'] = round(balance, 2)
+
+    total_debits = sum(e['debit'] for e in period_entries)
+    total_credits = sum(e['credit'] for e in period_entries)
+
+    # Overall totals (all time)
     agg = tenant.invoices.aggregate(total_invoiced=Sum('total_amount'))
     receipt_agg = tenant.receipts.aggregate(total_paid=Sum('amount'))
-
     total_invoiced = agg['total_invoiced'] or 0
     total_paid = receipt_agg['total_paid'] or 0
 
     return {
-        'invoices': InvoiceSerializer(invoices, many=True).data,
-        'receipts': ReceiptSerializer(receipts, many=True).data,
+        'entries': period_entries,
+        'opening_balance': float(opening_balance),
+        'closing_balance': round(balance, 2) if period_entries else float(opening_balance),
+        'total_debits': round(total_debits, 2),
+        'total_credits': round(total_credits, 2),
         'summary': {
             'total_invoiced': total_invoiced,
             'total_paid': total_paid,

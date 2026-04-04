@@ -27,7 +27,7 @@ import {
   Trash2,
   BookOpen,
 } from 'lucide-react'
-import { invoiceApi, tenantApi, unitApi, leaseApi } from '../../services/api'
+import { invoiceApi, tenantApi, unitApi, leaseApi, propertyApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { printInvoice } from '../../lib/printTemplate'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination } from '../../components/ui'
@@ -174,6 +174,7 @@ export default function Invoices() {
   const [generateForm, setGenerateForm] = useState({
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
+    property_id: '' as string | number,
   })
   const [form, setForm] = useState({
     tenant: '',
@@ -330,12 +331,29 @@ export default function Invoices() {
     })
   }
 
+  const { data: properties } = useQuery({
+    queryKey: ['properties-list'],
+    queryFn: () => propertyApi.list().then(r => r.data.results || r.data),
+    staleTime: 30000,
+  })
+
   const generateMutation = useMutation({
-    mutationFn: (data: typeof generateForm) => invoiceApi.generateMonthly(data),
+    mutationFn: (data: typeof generateForm) => {
+      const payload: any = { month: data.month, year: data.year }
+      if (data.property_id) payload.property_id = Number(data.property_id)
+      return invoiceApi.generateMonthly(payload)
+    },
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
-      const count = response.data?.created_count || response.data?.length || 0
-      showToast.success(`Generated ${count} invoices successfully`)
+      const count = response.data?.created || response.data?.created_count || 0
+      const errors = response.data?.errors || []
+      if (count > 0) {
+        showToast.success(`Generated ${count} invoice${count !== 1 ? 's' : ''} successfully`)
+      } else if (errors.length > 0) {
+        showToast.warning(`No new invoices generated. ${errors[0]}`)
+      } else {
+        showToast.info('No new invoices to generate for this period')
+      }
       setShowGenerateModal(false)
     },
     onError: (error) => showToast.error(parseApiError(error, 'Failed to generate invoices')),
@@ -990,9 +1008,21 @@ export default function Invoices() {
         <form onSubmit={(e) => { e.preventDefault(); generateMutation.mutate(generateForm); }} className="space-y-5">
           <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
             <p className="text-sm text-blue-700">
-              This will automatically generate rent invoices for all active leases for the selected month.
+              {generateForm.property_id
+                ? 'Generate invoices for the selected property only. Already-billed leases will be skipped.'
+                : 'Generate invoices for ALL active leases. Already-billed leases will be skipped.'}
             </p>
           </div>
+
+          <Select
+            label="Property (optional — leave blank for all properties)"
+            value={generateForm.property_id}
+            onChange={(e) => setGenerateForm({ ...generateForm, property_id: e.target.value })}
+            options={[
+              { value: '', label: 'All Properties' },
+              ...(properties || []).map((p: any) => ({ value: String(p.id), label: p.name }))
+            ]}
+          />
 
           <div className="grid grid-cols-2 gap-4">
             <Select

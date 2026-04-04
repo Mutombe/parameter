@@ -235,9 +235,11 @@ class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets
 
     @action(detail=True, methods=['get'])
     def ledger(self, request, pk=None):
-        """Get tenant's financial ledger (invoices and receipts)."""
+        """Get tenant's financial ledger with optional date range."""
         tenant = self.get_object()
-        ledger_data = get_tenant_ledger(tenant)
+        period_start = request.query_params.get('period_start')
+        period_end = request.query_params.get('period_end')
+        ledger_data = get_tenant_ledger(tenant, period_start=period_start, period_end=period_end)
         return Response({
             'tenant': RentalTenantSerializer(tenant).data,
             **ledger_data,

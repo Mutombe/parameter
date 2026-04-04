@@ -133,6 +133,7 @@ class BulkInvoiceSerializer(serializers.Serializer):
         required=False,
         allow_empty=True
     )
+    property_id = serializers.IntegerField(required=False, allow_null=True)
 
 
 class BulkReceiptSerializer(serializers.Serializer):

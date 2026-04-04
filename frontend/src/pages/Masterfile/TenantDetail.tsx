@@ -178,10 +178,15 @@ export default function TenantDetail() {
     placeholderData: keepPreviousData,
   })
 
-  // 3. Ledger
+  // 3. Ledger (with server-side date filtering)
+  const [ledgerPeriodStart, setLedgerPeriodStart] = useState('')
+  const [ledgerPeriodEnd, setLedgerPeriodEnd] = useState('')
   const { data: ledgerData, isLoading: loadingLedger } = useQuery({
-    queryKey: ['tenant-ledger', tenantId],
-    queryFn: () => tenantApi.ledger(tenantId).then((r) => r.data),
+    queryKey: ['tenant-ledger', tenantId, ledgerPeriodStart, ledgerPeriodEnd],
+    queryFn: () => tenantApi.ledger(tenantId, {
+      ...(ledgerPeriodStart && { period_start: ledgerPeriodStart }),
+      ...(ledgerPeriodEnd && { period_end: ledgerPeriodEnd }),
+    }).then((r) => r.data),
     enabled: !!tenantId,
     placeholderData: keepPreviousData,
   })
@@ -404,8 +409,11 @@ export default function TenantDetail() {
 
   // --- Ledger filter state ---
   const [ledgerSearch, setLedgerSearch] = useState('')
-  const [ledgerDateFrom, setLedgerDateFrom] = useState('')
-  const [ledgerDateTo, setLedgerDateTo] = useState('')
+  // Date filters now drive server-side API params (ledgerPeriodStart/End defined above)
+  const ledgerDateFrom = ledgerPeriodStart
+  const setLedgerDateFrom = setLedgerPeriodStart
+  const ledgerDateTo = ledgerPeriodEnd
+  const setLedgerDateTo = setLedgerPeriodEnd
 
   const filteredLedger = useMemo(() => {
     let result = ledger || []
@@ -416,14 +424,8 @@ export default function TenantDetail() {
         (entry.description || entry.narration || '').toLowerCase().includes(q)
       )
     }
-    if (ledgerDateFrom) {
-      result = result.filter((entry: any) => (entry.date || '') >= ledgerDateFrom)
-    }
-    if (ledgerDateTo) {
-      result = result.filter((entry: any) => (entry.date || '') <= ledgerDateTo)
-    }
     return result
-  }, [ledger, ledgerSearch, ledgerDateFrom, ledgerDateTo])
+  }, [ledger, ledgerSearch])
 
   const { paginatedData: paginatedLedger, currentPage: ledgerPage, totalPages: ledgerTotalPages, setCurrentPage: setLedgerPage, totalItems: ledgerTotal, startIndex: ledgerStart, endIndex: ledgerEnd } = usePagination(filteredLedger, { pageSize: 10 })
 
@@ -1052,7 +1054,7 @@ export default function TenantDetail() {
       >
         <div className="p-6 border-b border-gray-100">
           <h3 className="text-lg font-semibold text-gray-900">Account Statement / Ledger</h3>
-          <p className="text-sm text-gray-500">Full transaction history</p>
+          <p className="text-sm text-gray-500">Bank-statement style view with running balance. Select a date range to filter.</p>
         </div>
         {!loadingLedger && ledger.length > 0 && (
           <TableFilter
@@ -1085,17 +1087,26 @@ export default function TenantDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
+                {/* Opening balance row */}
+                {(ledgerPeriodStart || ledgerPeriodEnd) && ledgerData?.opening_balance !== undefined && (
+                  <tr className="bg-gray-50">
+                    <td className="px-6 py-3 text-sm text-gray-500" colSpan={3}>Balance brought forward</td>
+                    <td className="px-6 py-3 text-sm text-right">-</td>
+                    <td className="px-6 py-3 text-sm text-right">-</td>
+                    <td className="px-6 py-3 text-sm font-semibold text-right">{formatCurrency(ledgerData.opening_balance)}</td>
+                  </tr>
+                )}
                 {paginatedLedger.map((entry: any, idx: number) => (
                   <tr key={entry.id || idx} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-sm text-gray-600">{formatDate(entry.date)}</td>
                     <td className="px-6 py-4 text-sm font-medium">
-                      {entry.invoice_id ? (
-                        <button onClick={() => navigate(`/dashboard/invoices/${entry.invoice_id}`)} onMouseEnter={() => prefetch(`/dashboard/invoices/${entry.invoice_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
-                          {entry.reference || entry.ref || '-'}
+                      {entry.type === 'invoice' ? (
+                        <button onClick={() => navigate(`/dashboard/invoices/${entry.id}`)} onMouseEnter={() => prefetch(`/dashboard/invoices/${entry.id}`)} className="text-blue-600 hover:text-blue-700 hover:underline">
+                          {entry.reference || '-'}
                         </button>
-                      ) : entry.receipt_id ? (
-                        <button onClick={() => navigate(`/dashboard/receipts/${entry.receipt_id}`)} onMouseEnter={() => prefetch(`/dashboard/receipts/${entry.receipt_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
-                          {entry.reference || entry.ref || '-'}
+                      ) : entry.type === 'receipt' ? (
+                        <button onClick={() => navigate(`/dashboard/receipts/${entry.id}`)} onMouseEnter={() => prefetch(`/dashboard/receipts/${entry.id}`)} className="text-emerald-600 hover:text-emerald-700 hover:underline">
+                          {entry.reference || '-'}
                         </button>
                       ) : (
                         <span className="text-gray-900">{entry.reference || entry.ref || '-'}</span>
@@ -1111,6 +1122,15 @@ export default function TenantDetail() {
                     </td>
                   </tr>
                 ))}
+                {/* Totals row */}
+                {ledgerData?.total_debits !== undefined && (
+                  <tr className="bg-gray-50 font-semibold">
+                    <td className="px-6 py-3 text-sm" colSpan={3}>Totals</td>
+                    <td className="px-6 py-3 text-sm text-right">{formatCurrency(ledgerData.total_debits)}</td>
+                    <td className="px-6 py-3 text-sm text-right">{formatCurrency(ledgerData.total_credits)}</td>
+                    <td className="px-6 py-3 text-sm text-right">{formatCurrency(ledgerData.closing_balance)}</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           )}

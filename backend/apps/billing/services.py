@@ -7,19 +7,28 @@ from calendar import monthrange
 logger = logging.getLogger(__name__)
 
 
-def generate_monthly_invoices(month, year, lease_ids=None, created_by=None):
+def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, created_by=None):
     """
-    Generate monthly rent invoices for all active leases.
+    Generate monthly invoices for active leases.
+    Supports filtering by specific lease_ids or a single property_id.
     Returns (created_invoices, errors).
     """
     from .models import Invoice
     from apps.masterfile.models import LeaseAgreement
+    from django.db.models import Q
 
     leases = LeaseAgreement.objects.filter(
         status='active'
-    ).select_related('tenant', 'unit', 'unit__property')
+    ).select_related('tenant', 'unit', 'unit__property', 'property')
+
     if lease_ids:
         leases = leases.filter(id__in=lease_ids)
+
+    if property_id:
+        # Filter by property — handles both rental (via unit) and levy (via property FK)
+        leases = leases.filter(
+            Q(unit__property_id=property_id) | Q(property_id=property_id)
+        )
 
     _, last_day = monthrange(year, month)
     period_start = date(year, month, 1)
@@ -40,11 +49,10 @@ def generate_monthly_invoices(month, year, lease_ids=None, created_by=None):
 
     for lease in leases:
         if lease.id in existing_lease_ids:
-            errors.append(f'Invoice already exists for {lease.lease_number}')
-            continue
+            continue  # Silently skip already-billed leases (not an error)
 
         # Skip vacant units for rental leases (levy always bills regardless)
-        if lease.lease_type == 'rental' and not lease.unit.is_occupied:
+        if lease.lease_type == 'rental' and lease.unit and not lease.unit.is_occupied:
             errors.append(f'Skipped {lease.lease_number}: rental unit {lease.unit} is vacant')
             continue
 
@@ -56,10 +64,22 @@ def generate_monthly_invoices(month, year, lease_ids=None, created_by=None):
             invoice_type = Invoice.InvoiceType.RENT
             desc_label = 'Rent'
 
+        # Description: use unit for rental, property for levy
+        if lease.unit:
+            location = f'{lease.unit.property.name} - {lease.unit.unit_number}'
+        elif lease.property:
+            location = lease.property.name
+        else:
+            location = lease.tenant.name
+
+        # Resolve property for the invoice
+        inv_property = lease.property or (lease.unit.property if lease.unit else None)
+
         invoices_to_create.append(Invoice(
             tenant=lease.tenant,
             lease=lease,
             unit=lease.unit,
+            property=inv_property,
             invoice_type=invoice_type,
             date=invoice_date,
             due_date=due_date,
@@ -68,7 +88,7 @@ def generate_monthly_invoices(month, year, lease_ids=None, created_by=None):
             amount=lease.monthly_rent,
             vat_amount=Decimal('0'),
             currency=lease.currency,
-            description=f'{desc_label} for {period_start.strftime("%B %Y")} - {lease.unit}',
+            description=f'{desc_label} for {period_start.strftime("%B %Y")} - {location}',
             created_by=created_by
         ))
 
@@ -78,7 +98,7 @@ def generate_monthly_invoices(month, year, lease_ids=None, created_by=None):
             invoice.save()
             created_invoices.append(invoice)
         except Exception as e:
-            errors.append(f'Error creating invoice: {str(e)}')
+            errors.append(f'Error creating invoice for {invoice.tenant}: {str(e)}')
 
     return created_invoices, errors
 

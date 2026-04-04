@@ -302,7 +302,8 @@ export const tenantApi = {
   create: (data: object) => api.post('/masterfile/tenants/', data),
   update: (id: number, data: object) => api.patch(`/masterfile/tenants/${id}/`, data),
   delete: (id: number) => api.delete(`/masterfile/tenants/${id}/`),
-  ledger: (id: number) => api.get(`/masterfile/tenants/${id}/ledger/`),
+  ledger: (id: number, params?: { period_start?: string; period_end?: string }) =>
+    api.get(`/masterfile/tenants/${id}/ledger/`, { params }),
   detailView: (id: number) => api.get(`/masterfile/tenants/${id}/detail_view/`),
 }
 

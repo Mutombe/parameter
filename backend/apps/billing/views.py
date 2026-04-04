@@ -87,9 +87,13 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
         month = serializer.validated_data['month']
         year = serializer.validated_data['year']
         lease_ids = serializer.validated_data.get('lease_ids', [])
+        property_id = serializer.validated_data.get('property_id')
 
         created_invoices, errors = generate_monthly_invoices(
-            month, year, lease_ids=lease_ids or None, created_by=request.user
+            month, year,
+            lease_ids=lease_ids or None,
+            property_id=property_id,
+            created_by=request.user,
         )
 
         return Response({
