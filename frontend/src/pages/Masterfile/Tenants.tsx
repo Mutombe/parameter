@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
-import { Plus, Search, Users, Phone, Mail, Trash2, Loader2, Eye, X, FileText, Receipt, Building2, Calendar, DollarSign, AlertCircle, Home, Download, Wand2, Edit2, LayoutGrid, List } from 'lucide-react'
+import { Plus, Search, Users, Phone, Mail, Trash2, Loader2, Eye, X, FileText, Receipt, Building2, Calendar, DollarSign, AlertCircle, Home, Download, Wand2, Edit2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, FileSpreadsheet } from 'lucide-react'
 import { tenantApi, unitApi, propertyApi, importsApi } from '../../services/api'
@@ -45,14 +45,7 @@ export default function Tenants() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
 
-  // View mode: grid cards or list rows
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
-    try { return (localStorage.getItem('tenants-view') as 'grid' | 'list') || 'grid' } catch { return 'grid' }
-  })
-  const toggleViewMode = (mode: 'grid' | 'list') => {
-    setViewMode(mode)
-    try { localStorage.setItem('tenants-view', mode) } catch {}
-  }
+  // View mode: grid cards only
 
   // Filter state
   const [tenantTypeFilter, setTenantTypeFilter] = useState('')
@@ -396,28 +389,6 @@ export default function Tenants() {
             <p className="text-sm text-gray-500">
               {totalCount} tenant{totalCount !== 1 ? 's' : ''} total
             </p>
-            <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
-              <button
-                onClick={() => toggleViewMode('grid')}
-                className={cn(
-                  'p-2 transition-colors',
-                  viewMode === 'grid' ? 'bg-primary-50 text-primary-600' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
-                )}
-                title="Grid view"
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => toggleViewMode('list')}
-                className={cn(
-                  'p-2 transition-colors',
-                  viewMode === 'list' ? 'bg-primary-50 text-primary-600' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
-                )}
-                title="List view"
-              >
-                <List className="w-4 h-4" />
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -441,7 +412,6 @@ export default function Tenants() {
       )}
 
       {/* Grid View */}
-      {viewMode === 'grid' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {isLoading ? (
             [...Array(6)].map((_, i) => (
@@ -490,7 +460,7 @@ export default function Tenants() {
                 key={tenant.id}
                 onClick={() => navigate(`/dashboard/tenants/${tenant.id}`)}
                 onMouseEnter={() => prefetch(`/dashboard/tenants/${tenant.id}`)}
-                className={cn('card p-5 pl-10 hover:shadow-md transition-shadow relative cursor-pointer', selection.isSelected(tenant.id) && 'ring-2 ring-primary-500 bg-primary-50/30')}
+                className={cn('card p-5 pl-10 hover:shadow-md transition-shadow relative cursor-pointer group', selection.isSelected(tenant.id) && 'ring-2 ring-primary-500 bg-primary-50/30')}
               >
                 <div className="absolute top-3 left-3" onClick={(e) => e.stopPropagation()}>
                   <SelectionCheckbox
@@ -517,7 +487,7 @@ export default function Tenants() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => handleViewDetails(tenant.id)}
                       onMouseEnter={() => prefetch(`/dashboard/tenants/${tenant.id}`)}
@@ -587,10 +557,9 @@ export default function Tenants() {
               </div>
             ))}
         </div>
-      )}
 
-      {/* List View */}
-      {viewMode === 'list' && (
+      {/* List view removed — grid only */}
+      {false && (
         <div>
           {isLoading ? (
             <div className="space-y-2">
@@ -632,7 +601,7 @@ export default function Tenants() {
                     key={tenant.id}
                     initial={isOptimistic ? { opacity: 0.5, backgroundColor: 'rgb(239 246 255)' } : { opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0, backgroundColor: 'transparent' }}
-                    transition={{ delay: isOptimistic ? 0 : index * 0.02, duration: 0.3 }}
+                    transition={{ duration: 0.3 }}
                     onClick={() => !isOptimistic && !isUpdating && navigate(`/dashboard/tenants/${tenant.id}`)}
                     onMouseEnter={() => !isOptimistic && !isUpdating && prefetch(`/dashboard/tenants/${tenant.id}`)}
                     className={cn(

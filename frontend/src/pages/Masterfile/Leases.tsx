@@ -541,9 +541,9 @@ export default function Leases() {
         }
       />
 
-      {/* Stats Cards - icons and labels always visible, only numbers show skeleton */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <motion.div whileHover={{ y: -2 }} className="bg-white rounded-xl border border-gray-200 p-5">
+        <motion.div whileHover={{ y: -1 }} className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-primary-50 flex items-center justify-center">
               <FileText className="w-6 h-6 text-primary-600" />
@@ -560,7 +560,7 @@ export default function Leases() {
         </motion.div>
 
         <motion.div
-          whileHover={{ y: -2 }}
+          whileHover={{ y: -1 }}
           onClick={() => !isLoading && setStatusFilter(statusFilter === 'active' ? '' : 'active')}
           className={cn(
             'bg-white rounded-xl border p-5 cursor-pointer transition-all',
@@ -576,14 +576,17 @@ export default function Leases() {
               {isLoading ? (
                 <div className="h-8 w-10 bg-emerald-100 rounded animate-pulse mt-1" />
               ) : (
-                <p className="text-2xl font-bold text-emerald-600">{stats.active}</p>
+                <>
+                  <p className="text-2xl font-bold text-emerald-600">{stats.active}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{stats.active} leases — {formatCurrency(totalMonthlyRent)}/mo</p>
+                </>
               )}
             </div>
           </div>
         </motion.div>
 
         <motion.div
-          whileHover={{ y: -2 }}
+          whileHover={{ y: -1 }}
           onClick={() => !isLoading && setStatusFilter(statusFilter === 'draft' ? '' : 'draft')}
           className={cn(
             'bg-white rounded-xl border p-5 cursor-pointer transition-all',
@@ -605,7 +608,7 @@ export default function Leases() {
           </div>
         </motion.div>
 
-        <motion.div whileHover={{ y: -2 }} className="bg-white rounded-xl border border-gray-200 p-5">
+        <motion.div whileHover={{ y: -1 }} className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center">
               <AlertTriangle className="w-6 h-6 text-amber-600" />
@@ -620,21 +623,6 @@ export default function Leases() {
             </div>
           </div>
         </motion.div>
-      </div>
-
-      {/* Total Monthly Rent Banner */}
-      <div className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-xl p-6 text-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-primary-100">Total Active Monthly Rent</p>
-            {isLoading ? (
-              <div className="h-9 w-32 bg-primary-400/50 rounded animate-pulse mt-1" />
-            ) : (
-              <p className="text-3xl font-bold mt-1">{formatCurrency(totalMonthlyRent)}</p>
-            )}
-          </div>
-          <DollarSign className="w-12 h-12 text-primary-200" />
-        </div>
       </div>
 
       {/* Search and Filter */}
@@ -729,7 +717,6 @@ export default function Leases() {
                     key={lease.id}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    transition={{ delay: index * 0.02 }}
                     onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
                     onMouseEnter={() => prefetch(`/dashboard/leases/${lease.id}`)}
                     className={cn('hover:bg-gray-50 transition-colors group cursor-pointer', selection.isSelected(lease.id) && 'bg-primary-50/60')}
@@ -741,10 +728,7 @@ export default function Leases() {
                       />
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                          <FileText className="w-5 h-5 text-blue-600" />
-                        </div>
+                      <div className="flex items-center gap-2">
                         <span className="font-semibold text-gray-900">{lease.lease_number}</span>
                         {lease.document && <Paperclip className="w-3.5 h-3.5 text-gray-400" />}
                       </div>

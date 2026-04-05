@@ -174,7 +174,7 @@ export default function BalanceSheetMovements() {
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => bsMovementApi.create(data),
     onSuccess: () => {
-      showToast.success('Balance sheet movement created')
+      showToast.success('Account transfer created')
       queryClient.invalidateQueries({ queryKey: ['bs-movements'] })
       setShowCreateModal(false)
       resetForm()
@@ -267,12 +267,12 @@ export default function BalanceSheetMovements() {
     return (
       <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
         <PageHeader
-          title="Balance Sheet Movements"
-          subtitle="Non-cash balance sheet value movements"
+          title="Account Transfers"
+          subtitle="Non-cash account value transfers"
           icon={GitCompare}
           breadcrumbs={[
             { label: 'Dashboard', href: '/dashboard' },
-            { label: 'Balance Sheet Movements' },
+            { label: 'Account Transfers' },
           ]}
         />
         <SkeletonBSMovements />
@@ -284,18 +284,18 @@ export default function BalanceSheetMovements() {
     return (
       <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
         <PageHeader
-          title="Balance Sheet Movements"
-          subtitle="Non-cash balance sheet value movements"
+          title="Account Transfers"
+          subtitle="Non-cash account value transfers"
           icon={GitCompare}
           breadcrumbs={[
             { label: 'Dashboard', href: '/dashboard' },
-            { label: 'Balance Sheet Movements' },
+            { label: 'Account Transfers' },
           ]}
         />
         <EmptyState
           icon={XCircle}
           title="Failed to load movements"
-          description="There was an error loading balance sheet movements."
+          description="There was an error loading account transfers."
           action={
             <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['bs-movements'] })}>
               Try Again
@@ -309,12 +309,12 @@ export default function BalanceSheetMovements() {
   return (
     <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
       <PageHeader
-        title="Balance Sheet Movements"
+        title="Account Transfers"
         subtitle={`${totalCount} total movements`}
         icon={GitCompare}
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
-          { label: 'Balance Sheet Movements' },
+          { label: 'Account Transfers' },
         ]}
         actions={
           <Button onClick={() => setShowCreateModal(true)} className="gap-2">
@@ -419,8 +419,8 @@ export default function BalanceSheetMovements() {
       {movements.length === 0 ? (
         <EmptyState
           icon={GitCompare}
-          title="No balance sheet movements found"
-          description="Create your first balance sheet movement to record non-cash value changes."
+          title="No account transfers found"
+          description="Create your first account transfer to record non-cash value changes."
           action={
             <Button onClick={() => setShowCreateModal(true)}>
               <Plus className="h-4 w-4 mr-2" />
@@ -463,7 +463,7 @@ export default function BalanceSheetMovements() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, x: -20 }}
-                        transition={{ delay: index * 0.02 }}
+                        transition={{ duration: 0.3 }}
                         onClick={() => setShowDetail(movement)}
                         className={cn(
                           'border-b border-gray-50 cursor-pointer transition-colors hover:bg-gray-50/50',
@@ -557,7 +557,7 @@ export default function BalanceSheetMovements() {
       <Modal
         isOpen={showCreateModal}
         onClose={() => { setShowCreateModal(false); resetForm() }}
-        title="New Balance Sheet Movement"
+        title="New Account Transfer"
         size="lg"
       >
         <form onSubmit={handleSubmit} className="space-y-4">

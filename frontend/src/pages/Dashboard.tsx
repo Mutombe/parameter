@@ -36,10 +36,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
 } from 'recharts'
 import { reportsApi, subsidiaryApi } from '../services/api'
 import { formatCurrency, formatPercent, formatDate, formatDistanceToNow, cn } from '../lib/utils'
@@ -91,11 +87,11 @@ function StatCard({ title, value, subtitle, icon: Icon, color, isLoading, href, 
   return (
     <motion.div
       variants={item}
-      whileHover={{ scale: 1.03, y: -4 }}
+      whileHover={{ y: -1 }}
       transition={{ type: 'spring', stiffness: 300, damping: 20 }}
       onClick={href ? () => navigate(href) : undefined}
       className={cn(
-        "bg-white rounded-xl border border-gray-200 p-4 md:p-6 hover:shadow-xl hover:border-gray-300 transition-[box-shadow,border-color] duration-300",
+        "bg-white rounded-xl border border-gray-200 p-4 md:p-6 hover:shadow-md hover:border-gray-300 transition-[box-shadow,border-color] duration-300",
         href && "cursor-pointer"
       )}
     >
@@ -232,7 +228,7 @@ export default function Dashboard() {
     {
       title: 'Monthly Revenue',
       value: formatCurrency(stats?.monthly?.invoiced || 0),
-      subtitle: `${formatCurrency(stats?.monthly?.collected || 0)} collected`,
+      subtitle: `${formatCurrency(stats?.monthly?.collected || 0)} collected (${formatPercent(collectionRate)})`,
       icon: Wallet,
       color: 'purple' as const,
       href: '/dashboard/invoices',
@@ -241,29 +237,11 @@ export default function Dashboard() {
     {
       title: 'Outstanding',
       value: formatCurrency(stats?.financial?.outstanding || 0),
-      subtitle: `${formatPercent(collectionRate)} collection rate`,
+      subtitle: `${overdueInvoices} overdue invoice${overdueInvoices !== 1 ? 's' : ''} (${formatCurrency(stats?.alerts?.overdue_amount || 0)})`,
       icon: Receipt,
       color: 'orange' as const,
       href: '/dashboard/reports/aged-analysis',
       tooltip: 'Total unpaid balance across all tenants',
-    },
-    {
-      title: 'Collection Rate',
-      value: formatPercent(collectionRate),
-      subtitle: collectionRate >= 85 ? 'On target' : 'Below target',
-      icon: PiggyBank,
-      color: (collectionRate >= 85 ? 'green' : 'red') as 'green' | 'red',
-      href: '/dashboard/receipts',
-      tooltip: 'Percentage of invoiced amounts collected',
-    },
-    {
-      title: 'Overdue Invoices',
-      value: overdueInvoices,
-      subtitle: formatCurrency(stats?.alerts?.overdue_amount || 0),
-      icon: AlertTriangle,
-      color: (overdueInvoices > 0 ? 'red' : 'cyan') as 'red' | 'cyan',
-      href: '/dashboard/invoices',
-      tooltip: 'Invoices past their due date',
     },
   ]
 
@@ -277,10 +255,10 @@ export default function Dashboard() {
     : []
 
   const quickActions = [
-    { label: 'New Invoice', href: '/dashboard/invoices?action=create', icon: Receipt, color: 'blue' },
-    { label: 'Record Receipt', href: '/dashboard/receipts?action=create', icon: DollarSign, color: 'green' },
-    { label: 'Add Tenant', href: '/dashboard/tenants?action=create', icon: LiaUsersSolid, color: 'purple' },
-    { label: 'View Reports', href: '/dashboard/reports', icon: Activity, color: 'orange' },
+    { label: 'New Invoice', href: '/dashboard/invoices?action=create', icon: Receipt },
+    { label: 'Record Receipt', href: '/dashboard/receipts?action=create', icon: DollarSign },
+    { label: 'Add Tenant', href: '/dashboard/tenants?action=create', icon: LiaUsersSolid },
+    { label: 'View Reports', href: '/dashboard/reports', icon: Activity },
   ]
 
   return (
@@ -306,678 +284,45 @@ export default function Dashboard() {
         </div>
       </motion.div>
 
-      {/* Month Summary Banner */}
-      {!isLoading && stats && (
-        <motion.div
-          initial={{ opacity: 0, y: -5 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-xl p-4 md:p-5 text-white"
-        >
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-white/15 rounded-lg">
-                <Zap className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-sm font-medium text-white/80">
-                  {new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })} Summary
-                </h2>
-                <p className="text-base md:text-lg font-semibold">
-                  {stats?.monthly?.paid_invoices || 0} of {stats?.monthly?.total_invoices || 0} invoices paid
-                  {stats?.financial?.outstanding > 0 && (
-                    <span className="text-white/80 font-normal"> &middot; {formatCurrency(stats.financial.outstanding)} outstanding</span>
-                  )}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4 text-sm">
-              <div className="text-center">
-                <p className="text-white/70 text-xs">Collected</p>
-                <p className="font-bold">{formatCurrency(stats?.monthly?.collected || 0)}</p>
-              </div>
-              <div className="w-px h-8 bg-white/20" />
-              <div className="text-center">
-                <p className="text-white/70 text-xs">Invoiced</p>
-                <p className="font-bold">{formatCurrency(stats?.monthly?.invoiced || 0)}</p>
-              </div>
-              <div className="w-px h-8 bg-white/20" />
-              <div className="text-center">
-                <p className="text-white/70 text-xs">Collection Rate</p>
-                <p className="font-bold">{formatPercent(collectionRate)}</p>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
       {/* Onboarding Checklist - shown for new tenants */}
       {!isLoading && stats && <OnboardingChecklist stats={stats} />}
 
-      {/* Action Required Section */}
-      {!isLoading && stats && ((stats?.alerts?.overdue_invoices || 0) > 0 || (stats?.alerts?.expiring_leases || 0) > 0) && (
-        <motion.div
-          initial={{ opacity: 0, y: -5 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="bg-white rounded-xl border border-red-200 p-5"
-        >
-          <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-red-500" />
-            Action Required
-          </h3>
-          <div className="space-y-2">
-            {(stats?.alerts?.overdue_invoices || 0) > 0 && (
-              <button
-                onClick={() => navigate('/dashboard/invoices?status=overdue')}
-                className="w-full flex items-center justify-between p-3 bg-red-50 hover:bg-red-100 rounded-lg transition-colors group"
-              >
-                <div className="flex items-center gap-2">
-                  <Receipt className="w-4 h-4 text-red-600" />
-                  <span className="text-sm text-gray-700">
-                    <span className="font-semibold text-red-600">{stats.alerts.overdue_invoices}</span> overdue invoice{stats.alerts.overdue_invoices !== 1 ? 's' : ''} totalling {formatCurrency(stats.alerts.overdue_amount || 0)}
-                  </span>
-                </div>
-                <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-              </button>
-            )}
-            {(stats?.alerts?.expiring_leases || 0) > 0 && (
-              <button
-                onClick={() => navigate('/dashboard/leases?status=active&expiring=true')}
-                className="w-full flex items-center justify-between p-3 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors group"
-              >
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-amber-600" />
-                  <span className="text-sm text-gray-700">
-                    <span className="font-semibold text-amber-600">{stats.alerts.expiring_leases}</span> lease{stats.alerts.expiring_leases !== 1 ? 's' : ''} expiring within 30 days
-                  </span>
-                </div>
-                <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-              </button>
-            )}
-          </div>
-        </motion.div>
-      )}
-
-      {/* KPI Cards */}
+      {/* KPI Cards (4 cards) */}
       <motion.div
         variants={container}
         initial="hidden"
         animate="show"
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
       >
         {kpis.map((kpi) => (
           <StatCard key={kpi.title} {...kpi} isLoading={isLoading} />
         ))}
       </motion.div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Revenue Chart */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
-          className="bg-white rounded-xl border border-gray-200 p-4 md:p-6 lg:col-span-2 hover:shadow-lg transition-shadow duration-300"
-        >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4 md:mb-6">
-            <div>
-              <h3 className="text-base md:text-lg font-semibold text-gray-900">Revenue Overview</h3>
-              <p className="text-xs md:text-sm text-gray-500">Invoiced vs Collected amounts</p>
-            </div>
-            <div className="flex items-center gap-3 md:gap-4 text-xs md:text-sm">
-              <div className="flex items-center gap-1.5 md:gap-2">
-                <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-blue-500" />
-                <span className="text-gray-600">Invoiced</span>
-              </div>
-              <div className="flex items-center gap-1.5 md:gap-2">
-                <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-emerald-500" />
-                <span className="text-gray-600">Collected</span>
-              </div>
-            </div>
-          </div>
-          <div className="h-56 md:h-72">
-            {isLoading || !revenueData.length ? (
-              <div className="w-full h-full flex flex-col justify-end gap-2 px-4 pb-4">
-                <div className="flex items-end gap-3 h-full">
-                  {[40, 55, 65, 50, 70, 60, 75].map((h, i) => (
-                    <div key={i} className="flex-1 flex flex-col gap-1 justify-end h-full">
-                      <div
-                        className="w-full bg-gray-200 rounded-t animate-pulse"
-                        style={{ height: `${h}%` }}
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div className="flex justify-between">
-                  {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-                    <div key={i} className="h-3 w-8 bg-gray-200 rounded animate-pulse" />
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={revenueData}>
-                  <defs>
-                    <linearGradient id="invoicedGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="collectedGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
-                  <Tooltip
-                    formatter={(value: number) => formatCurrency(value)}
-                    contentStyle={{
-                      borderRadius: '12px',
-                      border: '1px solid #e2e8f0',
-                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-                    }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="invoiced"
-                    stroke="#3b82f6"
-                    strokeWidth={2}
-                    fill="url(#invoicedGradient)"
-                    name="Invoiced"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="collected"
-                    stroke="#10b981"
-                    strokeWidth={2}
-                    fill="url(#collectedGradient)"
-                    name="Collected"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </motion.div>
+      {/* Quick Actions - compact horizontal row */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="flex gap-3 flex-wrap"
+      >
+        {quickActions.map((action) => (
+          <button
+            key={action.label}
+            onClick={() => navigate(action.href)}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-colors"
+          >
+            <action.icon className="w-4 h-4 text-gray-500" />
+            {action.label}
+          </button>
+        ))}
+      </motion.div>
 
-        {/* Occupancy Pie Chart */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
-          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow duration-300"
-        >
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Unit Occupancy</h3>
-            <p className="text-sm text-gray-500">Current status breakdown</p>
-          </div>
-          <div className="h-48 relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  innerRadius={55}
-                  outerRadius={75}
-                  paddingAngle={4}
-                  dataKey="value"
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value: number, name: string) => [
-                    `${value} unit${value !== 1 ? 's' : ''} (${stats?.properties?.units ? ((value / stats.properties.units) * 100).toFixed(1) : 0}%)`,
-                    name
-                  ]}
-                  contentStyle={{
-                    borderRadius: '12px',
-                    border: '1px solid #e2e8f0',
-                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                    fontSize: '13px',
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center">
-                {isLoading ? (
-                  <div className="h-9 w-16 bg-gray-200 rounded animate-pulse mx-auto" />
-                ) : (
-                  <p className="text-3xl font-bold text-gray-900" title={`${stats?.properties?.units - stats?.properties?.vacant || 0} of ${stats?.properties?.units || 0} units occupied`}>{formatPercent(occupancyRate)}</p>
-                )}
-                <p className="text-xs text-gray-500">Occupied</p>
-              </div>
-            </div>
-          </div>
-          <div className="flex justify-center gap-6 mt-4">
-            {pieData.map((entry) => (
-              <div key={entry.name} className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
-                <span className="text-sm text-gray-600">{entry.name}</span>
-                {isLoading ? (
-                  <div className="h-4 w-6 bg-gray-200 rounded animate-pulse" />
-                ) : (
-                  <span className="text-sm font-semibold text-gray-900">{entry.value}</span>
-                )}
-              </div>
-            ))}
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Additional Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Invoiced vs Collected Bar Chart */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35 }}
-          whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
-          className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2 hover:shadow-lg transition-shadow duration-300"
-        >
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">Monthly Invoiced vs Collected</h3>
-          <p className="text-sm text-gray-500 mb-6">Comparison of billed and received amounts</p>
-          <div className="h-64">
-            {isLoading || !revenueData.length ? (
-              <div className="w-full h-full flex items-end gap-3 px-4 pb-4">
-                {[50, 65, 40, 75, 55, 60].map((h, i) => (
-                  <div key={i} className="flex-1 flex gap-1 justify-end h-full items-end">
-                    <div className="w-1/2 bg-gray-200 rounded-t animate-pulse" style={{ height: `${h}%` }} />
-                    <div className="w-1/2 bg-gray-200 rounded-t animate-pulse" style={{ height: `${h * 0.7}%` }} />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={revenueData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
-                  <Bar dataKey="invoiced" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Invoiced" />
-                  <Bar dataKey="collected" fill="#10b981" radius={[4, 4, 0, 0]} name="Collected" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Expense Breakdown Pie Chart */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
-          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow duration-300"
-        >
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">Expense Breakdown</h3>
-          <p className="text-sm text-gray-500 mb-4">By category</p>
-          <div className="h-48 relative">
-            {isLoading ? (
-              <div className="w-full h-full flex items-center justify-center">
-                <div className="w-32 h-32 rounded-full bg-gray-200 animate-pulse" />
-              </div>
-            ) : (() => {
-              const expenseData = stats?.expense_breakdown || []
-              const COLORS = ['#f43f5e', '#f59e0b', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899']
-              return expenseData.length > 0 ? (
-                <>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={expenseData} innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="amount" nameKey="category">
-                        {expenseData.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="flex flex-wrap justify-center gap-3 mt-2">
-                    {expenseData.slice(0, 4).map((e: any, i: number) => (
-                      <div key={e.category} className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                        <span className="text-xs text-gray-600">{e.category}</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">
-                  No expense data
-                </div>
-              )
-            })()}
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Aged Receivables & Activity Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Aged Receivables */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.42 }}
-          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow duration-300"
-        >
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">Aged Receivables</h3>
-          <p className="text-sm text-gray-500 mb-4">Outstanding invoices by age</p>
-          {isLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3, 4].map(i => (
-                <div key={i} className="flex items-center gap-3">
-                  <div className="h-4 w-16 bg-gray-200 rounded animate-pulse" />
-                  <div className="flex-1 h-6 bg-gray-200 rounded animate-pulse" />
-                  <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
-                </div>
-              ))}
-            </div>
-          ) : (() => {
-            const aged = stats?.aged_receivables || {}
-            const buckets = [
-              { label: 'Current', amount: aged.current || 0, color: 'bg-emerald-500' },
-              { label: '1-30 days', amount: aged.days_30 || 0, color: 'bg-yellow-500' },
-              { label: '31-60 days', amount: aged.days_60 || 0, color: 'bg-orange-500' },
-              { label: '61-90 days', amount: aged.days_90 || 0, color: 'bg-red-500' },
-              { label: '90+ days', amount: aged.days_90_plus || 0, color: 'bg-red-700' },
-            ]
-            const maxAmount = Math.max(...buckets.map(b => b.amount), 1)
-            return (
-              <div className="space-y-3">
-                {buckets.map(bucket => (
-                  <div key={bucket.label} className="flex items-center gap-3">
-                    <span className="text-xs font-medium text-gray-500 w-16 shrink-0">{bucket.label}</span>
-                    <div className="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.max((bucket.amount / maxAmount) * 100, bucket.amount > 0 ? 3 : 0)}%` }}
-                        transition={{ duration: 0.6, delay: 0.1 }}
-                        className={cn('h-full rounded-full', bucket.color)}
-                      />
-                    </div>
-                    <span className="text-xs font-semibold text-gray-700 tabular-nums w-24 text-right">
-                      {formatCurrency(bucket.amount)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )
-          })()}
-        </motion.div>
-
-        {/* Activity Feed */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.45 }}
-          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow duration-300"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
-            <button
-              onClick={() => navigate('/dashboard/audit-trail')}
-              className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
-            >
-              View all <ArrowRight className="w-3 h-3" />
-            </button>
-          </div>
-          {isLoading ? (
-            <div className="space-y-4">
-              {[1, 2, 3, 4, 5].map(i => (
-                <div key={i} className="flex gap-3">
-                  <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse shrink-0" />
-                  <div className="flex-1 space-y-1.5">
-                    <div className="h-3 w-3/4 bg-gray-200 rounded animate-pulse" />
-                    <div className="h-2.5 w-1/3 bg-gray-200 rounded animate-pulse" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (() => {
-            const activities = stats?.recent_activity || []
-            if (activities.length === 0) {
-              return (
-                <div className="text-center py-8 text-gray-400 text-sm">
-                  <Activity className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  No recent activity
-                </div>
-              )
-            }
-            const activityIcons: Record<string, { icon: typeof Receipt; color: string; bg: string }> = {
-              receipt: { icon: CreditCard, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-              invoice: { icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50' },
-              lease: { icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50' },
-              tenant: { icon: UserPlus, color: 'text-orange-600', bg: 'bg-orange-50' },
-              expense: { icon: Wallet, color: 'text-red-600', bg: 'bg-red-50' },
-              default: { icon: CheckCircle2, color: 'text-gray-600', bg: 'bg-gray-50' },
-            }
-            return (
-              <div className="space-y-1 max-h-[280px] overflow-y-auto">
-                {activities.slice(0, 8).map((act: any, i: number) => {
-                  const config = activityIcons[act.type] || activityIcons.default
-                  const ActIcon = config.icon
-                  return (
-                    <div key={i} className="flex gap-3 py-2 px-1 rounded-lg hover:bg-gray-50 transition-colors">
-                      <div className={cn('p-1.5 rounded-lg shrink-0', config.bg)}>
-                        <ActIcon className={cn('w-4 h-4', config.color)} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-700 truncate">{act.description}</p>
-                        <p className="text-xs text-gray-500">{act.timestamp ? formatDistanceToNow(act.timestamp) : ''}</p>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })()}
-        </motion.div>
-      </div>
-
-      {/* Bottom Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Alerts */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
-          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow duration-300"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Alerts</h3>
-            {isLoading ? (
-              <div className="h-6 w-16 bg-gray-200 rounded-full animate-pulse" />
-            ) : (
-              <span className="px-2 py-1 text-xs font-medium bg-red-100 text-red-700 rounded-full">
-                {(stats?.alerts?.overdue_invoices || 0) + (stats?.alerts?.expiring_leases || 0)} items
-              </span>
-            )}
-          </div>
-          <div className="space-y-3">
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-              onClick={() => navigate('/dashboard/invoices')}
-              title="View all overdue invoices"
-              className="w-full flex items-center justify-between p-4 bg-red-50 hover:bg-red-100 hover:shadow-md rounded-xl transition-[background-color,box-shadow] group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-red-100 rounded-lg">
-                  <AlertTriangle className="w-5 h-5 text-red-600" />
-                </div>
-                <div className="text-left">
-                  <p className="text-sm font-medium text-gray-900">Overdue Invoices</p>
-                  {isLoading ? (
-                    <div className="h-3 w-24 bg-gray-200 rounded animate-pulse mt-1" />
-                  ) : (
-                    <p className="text-xs text-gray-500">{formatCurrency(stats?.alerts?.overdue_amount || 0)} outstanding</p>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {isLoading ? (
-                  <div className="h-7 w-8 bg-gray-200 rounded animate-pulse" />
-                ) : (
-                  <span className="text-xl font-bold text-red-600">{stats?.alerts?.overdue_invoices || 0}</span>
-                )}
-                <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors" />
-              </div>
-            </motion.button>
-
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-              onClick={() => navigate('/dashboard/leases')}
-              title="View leases expiring within 30 days"
-              className="w-full flex items-center justify-between p-4 bg-amber-50 hover:bg-amber-100 hover:shadow-md rounded-xl transition-[background-color,box-shadow] group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-100 rounded-lg">
-                  <Calendar className="w-5 h-5 text-amber-600" />
-                </div>
-                <div className="text-left">
-                  <p className="text-sm font-medium text-gray-900">Expiring Leases</p>
-                  <p className="text-xs text-gray-500">Within next 30 days</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {isLoading ? (
-                  <div className="h-7 w-8 bg-gray-200 rounded animate-pulse" />
-                ) : (
-                  <span className="text-xl font-bold text-amber-600">{stats?.alerts?.expiring_leases || 0}</span>
-                )}
-                <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors" />
-              </div>
-            </motion.button>
-          </div>
-        </motion.div>
-
-        {/* Quick Actions */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
-          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow duration-300"
-        >
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-          <div className="grid grid-cols-2 gap-3">
-            {quickActions.map((action) => (
-              <motion.button
-                key={action.label}
-                whileHover={{ scale: 1.03, y: -2 }}
-                whileTap={{ scale: 0.97 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                onClick={() => navigate(action.href)}
-                title={action.label}
-                className={cn(
-                  'flex flex-col items-center gap-2 p-4 rounded-xl transition-[background-color,box-shadow] hover:shadow-md',
-                  action.color === 'blue' && 'bg-blue-50 hover:bg-blue-100',
-                  action.color === 'green' && 'bg-emerald-50 hover:bg-emerald-100',
-                  action.color === 'purple' && 'bg-purple-50 hover:bg-purple-100',
-                  action.color === 'orange' && 'bg-orange-50 hover:bg-orange-100',
-                )}
-              >
-                <action.icon className={cn(
-                  'w-6 h-6',
-                  action.color === 'blue' && 'text-blue-600',
-                  action.color === 'green' && 'text-emerald-600',
-                  action.color === 'purple' && 'text-purple-600',
-                  action.color === 'orange' && 'text-orange-600',
-                )} />
-                <span className="text-sm font-medium text-gray-700">{action.label}</span>
-              </motion.button>
-            ))}
-          </div>
-        </motion.div>
-
-        {/* Entity Stats */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.6 }}
-          whileHover={{ y: -2, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
-          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-shadow duration-300"
-        >
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Stats</h3>
-          <div className="space-y-4">
-            <motion.button
-              whileHover={{ x: 4 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-              onClick={() => navigate('/dashboard/landlords')}
-              className="w-full flex items-center justify-between p-3 hover:bg-gray-50 hover:shadow-sm rounded-lg transition-[background-color,box-shadow] group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-50 rounded-lg">
-                  <PiUsersFour className="w-5 h-5 text-blue-600" />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Landlords</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {isLoading ? (
-                  <div className="h-6 w-8 bg-gray-200 rounded animate-pulse" />
-                ) : (
-                  <span className="text-lg font-bold text-gray-900">{stats?.counts?.landlords || 0}</span>
-                )}
-                <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-              </div>
-            </motion.button>
-
-            <motion.button
-              whileHover={{ x: 4 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-              onClick={() => navigate('/dashboard/tenants')}
-              className="w-full flex items-center justify-between p-3 hover:bg-gray-50 hover:shadow-sm rounded-lg transition-[background-color,box-shadow] group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-purple-50 rounded-lg">
-                  <LiaUsersSolid className="w-5 h-5 text-purple-600" />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Tenants</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {isLoading ? (
-                  <div className="h-6 w-8 bg-gray-200 rounded animate-pulse" />
-                ) : (
-                  <span className="text-lg font-bold text-gray-900">{stats?.counts?.tenants || 0}</span>
-                )}
-                <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-              </div>
-            </motion.button>
-
-            <motion.button
-              whileHover={{ x: 4 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-              onClick={() => navigate('/dashboard/leases')}
-              className="w-full flex items-center justify-between p-3 hover:bg-gray-50 hover:shadow-sm rounded-lg transition-[background-color,box-shadow] group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-emerald-50 rounded-lg">
-                  <TrendingUp className="w-5 h-5 text-emerald-600" />
-                </div>
-                <span className="text-sm font-medium text-gray-700">Active Leases</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {isLoading ? (
-                  <div className="h-6 w-8 bg-gray-200 rounded animate-pulse" />
-                ) : (
-                  <span className="text-lg font-bold text-gray-900">{stats?.counts?.active_leases || 0}</span>
-                )}
-                <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-              </div>
-            </motion.button>
-          </div>
-        </motion.div>
-      </div>
-
-      {/* ===== FINANCIAL OVERVIEW SECTION ===== */}
+      {/* ===== TRUST ACCOUNT SUMMARY SECTION ===== */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.65 }}
+        transition={{ delay: 0.15 }}
         className="space-y-6"
       >
         <div className="flex items-center justify-between">
@@ -1042,7 +387,7 @@ export default function Dashboard() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7 }}
+          transition={{ delay: 0.2 }}
           className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow duration-300"
         >
           <div className="p-6 border-b border-gray-100 flex items-center justify-between">
@@ -1172,66 +517,378 @@ export default function Dashboard() {
             )}
           </div>
         </motion.div>
+      </motion.div>
 
-        {/* Quick Actions for Financial */}
+      {/* Month Summary Banner */}
+      {!isLoading && stats && (
+        <motion.div
+          initial={{ opacity: 0, y: -5 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="bg-gradient-to-r from-primary-600 to-primary-700 rounded-xl p-4 md:p-5 text-white"
+        >
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-white/15 rounded-lg">
+                <Zap className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-sm font-medium text-white/80">
+                  {new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })} Summary
+                </h2>
+                <p className="text-base md:text-lg font-semibold">
+                  {stats?.monthly?.paid_invoices || 0} of {stats?.monthly?.total_invoices || 0} invoices paid
+                  {stats?.financial?.outstanding > 0 && (
+                    <span className="text-white/80 font-normal"> &middot; {formatCurrency(stats.financial.outstanding)} outstanding</span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-sm">
+              <div className="text-center">
+                <p className="text-white/70 text-xs">Collected</p>
+                <p className="font-bold">{formatCurrency(stats?.monthly?.collected || 0)}</p>
+              </div>
+              <div className="w-px h-8 bg-white/20" />
+              <div className="text-center">
+                <p className="text-white/70 text-xs">Invoiced</p>
+                <p className="font-bold">{formatCurrency(stats?.monthly?.invoiced || 0)}</p>
+              </div>
+              <div className="w-px h-8 bg-white/20" />
+              <div className="text-center">
+                <p className="text-white/70 text-xs">Collection Rate</p>
+                <p className="font-bold">{formatPercent(collectionRate)}</p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Charts Row: Revenue trend (2/3) + Occupancy donut (1/3) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Revenue Chart */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.75 }}
-          className="grid grid-cols-1 sm:grid-cols-3 gap-4"
+          transition={{ delay: 0.3 }}
+          whileHover={{ y: -1, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
+          className="bg-white rounded-xl border border-gray-200 p-4 md:p-6 lg:col-span-2 hover:shadow-md transition-shadow duration-300"
         >
-          <motion.button
-            whileHover={{ scale: 1.02, y: -2 }}
-            whileTap={{ scale: 0.98 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-            onClick={() => navigate('/dashboard/subsidiary-ledger')}
-            className="flex items-center gap-3 p-4 bg-white rounded-xl border border-gray-200 hover:shadow-md hover:border-gray-300 transition-all"
-          >
-            <div className="p-2 bg-blue-50 rounded-lg">
-              <Layers className="w-5 h-5 text-blue-600" />
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4 md:mb-6">
+            <div>
+              <h3 className="text-base md:text-lg font-semibold text-gray-900">Revenue Overview</h3>
+              <p className="text-xs md:text-sm text-gray-500">Invoiced vs Collected amounts</p>
             </div>
-            <div className="text-left">
-              <p className="text-sm font-medium text-gray-900">View Full Subsidiary Ledger</p>
-              <p className="text-xs text-gray-500">Browse all sub-accounts</p>
+            <div className="flex items-center gap-3 md:gap-4 text-xs md:text-sm">
+              <div className="flex items-center gap-1.5 md:gap-2">
+                <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-blue-500" />
+                <span className="text-gray-600">Invoiced</span>
+              </div>
+              <div className="flex items-center gap-1.5 md:gap-2">
+                <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-emerald-500" />
+                <span className="text-gray-600">Collected</span>
+              </div>
             </div>
-            <ChevronRight className="w-4 h-4 text-gray-400 ml-auto" />
-          </motion.button>
-
-          <motion.button
-            whileHover={{ scale: 1.02, y: -2 }}
-            whileTap={{ scale: 0.98 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-            onClick={() => navigate('/dashboard/invoices?action=generate')}
-            className="flex items-center gap-3 p-4 bg-white rounded-xl border border-gray-200 hover:shadow-md hover:border-gray-300 transition-all"
-          >
-            <div className="p-2 bg-purple-50 rounded-lg">
-              <FileText className="w-5 h-5 text-purple-600" />
-            </div>
-            <div className="text-left">
-              <p className="text-sm font-medium text-gray-900">Generate Monthly Billing</p>
-              <p className="text-xs text-gray-500">Create invoices for all tenants</p>
-            </div>
-            <ChevronRight className="w-4 h-4 text-gray-400 ml-auto" />
-          </motion.button>
-
-          <motion.button
-            whileHover={{ scale: 1.02, y: -2 }}
-            whileTap={{ scale: 0.98 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-            onClick={() => navigate('/dashboard/receipts?action=create')}
-            className="flex items-center gap-3 p-4 bg-white rounded-xl border border-gray-200 hover:shadow-md hover:border-gray-300 transition-all"
-          >
-            <div className="p-2 bg-emerald-50 rounded-lg">
-              <DollarSign className="w-5 h-5 text-emerald-600" />
-            </div>
-            <div className="text-left">
-              <p className="text-sm font-medium text-gray-900">Record Receipt</p>
-              <p className="text-xs text-gray-500">Record a new payment</p>
-            </div>
-            <ChevronRight className="w-4 h-4 text-gray-400 ml-auto" />
-          </motion.button>
+          </div>
+          <div className="h-56 md:h-72">
+            {isLoading || !revenueData.length ? (
+              <div className="w-full h-full flex flex-col justify-end gap-2 px-4 pb-4">
+                <div className="flex items-end gap-3 h-full">
+                  {[40, 55, 65, 50, 70, 60, 75].map((h, i) => (
+                    <div key={i} className="flex-1 flex flex-col gap-1 justify-end h-full">
+                      <div
+                        className="w-full bg-gray-200 rounded-t animate-pulse"
+                        style={{ height: `${h}%` }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between">
+                  {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                    <div key={i} className="h-3 w-8 bg-gray-200 rounded animate-pulse" />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={revenueData}>
+                  <defs>
+                    <linearGradient id="invoicedGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="collectedGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} />
+                  <Tooltip
+                    formatter={(value: number) => formatCurrency(value)}
+                    contentStyle={{
+                      borderRadius: '12px',
+                      border: '1px solid #e2e8f0',
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="invoiced"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    fill="url(#invoicedGradient)"
+                    name="Invoiced"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="collected"
+                    stroke="#10b981"
+                    strokeWidth={2}
+                    fill="url(#collectedGradient)"
+                    name="Collected"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </div>
         </motion.div>
-      </motion.div>
+
+        {/* Occupancy Pie Chart */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+          whileHover={{ y: -1, transition: { type: 'spring', stiffness: 300, damping: 20 } }}
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow duration-300"
+        >
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Unit Occupancy</h3>
+            <p className="text-sm text-gray-500">Current status breakdown</p>
+          </div>
+          <div className="h-48 relative">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={pieData}
+                  innerRadius={55}
+                  outerRadius={75}
+                  paddingAngle={4}
+                  dataKey="value"
+                >
+                  {pieData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value: number, name: string) => [
+                    `${value} unit${value !== 1 ? 's' : ''} (${stats?.properties?.units ? ((value / stats.properties.units) * 100).toFixed(1) : 0}%)`,
+                    name
+                  ]}
+                  contentStyle={{
+                    borderRadius: '12px',
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                    fontSize: '13px',
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center">
+                {isLoading ? (
+                  <div className="h-9 w-16 bg-gray-200 rounded animate-pulse mx-auto" />
+                ) : (
+                  <p className="text-3xl font-bold text-gray-900" title={`${stats?.properties?.units - stats?.properties?.vacant || 0} of ${stats?.properties?.units || 0} units occupied`}>{formatPercent(occupancyRate)}</p>
+                )}
+                <p className="text-xs text-gray-500">Occupied</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-center gap-6 mt-4">
+            {pieData.map((entry) => (
+              <div key={entry.name} className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
+                <span className="text-sm text-gray-600">{entry.name}</span>
+                {isLoading ? (
+                  <div className="h-4 w-6 bg-gray-200 rounded animate-pulse" />
+                ) : (
+                  <span className="text-sm font-semibold text-gray-900">{entry.value}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Action Required Section */}
+      {!isLoading && stats && ((stats?.alerts?.overdue_invoices || 0) > 0 || (stats?.alerts?.expiring_leases || 0) > 0) && (
+        <motion.div
+          initial={{ opacity: 0, y: -5 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="bg-white rounded-xl border border-red-200 p-5"
+        >
+          <h3 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-500" />
+            Action Required
+          </h3>
+          <div className="space-y-2">
+            {(stats?.alerts?.overdue_invoices || 0) > 0 && (
+              <button
+                onClick={() => navigate('/dashboard/invoices?status=overdue')}
+                className="w-full flex items-center justify-between p-3 bg-red-50 hover:bg-red-100 rounded-lg transition-colors group"
+              >
+                <div className="flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-red-600" />
+                  <span className="text-sm text-gray-700">
+                    <span className="font-semibold text-red-600">{stats.alerts.overdue_invoices}</span> overdue invoice{stats.alerts.overdue_invoices !== 1 ? 's' : ''} totalling {formatCurrency(stats.alerts.overdue_amount || 0)}
+                  </span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
+              </button>
+            )}
+            {(stats?.alerts?.expiring_leases || 0) > 0 && (
+              <button
+                onClick={() => navigate('/dashboard/leases?status=active&expiring=true')}
+                className="w-full flex items-center justify-between p-3 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors group"
+              >
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-amber-600" />
+                  <span className="text-sm text-gray-700">
+                    <span className="font-semibold text-amber-600">{stats.alerts.expiring_leases}</span> lease{stats.alerts.expiring_leases !== 1 ? 's' : ''} expiring within 30 days
+                  </span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
+              </button>
+            )}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Aged Receivables & Activity Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Aged Receivables */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.42 }}
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow duration-300"
+        >
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">Aged Receivables</h3>
+          <p className="text-sm text-gray-500 mb-4">Outstanding invoices by age</p>
+          {isLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="h-4 w-16 bg-gray-200 rounded animate-pulse" />
+                  <div className="flex-1 h-6 bg-gray-200 rounded animate-pulse" />
+                  <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
+                </div>
+              ))}
+            </div>
+          ) : (() => {
+            const aged = stats?.aged_receivables || {}
+            const buckets = [
+              { label: 'Current', amount: aged.current || 0, color: 'bg-emerald-500' },
+              { label: '1-30 days', amount: aged.days_30 || 0, color: 'bg-yellow-500' },
+              { label: '31-60 days', amount: aged.days_60 || 0, color: 'bg-orange-500' },
+              { label: '61-90 days', amount: aged.days_90 || 0, color: 'bg-red-500' },
+              { label: '90+ days', amount: aged.days_90_plus || 0, color: 'bg-red-700' },
+            ]
+            const maxAmount = Math.max(...buckets.map(b => b.amount), 1)
+            return (
+              <div className="space-y-3">
+                {buckets.map(bucket => (
+                  <div key={bucket.label} className="flex items-center gap-3">
+                    <span className="text-xs font-medium text-gray-500 w-16 shrink-0">{bucket.label}</span>
+                    <div className="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.max((bucket.amount / maxAmount) * 100, bucket.amount > 0 ? 3 : 0)}%` }}
+                        transition={{ duration: 0.6, delay: 0.1 }}
+                        className={cn('h-full rounded-full', bucket.color)}
+                      />
+                    </div>
+                    <span className="text-xs font-semibold text-gray-700 tabular-nums w-24 text-right">
+                      {formatCurrency(bucket.amount)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+        </motion.div>
+
+        {/* Activity Feed */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.45 }}
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-md transition-shadow duration-300"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
+            <button
+              onClick={() => navigate('/dashboard/audit-trail')}
+              className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
+            >
+              View all <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
+          {isLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3, 4, 5].map(i => (
+                <div key={i} className="flex gap-3">
+                  <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse shrink-0" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3 w-3/4 bg-gray-200 rounded animate-pulse" />
+                    <div className="h-2.5 w-1/3 bg-gray-200 rounded animate-pulse" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (() => {
+            const activities = stats?.recent_activity || []
+            if (activities.length === 0) {
+              return (
+                <div className="text-center py-8 text-gray-400 text-sm">
+                  <Activity className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  No recent activity
+                </div>
+              )
+            }
+            const activityIcons: Record<string, { icon: typeof Receipt; color: string; bg: string }> = {
+              receipt: { icon: CreditCard, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+              invoice: { icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50' },
+              lease: { icon: FileText, color: 'text-purple-600', bg: 'bg-purple-50' },
+              tenant: { icon: UserPlus, color: 'text-orange-600', bg: 'bg-orange-50' },
+              expense: { icon: Wallet, color: 'text-red-600', bg: 'bg-red-50' },
+              default: { icon: CheckCircle2, color: 'text-gray-600', bg: 'bg-gray-50' },
+            }
+            return (
+              <div className="space-y-1 max-h-[280px] overflow-y-auto">
+                {activities.slice(0, 8).map((act: any, i: number) => {
+                  const config = activityIcons[act.type] || activityIcons.default
+                  const ActIcon = config.icon
+                  return (
+                    <div key={i} className="flex gap-3 py-2 px-1 rounded-lg hover:bg-gray-50 transition-colors">
+                      <div className={cn('p-1.5 rounded-lg shrink-0', config.bg)}>
+                        <ActIcon className={cn('w-4 h-4', config.color)} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-700 truncate">{act.description}</p>
+                        <p className="text-xs text-gray-500">{act.timestamp ? formatDistanceToNow(act.timestamp) : ''}</p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })()}
+        </motion.div>
+      </div>
     </div>
   )
 }

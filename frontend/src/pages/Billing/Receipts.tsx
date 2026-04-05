@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Search, CreditCard, Plus, Send, Loader2, Eye, X, User, FileText, Download, Printer, BookOpen } from 'lucide-react'
+import { Search, CreditCard, Plus, Send, Loader2, Eye, X, User, Download, Printer, BookOpen } from 'lucide-react'
 import { receiptApi, tenantApi, invoiceApi } from '../../services/api'
 import { formatCurrency, formatDate, useDebounce, cn } from '../../lib/utils'
 import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination } from '../../components/ui'
@@ -271,7 +271,7 @@ export default function Receipts() {
       />
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-primary-50 flex items-center justify-center">
@@ -299,38 +299,6 @@ export default function Receipts() {
                 <Skeleton className="h-7 w-24 mt-1 bg-white/30" />
               ) : (
                 <p className="text-2xl font-bold">{formatCurrency(stats.totalAmount)}</p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center">
-              <Send className="w-6 h-6 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Posted to GL</p>
-              {isLoading ? (
-                <Skeleton className="h-7 w-12 mt-1" />
-              ) : (
-                <p className="text-2xl font-bold text-blue-600">{stats.posted}</p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center">
-              <FileText className="w-6 h-6 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Pending Post</p>
-              {isLoading ? (
-                <Skeleton className="h-7 w-12 mt-1" />
-              ) : (
-                <p className="text-2xl font-bold text-amber-600">{stats.unposted}</p>
               )}
             </div>
           </div>
@@ -412,7 +380,7 @@ export default function Receipts() {
                   key={receipt.id}
                   initial={receipt._isOptimistic ? { opacity: 0.5, backgroundColor: 'rgb(239 246 255)' } : { opacity: 0 }}
                   animate={{ opacity: 1, backgroundColor: 'transparent' }}
-                  transition={{ duration: 0.3, delay: receipt._isOptimistic ? 0 : index * 0.02 }}
+                  transition={{ duration: 0.3 }}
                   onClick={() => !receipt._isOptimistic && navigate(`/dashboard/receipts/${receipt.id}`)}
                   onMouseEnter={() => !receipt._isOptimistic && prefetch(`/dashboard/receipts/${receipt.id}`)}
                   className={cn(
@@ -567,7 +535,7 @@ export default function Receipts() {
 
           {/* Invoice Select */}
           <AsyncSelect
-            label="Against Invoice (Optional)"
+            label="Apply to Invoice (optional)"
             placeholder="Select invoice"
             value={form.invoice}
             onChange={(val) => setForm({ ...form, invoice: String(val) })}

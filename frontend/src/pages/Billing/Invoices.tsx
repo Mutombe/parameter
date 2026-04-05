@@ -7,7 +7,6 @@ import {
   Plus,
   Search,
   Send,
-  DollarSign,
   Calendar,
   AlertTriangle,
   Clock,
@@ -17,8 +16,6 @@ import {
   Printer,
   MoreVertical,
   TrendingUp,
-  TrendingDown,
-  Filter,
   Download,
   RefreshCw,
   Zap,
@@ -490,10 +487,10 @@ export default function Invoices() {
         }
       />
 
-      {/* Status Filter Cards */}
+      {/* Status Filter Cards with financial subtitles */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4">
         <motion.div
-          whileHover={{ y: -2 }}
+          whileHover={{ y: -1 }}
           className="bg-white rounded-xl border border-gray-200 p-3 sm:p-5"
         >
           <div className="flex items-center gap-2 sm:gap-4">
@@ -505,7 +502,10 @@ export default function Invoices() {
               {isLoading ? (
                 <div className="h-6 sm:h-8 w-10 sm:w-12 bg-gray-200 rounded animate-pulse mt-1" />
               ) : (
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</p>
+                <>
+                  <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{formatCurrency(totalAmount)} billed</p>
+                </>
               )}
             </div>
           </div>
@@ -515,10 +515,27 @@ export default function Invoices() {
           const config = statusConfig[status]
           const StatusIcon = config.icon
           const count = stats[status]
+          const statusSubtitle = (() => {
+            if (isLoading) return null
+            const statusInvoices = invoices?.filter((i: Invoice) => i.status === status) || []
+            if (status === 'sent') {
+              const billed = statusInvoices.reduce((sum: number, i: Invoice) => sum + Number(i.total_amount || 0), 0)
+              return `${formatCurrency(billed)} billed`
+            }
+            if (status === 'paid') {
+              const collected = statusInvoices.reduce((sum: number, i: Invoice) => sum + (Number(i.total_amount || 0) - Number(i.balance || 0)), 0)
+              return `${formatCurrency(collected)} collected`
+            }
+            if (status === 'overdue') {
+              const outstanding = statusInvoices.reduce((sum: number, i: Invoice) => sum + Number(i.balance || 0), 0)
+              return `${formatCurrency(outstanding)} outstanding`
+            }
+            return null
+          })()
           return (
             <motion.div
               key={status}
-              whileHover={{ y: -2 }}
+              whileHover={{ y: -1 }}
               onClick={() => setStatusFilter(statusFilter === status ? '' : status)}
               className={cn(
                 'bg-white rounded-xl border p-3 sm:p-5 cursor-pointer transition-all',
@@ -534,7 +551,10 @@ export default function Invoices() {
                   {isLoading ? (
                     <div className="h-6 sm:h-8 w-10 sm:w-12 bg-gray-200 rounded animate-pulse mt-1" />
                   ) : (
-                    <p className={cn('text-xl sm:text-2xl font-bold', config.color)}>{count}</p>
+                    <>
+                      <p className={cn('text-xl sm:text-2xl font-bold', config.color)}>{count}</p>
+                      {statusSubtitle && <p className="text-xs text-gray-400 mt-0.5">{statusSubtitle}</p>}
+                    </>
                   )}
                 </div>
               </div>
@@ -543,61 +563,7 @@ export default function Invoices() {
         })}
       </div>
 
-      {/* Financial Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
-        <Tooltip content="Sum of all invoice amounts">
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-3 sm:p-5 text-white">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <DollarSign className="w-6 h-6 sm:w-8 sm:h-8 text-white/80" />
-              <div>
-                <p className="text-blue-100 text-xs sm:text-sm">Total Billed</p>
-                {isLoading ? (
-                  <div className="h-6 sm:h-8 w-20 sm:w-24 bg-white/30 rounded animate-pulse mt-1" />
-                ) : (
-                  <p className="text-lg sm:text-2xl font-bold">{formatCurrency(totalAmount)}</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </Tooltip>
-        <Tooltip content="Total payments received">
-          <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-3 sm:p-5 text-white">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8 text-white/80" />
-              <div>
-                {isLoading ? (
-                  <>
-                    <p className="text-emerald-100 text-xs sm:text-sm">Collected</p>
-                    <div className="h-6 sm:h-8 w-20 sm:w-24 bg-white/30 rounded animate-pulse mt-1" />
-                  </>
-                ) : (
-                  <>
-                    <p className="text-emerald-100 text-xs sm:text-sm">Collected ({collectionRate.toFixed(0)}%)</p>
-                    <p className="text-lg sm:text-2xl font-bold">{formatCurrency(totalCollected)}</p>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        </Tooltip>
-        <Tooltip content="Amount still owed by tenants">
-          <div className="bg-gradient-to-br from-rose-500 to-rose-600 rounded-xl p-3 sm:p-5 text-white">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <TrendingDown className="w-6 h-6 sm:w-8 sm:h-8 text-white/80" />
-              <div>
-                <p className="text-rose-100 text-xs sm:text-sm">Outstanding</p>
-                {isLoading ? (
-                  <div className="h-6 sm:h-8 w-20 sm:w-24 bg-white/30 rounded animate-pulse mt-1" />
-                ) : (
-                  <p className="text-lg sm:text-2xl font-bold">{formatCurrency(totalOutstanding)}</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </Tooltip>
-      </div>
-
-      {/* Search and Filter */}
+      {/* Search */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center gap-4">
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -610,20 +576,6 @@ export default function Invoices() {
             className="w-full pl-10 pr-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
           />
         </div>
-
-        <Select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          placeholder="All Statuses"
-          options={[
-            { value: '', label: 'All Statuses' },
-            { value: 'draft', label: 'Draft' },
-            { value: 'sent', label: 'Sent' },
-            { value: 'partial', label: 'Partial' },
-            { value: 'paid', label: 'Paid' },
-            { value: 'overdue', label: 'Overdue' },
-          ]}
-        />
 
         <div className="ml-auto text-sm text-gray-500">
           {isLoading ? (
@@ -742,7 +694,7 @@ export default function Invoices() {
                           key={invoice.id}
                           initial={isOptimistic ? { opacity: 0.5, backgroundColor: 'rgb(239 246 255)' } : { opacity: 0 }}
                           animate={{ opacity: 1, backgroundColor: 'transparent' }}
-                          transition={{ delay: isOptimistic ? 0 : index * 0.02, duration: 0.3 }}
+                          transition={{ duration: 0.3 }}
                           onClick={() => !isOptimistic && navigate(`/dashboard/invoices/${invoice.id}`)}
                           onMouseEnter={() => !isOptimistic && prefetch(`/dashboard/invoices/${invoice.id}`)}
                           className={cn(
@@ -1045,6 +997,8 @@ export default function Invoices() {
               max="2030"
             />
           </div>
+
+          <p className="text-sm text-gray-500">Already-billed leases will be automatically skipped.</p>
 
           <div className="flex gap-3 pt-4">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setShowGenerateModal(false)}>
