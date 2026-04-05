@@ -18,7 +18,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Get notifications for current user only."""
-        queryset = Notification.objects.filter(user=self.request.user)
+        queryset = Notification.objects.select_related('user').filter(user=self.request.user)
 
         # Filter by read status
         is_read = self.request.query_params.get('is_read')

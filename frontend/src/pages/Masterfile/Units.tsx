@@ -178,6 +178,7 @@ export default function Units() {
   const { data: properties, isLoading: propertiesLoading } = useQuery({
     queryKey: ['properties-list'],
     queryFn: () => propertyApi.list().then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const createMutation = useMutation({

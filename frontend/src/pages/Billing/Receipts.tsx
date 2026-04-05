@@ -93,8 +93,8 @@ export default function Receipts() {
   const { data: tenants, isLoading: tenantsLoading } = useQuery({
     queryKey: ['tenants-select'],
     queryFn: () => tenantApi.list().then(r => r.data.results || r.data),
-    enabled: showForm,
-    staleTime: 30000, // Cache for 30 seconds
+    staleTime: 30000,
+    placeholderData: keepPreviousData,
   })
 
   // Invoices dropdown - loads when form opens
@@ -102,8 +102,8 @@ export default function Receipts() {
   const { data: allInvoices, isLoading: invoicesLoading } = useQuery({
     queryKey: ['invoices-for-receipt'],
     queryFn: () => invoiceApi.list().then(r => r.data.results || r.data),
-    enabled: showForm,
     staleTime: 30000,
+    placeholderData: keepPreviousData,
   })
 
   // Filter invoices with outstanding balance (sent, partial, or overdue with balance > 0)

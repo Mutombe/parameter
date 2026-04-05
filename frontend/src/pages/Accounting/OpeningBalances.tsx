@@ -160,6 +160,7 @@ export default function OpeningBalances() {
     queryKey: ['accounts-list'],
     queryFn: () => accountApi.list().then((r: any) => r.data.results || r.data),
     staleTime: 60000,
+    placeholderData: keepPreviousData,
   })
 
   // Fetch landlords
@@ -167,6 +168,7 @@ export default function OpeningBalances() {
     queryKey: ['landlords'],
     queryFn: () => landlordApi.list().then((r: any) => r.data.results || r.data),
     staleTime: 60000,
+    placeholderData: keepPreviousData,
   })
 
   // Create mutation

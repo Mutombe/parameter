@@ -218,16 +218,16 @@ export default function Invoices() {
   const { data: tenants, isLoading: tenantsLoading } = useQuery({
     queryKey: ['tenants-select'],
     queryFn: () => tenantApi.list({ page_size: 500 }).then(r => r.data.results || r.data),
-    enabled: showForm,
     staleTime: 30000,
+    placeholderData: keepPreviousData,
   })
 
   // Fetch units filtered by selected tenant's active lease, or all units
   const { data: units, isLoading: unitsLoading } = useQuery({
     queryKey: ['units-select', form.tenant],
     queryFn: () => unitApi.list({ page_size: 500 }).then(r => r.data.results || r.data),
-    enabled: showForm,
     staleTime: 30000,
+    placeholderData: keepPreviousData,
   })
 
   const resetForm = () => {
@@ -335,6 +335,7 @@ export default function Invoices() {
     queryKey: ['properties-list'],
     queryFn: () => propertyApi.list().then(r => r.data.results || r.data),
     staleTime: 30000,
+    placeholderData: keepPreviousData,
   })
 
   const generateMutation = useMutation({

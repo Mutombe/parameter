@@ -168,6 +168,7 @@ export default function Journals() {
   const { data: accounts } = useQuery({
     queryKey: ['accounts-list'],
     queryFn: () => accountApi.list().then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const postMutation = useMutation({

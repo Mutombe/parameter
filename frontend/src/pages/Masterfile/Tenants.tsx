@@ -89,7 +89,7 @@ export default function Tenants() {
   const { data: propertiesData } = useQuery({
     queryKey: ['properties-for-tenant'],
     queryFn: () => propertyApi.list().then(r => r.data),
-    enabled: showForm,
+    placeholderData: keepPreviousData,
   })
   const properties = propertiesData?.results || propertiesData || []
 
@@ -100,7 +100,8 @@ export default function Tenants() {
       property: form.property,
       is_occupied: false
     }).then(r => r.data),
-    enabled: showForm && !!form.property,
+    enabled: !!form.property,
+    placeholderData: keepPreviousData,
   })
   const availableUnits = unitsData?.results || unitsData || []
 

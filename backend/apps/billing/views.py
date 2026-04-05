@@ -587,6 +587,7 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
     """CRUD for Receipts."""
     queryset = Receipt.objects.select_related(
         'tenant', 'invoice', 'invoice__unit', 'invoice__unit__property',
+        'invoice__unit__property__landlord',
         'created_by', 'journal', 'income_type'
     ).all()
     permission_classes = [IsAuthenticated]

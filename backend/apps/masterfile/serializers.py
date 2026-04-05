@@ -38,9 +38,8 @@ class UnitSerializer(serializers.ModelSerializer):
     def get_current_tenant(self, obj):
         active_leases = getattr(obj, '_active_leases', None)
         if active_leases is None:
-            active_lease = obj.leases.filter(status='active').select_related('tenant').first()
-        else:
-            active_lease = active_leases[0] if active_leases else None
+            return None  # Don't do N+1 fallback query
+        active_lease = active_leases[0] if active_leases else None
         if active_lease:
             return {
                 'id': active_lease.tenant.id,

@@ -75,6 +75,7 @@ export default function ExpenseCategories() {
   const { data: glAccounts } = useQuery({
     queryKey: ['gl-accounts-expense'],
     queryFn: () => accountApi.list({ account_type: 'expense' }).then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const categories: ExpenseCategory[] = data || []

@@ -195,8 +195,8 @@ export default function Leases() {
   const { data: tenants, isLoading: tenantsLoading } = useQuery({
     queryKey: ['tenants-list'],
     queryFn: () => tenantApi.list().then(r => r.data.results || r.data),
-    enabled: showForm,
     staleTime: 30000,
+    placeholderData: keepPreviousData,
   })
 
   // Fetch all units - filter for vacant ones in the dropdown display
@@ -204,15 +204,15 @@ export default function Leases() {
   const { data: allUnits, isLoading: unitsLoading } = useQuery({
     queryKey: ['units-all'],
     queryFn: () => unitApi.list().then(r => r.data.results || r.data),
-    enabled: showForm,
     staleTime: 30000,
+    placeholderData: keepPreviousData,
   })
 
   const { data: properties, isLoading: propertiesLoading } = useQuery({
     queryKey: ['properties-list'],
     queryFn: () => propertyApi.list().then(r => r.data.results || r.data),
-    enabled: showForm,
     staleTime: 30000,
+    placeholderData: keepPreviousData,
   })
 
   const selectedPropertyName = properties?.find(

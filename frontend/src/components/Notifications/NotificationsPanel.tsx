@@ -98,7 +98,7 @@ export default function NotificationsPanel({ open, onClose }: NotificationsPanel
     queryKey: ['notifications', 'recent'],
     queryFn: () => notificationsApi.recent().then(r => r.data),
     enabled: open,
-    refetchInterval: open ? 30000 : false, // Refresh every 30s when open
+    refetchInterval: open ? 60000 : false, // Refresh every 60s when open
   })
 
   const { data: unreadData } = useQuery({

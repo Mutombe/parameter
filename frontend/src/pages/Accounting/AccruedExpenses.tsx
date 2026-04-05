@@ -184,6 +184,7 @@ export default function AccruedExpenses() {
     queryKey: ['accounts-list'],
     queryFn: () => accountApi.list().then((r: any) => r.data.results || r.data),
     staleTime: 60000,
+    placeholderData: keepPreviousData,
   })
 
   // Fetch landlords for form
@@ -191,6 +192,7 @@ export default function AccruedExpenses() {
     queryKey: ['landlords'],
     queryFn: () => landlordApi.list().then((r: any) => r.data.results || r.data),
     staleTime: 60000,
+    placeholderData: keepPreviousData,
   })
 
   // Create mutation

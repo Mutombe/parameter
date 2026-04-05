@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Prefetch
 from .models import MaintenanceRequest, WorkOrder
 from .serializers import (
     MaintenanceRequestSerializer, MaintenanceRequestListSerializer,
@@ -18,7 +18,9 @@ class MaintenanceRequestViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, vi
     """CRUD for Maintenance Requests."""
     queryset = MaintenanceRequest.objects.select_related(
         'property', 'unit', 'reported_by'
-    ).prefetch_related('work_orders').all()
+    ).prefetch_related(
+        Prefetch('work_orders', queryset=WorkOrder.objects.select_related('assigned_to'))
+    ).all()
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filterset_fields = ['property', 'unit', 'priority', 'status']

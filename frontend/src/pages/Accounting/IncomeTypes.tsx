@@ -82,6 +82,7 @@ export default function IncomeTypes() {
   const { data: glAccounts } = useQuery({
     queryKey: ['gl-accounts-revenue'],
     queryFn: () => accountApi.list({ account_type: 'revenue' }).then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const incomeTypes: IncomeType[] = data || []

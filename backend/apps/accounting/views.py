@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.db import transaction
-from django.db.models import Sum, Q, Count
+from django.db.models import Sum, Q, Count, Prefetch
 from django.http import HttpResponse
 from django.utils import timezone
 from .models import (
@@ -157,7 +157,9 @@ class JournalViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
     """CRUD for journal entries."""
     queryset = Journal.objects.select_related(
         'created_by', 'posted_by', 'reversed_by'
-    ).prefetch_related('entries', 'entries__account').annotate(
+    ).prefetch_related(
+        Prefetch('entries', queryset=JournalEntry.objects.select_related('account'))
+    ).annotate(
         _total_debit=Sum('entries__debit_amount'),
         _total_credit=Sum('entries__credit_amount'),
     ).all()
