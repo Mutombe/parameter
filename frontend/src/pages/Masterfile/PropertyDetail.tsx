@@ -14,12 +14,12 @@ import {
   Plus,
   FileText,
   Receipt,
-  Wrench,
   Clock,
   Download,
   Layers,
   Eye,
   Calendar as CalendarIcon,
+  BarChart3,
 } from 'lucide-react'
 import {
   BarChart,
@@ -35,7 +35,7 @@ import {
 } from 'recharts'
 import api, { propertyApi, landlordApi, unitApi, reportsApi, leaseApi, invoiceApi, receiptApi, subsidiaryApi } from '../../services/api'
 import { formatCurrency, formatPercent, formatDate, cn } from '../../lib/utils'
-import { Modal, Button, Input, Select, TableFilter } from '../../components/ui'
+import { Modal, Button, Input, Select, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
 import { TbUserSquareRounded } from 'react-icons/tb'
@@ -154,6 +154,9 @@ export default function PropertyDetail() {
   const propertyId = Number(id)
   const prefetch = usePrefetch()
 
+  // Active tab tracking for lazy-loading queries
+  const [activeTab, setActiveTab] = useState('units')
+
   // Edit modal state
   const [showEditModal, setShowEditModal] = useState(false)
 
@@ -217,31 +220,31 @@ export default function PropertyDetail() {
     placeholderData: keepPreviousData,
   })
 
-  // 3. Lease charges
+  // 3. Lease charges (financials tab)
   const { data: leaseChargesData, isLoading: loadingLeaseCharges } = useQuery({
     queryKey: ['property-lease-charges', propertyId],
     queryFn: () => reportsApi.leaseCharges({ property_id: propertyId }).then((r) => r.data),
-    enabled: !!propertyId,
+    enabled: !!propertyId && activeTab === 'financials',
     placeholderData: keepPreviousData,
   })
 
-  // 4. Income vs expenditure
+  // 4. Income vs expenditure (financials tab)
   const { data: incomeExpData, isLoading: loadingIncomeExp } = useQuery({
     queryKey: ['property-income-exp', propertyId],
     queryFn: () => reportsApi.incomeExpenditure({ property_id: propertyId }).then((r) => r.data),
-    enabled: !!propertyId,
+    enabled: !!propertyId && activeTab === 'financials',
     placeholderData: keepPreviousData,
   })
 
-  // 5. Aged analysis
+  // 5. Aged analysis (financials tab)
   const { data: agedData, isLoading: loadingAged } = useQuery({
     queryKey: ['property-aged', propertyId],
     queryFn: () => reportsApi.agedAnalysis({ property_id: propertyId }).then((r) => r.data),
-    enabled: !!propertyId,
+    enabled: !!propertyId && (activeTab === 'financials' || activeTab === 'reports'),
     placeholderData: keepPreviousData,
   })
 
-  // 6. Deposit summary
+  // 6. Deposit summary (always loaded for KPI)
   const { data: depositData, isLoading: loadingDeposit } = useQuery({
     queryKey: ['property-deposits', propertyId],
     queryFn: () => reportsApi.depositSummary({ property_id: propertyId }).then((r) => r.data),
@@ -249,37 +252,31 @@ export default function PropertyDetail() {
     placeholderData: keepPreviousData,
   })
 
-  // 7. Leases for this property
+  // 7. Leases for this property (leases tab)
   const { data: leasesData, isLoading: loadingLeases } = useQuery({
     queryKey: ['property-leases', propertyId],
     queryFn: () => leaseApi.list({ property: propertyId, page_size: 100 }).then((r) => r.data),
-    enabled: !!propertyId,
+    enabled: !!propertyId && activeTab === 'leases',
     placeholderData: keepPreviousData,
   })
 
-  // 8. Recent invoices for this property
+  // 8. Recent invoices for this property (billing tab)
   const { data: invoicesData, isLoading: loadingInvoices } = useQuery({
     queryKey: ['property-invoices', propertyId],
-    queryFn: () => invoiceApi.list({ property: propertyId, page_size: 10, ordering: '-created_at' }).then((r) => r.data),
-    enabled: !!propertyId,
+    queryFn: () => invoiceApi.list({ property: propertyId, page_size: 100, ordering: '-created_at' }).then((r) => r.data),
+    enabled: !!propertyId && activeTab === 'billing',
     placeholderData: keepPreviousData,
   })
 
-  // 9. Recent receipts for this property
+  // 9. Recent receipts for this property (billing tab)
   const { data: receiptsData, isLoading: loadingReceipts } = useQuery({
     queryKey: ['property-receipts', propertyId],
-    queryFn: () => receiptApi.list({ property: propertyId, page_size: 10, ordering: '-created_at' }).then((r) => r.data),
-    enabled: !!propertyId,
+    queryFn: () => receiptApi.list({ property: propertyId, page_size: 100, ordering: '-created_at' }).then((r) => r.data),
+    enabled: !!propertyId && activeTab === 'billing',
     placeholderData: keepPreviousData,
   })
 
-  // 10. Maintenance requests for this property
-  const { data: maintenanceData, isLoading: loadingMaintenance } = useQuery({
-    queryKey: ['property-maintenance', propertyId],
-    queryFn: () => api.get('/maintenance/requests/', { params: { property: propertyId, page_size: 10 } }).then((r) => r.data),
-    enabled: !!propertyId,
-    placeholderData: keepPreviousData,
-  })
+  // Note: Maintenance data is no longer loaded here (maintenance has its own page)
 
   // Landlords list for edit modal dropdown
   const { data: landlords } = useQuery({
@@ -304,11 +301,11 @@ export default function PropertyDetail() {
     return []
   }
 
-  // Sub-accounts for this property's landlord
+  // Sub-accounts for this property's landlord (sub-accounts tab)
   const { data: subAccountsData, isLoading: loadingSubAccounts } = useQuery({
     queryKey: ['property-sub-accounts', property?.landlord],
     queryFn: () => subsidiaryApi.list({ landlord: property!.landlord }).then((r) => r.data),
-    enabled: !!property?.landlord,
+    enabled: !!property?.landlord && activeTab === 'sub-accounts',
     placeholderData: keepPreviousData,
   })
 
@@ -502,9 +499,6 @@ export default function PropertyDetail() {
 
   // Receipts
   const receipts = receiptsData?.results || receiptsData || []
-
-  // Maintenance
-  const maintenanceRequests = maintenanceData?.results || maintenanceData || []
 
   // Aged analysis detail table
   const agedDetailRows = (() => {
@@ -747,13 +741,20 @@ export default function PropertyDetail() {
         <StatCard title="Outstanding Balance" value={formatCurrency(totalOutstanding)} icon={DollarSign} color="orange" isLoading={loadingAged} />
       </motion.div>
 
-      {/* Units Table */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.45 }}
-        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
-      >
+      {/* Tabs */}
+      <Tabs defaultValue="units" className="space-y-6" onChange={setActiveTab}>
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="units" icon={Home}>Units</TabsTrigger>
+          <TabsTrigger value="billing" icon={Receipt}>Billing</TabsTrigger>
+          <TabsTrigger value="leases" icon={FileText}>Leases</TabsTrigger>
+          <TabsTrigger value="financials" icon={DollarSign}>Financials</TabsTrigger>
+          <TabsTrigger value="sub-accounts" icon={Layers}>Sub Accounts</TabsTrigger>
+          <TabsTrigger value="reports" icon={BarChart3}>Reports</TabsTrigger>
+        </TabsList>
+
+        {/* ===== UNITS TAB ===== */}
+        <TabsContent value="units" className="space-y-6">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="p-6 border-b border-gray-100 flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Units</h3>
@@ -873,15 +874,12 @@ export default function PropertyDetail() {
             </div>
           )}
         </div>
-      </motion.div>
+      </div>
+        </TabsContent>
 
-      {/* Leases Table */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.47 }}
-        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
-      >
+        {/* ===== LEASES TAB ===== */}
+        <TabsContent value="leases" className="space-y-6">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="p-6 border-b border-gray-100 flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Leases</h3>
@@ -1031,15 +1029,128 @@ export default function PropertyDetail() {
             </div>
           )}
         </div>
-      </motion.div>
+      </div>
+        </TabsContent>
+
+        {/* ===== BILLING TAB ===== */}
+        <TabsContent value="billing" className="space-y-6">
+      {/* Invoices & Receipts merged */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Invoices</h3>
+            <p className="text-sm text-gray-500">Invoices for this property</p>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          {loadingInvoices ? (
+            <div className="p-6"><TableSkeleton rows={5} /></div>
+          ) : invoices.length === 0 ? (
+            <div className="p-12 text-center text-sm text-gray-400">No invoices found</div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Invoice #</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Tenant</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {invoices.map((inv: any) => {
+                  const invStatusColors: Record<string, string> = {
+                    paid: 'bg-emerald-50 text-emerald-700',
+                    posted: 'bg-blue-50 text-blue-700',
+                    draft: 'bg-gray-100 text-gray-600',
+                    overdue: 'bg-red-50 text-red-700',
+                    partially_paid: 'bg-amber-50 text-amber-700',
+                  }
+                  return (
+                    <tr key={inv.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => navigate(`/dashboard/invoices/${inv.id}`)}>
+                      <td className="px-6 py-3 text-sm font-medium">
+                        <button onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/invoices/${inv.id}`) }} onMouseEnter={() => prefetch(`/dashboard/invoices/${inv.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                          {inv.invoice_number || `#${inv.id}`}
+                        </button>
+                      </td>
+                      <td className="px-6 py-3 text-sm">
+                        {(inv.tenant_id || inv.tenant?.id) ? (
+                          <button onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${inv.tenant_id || inv.tenant?.id}`) }} onMouseEnter={() => prefetch(`/dashboard/tenants/${inv.tenant_id || inv.tenant?.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                            {inv.tenant_name || inv.tenant?.name || '-'}
+                          </button>
+                        ) : (
+                          <span className="text-gray-600">{inv.tenant_name || inv.tenant?.name || '-'}</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-3 text-sm text-gray-600">{inv.invoice_date || inv.date ? formatDate(inv.invoice_date || inv.date) : '-'}</td>
+                      <td className="px-6 py-3 text-sm text-gray-600 text-right">{formatCurrency(inv.total_amount || inv.amount || 0)}</td>
+                      <td className="px-6 py-3">
+                        <span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize', invStatusColors[inv.status] || 'bg-gray-100 text-gray-600')}>
+                          {(inv.status || '-').replace(/_/g, ' ')}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="p-6 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <Receipt className="w-5 h-5 text-emerald-500" />
+            <h3 className="text-lg font-semibold text-gray-900">Receipts</h3>
+          </div>
+          <p className="text-sm text-gray-500 mt-1">Payments received for this property</p>
+        </div>
+        <div className="overflow-x-auto">
+          {loadingReceipts ? (
+            <div className="p-6"><TableSkeleton rows={4} /></div>
+          ) : receipts.length === 0 ? (
+            <div className="p-12 text-center text-sm text-gray-400">No receipts found</div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Receipt #</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Tenant</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {receipts.map((rec: any) => (
+                  <tr key={rec.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-3 text-sm font-medium text-gray-900">{rec.receipt_number || `#${rec.id}`}</td>
+                    <td className="px-6 py-3 text-sm">
+                      {(rec.tenant_id || rec.tenant?.id) ? (
+                        <button onClick={() => navigate(`/dashboard/tenants/${rec.tenant_id || rec.tenant?.id}`)} onMouseEnter={() => prefetch(`/dashboard/tenants/${rec.tenant_id || rec.tenant?.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">
+                          {rec.tenant_name || rec.tenant?.name || '-'}
+                        </button>
+                      ) : (
+                        <span className="text-gray-600">{rec.tenant_name || rec.tenant?.name || '-'}</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-gray-600 text-right">{formatCurrency(rec.amount || 0)}</td>
+                    <td className="px-6 py-3 text-sm text-gray-600">{rec.payment_date || rec.date ? formatDate(rec.payment_date || rec.date) : rec.created_at ? formatDate(rec.created_at) : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+        </TabsContent>
+
+        {/* ===== FINANCIALS TAB ===== */}
+        <TabsContent value="financials" className="space-y-6">
 
       {/* Lease Charges Table */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
-      >
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="p-6 border-b border-gray-100 flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Lease Charges</h3>
@@ -1165,9 +1276,9 @@ export default function PropertyDetail() {
             </div>
           )}
         </div>
-      </motion.div>
+      </div>
 
-      {/* Charts Row 1 - Income vs Expenditure (2/3) + Occupancy Donut (1/3) */}
+      {/* Charts - Income vs Expenditure (2/3) + Occupancy Donut (1/3) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -1320,7 +1431,7 @@ export default function PropertyDetail() {
         </motion.div>
       </div>
 
-      {/* Recent Invoices & Recent Receipts - side by side */}
+      {/* Aged Analysis detail (same tab) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Invoices */}
         <motion.div
@@ -1523,94 +1634,10 @@ export default function PropertyDetail() {
         </motion.div>
       )}
 
-      {/* Maintenance Requests */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.7 }}
-        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
-      >
-        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Wrench className="w-5 h-5 text-gray-500" />
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Maintenance Requests</h3>
-              <p className="text-sm text-gray-500">Recent maintenance activity for this property</p>
-            </div>
-          </div>
-          <button
-            onClick={() => navigate('/dashboard/maintenance')}
-            className="text-primary-600 hover:text-primary-700 text-sm font-medium"
-          >
-            View All
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          {loadingMaintenance ? (
-            <div className="p-6"><TableSkeleton rows={4} /></div>
-          ) : maintenanceRequests.length === 0 ? (
-            <div className="p-12 text-center text-sm text-gray-400">No maintenance requests found</div>
-          ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Title</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Unit</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Priority</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {maintenanceRequests.slice(0, 10).map((req: any) => {
-                  const priorityColors: Record<string, string> = {
-                    low: 'bg-gray-100 text-gray-600',
-                    medium: 'bg-blue-50 text-blue-700',
-                    high: 'bg-amber-50 text-amber-700',
-                    emergency: 'bg-red-50 text-red-700',
-                  }
-                  const mStatusColors: Record<string, string> = {
-                    open: 'bg-amber-50 text-amber-700',
-                    in_progress: 'bg-blue-50 text-blue-700',
-                    completed: 'bg-emerald-50 text-emerald-700',
-                  }
-                  return (
-                    <tr key={req.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-3 text-sm font-medium text-gray-900">
-                        <button
-                          onClick={() => navigate(`/dashboard/maintenance/${req.id}`)}
-                          className="text-primary-600 hover:text-primary-700 hover:underline text-left"
-                        >
-                          {req.title}
-                        </button>
-                      </td>
-                      <td className="px-6 py-3 text-sm text-gray-600">{req.unit_name || '-'}</td>
-                      <td className="px-6 py-3">
-                        <span className={cn(
-                          'inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize',
-                          priorityColors[req.priority] || 'bg-gray-100 text-gray-600'
-                        )}>
-                          {req.priority || '-'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3">
-                        <span className={cn(
-                          'inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize',
-                          mStatusColors[req.status] || 'bg-gray-100 text-gray-600'
-                        )}>
-                          {(req.status || '-').replace(/_/g, ' ')}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3 text-sm text-gray-600">{req.created_at ? formatDate(req.created_at) : '-'}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </motion.div>
+        </TabsContent>
 
+        {/* ===== SUB ACCOUNTS TAB ===== */}
+        <TabsContent value="sub-accounts" className="space-y-6">
       {/* Sub-Ledger Accounts */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -1847,6 +1874,48 @@ export default function PropertyDetail() {
           </div>
         )}
       </motion.div>
+        </TabsContent>
+
+        {/* ===== REPORTS TAB ===== */}
+        <TabsContent value="reports" className="space-y-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Reports</h3>
+            <p className="text-sm text-gray-500 mb-6">Quick access to reports filtered for this property</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <button
+                onClick={() => navigate(`/dashboard/reports/income-expenditure?property_id=${propertyId}`)}
+                className="p-4 border border-gray-200 rounded-xl text-left hover:border-gray-300 hover:shadow-md transition-all"
+              >
+                <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center mb-3">
+                  <DollarSign className="w-5 h-5 text-emerald-600" />
+                </div>
+                <h4 className="font-semibold text-gray-900">Income & Expenditure</h4>
+                <p className="text-sm text-gray-500 mt-1">Revenue vs expenses breakdown</p>
+              </button>
+              <button
+                onClick={() => navigate(`/dashboard/reports/aged-analysis?property_id=${propertyId}`)}
+                className="p-4 border border-gray-200 rounded-xl text-left hover:border-gray-300 hover:shadow-md transition-all"
+              >
+                <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center mb-3">
+                  <Clock className="w-5 h-5 text-amber-600" />
+                </div>
+                <h4 className="font-semibold text-gray-900">Aged Analysis</h4>
+                <p className="text-sm text-gray-500 mt-1">Outstanding balance aging report</p>
+              </button>
+              <button
+                onClick={() => navigate(`/dashboard/reports/deposit-summary?property_id=${propertyId}`)}
+                className="p-4 border border-gray-200 rounded-xl text-left hover:border-gray-300 hover:shadow-md transition-all"
+              >
+                <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center mb-3">
+                  <Wallet className="w-5 h-5 text-purple-600" />
+                </div>
+                <h4 className="font-semibold text-gray-900">Deposit Summary</h4>
+                <p className="text-sm text-gray-500 mt-1">Tenant deposits overview</p>
+              </button>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Edit Property Modal */}
       <Modal

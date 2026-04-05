@@ -411,40 +411,28 @@ export default function Tenants() {
         </div>
       )}
 
-      {/* Grid View */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Table View */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
           {isLoading ? (
-            [...Array(6)].map((_, i) => (
-              <div key={i} className="card p-5 animate-pulse">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
-                      <TbUserSquareRounded className="w-6 h-6 text-purple-600" />
-                    </div>
-                    <div className="space-y-2">
-                      <div className="h-4 w-32 bg-gray-200 rounded" />
-                      <div className="h-3 w-20 bg-gray-100 rounded" />
-                    </div>
+            <div className="p-6">
+              <div className="space-y-3">
+                {[...Array(8)].map((_, i) => (
+                  <div key={i} className="flex gap-4 animate-pulse">
+                    <div className="h-4 w-6 bg-gray-200 rounded" />
+                    <div className="h-4 flex-[2] bg-gray-200 rounded" />
+                    <div className="h-4 flex-1 bg-gray-200 rounded" />
+                    <div className="h-4 flex-1 bg-gray-200 rounded" />
+                    <div className="h-4 flex-1 bg-gray-200 rounded" />
+                    <div className="h-4 flex-1 bg-gray-200 rounded" />
+                    <div className="h-4 flex-1 bg-gray-200 rounded" />
+                    <div className="h-4 flex-1 bg-gray-200 rounded" />
                   </div>
-                  <Trash2 className="w-4 h-4 text-gray-200" />
-                </div>
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Mail className="w-4 h-4 text-gray-300" />
-                    <div className="h-3 w-40 bg-gray-100 rounded" />
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <Phone className="w-4 h-4 text-gray-300" />
-                    <div className="h-3 w-28 bg-gray-100 rounded" />
-                  </div>
-                </div>
-                <div className="mt-4 pt-4 border-t border-gray-100">
-                  <div className="h-3 w-24 bg-gray-100 rounded" />
-                </div>
+                ))}
               </div>
-            ))
+            </div>
           ) : !tenants?.length ? (
-            <div className="col-span-full">
+            <div className="p-12">
               <EmptyState
                 icon={TbUserSquareRounded}
                 title="No tenants yet"
@@ -455,299 +443,169 @@ export default function Tenants() {
                 }}
               />
             </div>
-          ) : tenants?.map((tenant: any) => (
-              <div
-                key={tenant.id}
-                onClick={() => navigate(`/dashboard/tenants/${tenant.id}`)}
-                onMouseEnter={() => prefetch(`/dashboard/tenants/${tenant.id}`)}
-                className={cn('card p-5 pl-10 hover:shadow-md transition-shadow relative cursor-pointer group', selection.isSelected(tenant.id) && 'ring-2 ring-primary-500 bg-primary-50/30')}
-              >
-                <div className="absolute top-3 left-3" onClick={(e) => e.stopPropagation()}>
-                  <SelectionCheckbox
-                    checked={selection.isSelected(tenant.id)}
-                    onChange={() => selection.toggle(tenant.id)}
-                  />
-                </div>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center">
-                      <TbUserSquareRounded className="w-6 h-6 text-purple-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{tenant.name}</h3>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500">{tenant.code}</span>
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${
-                          tenant.tenant_type === 'company'
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-gray-100 text-gray-600'
-                        }`}>
-                          {tenant.tenant_type === 'company' ? 'Company' : 'Individual'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => handleViewDetails(tenant.id)}
-                      onMouseEnter={() => prefetch(`/dashboard/tenants/${tenant.id}`)}
-                      className="text-gray-400 hover:text-primary-600 transition-colors"
-                      title="View details"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleEdit(tenant)}
-                      className="text-gray-400 hover:text-primary-600 transition-colors"
-                      title="Edit tenant"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(tenant)}
-                      disabled={deleteMutation.isPending}
-                      className="text-gray-400 hover:text-red-500 disabled:opacity-50"
-                      title="Delete tenant"
-                    >
-                      {deleteMutation.isPending && deletingId === tenant.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Mail className="w-4 h-4" /> {tenant.email}
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Phone className="w-4 h-4" /> {tenant.phone}
-                  </div>
-                </div>
-                {tenant.unit_name && (
-                  <div className="mt-3 flex items-center gap-2 text-sm bg-blue-50 text-blue-700 px-2 py-1.5 rounded-lg">
-                    <Home className="w-4 h-4" />
-                    {tenant.unit_id ? (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/units/${tenant.unit_id}`) }}
-                        onMouseEnter={() => prefetch(`/dashboard/units/${tenant.unit_id}`)}
-                        className="text-blue-800 hover:underline cursor-pointer"
-                      >
-                        {tenant.unit_name}
-                      </button>
-                    ) : (
-                      <span>{tenant.unit_name}</span>
-                    )}
-                  </div>
-                )}
-
-                <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
-                  {tenant.has_active_lease ? (
-                    <p className="text-sm text-green-600">
-                      {tenant.active_leases?.length || 0} active lease(s)
-                    </p>
-                  ) : (
-                    <p className="text-sm text-gray-400">No active lease</p>
-                  )}
-                  {tenant.lease_count > 0 && (
-                    <p className="text-xs text-gray-400">{tenant.lease_count} total leases</p>
-                  )}
-                </div>
-              </div>
-            ))}
-        </div>
-
-      {/* List view removed — grid only */}
-      {false && (
-        <div>
-          {isLoading ? (
-            <div className="space-y-2">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 animate-pulse">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                      <TbUserSquareRounded className="w-5 h-5 text-purple-600" />
-                    </div>
-                    <div className="flex-1 space-y-2">
-                      <div className="h-4 w-36 bg-gray-200 rounded" />
-                      <div className="h-3 w-48 bg-gray-100 rounded" />
-                    </div>
-                    <div className="h-6 w-20 bg-gray-100 rounded-full hidden sm:block" />
-                    <div className="h-4 w-28 bg-gray-100 rounded hidden md:block" />
-                    <div className="h-4 w-24 bg-gray-100 rounded hidden lg:block" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : !tenants?.length ? (
-            <EmptyState
-              icon={TbUserSquareRounded}
-              title="No tenants yet"
-              description="Add your first tenant to start managing lease agreements and billing."
-              action={{
-                label: 'Add Tenant',
-                onClick: () => setShowForm(true)
-              }}
-            />
           ) : (
-            <div className="space-y-2">
-              {tenants.map((tenant: any, index: number) => {
-                const isOptimistic = tenant._isOptimistic
-                const isUpdating = tenant._isUpdating
-
-                return (
-                  <motion.div
-                    key={tenant.id}
-                    initial={isOptimistic ? { opacity: 0.5, backgroundColor: 'rgb(239 246 255)' } : { opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0, backgroundColor: 'transparent' }}
-                    transition={{ duration: 0.3 }}
-                    onClick={() => !isOptimistic && !isUpdating && navigate(`/dashboard/tenants/${tenant.id}`)}
-                    onMouseEnter={() => !isOptimistic && !isUpdating && prefetch(`/dashboard/tenants/${tenant.id}`)}
-                    className={cn(
-                      'bg-white rounded-xl border p-4 pl-10 transition-all group relative',
-                      isOptimistic || isUpdating
-                        ? 'border-primary-200 bg-primary-50/50'
-                        : 'border-gray-200 hover:shadow-md hover:border-gray-300 cursor-pointer',
-                      !isOptimistic && selection.isSelected(tenant.id) && 'ring-2 ring-primary-500 bg-primary-50/30'
-                    )}
-                  >
-                    {/* Selection checkbox */}
-                    {!isOptimistic && !isUpdating && (
-                      <div className="absolute left-2.5 top-1/2 -translate-y-1/2" onClick={(e) => e.stopPropagation()}>
-                        <SelectionCheckbox
-                          checked={selection.isSelected(tenant.id)}
-                          onChange={() => selection.toggle(tenant.id)}
-                        />
-                      </div>
-                    )}
-
-                    <div className="flex items-center gap-4">
-                      {/* Icon */}
-                      <div className={cn(
-                        'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
-                        isOptimistic || isUpdating ? 'bg-primary-100' : 'bg-purple-100'
-                      )}>
-                        {isOptimistic || isUpdating ? (
-                          <Loader2 className="w-5 h-5 text-primary-600 animate-spin" />
-                        ) : (
-                          <TbUserSquareRounded className="w-5 h-5 text-purple-600" />
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="w-10 px-3 py-3">
+                    <SelectionCheckbox
+                      checked={selection.isAllPageSelected(pageIds)}
+                      indeterminate={selection.isPartialPageSelected(pageIds)}
+                      onChange={() => selection.selectPage(pageIds)}
+                    />
+                  </th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Tenant Name</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Account Type</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Email</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Phone</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Property / Unit</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3 w-28">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {tenants.map((tenant: any) => {
+                  const isOptimistic = tenant._isOptimistic
+                  const isUpdating = tenant._isUpdating
+                  const balance = tenant.balance_due ?? tenant.balance ?? tenant.billing_summary?.balance_due ?? 0
+                  return (
+                    <tr
+                      key={tenant.id}
+                      onClick={() => !isOptimistic && !isUpdating && navigate(`/dashboard/tenants/${tenant.id}`)}
+                      onMouseEnter={() => !isOptimistic && !isUpdating && prefetch(`/dashboard/tenants/${tenant.id}`)}
+                      className={cn(
+                        'group transition-colors',
+                        isOptimistic || isUpdating
+                          ? 'bg-primary-50/50'
+                          : 'hover:bg-gray-50 cursor-pointer',
+                        !isOptimistic && selection.isSelected(tenant.id) && 'bg-primary-50/30'
+                      )}
+                    >
+                      <td className="w-10 px-3 py-4" onClick={(e) => e.stopPropagation()}>
+                        {!isOptimistic && !isUpdating && (
+                          <SelectionCheckbox
+                            checked={selection.isSelected(tenant.id)}
+                            onChange={() => selection.toggle(tenant.id)}
+                          />
                         )}
-                      </div>
-
-                      {/* Name & Email */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className={cn(
-                            'font-semibold truncate',
-                            isOptimistic || isUpdating ? 'text-primary-700' : 'text-gray-900'
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
+                            isOptimistic || isUpdating ? 'bg-primary-100' : 'bg-purple-100'
                           )}>
-                            {tenant.name}
-                          </h3>
-                          {isOptimistic && (
-                            <span className="text-xs text-primary-600 font-medium">Creating...</span>
-                          )}
-                          {isUpdating && (
-                            <span className="text-xs text-primary-600 font-medium">Updating...</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-gray-500">
-                          <Mail className="w-3 h-3" />
-                          <span className="truncate">{tenant.email}</span>
-                        </div>
-                      </div>
-
-                      {/* Type Badge */}
-                      <span className={cn(
-                        'hidden sm:inline-flex px-2.5 py-1 rounded-full text-xs font-medium',
-                        tenant.tenant_type === 'company'
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-gray-100 text-gray-600'
-                      )}>
-                        {tenant.tenant_type === 'company' ? 'Company' : 'Individual'}
-                      </span>
-
-                      {/* Phone */}
-                      <div className="hidden md:flex items-center gap-2 text-sm text-gray-600 min-w-[130px]">
-                        <Phone className="w-4 h-4 text-gray-400" />
-                        <span className="truncate">{tenant.phone}</span>
-                      </div>
-
-                      {/* Unit */}
-                      <div className="hidden lg:flex items-center gap-2 text-sm min-w-[100px]">
-                        <Home className="w-4 h-4 text-gray-400" />
-                        {tenant.unit_name ? (
-                          tenant.unit_id ? (
+                            {isOptimistic || isUpdating ? (
+                              <Loader2 className="w-4 h-4 text-primary-600 animate-spin" />
+                            ) : (
+                              <TbUserSquareRounded className="w-4 h-4 text-purple-600" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
                             <button
-                              onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/units/${tenant.unit_id}`) }}
-                              onMouseEnter={() => prefetch(`/dashboard/units/${tenant.unit_id}`)}
-                              className="text-primary-600 hover:text-primary-700 hover:underline truncate"
+                              onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${tenant.id}`) }}
+                              className="font-semibold text-gray-900 hover:text-primary-600 hover:underline truncate block text-left"
                             >
-                              {tenant.unit_name}
+                              {tenant.name}
                             </button>
-                          ) : (
-                            <span className="truncate text-gray-700">{tenant.unit_name}</span>
-                          )
+                            <span className="text-xs text-gray-500">{tenant.code}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={cn(
+                          'inline-flex px-2 py-0.5 rounded-full text-xs font-medium',
+                          tenant.account_type === 'levy'
+                            ? 'bg-violet-50 text-violet-600'
+                            : 'bg-sky-50 text-sky-600'
+                        )}>
+                          {tenant.account_type === 'levy' ? 'Levy' : 'Rental'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600 truncate max-w-[200px]">{tenant.email || '-'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{tenant.phone || '-'}</td>
+                      <td className="px-6 py-4 text-sm">
+                        {tenant.unit_name ? (
+                          <div className="space-y-0.5">
+                            {tenant.property_name && (
+                              <span className="text-gray-500 text-xs block">{tenant.property_name}</span>
+                            )}
+                            {tenant.unit_id ? (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/units/${tenant.unit_id}`) }}
+                                onMouseEnter={() => prefetch(`/dashboard/units/${tenant.unit_id}`)}
+                                className="text-primary-600 hover:text-primary-700 hover:underline"
+                              >
+                                {tenant.unit_name}
+                              </button>
+                            ) : (
+                              <span className="text-gray-700">{tenant.unit_name}</span>
+                            )}
+                          </div>
                         ) : (
-                          <span className="text-gray-400">—</span>
+                          <span className="text-gray-400">-</span>
                         )}
-                      </div>
-
-                      {/* Lease Status */}
-                      <div className="hidden xl:flex items-center min-w-[90px]">
+                      </td>
+                      <td className="px-6 py-4 text-sm font-medium text-right tabular-nums">
+                        <span className={cn(
+                          Number(balance) > 0 ? 'text-red-600' : Number(balance) === 0 ? 'text-emerald-600' : 'text-gray-900'
+                        )}>
+                          {formatCurrency(balance)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
                         {tenant.has_active_lease ? (
-                          <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
                             Active
                           </span>
                         ) : (
-                          <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-500 font-medium">
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
                             No lease
                           </span>
                         )}
-                      </div>
-
-                      {/* Actions */}
-                      {!isOptimistic && !isUpdating ? (
-                        <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onMouseEnter={() => prefetch(`/dashboard/tenants/${tenant.id}`)}
-                            onClick={() => handleViewDetails(tenant.id)}
-                            className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-                            title="View details"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleEdit(tenant)}
-                            className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-                            title="Edit"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(tenant)}
-                            disabled={deleteMutation.isPending}
-                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Delete"
-                          >
-                            {deleteMutation.isPending && deletingId === tenant.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-4 h-4" />
-                            )}
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="w-24" />
-                      )}
-                    </div>
-                  </motion.div>
-                )
-              })}
-            </div>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {!isOptimistic && !isUpdating ? (
+                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onMouseEnter={() => prefetch(`/dashboard/tenants/${tenant.id}`)}
+                              onClick={() => handleViewDetails(tenant.id)}
+                              className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                              title="View details"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleEdit(tenant)}
+                              className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                              title="Edit"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(tenant)}
+                              disabled={deleteMutation.isPending}
+                              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Delete"
+                            >
+                              {deleteMutation.isPending && deletingId === tenant.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-4 h-4" />
+                              )}
+                            </button>
+                          </div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           )}
         </div>
-      )}
+      </div>
 
       {/* Pagination */}
       {totalPages > 1 && (

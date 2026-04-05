@@ -35,7 +35,7 @@ import {
 } from 'recharts'
 import { unitApi, leaseApi, invoiceApi, subsidiaryApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
-import { Button, TableFilter, Modal } from '../../components/ui'
+import { Button, TableFilter, Modal, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
 import { usePagination } from '../../hooks/usePagination'
@@ -160,6 +160,9 @@ export default function UnitDetail() {
   const prefetch = usePrefetch()
   const queryClient = useQueryClient()
 
+  // Active tab tracking for lazy-loading queries
+  const [activeTab, setActiveTab] = useState('overview')
+
   // Create Lease modal
   const [showLeaseModal, setShowLeaseModal] = useState(false)
 
@@ -173,14 +176,14 @@ export default function UnitDetail() {
   const { data: leasesData, isLoading: loadingLeases } = useQuery({
     queryKey: ['unit-leases', unitId],
     queryFn: () => leaseApi.list({ unit: unitId }).then((r) => r.data),
-    enabled: !!unitId,
+    enabled: !!unitId && (activeTab === 'leases' || activeTab === 'overview'),
     placeholderData: keepPreviousData,
   })
 
   const { data: invoicesData, isLoading: loadingInvoices } = useQuery({
     queryKey: ['unit-invoices', unitId],
     queryFn: () => invoiceApi.list({ unit: unitId }).then((r) => r.data),
-    enabled: !!unitId,
+    enabled: !!unitId && activeTab === 'overview',
     placeholderData: keepPreviousData,
   })
 
@@ -228,11 +231,11 @@ export default function UnitDetail() {
     return []
   }
 
-  // Fetch active tenant's subsidiary account
+  // Fetch active tenant's subsidiary account (statement tab)
   const { data: subAccountsData, isLoading: loadingSubAccounts } = useQuery({
     queryKey: ['unit-tenant-sub-accounts', activeTenantId],
     queryFn: () => subsidiaryApi.list({ tenant: activeTenantId }).then((r) => r.data),
-    enabled: !!activeTenantId,
+    enabled: !!activeTenantId && activeTab === 'statement',
     placeholderData: keepPreviousData,
   })
 
@@ -504,13 +507,166 @@ export default function UnitDetail() {
         />
       </motion.div>
 
-      {/* Active Lease Table */}
+      {/* Tabs */}
+      <Tabs defaultValue="overview" className="space-y-6" onChange={setActiveTab}>
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="overview" icon={Home}>Overview</TabsTrigger>
+          <TabsTrigger value="leases" icon={FileText}>Leases</TabsTrigger>
+          <TabsTrigger value="statement" icon={Layers}>Statement</TabsTrigger>
+        </TabsList>
+
+        {/* ===== OVERVIEW TAB ===== */}
+        <TabsContent value="overview" className="space-y-6">
+      {/* Recent Invoices Table */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
+        transition={{ delay: 0.25 }}
         className="bg-white rounded-xl border border-gray-200 overflow-hidden"
       >
+        <div className="p-6 border-b border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-900">Recent Invoices</h3>
+          <p className="text-sm text-gray-500">Invoices for this unit</p>
+        </div>
+        {!loadingInvoices && invoices.length > 0 && (
+          <TableFilter
+            searchPlaceholder="Search by invoice number..."
+            searchValue={invSearch}
+            onSearchChange={setInvSearch}
+            showDateFilter
+            dateFrom={invDateFrom}
+            dateTo={invDateTo}
+            onDateFromChange={setInvDateFrom}
+            onDateToChange={setInvDateTo}
+            showStatusFilter
+            statusOptions={[
+              { value: 'paid', label: 'Paid' },
+              { value: 'partial', label: 'Partial' },
+              { value: 'overdue', label: 'Overdue' },
+              { value: 'sent', label: 'Sent' },
+              { value: 'draft', label: 'Draft' },
+            ]}
+            statusValue={invStatus}
+            onStatusChange={setInvStatus}
+            resultCount={filteredInvoices.length}
+          />
+        )}
+        <div className="overflow-x-auto">
+          {loadingInvoices ? (
+            <div className="p-6"><TableSkeleton /></div>
+          ) : invoices.length === 0 ? (
+            <div className="p-12 text-center text-sm text-gray-400">No invoices found for this unit</div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Invoice #</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {paginatedInvoices.map((inv: any) => (
+                  <tr key={inv.id} onClick={() => navigate(`/dashboard/invoices/${inv.id}`)} onMouseEnter={() => prefetch(`/dashboard/invoices/${inv.id}`)} className="hover:bg-gray-50 cursor-pointer transition-colors">
+                    <td className="px-6 py-4 text-sm font-medium"><button onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/invoices/${inv.id}`) }} className="text-primary-600 hover:text-primary-700 hover:underline">{inv.invoice_number}</button></td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{formatDate(inv.date)}</td>
+                    <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{formatCurrency(inv.total_amount || 0)}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-right"><span className={(inv.balance || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>{formatCurrency(inv.balance || 0)}</span></td>
+                    <td className="px-6 py-4"><span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium', inv.status === 'paid' ? 'bg-emerald-50 text-emerald-700' : inv.status === 'overdue' ? 'bg-red-50 text-red-700' : inv.status === 'draft' ? 'bg-gray-100 text-gray-600' : 'bg-amber-50 text-amber-700')}>{inv.status}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {invTotalPages > 1 && (
+            <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+              <span className="text-sm text-gray-500">Showing {invStart}-{invEnd} of {invTotal}</span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setInvPage(Math.max(1, invPage - 1))} disabled={invPage === 1} className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">Previous</button>
+                <button onClick={() => setInvPage(Math.min(invTotalPages, invPage + 1))} disabled={invPage === invTotalPages} className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">Next</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </motion.div>
+
+      {/* Analytics Section */}
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Invoice Payment Timeline</h3>
+                <p className="text-sm text-gray-500">Invoiced vs paid amounts over time</p>
+              </div>
+            </div>
+            <div className="h-72">
+              {loadingInvoices ? (
+                <ChartSkeleton />
+              ) : monthlyData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-sm text-gray-400">No invoice data available to display</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={monthlyData}>
+                    <defs>
+                      <linearGradient id="gradientInvoiced" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} /><stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="gradientPaid" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} /><stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+                    <RechartsTooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                    <Area type="monotone" dataKey="invoiced" stroke="#3b82f6" strokeWidth={2} fill="url(#gradientInvoiced)" name="Invoiced" />
+                    <Area type="monotone" dataKey="paid" stroke="#10b981" strokeWidth={2} fill="url(#gradientPaid)" name="Paid" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Invoice Status</h3>
+              <p className="text-sm text-gray-500">Breakdown by status</p>
+            </div>
+            <div className="h-48 relative">
+              {loadingInvoices ? (
+                <div className="h-full flex items-center justify-center"><div className="h-36 w-36 rounded-full border-8 border-gray-200 animate-pulse" /></div>
+              ) : statusData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-sm text-gray-400">No invoice data available</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart><Pie data={statusData} innerRadius={40} outerRadius={65} paddingAngle={4} dataKey="value">{statusData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}</Pie><RechartsTooltip contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} /></PieChart>
+                </ResponsiveContainer>
+              )}
+              {!loadingInvoices && statusData.length > 0 && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="text-center"><p className="text-2xl font-bold text-gray-900">{invoices.length}</p><p className="text-xs text-gray-500">Total</p></div>
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4">
+              {!loadingInvoices && statusData.map((entry) => (
+                <div key={entry.name} className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
+                  <span className="text-sm text-gray-600">{entry.name}</span>
+                  <span className="text-sm font-semibold text-gray-900">{entry.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </motion.div>
+        </TabsContent>
+
+        {/* ===== LEASES TAB ===== */}
+        <TabsContent value="leases" className="space-y-6">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="p-6 border-b border-gray-100 flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Leases</h3>
@@ -641,429 +797,61 @@ export default function UnitDetail() {
             </div>
           )}
         </div>
-      </motion.div>
+      </div>
+        </TabsContent>
 
-      {/* Recent Invoices Table */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25 }}
-        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
-      >
-        <div className="p-6 border-b border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900">Recent Invoices</h3>
-          <p className="text-sm text-gray-500">Invoices for this unit</p>
-        </div>
-        {!loadingInvoices && invoices.length > 0 && (
-          <TableFilter
-            searchPlaceholder="Search by invoice number..."
-            searchValue={invSearch}
-            onSearchChange={setInvSearch}
-            showDateFilter
-            dateFrom={invDateFrom}
-            dateTo={invDateTo}
-            onDateFromChange={setInvDateFrom}
-            onDateToChange={setInvDateTo}
-            showStatusFilter
-            statusOptions={[
-              { value: 'paid', label: 'Paid' },
-              { value: 'partial', label: 'Partial' },
-              { value: 'overdue', label: 'Overdue' },
-              { value: 'sent', label: 'Sent' },
-              { value: 'draft', label: 'Draft' },
-            ]}
-            statusValue={invStatus}
-            onStatusChange={setInvStatus}
-            resultCount={filteredInvoices.length}
-          />
-        )}
-        <div className="overflow-x-auto">
-          {loadingInvoices ? (
-            <div className="p-6"><TableSkeleton /></div>
-          ) : invoices.length === 0 ? (
-            <div className="p-12 text-center text-sm text-gray-400">No invoices found for this unit</div>
-          ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Invoice #</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {paginatedInvoices.map((inv: any) => (
-                  <tr
-                    key={inv.id}
-                    onClick={() => navigate(`/dashboard/invoices/${inv.id}`)}
-                    onMouseEnter={() => prefetch(`/dashboard/invoices/${inv.id}`)}
-                    className="hover:bg-gray-50 cursor-pointer transition-colors"
-                  >
-                    <td className="px-6 py-4 text-sm font-medium">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/invoices/${inv.id}`) }}
-                        className="text-primary-600 hover:text-primary-700 hover:underline"
-                      >
-                        {inv.invoice_number}
-                      </button>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{formatDate(inv.date)}</td>
-                    <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{formatCurrency(inv.total_amount || 0)}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-right">
-                      <span className={(inv.balance || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>
-                        {formatCurrency(inv.balance || 0)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={cn(
-                        'inline-flex px-2 py-0.5 rounded-full text-xs font-medium',
-                        inv.status === 'paid' ? 'bg-emerald-50 text-emerald-700' :
-                        inv.status === 'overdue' ? 'bg-red-50 text-red-700' :
-                        inv.status === 'draft' ? 'bg-gray-100 text-gray-600' :
-                        'bg-amber-50 text-amber-700'
-                      )}>
-                        {inv.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          {invTotalPages > 1 && (
-            <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
-              <span className="text-sm text-gray-500">
-                Showing {invStart}-{invEnd} of {invTotal}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setInvPage(Math.max(1, invPage - 1))}
-                  disabled={invPage === 1}
-                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-                {Array.from({ length: Math.min(invTotalPages, 5) }, (_, i) => {
-                  const page = invTotalPages <= 5 ? i + 1 :
-                    invPage <= 3 ? i + 1 :
-                    invPage >= invTotalPages - 2 ? invTotalPages - 4 + i :
-                    invPage - 2 + i
-                  return (
-                    <button
-                      key={page}
-                      onClick={() => setInvPage(page)}
-                      className={`px-3 py-1 text-sm rounded-lg ${page === invPage ? 'bg-primary-600 text-white' : 'border border-gray-200 hover:bg-gray-50'}`}
-                    >
-                      {page}
-                    </button>
-                  )
-                })}
-                <button
-                  onClick={() => setInvPage(Math.min(invTotalPages, invPage + 1))}
-                  disabled={invPage === invTotalPages}
-                  className="px-3 py-1 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </motion.div>
-
-      {/* Analytics Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-      >
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 bg-blue-50 rounded-lg">
-            <BarChart3 className="w-5 h-5 text-blue-600" />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Analytics</h3>
-            <p className="text-sm text-gray-500">Payment trends and invoice breakdown</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Invoice Payment Timeline - 2/3 width */}
-          <div className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Invoice Payment Timeline</h3>
-                <p className="text-sm text-gray-500">Invoiced vs paid amounts over time</p>
-              </div>
-              <div className="flex items-center gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-blue-500" />
-                  <span className="text-gray-600">Invoiced</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                  <span className="text-gray-600">Paid</span>
-                </div>
-              </div>
-            </div>
-            <div className="h-72">
-              {loadingInvoices ? (
-                <ChartSkeleton />
-              ) : monthlyData.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-sm text-gray-400">
-                  No invoice data available to display
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={monthlyData}>
-                    <defs>
-                      <linearGradient id="gradientInvoiced" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="gradientPaid" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                    <XAxis
-                      dataKey="month"
-                      stroke="#94a3b8"
-                      fontSize={12}
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <YAxis
-                      stroke="#94a3b8"
-                      fontSize={12}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
-                    />
-                    <RechartsTooltip
-                      formatter={(value: number) => formatCurrency(value)}
-                      contentStyle={{
-                        borderRadius: '12px',
-                        border: '1px solid #e2e8f0',
-                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                      }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="invoiced"
-                      stroke="#3b82f6"
-                      strokeWidth={2}
-                      fill="url(#gradientInvoiced)"
-                      name="Invoiced"
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="paid"
-                      stroke="#10b981"
-                      strokeWidth={2}
-                      fill="url(#gradientPaid)"
-                      name="Paid"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </div>
-
-          {/* Invoice Status Breakdown - 1/3 width */}
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Invoice Status</h3>
-              <p className="text-sm text-gray-500">Breakdown by status</p>
-            </div>
-            <div className="h-48 relative">
-              {loadingInvoices ? (
-                <div className="h-full flex items-center justify-center">
-                  <div className="h-36 w-36 rounded-full border-8 border-gray-200 animate-pulse" />
-                </div>
-              ) : statusData.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-sm text-gray-400">
-                  No invoice data available
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={statusData}
-                      innerRadius={40}
-                      outerRadius={65}
-                      paddingAngle={4}
-                      dataKey="value"
-                    >
-                      {statusData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <RechartsTooltip
-                      contentStyle={{
-                        borderRadius: '12px',
-                        border: '1px solid #e2e8f0',
-                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-              {!loadingInvoices && statusData.length > 0 && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="text-center">
-                    <p className="text-2xl font-bold text-gray-900">{invoices.length}</p>
-                    <p className="text-xs text-gray-500">Total</p>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4">
-              {loadingInvoices ? (
-                <div className="flex gap-4">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-4 w-16 bg-gray-200 rounded animate-pulse" />
-                  ))}
-                </div>
-              ) : (
-                statusData.map((entry) => (
-                  <div key={entry.name} className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
-                    <span className="text-sm text-gray-600">{entry.name}</span>
-                    <span className="text-sm font-semibold text-gray-900">{entry.value}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Tenant Subsidiary Account Statement */}
-      {activeTenantId && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="bg-white rounded-xl border border-gray-200 overflow-hidden"
-        >
+        {/* ===== STATEMENT TAB ===== */}
+        <TabsContent value="statement" className="space-y-6">
+      {/* Tenant Subsidiary Account Statement - moved from below */}
+      {activeTenantId ? (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Tenant Subsidiary Account Statement</h3>
               <p className="text-sm text-gray-500">
-                {tenantSubAccount
-                  ? `${tenantSubAccount.account_code || tenantSubAccount.code || ''} - ${tenantSubAccount.category_name || tenantSubAccount.category || tenantSubAccount.name || 'Account'}`
-                  : `Sub-ledger for current tenant${activeLease?.tenant_name ? ` (${activeLease.tenant_name})` : ''}`}
+                {tenantSubAccount ? `${tenantSubAccount.account_code || tenantSubAccount.code || ''} - ${tenantSubAccount.category_name || tenantSubAccount.category || tenantSubAccount.name || 'Account'}` : `Sub-ledger for current tenant${activeLease?.tenant_name ? ` (${activeLease.tenant_name})` : ''}`}
               </p>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
-              {/* Date range picker */}
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-gray-400" />
-                <input
-                  type="date"
-                  value={subAccountDateRange.period_start}
-                  onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_start: e.target.value }))}
-                  className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
+                <input type="date" value={subAccountDateRange.period_start} onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_start: e.target.value }))} className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
                 <span className="text-gray-400">to</span>
-                <input
-                  type="date"
-                  value={subAccountDateRange.period_end}
-                  onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_end: e.target.value }))}
-                  className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
+                <input type="date" value={subAccountDateRange.period_end} onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_end: e.target.value }))} className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
               </div>
-              {/* Consolidated / Audit toggle */}
               <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-                <button
-                  onClick={() => setSubAccountStatementView('consolidated')}
-                  className={cn(
-                    'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
-                    subAccountStatementView === 'consolidated' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  )}
-                >
-                  Consolidated
-                </button>
-                <button
-                  onClick={() => setSubAccountStatementView('audit')}
-                  className={cn(
-                    'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
-                    subAccountStatementView === 'audit' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  )}
-                >
-                  Audit
-                </button>
+                <button onClick={() => setSubAccountStatementView('consolidated')} className={cn('px-2.5 py-1 text-xs font-medium rounded-md transition-colors', subAccountStatementView === 'consolidated' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>Consolidated</button>
+                <button onClick={() => setSubAccountStatementView('audit')} className={cn('px-2.5 py-1 text-xs font-medium rounded-md transition-colors', subAccountStatementView === 'audit' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>Audit</button>
               </div>
-              {/* Export dropdown */}
               {tenantSubAccount && (
                 <div className="relative group">
-                  <button
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Export
-                  </button>
+                  <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"><Download className="w-3.5 h-3.5" /> Export</button>
                   <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg hidden group-hover:block z-10 min-w-[100px]">
                     {(['csv', 'pdf'] as const).map(fmt => (
-                      <button
-                        key={fmt}
-                        onClick={async () => {
-                          try {
-                            const res = await subsidiaryApi.exportStatement(tenantSubAccount.id, {
-                              period_start: subAccountDateRange.period_start,
-                              period_end: subAccountDateRange.period_end,
-                              view: subAccountStatementView,
-                              format: fmt,
-                            })
-                            const url = URL.createObjectURL(new Blob([res.data]))
-                            const a = document.createElement('a')
-                            a.href = url
-                            a.download = `statement-${(tenantSubAccount.code || tenantSubAccount.account_code || tenantSubAccount.id).toString().replace(/\//g, '-')}.${fmt}`
-                            a.click()
-                            URL.revokeObjectURL(url)
-                          } catch { /* ignore */ }
-                        }}
-                        className="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left first:rounded-t-lg last:rounded-b-lg"
-                      >
-                        {fmt.toUpperCase()}
-                      </button>
+                      <button key={fmt} onClick={async () => { try { const res = await subsidiaryApi.exportStatement(tenantSubAccount.id, { period_start: subAccountDateRange.period_start, period_end: subAccountDateRange.period_end, view: subAccountStatementView, format: fmt }); const url = URL.createObjectURL(new Blob([res.data])); const a = document.createElement('a'); a.href = url; a.download = `statement-${(tenantSubAccount.code || tenantSubAccount.account_code || tenantSubAccount.id).toString().replace(/\//g, '-')}.${fmt}`; a.click(); URL.revokeObjectURL(url) } catch { /* ignore */ } }} className="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left first:rounded-t-lg last:rounded-b-lg">{fmt.toUpperCase()}</button>
                     ))}
                   </div>
                 </div>
               )}
             </div>
           </div>
-
           {loadingSubAccounts ? (
             <div className="p-6"><TableSkeleton rows={4} /></div>
           ) : !tenantSubAccount ? (
-            <div className="p-12 text-center text-sm text-gray-400">
-              <Layers className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              No subsidiary account found for the current tenant
-            </div>
+            <div className="p-12 text-center text-sm text-gray-400"><Layers className="w-8 h-8 mx-auto mb-2 opacity-50" />No subsidiary account found for the current tenant</div>
           ) : (
             <>
-              {/* Opening balance */}
               {subAccountStatement && (
                 <div className="px-6 py-3 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
                   <span className="text-sm font-medium text-gray-600">Opening Balance</span>
-                  <span className={cn('text-sm font-bold tabular-nums', (subAccountStatement.opening_balance ?? subAccountStatement.balance_bf ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600')}>
-                    {formatCurrency(subAccountStatement.opening_balance ?? subAccountStatement.balance_bf ?? 0)}
-                  </span>
+                  <span className={cn('text-sm font-bold tabular-nums', (subAccountStatement.opening_balance ?? subAccountStatement.balance_bf ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600')}>{formatCurrency(subAccountStatement.opening_balance ?? subAccountStatement.balance_bf ?? 0)}</span>
                 </div>
               )}
-
               <div className="overflow-x-auto">
                 {loadingSubStatement ? (
                   <div className="p-6"><TableSkeleton rows={6} /></div>
                 ) : !subAccountStatement || (subAccountStatement.transactions || subAccountStatement.entries || []).length === 0 ? (
-                  <div className="p-12 text-center text-sm text-gray-400">
-                    No transactions found for this period
-                  </div>
+                  <div className="p-12 text-center text-sm text-gray-400">No transactions found for this period</div>
                 ) : (
                   <table className="w-full">
                     <thead>
@@ -1081,41 +869,34 @@ export default function UnitDetail() {
                         <tr key={idx} className="hover:bg-gray-50 transition-colors">
                           <td className="px-6 py-4 text-sm text-gray-600">{txn.date || '-'}</td>
                           <td className="px-6 py-4 text-sm text-gray-500 font-mono text-xs">{txn.reference || txn.ref || '-'}</td>
-                          <td className="px-6 py-4 text-sm text-gray-900">
-                            <span className="flex items-center gap-1.5">
-                              {txn.description || txn.narration || '-'}
-                              {txn.is_consolidated && (
-                                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold" title="Consolidated entry">C</span>
-                              )}
-                            </span>
-                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900"><span className="flex items-center gap-1.5">{txn.description || txn.narration || '-'}{txn.is_consolidated && (<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold" title="Consolidated entry">C</span>)}</span></td>
                           <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.debit ? formatCurrency(txn.debit) : '-'}</td>
                           <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.credit ? formatCurrency(txn.credit) : '-'}</td>
-                          <td className="px-6 py-4 text-sm font-medium text-right tabular-nums">
-                            <span className={(txn.balance || txn.running_balance || 0) < 0 ? 'text-red-600' : 'text-gray-900'}>
-                              {formatCurrency(txn.balance || txn.running_balance || 0)}
-                            </span>
-                          </td>
+                          <td className="px-6 py-4 text-sm font-medium text-right tabular-nums"><span className={(txn.balance || txn.running_balance || 0) < 0 ? 'text-red-600' : 'text-gray-900'}>{formatCurrency(txn.balance || txn.running_balance || 0)}</span></td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 )}
               </div>
-
-              {/* Closing balance */}
               {subAccountStatement && (subAccountStatement.transactions || subAccountStatement.entries || []).length > 0 && (
                 <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
                   <span className="text-sm font-medium text-gray-600">Closing Balance</span>
-                  <span className={cn('text-sm font-bold tabular-nums', (subAccountStatement.closing_balance ?? subAccountStatement.balance_cf ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600')}>
-                    {formatCurrency(subAccountStatement.closing_balance ?? subAccountStatement.balance_cf ?? 0)}
-                  </span>
+                  <span className={cn('text-sm font-bold tabular-nums', (subAccountStatement.closing_balance ?? subAccountStatement.balance_cf ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600')}>{formatCurrency(subAccountStatement.closing_balance ?? subAccountStatement.balance_cf ?? 0)}</span>
                 </div>
               )}
             </>
           )}
-        </motion.div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-sm text-gray-400">
+          <Layers className="w-8 h-8 mx-auto mb-2 opacity-50" />
+          No tenant currently assigned to this unit
+        </div>
       )}
+        </TabsContent>
+      </Tabs>
+
 
       {/* Create Lease Modal */}
       <Modal

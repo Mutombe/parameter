@@ -34,7 +34,7 @@ import {
 import api from '../../services/api'
 import { tenantApi, reportsApi, invoiceApi, receiptApi, unitApi, subsidiaryApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
-import { Modal, Button, Input, Select, Textarea, TableFilter } from '../../components/ui'
+import { Modal, Button, Input, Select, Textarea, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
 import { useAuthStore } from '../../stores/authStore'
@@ -140,6 +140,9 @@ export default function TenantDetail() {
   const prefetch = usePrefetch()
   const queryClient = useQueryClient()
 
+  // Active tab tracking for lazy-loading queries
+  const [activeTab, setActiveTab] = useState('statement')
+
   // Create Invoice modal
   const [showInvoiceModal, setShowInvoiceModal] = useState(false)
   const [invoiceForm, setInvoiceForm] = useState({
@@ -193,31 +196,31 @@ export default function TenantDetail() {
     placeholderData: keepPreviousData,
   })
 
-  // 4. Account statement chart
+  // 4. Account statement chart (statement tab)
   const { data: accountData, isLoading: loadingAccount } = useQuery({
     queryKey: ['tenant-account', tenantId],
     queryFn: () => reportsApi.tenantAccount({ tenant_id: tenantId }).then((r) => r.data),
-    enabled: !!tenantId,
+    enabled: !!tenantId && activeTab === 'statement',
     placeholderData: keepPreviousData,
   })
 
-  // 5. Aged analysis
+  // 5. Aged analysis (details tab)
   const { data: agedData, isLoading: loadingAged } = useQuery({
     queryKey: ['tenant-aged', tenantId],
     queryFn: () => reportsApi.agedAnalysis({ tenant_id: tenantId }).then((r) => r.data),
-    enabled: !!tenantId,
+    enabled: !!tenantId && activeTab === 'details',
     placeholderData: keepPreviousData,
   })
 
-  // 6. Deposit summary
+  // 6. Deposit summary (details tab)
   const { data: depositData, isLoading: loadingDeposit } = useQuery({
     queryKey: ['tenant-deposit', tenantId],
     queryFn: () => reportsApi.depositSummary({ tenant_id: tenantId }).then((r) => r.data),
-    enabled: !!tenantId,
+    enabled: !!tenantId && activeTab === 'details',
     placeholderData: keepPreviousData,
   })
 
-  // 7. Maintenance requests for this tenant's units
+  // 7. Maintenance requests for this tenant's units (details tab)
   const { data: maintenanceData, isLoading: loadingMaintenance } = useQuery({
     queryKey: ['tenant-maintenance', tenantId],
     queryFn: async () => {
@@ -242,7 +245,7 @@ export default function TenantDetail() {
         return true
       })
     },
-    enabled: !!tenantId && !!detail,
+    enabled: !!tenantId && !!detail && activeTab === 'details',
     placeholderData: keepPreviousData,
   })
 
@@ -795,6 +798,381 @@ export default function TenantDetail() {
         <StatCard title="Overdue Amount" value={formatCurrency(billing.overdue_amount || 0)} icon={AlertTriangle} color="orange" isLoading={loadingDetail} />
       </motion.div>
 
+      {/* Tabs */}
+      <Tabs defaultValue="statement" className="space-y-6" onChange={setActiveTab}>
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="statement" icon={FileText}>Statement</TabsTrigger>
+          <TabsTrigger value="invoices" icon={FileText}>Invoices</TabsTrigger>
+          <TabsTrigger value="payments" icon={Wallet}>Payments</TabsTrigger>
+          <TabsTrigger value="leases" icon={Home}>Leases</TabsTrigger>
+          <TabsTrigger value="details" icon={Shield}>Details</TabsTrigger>
+        </TabsList>
+
+        {/* ===== STATEMENT TAB ===== */}
+        <TabsContent value="statement" className="space-y-6">
+      {/* Account Statement */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.45 }}
+        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+      >
+        <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Account Statement</h3>
+            <p className="text-sm text-gray-500">
+              {statementSource === 'operational'
+                ? 'Bank-statement style view with running balance. Select a date range to filter.'
+                : tenantSubAccount
+                  ? `${tenantSubAccount.account_code || tenantSubAccount.code || ''} - ${tenantSubAccount.category_name || tenantSubAccount.category || tenantSubAccount.name || 'Account'}`
+                  : 'Trust accounting sub-ledger view'}
+            </p>
+          </div>
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+            <button
+              onClick={() => setStatementSource('operational')}
+              className={cn(
+                'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
+                statementSource === 'operational' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              )}
+            >
+              Operational
+            </button>
+            <button
+              onClick={() => setStatementSource('trust')}
+              className={cn(
+                'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
+                statementSource === 'trust' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              )}
+            >
+              Trust Accounting
+            </button>
+          </div>
+        </div>
+
+        {statementSource === 'operational' && (
+          <>
+        {!loadingLedger && ledger.length > 0 && (
+          <TableFilter
+            searchPlaceholder="Search by reference or description..."
+            searchValue={ledgerSearch}
+            onSearchChange={setLedgerSearch}
+            showDateFilter
+            dateFrom={ledgerDateFrom}
+            dateTo={ledgerDateTo}
+            onDateFromChange={setLedgerDateFrom}
+            onDateToChange={setLedgerDateTo}
+            resultCount={filteredLedger.length}
+          />
+        )}
+        <div className="overflow-x-auto">
+          {loadingLedger ? (
+            <div className="p-6"><TableSkeleton rows={6} /></div>
+          ) : ledger.length === 0 ? (
+            <div className="p-12 text-center text-sm text-gray-400">No ledger entries found</div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Reference</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Description</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Debit</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Credit</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {(ledgerPeriodStart || ledgerPeriodEnd) && ledgerData?.opening_balance !== undefined && (
+                  <tr className="bg-gray-50">
+                    <td className="px-6 py-3 text-sm text-gray-500" colSpan={3}>Balance brought forward</td>
+                    <td className="px-6 py-3 text-sm text-right">-</td>
+                    <td className="px-6 py-3 text-sm text-right">-</td>
+                    <td className="px-6 py-3 text-sm font-semibold text-right">{formatCurrency(ledgerData.opening_balance)}</td>
+                  </tr>
+                )}
+                {paginatedLedger.map((entry: any, idx: number) => (
+                  <tr key={entry.id || idx} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 text-sm text-gray-600">{formatDate(entry.date)}</td>
+                    <td className="px-6 py-4 text-sm font-medium">
+                      {entry.type === 'invoice' ? (
+                        <button onClick={() => navigate(`/dashboard/invoices/${entry.id}`)} onMouseEnter={() => prefetch(`/dashboard/invoices/${entry.id}`)} className="text-blue-600 hover:text-blue-700 hover:underline">
+                          {entry.reference || '-'}
+                        </button>
+                      ) : entry.type === 'receipt' ? (
+                        <button onClick={() => navigate(`/dashboard/receipts/${entry.id}`)} onMouseEnter={() => prefetch(`/dashboard/receipts/${entry.id}`)} className="text-emerald-600 hover:text-emerald-700 hover:underline">
+                          {entry.reference || '-'}
+                        </button>
+                      ) : (
+                        <span className="text-gray-900">{entry.reference || entry.ref || '-'}</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{entry.description || entry.narration || '-'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 text-right">{(entry.debit || 0) > 0 ? formatCurrency(entry.debit) : '-'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 text-right">{(entry.credit || 0) > 0 ? formatCurrency(entry.credit) : '-'}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-right">
+                      <span className={(entry.balance || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>
+                        {formatCurrency(entry.balance || 0)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {ledgerData?.total_debits !== undefined && (
+                  <tr className="bg-gray-50 font-semibold">
+                    <td className="px-6 py-3 text-sm" colSpan={3}>Totals</td>
+                    <td className="px-6 py-3 text-sm text-right">{formatCurrency(ledgerData.total_debits)}</td>
+                    <td className="px-6 py-3 text-sm text-right">{formatCurrency(ledgerData.total_credits)}</td>
+                    <td className="px-6 py-3 text-sm text-right">{formatCurrency(ledgerData.closing_balance)}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
+          {renderPagination(ledgerPage, ledgerTotalPages, setLedgerPage, ledgerStart, ledgerEnd, ledgerTotal)}
+        </div>
+        </>
+        )}
+
+        {statementSource === 'trust' && (
+          <>
+            <div className="p-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-gray-400" />
+                <input type="date" value={subAccountDateRange.period_start} onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_start: e.target.value }))} className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                <span className="text-gray-400">to</span>
+                <input type="date" value={subAccountDateRange.period_end} onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_end: e.target.value }))} className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              </div>
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                <button onClick={() => setSubAccountStatementView('consolidated')} className={cn('px-2.5 py-1 text-xs font-medium rounded-md transition-colors', subAccountStatementView === 'consolidated' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>Consolidated</button>
+                <button onClick={() => setSubAccountStatementView('audit')} className={cn('px-2.5 py-1 text-xs font-medium rounded-md transition-colors', subAccountStatementView === 'audit' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>Audit</button>
+              </div>
+              {tenantSubAccount && (
+                <div className="relative group ml-auto">
+                  <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                    <Download className="w-3.5 h-3.5" /> Export
+                  </button>
+                  <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg hidden group-hover:block z-10 min-w-[100px]">
+                    {(['csv', 'pdf'] as const).map(fmt => (
+                      <button key={fmt} onClick={async () => { try { const res = await subsidiaryApi.exportStatement(tenantSubAccount.id, { period_start: subAccountDateRange.period_start, period_end: subAccountDateRange.period_end, view: subAccountStatementView, format: fmt }); const url = URL.createObjectURL(new Blob([res.data])); const a = document.createElement('a'); a.href = url; a.download = `statement-${(tenantSubAccount.code || tenantSubAccount.account_code || tenantSubAccount.id).toString().replace(/\//g, '-')}.${fmt}`; a.click(); URL.revokeObjectURL(url) } catch { /* ignore */ } }} className="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left first:rounded-t-lg last:rounded-b-lg">{fmt.toUpperCase()}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            {loadingSubAccounts ? (
+              <div className="p-6"><TableSkeleton rows={4} /></div>
+            ) : !tenantSubAccount ? (
+              <div className="p-12 text-center text-sm text-gray-400">
+                <Layers className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                No subsidiary account found for this tenant
+              </div>
+            ) : (
+              <>
+                {subAccountStatement && (
+                  <div className="px-6 py-3 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+                    <span className="text-sm font-medium text-gray-600">Opening Balance</span>
+                    <span className={cn('text-sm font-bold tabular-nums', (subAccountStatement.opening_balance ?? subAccountStatement.balance_bf ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600')}>{formatCurrency(subAccountStatement.opening_balance ?? subAccountStatement.balance_bf ?? 0)}</span>
+                  </div>
+                )}
+                <div className="overflow-x-auto">
+                  {loadingSubStatement ? (
+                    <div className="p-6"><TableSkeleton rows={6} /></div>
+                  ) : !subAccountStatement || (subAccountStatement.transactions || subAccountStatement.entries || []).length === 0 ? (
+                    <div className="p-12 text-center text-sm text-gray-400">No transactions found for this period</div>
+                  ) : (
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
+                          <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Ref</th>
+                          <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Description</th>
+                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Debit</th>
+                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Credit</th>
+                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {(subAccountStatement.transactions || subAccountStatement.entries || []).map((txn: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-6 py-4 text-sm text-gray-600">{txn.date || '-'}</td>
+                            <td className="px-6 py-4 text-sm text-gray-500 font-mono text-xs">{txn.reference || txn.ref || '-'}</td>
+                            <td className="px-6 py-4 text-sm text-gray-900"><span className="flex items-center gap-1.5">{txn.description || txn.narration || '-'}{txn.is_consolidated && (<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold" title="Consolidated entry">C</span>)}</span></td>
+                            <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.debit ? formatCurrency(txn.debit) : '-'}</td>
+                            <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.credit ? formatCurrency(txn.credit) : '-'}</td>
+                            <td className="px-6 py-4 text-sm font-medium text-right tabular-nums"><span className={(txn.balance || txn.running_balance || 0) < 0 ? 'text-red-600' : 'text-gray-900'}>{formatCurrency(txn.balance || txn.running_balance || 0)}</span></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+                {subAccountStatement && (subAccountStatement.transactions || subAccountStatement.entries || []).length > 0 && (
+                  <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
+                    <span className="text-sm font-medium text-gray-600">Closing Balance</span>
+                    <span className={cn('text-sm font-bold tabular-nums', (subAccountStatement.closing_balance ?? subAccountStatement.balance_cf ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600')}>{formatCurrency(subAccountStatement.closing_balance ?? subAccountStatement.balance_cf ?? 0)}</span>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </motion.div>
+        </TabsContent>
+
+        {/* ===== INVOICES TAB ===== */}
+        <TabsContent value="invoices" className="space-y-6">
+      {/* Invoices Table */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+      >
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Invoices</h3>
+            <p className="text-sm text-gray-500">{recentInvoices.length} invoice(s)</p>
+          </div>
+          <button
+            onClick={() => { setInvoiceForm(f => ({ ...f, tenant: String(tenantId) })); setShowInvoiceModal(true) }}
+            className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+          >
+            <Plus className="w-4 h-4" /> Create Invoice
+          </button>
+        </div>
+        {!loadingDetail && recentInvoices.length > 0 && (
+          <TableFilter
+            searchPlaceholder="Search by invoice number..."
+            searchValue={invSearch}
+            onSearchChange={setInvSearch}
+            showDateFilter
+            dateFrom={invDateFrom}
+            dateTo={invDateTo}
+            onDateFromChange={setInvDateFrom}
+            onDateToChange={setInvDateTo}
+            showStatusFilter
+            statusOptions={[
+              { value: 'paid', label: 'Paid' },
+              { value: 'partial', label: 'Partial' },
+              { value: 'overdue', label: 'Overdue' },
+              { value: 'sent', label: 'Sent' },
+              { value: 'draft', label: 'Draft' },
+            ]}
+            statusValue={invStatus}
+            onStatusChange={setInvStatus}
+            resultCount={filteredInvoices.length}
+          />
+        )}
+        <div className="overflow-x-auto">
+          {loadingDetail ? (
+            <div className="p-6"><TableSkeleton /></div>
+          ) : recentInvoices.length === 0 ? (
+            <div className="p-12 text-center text-sm text-gray-400">No invoices found</div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Invoice #</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Due Date</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {paginatedInvoices.map((inv: any) => (
+                  <tr key={inv.id} onClick={() => navigate(`/dashboard/invoices/${inv.id}`)} onMouseEnter={() => prefetch(`/dashboard/invoices/${inv.id}`)} className="hover:bg-gray-50 cursor-pointer transition-colors">
+                    <td className="px-6 py-4 text-sm font-medium">
+                      <button onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/invoices/${inv.id}`) }} className="text-primary-600 hover:text-primary-700 hover:underline">{inv.invoice_number}</button>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{formatDate(inv.date)}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{inv.due_date ? formatDate(inv.due_date) : '-'}</td>
+                    <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{formatCurrency(inv.amount || inv.total_amount || 0)}</td>
+                    <td className="px-6 py-4 text-sm font-medium text-right"><span className={(inv.balance || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>{formatCurrency(inv.balance || 0)}</span></td>
+                    <td className="px-6 py-4"><span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium', inv.status === 'paid' ? 'bg-emerald-50 text-emerald-700' : inv.status === 'overdue' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700')}>{inv.status}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {renderPagination(invPage, invTotalPages, setInvPage, invStart, invEnd, invTotal)}
+        </div>
+      </motion.div>
+        </TabsContent>
+
+        {/* ===== PAYMENTS TAB ===== */}
+        <TabsContent value="payments" className="space-y-6">
+      {/* Receipts / Payments Table */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.42 }}
+        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+      >
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Receipts / Payments</h3>
+            <p className="text-sm text-gray-500">{recentReceipts.length} payment(s) recorded</p>
+          </div>
+          <button
+            onClick={() => { setReceiptForm(f => ({ ...f, tenant: String(tenantId) })); setShowReceiptModal(true) }}
+            className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+          >
+            <Plus className="w-4 h-4" /> Record Payment
+          </button>
+        </div>
+        {!loadingDetail && recentReceipts.length > 0 && (
+          <TableFilter
+            searchPlaceholder="Search by receipt number, reference, or method..."
+            searchValue={rcptSearch}
+            onSearchChange={setRcptSearch}
+            showDateFilter
+            dateFrom={rcptDateFrom}
+            dateTo={rcptDateTo}
+            onDateFromChange={setRcptDateFrom}
+            onDateToChange={setRcptDateTo}
+            resultCount={filteredReceipts.length}
+          />
+        )}
+        <div className="overflow-x-auto">
+          {loadingDetail ? (
+            <div className="p-6"><TableSkeleton /></div>
+          ) : recentReceipts.length === 0 ? (
+            <div className="p-12 text-center text-sm text-gray-400">No payments recorded</div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Receipt #</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Invoice #</th>
+                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Method</th>
+                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Reference</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {paginatedReceipts.map((rcpt: any) => (
+                  <tr key={rcpt.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 text-sm font-medium"><button onClick={() => navigate(`/dashboard/receipts/${rcpt.id}`)} onMouseEnter={() => prefetch(`/dashboard/receipts/${rcpt.id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{rcpt.receipt_number}</button></td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{formatDate(rcpt.date)}</td>
+                    <td className="px-6 py-4 text-sm">{rcpt.invoice ? (<button onClick={() => navigate(`/dashboard/invoices/${rcpt.invoice}`)} onMouseEnter={() => prefetch(`/dashboard/invoices/${rcpt.invoice}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{rcpt.invoice_number || `INV-${rcpt.invoice}`}</button>) : (<span className="text-gray-400">-</span>)}</td>
+                    <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{formatCurrency(rcpt.amount || 0)}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600"><span className="capitalize">{(rcpt.payment_method || '').replace(/_/g, ' ')}</span></td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{rcpt.reference || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {renderPagination(rcptPage, rcptTotalPages, setRcptPage, rcptStart, rcptEnd, rcptTotal)}
+        </div>
+      </motion.div>
+        </TabsContent>
+
+        {/* ===== LEASES TAB ===== */}
+        <TabsContent value="leases" className="space-y-6">
       {/* Active Leases Table */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -885,569 +1263,11 @@ export default function TenantDetail() {
           {renderPagination(leasesPage, leasesTotalPages, setLeasesPage, leasesStart, leasesEnd, leasesTotal)}
         </div>
       </motion.div>
+        </TabsContent>
 
-      {/* Invoices Table */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
-      >
-        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Invoices</h3>
-            <p className="text-sm text-gray-500">{recentInvoices.length} invoice(s)</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => {
-                setInvoiceForm(f => ({ ...f, tenant: String(tenantId) }))
-                setShowInvoiceModal(true)
-              }}
-              className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
-            >
-              <Plus className="w-4 h-4" />
-              Create Invoice
-            </button>
-            <button
-              onClick={() => {
-                setReceiptForm(f => ({ ...f, tenant: String(tenantId) }))
-                setShowReceiptModal(true)
-              }}
-              className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
-            >
-              <Plus className="w-4 h-4" />
-              Record Payment
-            </button>
-          </div>
-        </div>
-        {!loadingDetail && recentInvoices.length > 0 && (
-          <TableFilter
-            searchPlaceholder="Search by invoice number..."
-            searchValue={invSearch}
-            onSearchChange={setInvSearch}
-            showDateFilter
-            dateFrom={invDateFrom}
-            dateTo={invDateTo}
-            onDateFromChange={setInvDateFrom}
-            onDateToChange={setInvDateTo}
-            showStatusFilter
-            statusOptions={[
-              { value: 'paid', label: 'Paid' },
-              { value: 'partial', label: 'Partial' },
-              { value: 'overdue', label: 'Overdue' },
-              { value: 'sent', label: 'Sent' },
-              { value: 'draft', label: 'Draft' },
-            ]}
-            statusValue={invStatus}
-            onStatusChange={setInvStatus}
-            resultCount={filteredInvoices.length}
-          />
-        )}
-        <div className="overflow-x-auto">
-          {loadingDetail ? (
-            <div className="p-6"><TableSkeleton /></div>
-          ) : recentInvoices.length === 0 ? (
-            <div className="p-12 text-center text-sm text-gray-400">No invoices found</div>
-          ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Invoice #</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Due Date</th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {paginatedInvoices.map((inv: any) => (
-                  <tr
-                    key={inv.id}
-                    onClick={() => navigate(`/dashboard/invoices/${inv.id}`)}
-                    onMouseEnter={() => prefetch(`/dashboard/invoices/${inv.id}`)}
-                    className="hover:bg-gray-50 cursor-pointer transition-colors"
-                  >
-                    <td className="px-6 py-4 text-sm font-medium">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/invoices/${inv.id}`) }}
-                        className="text-primary-600 hover:text-primary-700 hover:underline"
-                      >
-                        {inv.invoice_number}
-                      </button>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{formatDate(inv.date)}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{inv.due_date ? formatDate(inv.due_date) : '-'}</td>
-                    <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{formatCurrency(inv.amount || inv.total_amount || 0)}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-right">
-                      <span className={(inv.balance || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>
-                        {formatCurrency(inv.balance || 0)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={cn(
-                        'inline-flex px-2 py-0.5 rounded-full text-xs font-medium',
-                        inv.status === 'paid' ? 'bg-emerald-50 text-emerald-700' :
-                        inv.status === 'overdue' ? 'bg-red-50 text-red-700' :
-                        'bg-amber-50 text-amber-700'
-                      )}>
-                        {inv.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          {renderPagination(invPage, invTotalPages, setInvPage, invStart, invEnd, invTotal)}
-        </div>
-      </motion.div>
-
-      {/* Receipts / Payments Table */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.42 }}
-        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
-      >
-        <div className="p-6 border-b border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900">Receipts / Payments</h3>
-          <p className="text-sm text-gray-500">{recentReceipts.length} payment(s) recorded</p>
-        </div>
-        {!loadingDetail && recentReceipts.length > 0 && (
-          <TableFilter
-            searchPlaceholder="Search by receipt number, reference, or method..."
-            searchValue={rcptSearch}
-            onSearchChange={setRcptSearch}
-            showDateFilter
-            dateFrom={rcptDateFrom}
-            dateTo={rcptDateTo}
-            onDateFromChange={setRcptDateFrom}
-            onDateToChange={setRcptDateTo}
-            resultCount={filteredReceipts.length}
-          />
-        )}
-        <div className="overflow-x-auto">
-          {loadingDetail ? (
-            <div className="p-6"><TableSkeleton /></div>
-          ) : recentReceipts.length === 0 ? (
-            <div className="p-12 text-center text-sm text-gray-400">No payments recorded</div>
-          ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Receipt #</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Invoice #</th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Amount</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Method</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Reference</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {paginatedReceipts.map((rcpt: any) => (
-                  <tr key={rcpt.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 text-sm font-medium">
-                      <button
-                        onClick={() => navigate(`/dashboard/receipts/${rcpt.id}`)}
-                        onMouseEnter={() => prefetch(`/dashboard/receipts/${rcpt.id}`)}
-                        className="text-primary-600 hover:text-primary-700 hover:underline"
-                      >
-                        {rcpt.receipt_number}
-                      </button>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{formatDate(rcpt.date)}</td>
-                    <td className="px-6 py-4 text-sm">
-                      {rcpt.invoice ? (
-                        <button
-                          onClick={() => navigate(`/dashboard/invoices/${rcpt.invoice}`)}
-                          onMouseEnter={() => prefetch(`/dashboard/invoices/${rcpt.invoice}`)}
-                          className="text-primary-600 hover:text-primary-700 hover:underline"
-                        >
-                          {rcpt.invoice_number || `INV-${rcpt.invoice}`}
-                        </button>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">
-                      {formatCurrency(rcpt.amount || 0)}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      <span className="capitalize">{(rcpt.payment_method || '').replace(/_/g, ' ')}</span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{rcpt.reference || '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          {renderPagination(rcptPage, rcptTotalPages, setRcptPage, rcptStart, rcptEnd, rcptTotal)}
-        </div>
-      </motion.div>
-
-      {/* Account Statement */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.45 }}
-        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
-      >
-        <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">Account Statement</h3>
-            <p className="text-sm text-gray-500">
-              {statementSource === 'operational'
-                ? 'Bank-statement style view with running balance. Select a date range to filter.'
-                : tenantSubAccount
-                  ? `${tenantSubAccount.account_code || tenantSubAccount.code || ''} - ${tenantSubAccount.category_name || tenantSubAccount.category || tenantSubAccount.name || 'Account'}`
-                  : 'Trust accounting sub-ledger view'}
-            </p>
-          </div>
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-            <button
-              onClick={() => setStatementSource('operational')}
-              className={cn(
-                'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
-                statementSource === 'operational' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              )}
-            >
-              Operational
-            </button>
-            <button
-              onClick={() => setStatementSource('trust')}
-              className={cn(
-                'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
-                statementSource === 'trust' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              )}
-            >
-              Trust Accounting
-            </button>
-          </div>
-        </div>
-
-        {statementSource === 'operational' && (
-          <>
-        {!loadingLedger && ledger.length > 0 && (
-          <TableFilter
-            searchPlaceholder="Search by reference or description..."
-            searchValue={ledgerSearch}
-            onSearchChange={setLedgerSearch}
-            showDateFilter
-            dateFrom={ledgerDateFrom}
-            dateTo={ledgerDateTo}
-            onDateFromChange={setLedgerDateFrom}
-            onDateToChange={setLedgerDateTo}
-            resultCount={filteredLedger.length}
-          />
-        )}
-        <div className="overflow-x-auto">
-          {loadingLedger ? (
-            <div className="p-6"><TableSkeleton rows={6} /></div>
-          ) : ledger.length === 0 ? (
-            <div className="p-12 text-center text-sm text-gray-400">No ledger entries found</div>
-          ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Reference</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Description</th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Debit</th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Credit</th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {/* Opening balance row */}
-                {(ledgerPeriodStart || ledgerPeriodEnd) && ledgerData?.opening_balance !== undefined && (
-                  <tr className="bg-gray-50">
-                    <td className="px-6 py-3 text-sm text-gray-500" colSpan={3}>Balance brought forward</td>
-                    <td className="px-6 py-3 text-sm text-right">-</td>
-                    <td className="px-6 py-3 text-sm text-right">-</td>
-                    <td className="px-6 py-3 text-sm font-semibold text-right">{formatCurrency(ledgerData.opening_balance)}</td>
-                  </tr>
-                )}
-                {paginatedLedger.map((entry: any, idx: number) => (
-                  <tr key={entry.id || idx} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 text-sm text-gray-600">{formatDate(entry.date)}</td>
-                    <td className="px-6 py-4 text-sm font-medium">
-                      {entry.type === 'invoice' ? (
-                        <button onClick={() => navigate(`/dashboard/invoices/${entry.id}`)} onMouseEnter={() => prefetch(`/dashboard/invoices/${entry.id}`)} className="text-blue-600 hover:text-blue-700 hover:underline">
-                          {entry.reference || '-'}
-                        </button>
-                      ) : entry.type === 'receipt' ? (
-                        <button onClick={() => navigate(`/dashboard/receipts/${entry.id}`)} onMouseEnter={() => prefetch(`/dashboard/receipts/${entry.id}`)} className="text-emerald-600 hover:text-emerald-700 hover:underline">
-                          {entry.reference || '-'}
-                        </button>
-                      ) : (
-                        <span className="text-gray-900">{entry.reference || entry.ref || '-'}</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{entry.description || entry.narration || '-'}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600 text-right">{(entry.debit || 0) > 0 ? formatCurrency(entry.debit) : '-'}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600 text-right">{(entry.credit || 0) > 0 ? formatCurrency(entry.credit) : '-'}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-right">
-                      <span className={(entry.balance || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>
-                        {formatCurrency(entry.balance || 0)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-                {/* Totals row */}
-                {ledgerData?.total_debits !== undefined && (
-                  <tr className="bg-gray-50 font-semibold">
-                    <td className="px-6 py-3 text-sm" colSpan={3}>Totals</td>
-                    <td className="px-6 py-3 text-sm text-right">{formatCurrency(ledgerData.total_debits)}</td>
-                    <td className="px-6 py-3 text-sm text-right">{formatCurrency(ledgerData.total_credits)}</td>
-                    <td className="px-6 py-3 text-sm text-right">{formatCurrency(ledgerData.closing_balance)}</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          )}
-          {renderPagination(ledgerPage, ledgerTotalPages, setLedgerPage, ledgerStart, ledgerEnd, ledgerTotal)}
-        </div>
-        </>
-        )}
-
-        {statementSource === 'trust' && (
-          <>
-            {/* Trust Accounting controls */}
-            <div className="p-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
-              {/* Date range picker */}
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-gray-400" />
-                <input
-                  type="date"
-                  value={subAccountDateRange.period_start}
-                  onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_start: e.target.value }))}
-                  className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-                <span className="text-gray-400">to</span>
-                <input
-                  type="date"
-                  value={subAccountDateRange.period_end}
-                  onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_end: e.target.value }))}
-                  className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-              {/* Consolidated / Audit toggle */}
-              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-                <button
-                  onClick={() => setSubAccountStatementView('consolidated')}
-                  className={cn(
-                    'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
-                    subAccountStatementView === 'consolidated' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  )}
-                >
-                  Consolidated
-                </button>
-                <button
-                  onClick={() => setSubAccountStatementView('audit')}
-                  className={cn(
-                    'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
-                    subAccountStatementView === 'audit' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  )}
-                >
-                  Audit
-                </button>
-              </div>
-              {/* Export dropdown */}
-              {tenantSubAccount && (
-                <div className="relative group ml-auto">
-                  <button
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Export
-                  </button>
-                  <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg hidden group-hover:block z-10 min-w-[100px]">
-                    {(['csv', 'pdf'] as const).map(fmt => (
-                      <button
-                        key={fmt}
-                        onClick={async () => {
-                          try {
-                            const res = await subsidiaryApi.exportStatement(tenantSubAccount.id, {
-                              period_start: subAccountDateRange.period_start,
-                              period_end: subAccountDateRange.period_end,
-                              view: subAccountStatementView,
-                              format: fmt,
-                            })
-                            const url = URL.createObjectURL(new Blob([res.data]))
-                            const a = document.createElement('a')
-                            a.href = url
-                            a.download = `statement-${(tenantSubAccount.code || tenantSubAccount.account_code || tenantSubAccount.id).toString().replace(/\//g, '-')}.${fmt}`
-                            a.click()
-                            URL.revokeObjectURL(url)
-                          } catch { /* ignore */ }
-                        }}
-                        className="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left first:rounded-t-lg last:rounded-b-lg"
-                      >
-                        {fmt.toUpperCase()}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {loadingSubAccounts ? (
-              <div className="p-6"><TableSkeleton rows={4} /></div>
-            ) : !tenantSubAccount ? (
-              <div className="p-12 text-center text-sm text-gray-400">
-                <Layers className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                No subsidiary account found for this tenant
-              </div>
-            ) : (
-              <>
-                {/* Opening balance */}
-                {subAccountStatement && (
-                  <div className="px-6 py-3 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
-                    <span className="text-sm font-medium text-gray-600">Opening Balance</span>
-                    <span className={cn('text-sm font-bold tabular-nums', (subAccountStatement.opening_balance ?? subAccountStatement.balance_bf ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600')}>
-                      {formatCurrency(subAccountStatement.opening_balance ?? subAccountStatement.balance_bf ?? 0)}
-                    </span>
-                  </div>
-                )}
-
-                <div className="overflow-x-auto">
-                  {loadingSubStatement ? (
-                    <div className="p-6"><TableSkeleton rows={6} /></div>
-                  ) : !subAccountStatement || (subAccountStatement.transactions || subAccountStatement.entries || []).length === 0 ? (
-                    <div className="p-12 text-center text-sm text-gray-400">
-                      No transactions found for this period
-                    </div>
-                  ) : (
-                    <table className="w-full">
-                      <thead>
-                        <tr className="bg-gray-50">
-                          <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
-                          <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Ref</th>
-                          <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Description</th>
-                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Debit</th>
-                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Credit</th>
-                          <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {(subAccountStatement.transactions || subAccountStatement.entries || []).map((txn: any, idx: number) => (
-                          <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-6 py-4 text-sm text-gray-600">{txn.date || '-'}</td>
-                            <td className="px-6 py-4 text-sm text-gray-500 font-mono text-xs">{txn.reference || txn.ref || '-'}</td>
-                            <td className="px-6 py-4 text-sm text-gray-900">
-                              <span className="flex items-center gap-1.5">
-                                {txn.description || txn.narration || '-'}
-                                {txn.is_consolidated && (
-                                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold" title="Consolidated entry">C</span>
-                                )}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.debit ? formatCurrency(txn.debit) : '-'}</td>
-                            <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.credit ? formatCurrency(txn.credit) : '-'}</td>
-                            <td className="px-6 py-4 text-sm font-medium text-right tabular-nums">
-                              <span className={(txn.balance || txn.running_balance || 0) < 0 ? 'text-red-600' : 'text-gray-900'}>
-                                {formatCurrency(txn.balance || txn.running_balance || 0)}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-
-                {/* Closing balance */}
-                {subAccountStatement && (subAccountStatement.transactions || subAccountStatement.entries || []).length > 0 && (
-                  <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
-                    <span className="text-sm font-medium text-gray-600">Closing Balance</span>
-                    <span className={cn('text-sm font-bold tabular-nums', (subAccountStatement.closing_balance ?? subAccountStatement.balance_cf ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600')}>
-                      {formatCurrency(subAccountStatement.closing_balance ?? subAccountStatement.balance_cf ?? 0)}
-                    </span>
-                  </div>
-                )}
-              </>
-            )}
-          </>
-        )}
-      </motion.div>
-
-      {/* Charts Row - Payment History (2/3) + Aged Outstanding (1/3) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-white rounded-xl border border-gray-200 p-6 lg:col-span-2"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Payment History</h3>
-              <p className="text-sm text-gray-500">Invoiced vs paid monthly</p>
-            </div>
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-blue-500" />
-                <span className="text-gray-600">Invoiced</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                <span className="text-gray-600">Paid</span>
-              </div>
-            </div>
-          </div>
-          <div className="h-72">
-            {loadingAccount ? (
-              <ChartSkeleton />
-            ) : paymentChartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-sm text-gray-400">No payment history available</div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={paymentChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
-                  <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Bar dataKey="invoiced" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Invoiced" />
-                  <Bar dataKey="paid" fill="#10b981" radius={[4, 4, 0, 0]} name="Paid" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-white rounded-xl border border-gray-200 p-6"
-        >
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-900">Aged Outstanding</h3>
-            <p className="text-sm text-gray-500">Receivables aging</p>
-          </div>
-          <div className="h-72">
-            {loadingAged ? (
-              <ChartSkeleton />
-            ) : agedChartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-sm text-gray-400">No aged data available</div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={agedChartData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                  <XAxis type="number" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
-                  <YAxis type="category" dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} width={80} />
-                  <Tooltip formatter={(value: number) => formatCurrency(value)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Bar dataKey="amount" fill="#f59e0b" radius={[0, 4, 4, 0]} name="Outstanding" />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </motion.div>
-      </div>
-
-      {/* Deposits Section */}
+        {/* ===== DETAILS TAB ===== */}
+        <TabsContent value="details" className="space-y-6">
+      {/* Deposits */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1465,7 +1285,6 @@ export default function TenantDetail() {
             <div className="p-12 text-center">
               <Shield className="w-10 h-10 text-gray-300 mx-auto mb-3" />
               <p className="text-sm text-gray-400">No deposit records found</p>
-              {/* Show lease-level deposit info if available */}
               {activeLeases.some((l: any) => l.deposit_amount || l.deposit_paid !== undefined) && (
                 <div className="mt-4 space-y-2">
                   {activeLeases.filter((l: any) => l.deposit_amount).map((l: any) => (
@@ -1493,47 +1312,15 @@ export default function TenantDetail() {
                   <tr key={dep.id || idx} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 text-sm text-gray-600">
                       <div className="space-y-0.5">
-                        {dep.property_id ? (
-                          <button
-                            onClick={() => navigate(`/dashboard/properties/${dep.property_id}`)}
-                            className="text-primary-600 hover:text-primary-700 hover:underline block"
-                          >
-                            {dep.property_name || dep.property || '-'}
-                          </button>
-                        ) : (
-                          <span>{dep.property_name || dep.property || '-'}</span>
-                        )}
-                        {dep.unit_id ? (
-                          <button
-                            onClick={() => navigate(`/dashboard/units/${dep.unit_id}`)}
-                            className="text-primary-600 hover:text-primary-700 hover:underline block text-xs"
-                          >
-                            {dep.unit_name || dep.unit || ''}
-                          </button>
-                        ) : dep.unit_name || dep.unit ? (
-                          <span className="text-xs text-gray-400">{dep.unit_name || dep.unit}</span>
-                        ) : null}
+                        {dep.property_id ? (<button onClick={() => navigate(`/dashboard/properties/${dep.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline block">{dep.property_name || dep.property || '-'}</button>) : (<span>{dep.property_name || dep.property || '-'}</span>)}
+                        {dep.unit_id ? (<button onClick={() => navigate(`/dashboard/units/${dep.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline block text-xs">{dep.unit_name || dep.unit || ''}</button>) : dep.unit_name || dep.unit ? (<span className="text-xs text-gray-400">{dep.unit_name || dep.unit}</span>) : null}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600 capitalize">{dep.deposit_type || dep.type || 'Security'}</td>
                     <td className="px-6 py-4 text-sm font-semibold text-gray-900 text-right">{formatCurrency(dep.amount || dep.deposit_amount || 0)}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 text-right">{formatCurrency(dep.paid || dep.amount_paid || 0)}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-right">
-                      <span className={(dep.balance || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>
-                        {formatCurrency(dep.balance || (dep.amount || 0) - (dep.paid || dep.amount_paid || 0))}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={cn(
-                        'inline-flex px-2 py-0.5 rounded-full text-xs font-medium',
-                        dep.status === 'paid' || dep.is_paid ? 'bg-emerald-50 text-emerald-700' :
-                        dep.status === 'refunded' ? 'bg-blue-50 text-blue-700' :
-                        dep.status === 'partial' ? 'bg-amber-50 text-amber-700' :
-                        'bg-gray-50 text-gray-600'
-                      )}>
-                        {dep.status || (dep.is_paid ? 'Paid' : 'Pending')}
-                      </span>
-                    </td>
+                    <td className="px-6 py-4 text-sm font-medium text-right"><span className={(dep.balance || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>{formatCurrency(dep.balance || (dep.amount || 0) - (dep.paid || dep.amount_paid || 0))}</span></td>
+                    <td className="px-6 py-4"><span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium', dep.status === 'paid' || dep.is_paid ? 'bg-emerald-50 text-emerald-700' : dep.status === 'refunded' ? 'bg-blue-50 text-blue-700' : dep.status === 'partial' ? 'bg-amber-50 text-amber-700' : 'bg-gray-50 text-gray-600')}>{dep.status || (dep.is_paid ? 'Paid' : 'Pending')}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -1554,21 +1341,7 @@ export default function TenantDetail() {
           <p className="text-sm text-gray-500">{maintenanceRequests.length} request(s)</p>
         </div>
         {!loadingMaintenance && maintenanceRequests.length > 0 && (
-          <TableFilter
-            searchPlaceholder="Search by title, property, or unit..."
-            searchValue={maintSearch}
-            onSearchChange={setMaintSearch}
-            showStatusFilter
-            statusOptions={[
-              { value: 'open', label: 'Open' },
-              { value: 'in_progress', label: 'In Progress' },
-              { value: 'completed', label: 'Completed' },
-              { value: 'cancelled', label: 'Cancelled' },
-            ]}
-            statusValue={maintStatus}
-            onStatusChange={setMaintStatus}
-            resultCount={filteredMaintenance.length}
-          />
+          <TableFilter searchPlaceholder="Search by title, property, or unit..." searchValue={maintSearch} onSearchChange={setMaintSearch} showStatusFilter statusOptions={[{ value: 'open', label: 'Open' }, { value: 'in_progress', label: 'In Progress' }, { value: 'completed', label: 'Completed' }, { value: 'cancelled', label: 'Cancelled' }]} statusValue={maintStatus} onStatusChange={setMaintStatus} resultCount={filteredMaintenance.length} />
         )}
         <div className="overflow-x-auto">
           {loadingMaintenance ? (
@@ -1584,7 +1357,6 @@ export default function TenantDetail() {
                 <tr className="bg-gray-50">
                   <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">ID</th>
                   <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Title</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Property / Unit</th>
                   <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Priority</th>
                   <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
                   <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
@@ -1592,51 +1364,11 @@ export default function TenantDetail() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {paginatedMaintenance.map((mr: any) => (
-                  <tr
-                    key={mr.id}
-                    onClick={() => navigate(`/dashboard/maintenance/${mr.id}`)}
-                    className="hover:bg-gray-50 cursor-pointer transition-colors"
-                  >
+                  <tr key={mr.id} onClick={() => navigate(`/dashboard/maintenance/${mr.id}`)} className="hover:bg-gray-50 cursor-pointer transition-colors">
                     <td className="px-6 py-4 text-sm font-medium text-primary-600">MR-{mr.id}</td>
                     <td className="px-6 py-4 text-sm text-gray-900">{mr.title}</td>
-                    <td className="px-6 py-4 text-sm">
-                      <div className="space-y-0.5">
-                        {mr.property ? (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/properties/${mr.property}`) }}
-                            className="text-primary-600 hover:text-primary-700 hover:underline block"
-                          >
-                            {mr.property_name || `Property #${mr.property}`}
-                          </button>
-                        ) : (
-                          <span className="text-gray-600">{mr.property_name || '-'}</span>
-                        )}
-                        {mr.unit ? (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/units/${mr.unit}`) }}
-                            className="text-primary-600 hover:text-primary-700 hover:underline block text-xs"
-                          >
-                            {mr.unit_name || `Unit #${mr.unit}`}
-                          </button>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={cn(
-                        'inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize',
-                        priorityColors[mr.priority] || 'bg-gray-50 text-gray-600'
-                      )}>
-                        {mr.priority}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={cn(
-                        'inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize',
-                        maintStatusColors[mr.status] || 'bg-gray-50 text-gray-600'
-                      )}>
-                        {(mr.status || '').replace(/_/g, ' ')}
-                      </span>
-                    </td>
+                    <td className="px-6 py-4"><span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize', priorityColors[mr.priority] || 'bg-gray-50 text-gray-600')}>{mr.priority}</span></td>
+                    <td className="px-6 py-4"><span className={cn('inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize', maintStatusColors[mr.status] || 'bg-gray-50 text-gray-600')}>{(mr.status || '').replace(/_/g, ' ')}</span></td>
                     <td className="px-6 py-4 text-sm text-gray-600">{formatDate(mr.created_at)}</td>
                   </tr>
                 ))}
@@ -1646,6 +1378,9 @@ export default function TenantDetail() {
           {renderPagination(maintPage, maintTotalPages, setMaintPage, maintStart, maintEnd, maintTotal)}
         </div>
       </motion.div>
+        </TabsContent>
+      </Tabs>
+
 
       {/* Create Invoice Modal */}
       <Modal
