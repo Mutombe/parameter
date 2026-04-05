@@ -162,6 +162,34 @@ export default function PropertyDetail() {
 
   // Lease creation modal
   const [showLeaseModal, setShowLeaseModal] = useState(false)
+
+  // Billing generation modal
+  const [showBillingModal, setShowBillingModal] = useState(false)
+  const [billingForm, setBillingForm] = useState({
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+  })
+  const billingMutation = useMutation({
+    mutationFn: () => invoiceApi.generateMonthly({
+      month: billingForm.month,
+      year: billingForm.year,
+      property_id: Number(propertyId),
+    }),
+    onSuccess: (response) => {
+      const count = response.data?.created || 0
+      const errors = response.data?.errors || []
+      if (count > 0) {
+        showToast.success(`Generated ${count} invoice${count !== 1 ? 's' : ''} for this property`)
+      } else if (errors.length > 0) {
+        showToast.warning(`No new invoices. ${errors[0]}`)
+      } else {
+        showToast.info('All leases already billed for this period')
+      }
+      setShowBillingModal(false)
+      queryClient.invalidateQueries({ queryKey: ['property-invoices'] })
+    },
+    onError: (error: any) => showToast.error(parseApiError(error, 'Failed to generate billing')),
+  })
   const [editForm, setEditForm] = useState({
     landlord: '',
     name: '',
@@ -595,14 +623,23 @@ export default function PropertyDetail() {
             )}
           </div>
         </div>
-        <Button
-          variant="outline"
-          onClick={openEditModal}
-          className="gap-2"
-        >
-          <Edit2 className="w-4 h-4" />
-          Edit
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => setShowBillingModal(true)}
+            className="gap-2"
+          >
+            <FileText className="w-4 h-4" />
+            Generate Billing
+          </Button>
+          <Button
+            variant="outline"
+            onClick={openEditModal}
+            className="gap-2"
+          >
+            <Edit2 className="w-4 h-4" />
+            Edit
+          </Button>
+        </div>
       </motion.div>
 
       {/* Profile Info Bar */}
@@ -1946,6 +1983,51 @@ export default function PropertyDetail() {
           isSubmitting={createLeaseMutation.isPending}
           onCancel={() => setShowLeaseModal(false)}
         />
+      </Modal>
+
+      {/* Generate Billing Modal */}
+      <Modal
+        open={showBillingModal}
+        onClose={() => setShowBillingModal(false)}
+        title={`Generate Billing — ${property?.name || ''}`}
+        icon={FileText}
+      >
+        <form onSubmit={(e) => { e.preventDefault(); billingMutation.mutate(); }} className="space-y-5">
+          <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
+            <p className="text-sm text-blue-700">
+              Generate invoices for all active leases under this property. Already-billed leases will be skipped.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Month"
+              value={billingForm.month}
+              onChange={(e) => setBillingForm({ ...billingForm, month: Number(e.target.value) })}
+              options={[
+                'January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'
+              ].map((m, i) => ({ value: String(i + 1), label: m }))}
+            />
+            <Input
+              type="number"
+              label="Year"
+              value={billingForm.year}
+              onChange={(e) => setBillingForm({ ...billingForm, year: Number(e.target.value) })}
+              min="2020"
+              max="2030"
+            />
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowBillingModal(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" className="flex-1" disabled={billingMutation.isPending}>
+              {billingMutation.isPending ? 'Generating...' : 'Generate Invoices'}
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   )

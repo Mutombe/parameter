@@ -334,7 +334,7 @@ export const invoiceApi = {
   create: (data: object) => api.post('/billing/invoices/', data),
   update: (id: number, data: object) => api.patch(`/billing/invoices/${id}/`, data),
   postToLedger: (id: number) => api.post(`/billing/invoices/${id}/post_to_ledger/`),
-  generateMonthly: (data: { month: number; year: number; lease_ids?: number[] }) =>
+  generateMonthly: (data: { month: number; year: number; lease_ids?: number[]; property_id?: number }) =>
     api.post('/billing/invoices/generate_monthly/', data),
   overdue: () => api.get('/billing/invoices/overdue/'),
   summary: () => api.get('/billing/invoices/summary/'),
