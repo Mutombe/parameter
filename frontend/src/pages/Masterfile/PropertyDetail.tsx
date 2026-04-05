@@ -16,6 +16,10 @@ import {
   Receipt,
   Wrench,
   Clock,
+  Download,
+  Layers,
+  Eye,
+  Calendar as CalendarIcon,
 } from 'lucide-react'
 import {
   BarChart,
@@ -29,7 +33,7 @@ import {
   Pie,
   Cell,
 } from 'recharts'
-import api, { propertyApi, landlordApi, unitApi, reportsApi, leaseApi, invoiceApi, receiptApi } from '../../services/api'
+import api, { propertyApi, landlordApi, unitApi, reportsApi, leaseApi, invoiceApi, receiptApi, subsidiaryApi } from '../../services/api'
 import { formatCurrency, formatPercent, formatDate, cn } from '../../lib/utils'
 import { Modal, Button, Input, Select, TableFilter } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
@@ -253,6 +257,42 @@ export default function PropertyDetail() {
   const { data: landlords } = useQuery({
     queryKey: ['landlords-select'],
     queryFn: () => landlordApi.list().then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
+  })
+
+  // --- Subsidiary sub-ledger accounts state ---
+  const [selectedSubAccount, setSelectedSubAccount] = useState<number | null>(null)
+  const [subAccountDateRange, setSubAccountDateRange] = useState({
+    period_start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+    period_end: new Date().toISOString().split('T')[0],
+  })
+  const [subAccountStatementView, setSubAccountStatementView] = useState<'consolidated' | 'audit'>('consolidated')
+
+  // Normalize list data (handle paginated vs array responses)
+  const normalizeList = (data: any) => {
+    if (!data) return []
+    if (Array.isArray(data)) return data
+    if (data.results && Array.isArray(data.results)) return data.results
+    return []
+  }
+
+  // Sub-accounts for this property's landlord
+  const { data: subAccountsData, isLoading: loadingSubAccounts } = useQuery({
+    queryKey: ['property-sub-accounts', property?.landlord],
+    queryFn: () => subsidiaryApi.list({ landlord: property!.landlord }).then((r) => r.data),
+    enabled: !!property?.landlord,
+    placeholderData: keepPreviousData,
+  })
+
+  // Sub-account statement (individual)
+  const { data: subAccountStatement, isLoading: loadingSubStatement } = useQuery({
+    queryKey: ['property-sub-statement', selectedSubAccount, subAccountDateRange, subAccountStatementView],
+    queryFn: () => subsidiaryApi.statement(selectedSubAccount!, {
+      period_start: subAccountDateRange.period_start,
+      period_end: subAccountDateRange.period_end,
+      view: subAccountStatementView,
+    }).then((r) => r.data),
+    enabled: !!selectedSubAccount,
     placeholderData: keepPreviousData,
   })
 
@@ -1532,6 +1572,243 @@ export default function PropertyDetail() {
             </table>
           )}
         </div>
+      </motion.div>
+
+      {/* Sub-Ledger Accounts */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.55 }}
+        className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+      >
+        <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Sub-Ledger Accounts</h3>
+            <p className="text-sm text-gray-500">Subsidiary accounts linked to this property's landlord</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <CalendarIcon className="w-4 h-4 text-gray-400" />
+            <input
+              type="date"
+              value={subAccountDateRange.period_start}
+              onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_start: e.target.value }))}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+            <span className="text-gray-400">to</span>
+            <input
+              type="date"
+              value={subAccountDateRange.period_end}
+              onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_end: e.target.value }))}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+        </div>
+
+        <div className="p-6">
+          {loadingSubAccounts ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="p-4 border border-gray-200 rounded-xl animate-pulse">
+                  <div className="h-4 w-24 bg-gray-200 rounded mb-2" />
+                  <div className="h-3 w-32 bg-gray-200 rounded mb-3" />
+                  <div className="h-7 w-20 bg-gray-200 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : normalizeList(subAccountsData).length === 0 ? (
+            <div className="text-center py-8 text-sm text-gray-400">
+              <Layers className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              No subsidiary accounts found for this property's landlord
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {normalizeList(subAccountsData).map((acc: any) => {
+                const balance = acc.balance ?? acc.current_balance ?? 0
+                const isSelected = selectedSubAccount === acc.id
+                return (
+                  <button
+                    key={acc.id}
+                    onClick={() => setSelectedSubAccount(isSelected ? null : acc.id)}
+                    className={cn(
+                      'p-4 border rounded-xl text-left transition-all hover:shadow-md',
+                      isSelected
+                        ? 'border-primary-500 bg-primary-50 ring-2 ring-primary-200'
+                        : 'border-gray-200 hover:border-gray-300'
+                    )}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-mono text-gray-500">{acc.account_code || acc.code || '-'}</span>
+                      <span className="text-xs font-medium text-gray-400 uppercase">{acc.currency || 'USD'}</span>
+                    </div>
+                    <p className="text-sm font-medium text-gray-900 mb-2">
+                      {acc.category_name || acc.category || acc.name || 'Account'}
+                    </p>
+                    <p className={cn(
+                      'text-xl font-bold tabular-nums',
+                      balance > 0 ? 'text-emerald-600' : balance < 0 ? 'text-red-600' : 'text-gray-900'
+                    )}>
+                      {formatCurrency(Math.abs(balance))}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {balance > 0 ? 'Credit balance' : balance < 0 ? 'Debit balance' : 'Zero balance'}
+                    </p>
+                    {isSelected && (
+                      <div className="mt-2 flex items-center gap-1 text-xs text-primary-600">
+                        <Eye className="w-3 h-3" />
+                        Viewing statement
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Statement view for selected sub-account */}
+        {selectedSubAccount && (
+          <div className="border-t border-gray-200">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h4 className="text-base font-semibold text-gray-900">
+                  Account Statement
+                  {(() => {
+                    const acc = normalizeList(subAccountsData).find((a: any) => a.id === selectedSubAccount)
+                    return acc ? ` - ${acc.category_name || acc.category || acc.name}` : ''
+                  })()}
+                </h4>
+                <p className="text-sm text-gray-500">
+                  {subAccountDateRange.period_start} to {subAccountDateRange.period_end}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                {/* Consolidated / Audit toggle */}
+                <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setSubAccountStatementView('consolidated')}
+                    className={cn(
+                      'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
+                      subAccountStatementView === 'consolidated' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    )}
+                  >
+                    Consolidated
+                  </button>
+                  <button
+                    onClick={() => setSubAccountStatementView('audit')}
+                    className={cn(
+                      'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
+                      subAccountStatementView === 'audit' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    )}
+                  >
+                    Audit
+                  </button>
+                </div>
+                {/* Export dropdown */}
+                <div className="relative group">
+                  <button
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Export
+                  </button>
+                  <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg hidden group-hover:block z-10 min-w-[100px]">
+                    {(['csv', 'pdf'] as const).map(fmt => (
+                      <button
+                        key={fmt}
+                        onClick={async () => {
+                          try {
+                            const res = await subsidiaryApi.exportStatement(selectedSubAccount, {
+                              period_start: subAccountDateRange.period_start,
+                              period_end: subAccountDateRange.period_end,
+                              view: subAccountStatementView,
+                              format: fmt,
+                            })
+                            const url = URL.createObjectURL(new Blob([res.data]))
+                            const a = document.createElement('a')
+                            a.href = url
+                            const acc = normalizeList(subAccountsData).find((x: any) => x.id === selectedSubAccount)
+                            a.download = `statement-${(acc?.code || acc?.account_code || selectedSubAccount).toString().replace(/\//g, '-')}.${fmt}`
+                            a.click()
+                            URL.revokeObjectURL(url)
+                          } catch { /* ignore */ }
+                        }}
+                        className="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left first:rounded-t-lg last:rounded-b-lg"
+                      >
+                        {fmt.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Opening balance */}
+            {subAccountStatement && (
+              <div className="px-6 py-3 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
+                <span className="text-sm font-medium text-gray-600">Opening Balance</span>
+                <span className={cn('text-sm font-bold tabular-nums', (subAccountStatement.opening_balance ?? subAccountStatement.balance_bf ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600')}>
+                  {formatCurrency(subAccountStatement.opening_balance ?? subAccountStatement.balance_bf ?? 0)}
+                </span>
+              </div>
+            )}
+
+            <div className="overflow-x-auto">
+              {loadingSubStatement ? (
+                <div className="p-6"><TableSkeleton rows={6} /></div>
+              ) : !subAccountStatement || (subAccountStatement.transactions || subAccountStatement.entries || []).length === 0 ? (
+                <div className="p-12 text-center text-sm text-gray-400">
+                  No transactions found for this period
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Ref</th>
+                      <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Description</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Debit</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Credit</th>
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {(subAccountStatement.transactions || subAccountStatement.entries || []).map((txn: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 text-sm text-gray-600">{txn.date || '-'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500 font-mono text-xs">{txn.reference || txn.ref || '-'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-900">
+                          <span className="flex items-center gap-1.5">
+                            {txn.description || txn.narration || '-'}
+                            {txn.is_consolidated && (
+                              <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold" title="Consolidated entry">C</span>
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.debit ? formatCurrency(txn.debit) : '-'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.credit ? formatCurrency(txn.credit) : '-'}</td>
+                        <td className="px-6 py-4 text-sm font-medium text-right tabular-nums">
+                          <span className={(txn.balance || txn.running_balance || 0) < 0 ? 'text-red-600' : 'text-gray-900'}>
+                            {formatCurrency(txn.balance || txn.running_balance || 0)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Closing balance */}
+            {subAccountStatement && (subAccountStatement.transactions || subAccountStatement.entries || []).length > 0 && (
+              <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
+                <span className="text-sm font-medium text-gray-600">Closing Balance</span>
+                <span className={cn('text-sm font-bold tabular-nums', (subAccountStatement.closing_balance ?? subAccountStatement.balance_cf ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600')}>
+                  {formatCurrency(subAccountStatement.closing_balance ?? subAccountStatement.balance_cf ?? 0)}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </motion.div>
 
       {/* Edit Property Modal */}
