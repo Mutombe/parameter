@@ -188,8 +188,10 @@ export default function PropertyDetail() {
       } else {
         showToast.info('All leases already billed for this period')
       }
-      setShowBillingModal(false)
+      // Don't close modal — let user see updated status
+      queryClient.invalidateQueries({ queryKey: ['billing-status'] })
       queryClient.invalidateQueries({ queryKey: ['property-invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
     },
     onError: (error: any) => showToast.error(parseApiError(error, 'Failed to generate billing')),
   })
