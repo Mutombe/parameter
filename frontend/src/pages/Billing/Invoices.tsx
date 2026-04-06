@@ -315,9 +315,12 @@ export default function Invoices() {
   const [generateForm, setGenerateForm] = useState({
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
+    month_to: new Date().getMonth() + 1,
+    year_to: new Date().getFullYear(),
     property_id: '' as string | number,
     invoice_date: '',
     due_date: '',
+    batchMode: false,
   })
   const [form, setForm] = useState({
     tenant: '',
@@ -482,22 +485,44 @@ export default function Invoices() {
   })
 
   const generateMutation = useMutation({
-    mutationFn: (data: typeof generateForm) => {
-      const payload: any = { month: data.month, year: data.year }
-      if (data.property_id) payload.property_id = Number(data.property_id)
-      if (data.invoice_date) payload.invoice_date = data.invoice_date
-      if (data.due_date) payload.due_date = data.due_date
-      return invoiceApi.generateMonthly(payload)
+    mutationFn: async (data: typeof generateForm) => {
+      // Build list of months to bill
+      const months: { month: number; year: number }[] = []
+      if (data.batchMode) {
+        let m = data.month, y = data.year
+        const endM = data.month_to, endY = data.year_to
+        while (y < endY || (y === endY && m <= endM)) {
+          months.push({ month: m, year: y })
+          m++
+          if (m > 12) { m = 1; y++ }
+        }
+      } else {
+        months.push({ month: data.month, year: data.year })
+      }
+
+      let totalCreated = 0
+      const allErrors: string[] = []
+      for (const period of months) {
+        const payload: any = { month: period.month, year: period.year }
+        if (data.property_id) payload.property_id = Number(data.property_id)
+        if (data.invoice_date) payload.invoice_date = data.invoice_date
+        if (data.due_date) payload.due_date = data.due_date
+        const res = await invoiceApi.generateMonthly(payload)
+        totalCreated += res.data?.created || 0
+        if (res.data?.errors?.length) allErrors.push(...res.data.errors)
+      }
+      return { data: { created: totalCreated, errors: allErrors, months: months.length } }
     },
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
       queryClient.invalidateQueries({ queryKey: ['billing-status'] })
-      const count = response.data?.created || response.data?.created_count || 0
+      const count = response.data?.created || 0
+      const months = response.data?.months || 1
       const errors = response.data?.errors || []
       if (count > 0) {
-        showToast.success(`Generated ${count} invoice${count !== 1 ? 's' : ''} successfully`)
+        showToast.success(`Generated ${count} invoice${count !== 1 ? 's' : ''} across ${months} month${months !== 1 ? 's' : ''}`)
       } else if (errors.length > 0) {
-        showToast.warning(`No new invoices generated. ${errors[0]}`)
+        showToast.warning(`No new invoices. ${errors[0]}`)
       } else {
         showToast.info('All leases already billed for this period')
       }
@@ -1108,10 +1133,30 @@ export default function Invoices() {
         size="lg"
       >
         <div className="space-y-5">
+          {/* Single / Batch toggle */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setGenerateForm({ ...generateForm, batchMode: false })}
+              className={cn('px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                !generateForm.batchMode ? 'bg-primary-100 text-primary-700' : 'text-gray-500 hover:bg-gray-100'
+              )}
+            >
+              Single Month
+            </button>
+            <button
+              onClick={() => setGenerateForm({ ...generateForm, batchMode: true, month_to: generateForm.month, year_to: generateForm.year })}
+              className={cn('px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                generateForm.batchMode ? 'bg-primary-100 text-primary-700' : 'text-gray-500 hover:bg-gray-100'
+              )}
+            >
+              Multiple Months
+            </button>
+          </div>
+
           {/* Month/Year selector */}
           <div className="grid grid-cols-2 gap-4">
             <Select
-              label="Month"
+              label={generateForm.batchMode ? 'From Month' : 'Month'}
               value={generateForm.month}
               onChange={(e) => setGenerateForm({ ...generateForm, month: Number(e.target.value) })}
               options={[
@@ -1121,7 +1166,7 @@ export default function Invoices() {
             />
             <Input
               type="number"
-              label="Year"
+              label={generateForm.batchMode ? 'From Year' : 'Year'}
               value={generateForm.year}
               onChange={(e) => setGenerateForm({ ...generateForm, year: Number(e.target.value) })}
               min="2020"
@@ -1129,17 +1174,39 @@ export default function Invoices() {
             />
           </div>
 
+          {generateForm.batchMode && (
+            <div className="grid grid-cols-2 gap-4">
+              <Select
+                label="To Month"
+                value={generateForm.month_to}
+                onChange={(e) => setGenerateForm({ ...generateForm, month_to: Number(e.target.value) })}
+                options={[
+                  'January', 'February', 'March', 'April', 'May', 'June',
+                  'July', 'August', 'September', 'October', 'November', 'December'
+                ].map((month, i) => ({ value: String(i + 1), label: month }))}
+              />
+              <Input
+                type="number"
+                label="To Year"
+                value={generateForm.year_to}
+                onChange={(e) => setGenerateForm({ ...generateForm, year_to: Number(e.target.value) })}
+                min="2020"
+                max="2030"
+              />
+            </div>
+          )}
+
           {/* Optional: custom invoice date and due date */}
           <div className="grid grid-cols-2 gap-4">
             <Input
               type="date"
-              label="Invoice Date (optional — defaults to 1st of month)"
+              label={`Invoice Date (optional — defaults to 1st of ${generateForm.batchMode ? 'each' : 'the'} month)`}
               value={generateForm.invoice_date}
               onChange={(e) => setGenerateForm({ ...generateForm, invoice_date: e.target.value })}
             />
             <Input
               type="date"
-              label="Due Date (optional — defaults to 15th of month)"
+              label={`Due Date (optional — defaults to 15th of ${generateForm.batchMode ? 'each' : 'the'} month)`}
               value={generateForm.due_date}
               onChange={(e) => setGenerateForm({ ...generateForm, due_date: e.target.value })}
             />
