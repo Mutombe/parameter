@@ -166,6 +166,7 @@ function BillingStatusTable({ month, year, onBillProperty, onBillAll, isBilling 
     queryKey: ['billing-status', month, year],
     queryFn: () => invoiceApi.billingStatus({ month, year }).then(r => r.data),
     placeholderData: keepPreviousData,
+    staleTime: 10000, // Refresh after 10s — billing status changes frequently
   })
 
   const summary = statusData?.summary || {}

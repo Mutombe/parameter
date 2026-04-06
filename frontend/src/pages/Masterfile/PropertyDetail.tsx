@@ -2148,6 +2148,7 @@ function PropertyBillingStatus({ propertyId, propertyName, billingForm, setBilli
     queryKey: ['billing-status', billingForm.month, billingForm.year],
     queryFn: () => invoiceApi.billingStatus({ month: billingForm.month, year: billingForm.year }).then(r => r.data),
     placeholderData: keepPreviousData,
+    staleTime: 10000, // Refresh after 10s — billing status changes frequently
   })
 
   const monthName = ['January','February','March','April','May','June','July','August','September','October','November','December'][billingForm.month - 1]
