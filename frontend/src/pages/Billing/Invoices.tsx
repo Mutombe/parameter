@@ -306,6 +306,8 @@ export default function Invoices() {
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [statusFilter, setStatusFilter] = useState<string>('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [showGenerateModal, setShowGenerateModal] = useState(false)
@@ -343,11 +345,13 @@ export default function Invoices() {
   ])
 
   const { data: invoicesData, isLoading } = useQuery({
-    queryKey: ['invoices', debouncedSearch, statusFilter, currentPage],
+    queryKey: ['invoices', debouncedSearch, statusFilter, dateFrom, dateTo, currentPage],
     queryFn: () => {
       const params: any = { page: currentPage, page_size: PAGE_SIZE }
       if (debouncedSearch) params.search = debouncedSearch
       if (statusFilter) params.status = statusFilter
+      if (dateFrom) params.date__gte = dateFrom
+      if (dateTo) params.date__lte = dateTo
       return invoiceApi.list(params).then(r => r.data)
     },
     placeholderData: keepPreviousData,
@@ -359,7 +363,7 @@ export default function Invoices() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [debouncedSearch, statusFilter])
+  }, [debouncedSearch, statusFilter, dateFrom, dateTo])
 
   const { data: tenants, isLoading: tenantsLoading } = useQuery({
     queryKey: ['tenants-select'],
@@ -736,25 +740,48 @@ export default function Invoices() {
         })}
       </div>
 
-      {/* Search */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center gap-4">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
+      {/* Search & Date Filter */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[180px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             ref={searchInputRef}
             type="text"
-            placeholder="Search by invoice number or tenant..."
+            placeholder="Search invoices..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
+            className="w-full pl-10 pr-4 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
           />
         </div>
-
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">From</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="text-sm border border-gray-200 rounded-lg px-2.5 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white"
+          />
+          <span className="text-xs text-gray-400">To</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="text-sm border border-gray-200 rounded-lg px-2.5 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white"
+          />
+          {(dateFrom || dateTo) && (
+            <button
+              onClick={() => { setDateFrom(''); setDateTo('') }}
+              className="text-xs text-red-500 hover:text-red-700 px-2 py-1"
+            >
+              Clear
+            </button>
+          )}
+        </div>
         <div className="ml-auto text-sm text-gray-500">
           {isLoading ? (
             <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
           ) : (
-            <>{totalCount} invoices</>
+            <>{totalCount} invoice{totalCount !== 1 ? 's' : ''}</>
           )}
         </div>
       </div>

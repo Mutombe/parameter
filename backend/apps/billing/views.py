@@ -32,6 +32,17 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
         'tenant', 'unit', 'lease', 'unit__property', 'created_by', 'journal'
     ).all()
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Date range filtering
+        date_gte = self.request.query_params.get('date__gte')
+        date_lte = self.request.query_params.get('date__lte')
+        if date_gte:
+            qs = qs.filter(date__gte=date_gte)
+        if date_lte:
+            qs = qs.filter(date__lte=date_lte)
+        return qs
     filterset_fields = [
         'tenant', 'unit', 'unit__property', 'lease', 'invoice_type',
         'status', 'date', 'due_date', 'currency', 'property',
