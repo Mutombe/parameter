@@ -262,18 +262,32 @@ export default function PropertyDetail() {
     placeholderData: keepPreviousData,
   })
 
-  // 8. Recent invoices for this property (billing tab)
+  // 8. Invoices for this property filtered by billing period
+  const [billingViewMonth, setBillingViewMonth] = useState(new Date().getMonth() + 1)
+  const [billingViewYear, setBillingViewYear] = useState(new Date().getFullYear())
+  const billingPeriodStart = `${billingViewYear}-${String(billingViewMonth).padStart(2, '0')}-01`
+  const billingPeriodEnd = (() => {
+    const d = new Date(billingViewYear, billingViewMonth, 0) // last day of month
+    return `${billingViewYear}-${String(billingViewMonth).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  })()
+
   const { data: invoicesData, isLoading: loadingInvoices } = useQuery({
-    queryKey: ['property-invoices', propertyId],
-    queryFn: () => invoiceApi.list({ property: propertyId, page_size: 100, ordering: '-created_at' }).then((r) => r.data),
+    queryKey: ['property-invoices', propertyId, billingViewMonth, billingViewYear],
+    queryFn: () => invoiceApi.list({
+      property: propertyId, page_size: 200, ordering: '-date',
+      period_start: billingPeriodStart, period_end: billingPeriodEnd,
+    }).then((r) => r.data),
     enabled: !!propertyId && activeTab === 'billing',
     placeholderData: keepPreviousData,
   })
 
-  // 9. Recent receipts for this property (billing tab)
+  // 9. Receipts for this property filtered by billing period
   const { data: receiptsData, isLoading: loadingReceipts } = useQuery({
-    queryKey: ['property-receipts', propertyId],
-    queryFn: () => receiptApi.list({ property: propertyId, page_size: 100, ordering: '-created_at' }).then((r) => r.data),
+    queryKey: ['property-receipts', propertyId, billingViewMonth, billingViewYear],
+    queryFn: () => receiptApi.list({
+      property: propertyId, page_size: 200, ordering: '-date',
+      date_after: billingPeriodStart, date_before: billingPeriodEnd,
+    }).then((r) => r.data),
     enabled: !!propertyId && activeTab === 'billing',
     placeholderData: keepPreviousData,
   })
@@ -1036,12 +1050,53 @@ export default function PropertyDetail() {
 
         {/* ===== BILLING TAB ===== */}
         <TabsContent value="billing" className="space-y-6">
-      {/* Invoices & Receipts merged */}
+      {/* Period selector + billing status */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-600">Period:</span>
+            <select
+              value={billingViewMonth}
+              onChange={(e) => setBillingViewMonth(Number(e.target.value))}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white"
+            >
+              {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map((m, i) => (
+                <option key={i} value={i + 1}>{m}</option>
+              ))}
+            </select>
+            <select
+              value={billingViewYear}
+              onChange={(e) => setBillingViewYear(Number(e.target.value))}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white"
+            >
+              {[2024, 2025, 2026, 2027].map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-3 ml-auto">
+            <span className="text-sm text-gray-500">
+              {invoices.length} invoice{invoices.length !== 1 ? 's' : ''} for {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][billingViewMonth - 1]} {billingViewYear}
+            </span>
+            <Button size="sm" onClick={() => {
+              setBillingForm({ month: billingViewMonth, year: billingViewYear })
+              setShowBillingModal(true)
+            }}>
+              <FileText className="w-3.5 h-3.5 mr-1.5" />
+              Generate Billing
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Invoices */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="p-6 border-b border-gray-100 flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Invoices</h3>
-            <p className="text-sm text-gray-500">Invoices for this property</p>
+            <p className="text-sm text-gray-500">
+              {['January','February','March','April','May','June','July','August','September','October','November','December'][billingViewMonth - 1]} {billingViewYear} — {invoices.length} invoice{invoices.length !== 1 ? 's' : ''}
+            </p>
           </div>
         </div>
         <div className="overflow-x-auto">

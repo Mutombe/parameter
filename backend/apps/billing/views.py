@@ -35,6 +35,7 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
     filterset_fields = [
         'tenant', 'unit', 'unit__property', 'lease', 'invoice_type',
         'status', 'date', 'due_date', 'currency', 'property',
+        'period_start', 'period_end',
     ]
     search_fields = [
         'invoice_number', 'tenant__name', 'tenant__code',
