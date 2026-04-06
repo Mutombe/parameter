@@ -66,17 +66,9 @@ const api = axios.create({
   },
 })
 
-// Slow network detection infrastructure
-const SLOW_THRESHOLD_MS = 5000
-const ROLLING_WINDOW_SIZE = 5
-const requestDurations: number[] = []
-let slowNetworkCallback: ((isSlow: boolean) => void) | null = null
-let wasSlow = false
-
-export function onSlowNetworkChange(callback: (isSlow: boolean) => void) {
-  slowNetworkCallback = callback
-  return () => { slowNetworkCallback = null }
-}
+// Slow network detection removed — was falsely triggering on heavy queries.
+// Network status is now handled purely by browser online/offline events
+// in useNetworkStatus.ts hook (like YouTube does).
 
 // Extend config type to carry timing metadata
 declare module 'axios' {
@@ -135,23 +127,8 @@ api.interceptors.response.use(
       dataKeys: response.data ? Object.keys(response.data) : 'no data',
       count: response.data?.count ?? response.data?.results?.length ?? (Array.isArray(response.data) ? response.data.length : undefined),
     })
-    // Track request duration for slow-network detection
-    const start = response.config._requestStartTime
-    if (start) {
-      const duration = Date.now() - start
-      requestDurations.push(duration)
-      if (requestDurations.length > ROLLING_WINDOW_SIZE) {
-        requestDurations.shift()
-      }
-      if (requestDurations.length === ROLLING_WINDOW_SIZE) {
-        const avg = requestDurations.reduce((a, b) => a + b, 0) / ROLLING_WINDOW_SIZE
-        const isSlow = avg > SLOW_THRESHOLD_MS
-        if (isSlow !== wasSlow) {
-          wasSlow = isSlow
-          slowNetworkCallback?.(isSlow)
-        }
-      }
-    }
+    // Request timing tracked via _requestStartTime but no longer used for
+    // network detection (was causing false "slow network" on heavy queries)
     return response
   },
   (error) => {
