@@ -134,6 +134,8 @@ class BulkInvoiceSerializer(serializers.Serializer):
         allow_empty=True
     )
     property_id = serializers.IntegerField(required=False, allow_null=True)
+    invoice_date = serializers.DateField(required=False, allow_null=True)
+    due_date = serializers.DateField(required=False, allow_null=True)
 
 
 class BulkReceiptSerializer(serializers.Serializer):

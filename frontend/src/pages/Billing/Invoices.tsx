@@ -316,6 +316,8 @@ export default function Invoices() {
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
     property_id: '' as string | number,
+    invoice_date: '',
+    due_date: '',
   })
   const [form, setForm] = useState({
     tenant: '',
@@ -483,6 +485,8 @@ export default function Invoices() {
     mutationFn: (data: typeof generateForm) => {
       const payload: any = { month: data.month, year: data.year }
       if (data.property_id) payload.property_id = Number(data.property_id)
+      if (data.invoice_date) payload.invoice_date = data.invoice_date
+      if (data.due_date) payload.due_date = data.due_date
       return invoiceApi.generateMonthly(payload)
     },
     onSuccess: (response) => {
@@ -1122,6 +1126,22 @@ export default function Invoices() {
               onChange={(e) => setGenerateForm({ ...generateForm, year: Number(e.target.value) })}
               min="2020"
               max="2030"
+            />
+          </div>
+
+          {/* Optional: custom invoice date and due date */}
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              type="date"
+              label="Invoice Date (optional — defaults to 1st of month)"
+              value={generateForm.invoice_date}
+              onChange={(e) => setGenerateForm({ ...generateForm, invoice_date: e.target.value })}
+            />
+            <Input
+              type="date"
+              label="Due Date (optional — defaults to 15th of month)"
+              value={generateForm.due_date}
+              onChange={(e) => setGenerateForm({ ...generateForm, due_date: e.target.value })}
             />
           </div>
 

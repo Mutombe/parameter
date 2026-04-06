@@ -7,7 +7,8 @@ from calendar import monthrange
 logger = logging.getLogger(__name__)
 
 
-def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, created_by=None):
+def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, created_by=None,
+                              invoice_date_override=None, due_date_override=None):
     """
     Generate monthly invoices for active leases.
     Supports filtering by specific lease_ids or a single property_id.
@@ -33,8 +34,8 @@ def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, cre
     _, last_day = monthrange(year, month)
     period_start = date(year, month, 1)
     period_end = date(year, month, last_day)
-    invoice_date = date.today()
-    due_date = date(year, month, 15)
+    invoice_date = invoice_date_override or period_start  # Default: 1st of billing month
+    due_date = due_date_override or date(year, month, 15)  # Default: 15th of billing month
 
     # Evaluate leases once, then check which are already billed
     all_leases = list(leases)

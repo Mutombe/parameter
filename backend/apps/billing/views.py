@@ -88,6 +88,8 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
         year = serializer.validated_data['year']
         lease_ids = serializer.validated_data.get('lease_ids', [])
         property_id = serializer.validated_data.get('property_id')
+        invoice_date = serializer.validated_data.get('invoice_date')
+        due_date_val = serializer.validated_data.get('due_date')
 
         try:
             created_invoices, errors = generate_monthly_invoices(
@@ -95,6 +97,8 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
                 lease_ids=lease_ids or None,
                 property_id=property_id,
                 created_by=request.user,
+                invoice_date_override=invoice_date,
+                due_date_override=due_date_val,
             )
         except Exception as e:
             import logging
