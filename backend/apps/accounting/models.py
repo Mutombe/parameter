@@ -1030,20 +1030,22 @@ class SubsidiaryAccount(models.Model):
         DEPOSIT = 'deposit', 'Deposit'
         GENERAL = 'general', 'General'
 
-    # Suffix map for landlord category-specific accounts: (category, currency) -> suffix
-    # Rental management: 6 categories per currency (Rent, Rates, Maintenance, Parking, VAT, Deposit)
-    # Levy management: 5 categories per currency (Levy, Special Levy, Maintenance, Parking, Rates)
-    CATEGORY_SUFFIX_MAP = {
-        # Rental management — USD suffixes 01-06, ZWG suffixes 07-12
+    # Suffix maps per management type.
+    # Rental: 6 categories × 2 currencies = 12 max sub-accounts
+    # Levy: 5 categories × 2 currencies = 10 max sub-accounts
+    RENTAL_SUFFIX_MAP = {
         ('rent', 'USD'): '01', ('rates', 'USD'): '02', ('maintenance', 'USD'): '03',
         ('parking', 'USD'): '04', ('vat', 'USD'): '05', ('deposit', 'USD'): '06',
         ('rent', 'ZWG'): '07', ('rates', 'ZWG'): '08', ('maintenance', 'ZWG'): '09',
         ('parking', 'ZWG'): '10', ('vat', 'ZWG'): '11', ('deposit', 'ZWG'): '12',
-        # Levy management — USD suffixes 01-05, ZWG suffixes 06-10
-        ('levy', 'USD'): '01', ('special_levy', 'USD'): '02',
-        ('levy', 'ZWG'): '06', ('special_levy', 'ZWG'): '07',
-        # Shared categories (maintenance, parking, rates) use same suffixes for both mgmt types
-        # General fallback
+    }
+    LEVY_SUFFIX_MAP = {
+        ('levy', 'USD'): '01', ('special_levy', 'USD'): '02', ('maintenance', 'USD'): '03',
+        ('parking', 'USD'): '04', ('rates', 'USD'): '05',
+        ('levy', 'ZWG'): '06', ('special_levy', 'ZWG'): '07', ('maintenance', 'ZWG'): '08',
+        ('parking', 'ZWG'): '09', ('rates', 'ZWG'): '10',
+    }
+    GENERAL_SUFFIX_MAP = {
         ('general', 'USD'): '00', ('general', 'ZWG'): '50',
     }
 
@@ -1121,8 +1123,27 @@ class SubsidiaryAccount(models.Model):
 
     @classmethod
     def get_or_create_for_landlord_category(cls, landlord, category='general', currency='USD'):
-        """Get or create a category-specific subsidiary account for a landlord."""
-        suffix = cls.CATEGORY_SUFFIX_MAP.get((category, currency), '00')
+        """Get or create a category-specific subsidiary account for a landlord.
+        Uses the correct suffix map based on the landlord's property management type.
+        Rental: max 6 sub-accounts (Rent, Rates, Maintenance, Parking, VAT, Deposit)
+        Levy: max 5 sub-accounts (Levy, Special Levy, Maintenance, Parking, Rates)
+        """
+        # Determine management type from landlord's properties
+        mgmt_type = 'rental'
+        if hasattr(landlord, 'properties'):
+            prop = landlord.properties.first()
+            if prop and prop.management_type == 'levy':
+                mgmt_type = 'levy'
+
+        # Select the right suffix map
+        if category == 'general':
+            suffix_map = cls.GENERAL_SUFFIX_MAP
+        elif mgmt_type == 'levy':
+            suffix_map = cls.LEVY_SUFFIX_MAP
+        else:
+            suffix_map = cls.RENTAL_SUFFIX_MAP
+
+        suffix = suffix_map.get((category, currency), '00')
         code = f'LD/{landlord.id:05d}/{suffix}'
 
         # Category display name
