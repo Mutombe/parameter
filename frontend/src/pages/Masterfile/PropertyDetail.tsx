@@ -171,13 +171,20 @@ export default function PropertyDetail() {
   const [billingForm, setBillingForm] = useState({
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
+    invoice_date: '',
+    due_date: '',
   })
   const billingMutation = useMutation({
-    mutationFn: () => invoiceApi.generateMonthly({
-      month: billingForm.month,
-      year: billingForm.year,
-      property_id: Number(propertyId),
-    }),
+    mutationFn: () => {
+      const payload: any = {
+        month: billingForm.month,
+        year: billingForm.year,
+        property_id: Number(propertyId),
+      }
+      if (billingForm.invoice_date) payload.invoice_date = billingForm.invoice_date
+      if (billingForm.due_date) payload.due_date = billingForm.due_date
+      return invoiceApi.generateMonthly(payload)
+    },
     onSuccess: (response) => {
       const count = response.data?.created || 0
       const errors = response.data?.errors || []
@@ -1079,7 +1086,7 @@ export default function PropertyDetail() {
               {invoices.length} invoice{invoices.length !== 1 ? 's' : ''} for {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][billingViewMonth - 1]} {billingViewYear}
             </span>
             <Button size="sm" onClick={() => {
-              setBillingForm({ month: billingViewMonth, year: billingViewYear })
+              setBillingForm({ month: billingViewMonth, year: billingViewYear, invoice_date: '', due_date: '' })
               setShowBillingModal(true)
             }}>
               <FileText className="w-3.5 h-3.5 mr-1.5" />
@@ -2133,8 +2140,8 @@ export default function PropertyDetail() {
 
 function PropertyBillingStatus({ propertyId, propertyName, billingForm, setBillingForm, onBill, isBilling }: {
   propertyId: number; propertyName: string;
-  billingForm: { month: number; year: number };
-  setBillingForm: (f: { month: number; year: number }) => void;
+  billingForm: { month: number; year: number; invoice_date: string; due_date: string };
+  setBillingForm: (f: { month: number; year: number; invoice_date: string; due_date: string }) => void;
   onBill: () => void; isBilling: boolean;
 }) {
   const { data: statusData, isLoading } = useQuery({
@@ -2179,6 +2186,22 @@ function PropertyBillingStatus({ propertyId, propertyName, billingForm, setBilli
           onChange={(e) => setBillingForm({ ...billingForm, year: Number(e.target.value) })}
           min="2020"
           max="2030"
+        />
+      </div>
+
+      {/* Optional: custom invoice date and due date */}
+      <div className="grid grid-cols-2 gap-4">
+        <Input
+          type="date"
+          label="Invoice Date (optional — defaults to 1st of month)"
+          value={billingForm.invoice_date}
+          onChange={(e) => setBillingForm({ ...billingForm, invoice_date: e.target.value })}
+        />
+        <Input
+          type="date"
+          label="Due Date (optional — defaults to 15th of month)"
+          value={billingForm.due_date}
+          onChange={(e) => setBillingForm({ ...billingForm, due_date: e.target.value })}
         />
       </div>
 
