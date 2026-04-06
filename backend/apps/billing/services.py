@@ -100,9 +100,18 @@ def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, cre
 
     # Pre-compute fields that save() normally calculates (bulk_create skips save)
     from django.utils import timezone as tz
+    from django.db.models import Max
     prefix = tz.now().strftime('INV%Y%m%d')
-    last = Invoice.all_objects.filter(invoice_number__startswith=prefix).order_by('-invoice_number').first()
-    start_num = int(last.invoice_number[len(prefix):]) + 1 if last else 1
+    # Find the highest existing number with this prefix (handles gaps from failed batches)
+    max_num_result = Invoice.all_objects.filter(
+        invoice_number__startswith=prefix
+    ).aggregate(
+        max_num=Max('invoice_number')
+    )['max_num']
+    if max_num_result:
+        start_num = int(max_num_result[len(prefix):]) + 1
+    else:
+        start_num = 1
     for i, inv in enumerate(invoices_to_create):
         inv.invoice_number = f'{prefix}{start_num + i:04d}'
         inv.total_amount = inv.amount + (inv.vat_amount or Decimal('0'))
@@ -111,7 +120,9 @@ def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, cre
             inv.property = inv.unit.property
 
     try:
-        created_invoices = Invoice.objects.bulk_create(invoices_to_create, batch_size=500)
+        created_invoices = Invoice.objects.bulk_create(
+            invoices_to_create, batch_size=500, ignore_conflicts=True
+        )
     except Exception as e:
         errors.append(f'Bulk create failed: {str(e)}')
         return [], errors
