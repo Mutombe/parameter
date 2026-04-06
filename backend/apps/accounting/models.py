@@ -1027,21 +1027,22 @@ class SubsidiaryAccount(models.Model):
         PARKING = 'parking', 'Parking'
         RATES = 'rates', 'Rates'
         VAT = 'vat', 'VAT'
+        DEPOSIT = 'deposit', 'Deposit'
         GENERAL = 'general', 'General'
 
     # Suffix map for landlord category-specific accounts: (category, currency) -> suffix
+    # Rental management: 6 categories per currency (Rent, Rates, Maintenance, Parking, VAT, Deposit)
+    # Levy management: 5 categories per currency (Levy, Special Levy, Maintenance, Parking, Rates)
     CATEGORY_SUFFIX_MAP = {
-        # Levy management (ZWG first, then USD)
-        ('levy', 'ZWG'): '01', ('special_levy', 'ZWG'): '02', ('maintenance', 'ZWG'): '03',
-        ('parking', 'ZWG'): '04', ('rates', 'ZWG'): '05',
-        ('levy', 'USD'): '06', ('special_levy', 'USD'): '07', ('maintenance', 'USD'): '08',
-        ('parking', 'USD'): '09', ('rates', 'USD'): '10',
-        # Rental management
-        ('rent', 'USD'): '01', ('rent', 'ZWG'): '02',
-        ('rates_rental', 'USD'): '03', ('rates_rental', 'ZWG'): '04',
-        ('maintenance_rental', 'USD'): '05', ('maintenance_rental', 'ZWG'): '06',
-        ('parking_rental', 'USD'): '07', ('parking_rental', 'ZWG'): '08',
-        ('vat', 'USD'): '09', ('vat', 'ZWG'): '10',
+        # Rental management — USD suffixes 01-06, ZWG suffixes 07-12
+        ('rent', 'USD'): '01', ('rates', 'USD'): '02', ('maintenance', 'USD'): '03',
+        ('parking', 'USD'): '04', ('vat', 'USD'): '05', ('deposit', 'USD'): '06',
+        ('rent', 'ZWG'): '07', ('rates', 'ZWG'): '08', ('maintenance', 'ZWG'): '09',
+        ('parking', 'ZWG'): '10', ('vat', 'ZWG'): '11', ('deposit', 'ZWG'): '12',
+        # Levy management — USD suffixes 01-05, ZWG suffixes 06-10
+        ('levy', 'USD'): '01', ('special_levy', 'USD'): '02',
+        ('levy', 'ZWG'): '06', ('special_levy', 'ZWG'): '07',
+        # Shared categories (maintenance, parking, rates) use same suffixes for both mgmt types
         # General fallback
         ('general', 'USD'): '00', ('general', 'ZWG'): '50',
     }
