@@ -102,6 +102,71 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
         })
 
     @action(detail=False, methods=['get'])
+    def billing_status(self, request):
+        """
+        Billing progress per property for a given month/year.
+        Shows which properties are fully billed, partially billed, or unbilled.
+        """
+        from apps.masterfile.models import Property
+        from django.db.models import Q, Count
+        from calendar import monthrange
+
+        month = int(request.query_params.get('month', timezone.now().month))
+        year = int(request.query_params.get('year', timezone.now().year))
+        period_start = date(year, month, 1)
+        period_end = date(year, month, monthrange(year, month)[1])
+
+        properties = Property.objects.annotate(
+            active_leases=Count(
+                'units__leases', filter=Q(units__leases__status='active'), distinct=True
+            ),
+            levy_leases=Count(
+                'leases', filter=Q(leases__status='active', leases__lease_type='levy'), distinct=True
+            ),
+            billed_count=Count(
+                'invoices', filter=Q(
+                    invoices__period_start=period_start,
+                    invoices__period_end=period_end,
+                ), distinct=True
+            ),
+        ).select_related('landlord').order_by('name')
+
+        results = []
+        for prop in properties:
+            total_active = (prop.active_leases or 0) + (prop.levy_leases or 0)
+            billed = prop.billed_count or 0
+            if total_active == 0 and billed == 0:
+                continue
+            if billed >= total_active and total_active > 0:
+                status = 'complete'
+            elif billed > 0:
+                status = 'partial'
+            else:
+                status = 'pending'
+            results.append({
+                'property_id': prop.id,
+                'property_name': prop.name,
+                'landlord_name': prop.landlord.name if prop.landlord else None,
+                'management_type': prop.management_type,
+                'active_leases': total_active,
+                'billed': billed,
+                'unbilled': max(total_active - billed, 0),
+                'status': status,
+            })
+
+        summary = {
+            'month': month, 'year': year,
+            'total_properties': len(results),
+            'complete': sum(1 for r in results if r['status'] == 'complete'),
+            'partial': sum(1 for r in results if r['status'] == 'partial'),
+            'pending': sum(1 for r in results if r['status'] == 'pending'),
+            'total_leases': sum(r['active_leases'] for r in results),
+            'total_billed': sum(r['billed'] for r in results),
+        }
+
+        return Response({'summary': summary, 'properties': results})
+
+    @action(detail=False, methods=['get'])
     def overdue(self, request):
         """Get all overdue invoices."""
         today = timezone.now().date()

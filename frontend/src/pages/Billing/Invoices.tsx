@@ -155,6 +155,150 @@ function SkeletonInvoices() {
   )
 }
 
+function BillingStatusTable({ month, year, onBillProperty, onBillAll, isBilling }: {
+  month: number; year: number;
+  onBillProperty: (propertyId: number) => void;
+  onBillAll: () => void;
+  isBilling: boolean;
+}) {
+  const navigate = useNavigate()
+  const { data: statusData, isLoading } = useQuery({
+    queryKey: ['billing-status', month, year],
+    queryFn: () => invoiceApi.billingStatus({ month, year }).then(r => r.data),
+    placeholderData: keepPreviousData,
+  })
+
+  const summary = statusData?.summary || {}
+  const properties = statusData?.properties || []
+  const monthName = ['January','February','March','April','May','June','July','August','September','October','November','December'][month - 1]
+
+  const statusColors: Record<string, string> = {
+    complete: 'bg-emerald-50 text-emerald-700',
+    partial: 'bg-amber-50 text-amber-700',
+    pending: 'bg-red-50 text-red-700',
+  }
+
+  if (isLoading) {
+    return <div className="py-8 text-center text-sm text-gray-400">Loading billing status...</div>
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Summary cards */}
+      <div className="grid grid-cols-4 gap-3">
+        <div className="bg-gray-50 rounded-lg p-3 text-center">
+          <p className="text-2xl font-bold text-gray-900">{summary.total_properties || 0}</p>
+          <p className="text-xs text-gray-500">Properties</p>
+        </div>
+        <div className="bg-emerald-50 rounded-lg p-3 text-center">
+          <p className="text-2xl font-bold text-emerald-700">{summary.complete || 0}</p>
+          <p className="text-xs text-emerald-600">Fully Billed</p>
+        </div>
+        <div className="bg-amber-50 rounded-lg p-3 text-center">
+          <p className="text-2xl font-bold text-amber-700">{summary.partial || 0}</p>
+          <p className="text-xs text-amber-600">Partial</p>
+        </div>
+        <div className="bg-red-50 rounded-lg p-3 text-center">
+          <p className="text-2xl font-bold text-red-700">{summary.pending || 0}</p>
+          <p className="text-xs text-red-600">Not Billed</p>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div>
+        <div className="flex justify-between text-xs text-gray-500 mb-1">
+          <span>{summary.total_billed || 0} of {summary.total_leases || 0} leases billed</span>
+          <span>{summary.total_leases ? Math.round(((summary.total_billed || 0) / summary.total_leases) * 100) : 0}%</span>
+        </div>
+        <div className="w-full bg-gray-200 rounded-full h-2">
+          <div
+            className="bg-emerald-500 h-2 rounded-full transition-all"
+            style={{ width: `${summary.total_leases ? ((summary.total_billed || 0) / summary.total_leases) * 100 : 0}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Bill All button */}
+      {(summary.pending > 0 || summary.partial > 0) && (
+        <Button
+          onClick={onBillAll}
+          disabled={isBilling}
+          className="w-full"
+        >
+          {isBilling ? (
+            <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Generating...</>
+          ) : (
+            `Bill All Unbilled Properties for ${monthName} ${year}`
+          )}
+        </Button>
+      )}
+
+      {/* Per-property table */}
+      <div className="max-h-[400px] overflow-y-auto border border-gray-200 rounded-lg">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 sticky top-0">
+            <tr>
+              <th className="text-left px-4 py-2 font-medium text-gray-500">Property</th>
+              <th className="text-center px-4 py-2 font-medium text-gray-500">Leases</th>
+              <th className="text-center px-4 py-2 font-medium text-gray-500">Billed</th>
+              <th className="text-center px-4 py-2 font-medium text-gray-500">Status</th>
+              <th className="text-right px-4 py-2 font-medium text-gray-500">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {properties.map((p: any) => (
+              <tr key={p.property_id} className="hover:bg-gray-50">
+                <td className="px-4 py-2.5">
+                  <button
+                    onClick={() => navigate(`/dashboard/properties/${p.property_id}`)}
+                    className="text-primary-600 hover:underline font-medium text-left"
+                  >
+                    {p.property_name}
+                  </button>
+                  {p.landlord_name && (
+                    <p className="text-xs text-gray-400">{p.landlord_name}</p>
+                  )}
+                </td>
+                <td className="px-4 py-2.5 text-center">{p.active_leases}</td>
+                <td className="px-4 py-2.5 text-center">
+                  <span className="font-medium">{p.billed}</span>
+                  {p.unbilled > 0 && (
+                    <span className="text-red-500 text-xs ml-1">({p.unbilled} left)</span>
+                  )}
+                </td>
+                <td className="px-4 py-2.5 text-center">
+                  <span className={cn('px-2 py-0.5 rounded-full text-xs font-medium', statusColors[p.status])}>
+                    {p.status === 'complete' ? 'Done' : p.status === 'partial' ? 'Partial' : 'Pending'}
+                  </span>
+                </td>
+                <td className="px-4 py-2.5 text-right">
+                  {p.status !== 'complete' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onBillProperty(p.property_id)}
+                      disabled={isBilling}
+                    >
+                      Bill
+                    </Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {properties.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                  No properties with active leases found
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export default function Invoices() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -343,6 +487,7 @@ export default function Invoices() {
     },
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['billing-status'] })
       const count = response.data?.created || response.data?.created_count || 0
       const errors = response.data?.errors || []
       if (count > 0) {
@@ -350,9 +495,8 @@ export default function Invoices() {
       } else if (errors.length > 0) {
         showToast.warning(`No new invoices generated. ${errors[0]}`)
       } else {
-        showToast.info('No new invoices to generate for this period')
+        showToast.info('All leases already billed for this period')
       }
-      setShowGenerateModal(false)
     },
     onError: (error) => showToast.error(parseApiError(error, 'Failed to generate invoices')),
   })
@@ -951,32 +1095,16 @@ export default function Invoices() {
         </form>
       </Modal>
 
-      {/* Generate Monthly Modal */}
+      {/* Billing Dashboard Modal */}
       <Modal
         open={showGenerateModal}
         onClose={() => setShowGenerateModal(false)}
-        title="Generate Monthly Invoices"
+        title="Monthly Billing"
         icon={Zap}
+        size="lg"
       >
-        <form onSubmit={(e) => { e.preventDefault(); generateMutation.mutate(generateForm); }} className="space-y-5">
-          <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-            <p className="text-sm text-blue-700">
-              {generateForm.property_id
-                ? 'Generate invoices for the selected property only. Already-billed leases will be skipped.'
-                : 'Generate invoices for ALL active leases. Already-billed leases will be skipped.'}
-            </p>
-          </div>
-
-          <Select
-            label="Property (optional — leave blank for all properties)"
-            value={generateForm.property_id}
-            onChange={(e) => setGenerateForm({ ...generateForm, property_id: e.target.value })}
-            options={[
-              { value: '', label: 'All Properties' },
-              ...(properties || []).map((p: any) => ({ value: String(p.id), label: p.name }))
-            ]}
-          />
-
+        <div className="space-y-5">
+          {/* Month/Year selector */}
           <div className="grid grid-cols-2 gap-4">
             <Select
               label="Month"
@@ -987,7 +1115,6 @@ export default function Invoices() {
                 'July', 'August', 'September', 'October', 'November', 'December'
               ].map((month, i) => ({ value: String(i + 1), label: month }))}
             />
-
             <Input
               type="number"
               label="Year"
@@ -998,24 +1125,19 @@ export default function Invoices() {
             />
           </div>
 
-          <p className="text-sm text-gray-500">Already-billed leases will be automatically skipped.</p>
-
-          <div className="flex gap-3 pt-4">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowGenerateModal(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" className="flex-1" disabled={generateMutation.isPending}>
-              {generateMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                'Generate Invoices'
-              )}
-            </Button>
-          </div>
-        </form>
+          {/* Billing status per property */}
+          <BillingStatusTable
+            month={generateForm.month}
+            year={generateForm.year}
+            onBillProperty={(propertyId) => {
+              generateMutation.mutate({ ...generateForm, property_id: propertyId })
+            }}
+            onBillAll={() => {
+              generateMutation.mutate({ ...generateForm, property_id: '' })
+            }}
+            isBilling={generateMutation.isPending}
+          />
+        </div>
       </Modal>
 
       {/* Invoice Detail Modal */}

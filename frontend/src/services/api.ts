@@ -337,6 +337,8 @@ export const invoiceApi = {
   generateMonthly: (data: { month: number; year: number; lease_ids?: number[]; property_id?: number }) =>
     api.post('/billing/invoices/generate_monthly/', data),
   overdue: () => api.get('/billing/invoices/overdue/'),
+  billingStatus: (params: { month: number; year: number }) =>
+    api.get('/billing/invoices/billing_status/', { params }),
   summary: () => api.get('/billing/invoices/summary/'),
   // New billing management actions
   uniformCharge: (data: {
