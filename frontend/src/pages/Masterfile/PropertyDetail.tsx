@@ -2061,43 +2061,119 @@ export default function PropertyDetail() {
         title={`Generate Billing — ${property?.name || ''}`}
         icon={FileText}
       >
-        <form onSubmit={(e) => { e.preventDefault(); billingMutation.mutate(); }} className="space-y-5">
-          <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-            <p className="text-sm text-blue-700">
-              Generate invoices for all active leases under this property. Already-billed leases will be skipped.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Select
-              label="Month"
-              value={billingForm.month}
-              onChange={(e) => setBillingForm({ ...billingForm, month: Number(e.target.value) })}
-              options={[
-                'January', 'February', 'March', 'April', 'May', 'June',
-                'July', 'August', 'September', 'October', 'November', 'December'
-              ].map((m, i) => ({ value: String(i + 1), label: m }))}
-            />
-            <Input
-              type="number"
-              label="Year"
-              value={billingForm.year}
-              onChange={(e) => setBillingForm({ ...billingForm, year: Number(e.target.value) })}
-              min="2020"
-              max="2030"
-            />
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowBillingModal(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" className="flex-1" disabled={billingMutation.isPending}>
-              {billingMutation.isPending ? 'Generating...' : 'Generate Invoices'}
-            </Button>
-          </div>
-        </form>
+        <PropertyBillingStatus
+          propertyId={Number(propertyId)}
+          propertyName={property?.name || ''}
+          billingForm={billingForm}
+          setBillingForm={setBillingForm}
+          onBill={() => billingMutation.mutate()}
+          isBilling={billingMutation.isPending}
+        />
       </Modal>
+    </div>
+  )
+}
+
+function PropertyBillingStatus({ propertyId, propertyName, billingForm, setBillingForm, onBill, isBilling }: {
+  propertyId: number; propertyName: string;
+  billingForm: { month: number; year: number };
+  setBillingForm: (f: { month: number; year: number }) => void;
+  onBill: () => void; isBilling: boolean;
+}) {
+  const { data: statusData, isLoading } = useQuery({
+    queryKey: ['billing-status', billingForm.month, billingForm.year],
+    queryFn: () => invoiceApi.billingStatus({ month: billingForm.month, year: billingForm.year }).then(r => r.data),
+    placeholderData: keepPreviousData,
+  })
+
+  const monthName = ['January','February','March','April','May','June','July','August','September','October','November','December'][billingForm.month - 1]
+
+  // Find this property in the status data
+  const propStatus = (statusData?.properties || []).find((p: any) => p.property_id === propertyId)
+  const activeLeases = propStatus?.active_leases || 0
+  const billed = propStatus?.billed || 0
+  const unbilled = propStatus?.unbilled || Math.max(activeLeases - billed, 0)
+  const status = propStatus?.status || (activeLeases === 0 ? 'no_leases' : 'pending')
+
+  const statusColors: Record<string, { bg: string; text: string; label: string }> = {
+    complete: { bg: 'bg-emerald-50', text: 'text-emerald-700', label: 'Fully Billed' },
+    partial: { bg: 'bg-amber-50', text: 'text-amber-700', label: 'Partially Billed' },
+    pending: { bg: 'bg-red-50', text: 'text-red-700', label: 'Not Billed' },
+    no_leases: { bg: 'bg-gray-50', text: 'text-gray-500', label: 'No Active Leases' },
+  }
+  const sc = statusColors[status] || statusColors.pending
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-4">
+        <Select
+          label="Month"
+          value={billingForm.month}
+          onChange={(e) => setBillingForm({ ...billingForm, month: Number(e.target.value) })}
+          options={[
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+          ].map((m, i) => ({ value: String(i + 1), label: m }))}
+        />
+        <Input
+          type="number"
+          label="Year"
+          value={billingForm.year}
+          onChange={(e) => setBillingForm({ ...billingForm, year: Number(e.target.value) })}
+          min="2020"
+          max="2030"
+        />
+      </div>
+
+      {/* Billing status for this property */}
+      {isLoading ? (
+        <div className="p-6 text-center text-sm text-gray-400">Loading billing status...</div>
+      ) : (
+        <div className="space-y-4">
+          <div className={cn('p-4 rounded-xl border', sc.bg)}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className={cn('font-semibold', sc.text)}>{sc.label}</p>
+                <p className="text-sm text-gray-600 mt-1">
+                  {monthName} {billingForm.year} — {billed} of {activeLeases} leases billed
+                  {unbilled > 0 && <span className="text-red-600 font-medium"> ({unbilled} unbilled)</span>}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className={cn('text-3xl font-bold', sc.text)}>{billed}/{activeLeases}</p>
+              </div>
+            </div>
+            {activeLeases > 0 && (
+              <div className="mt-3">
+                <div className="w-full bg-white/50 rounded-full h-2">
+                  <div
+                    className={cn('h-2 rounded-full transition-all', status === 'complete' ? 'bg-emerald-500' : 'bg-amber-500')}
+                    style={{ width: `${activeLeases > 0 ? (billed / activeLeases) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {status !== 'complete' && activeLeases > 0 && (
+            <Button onClick={onBill} disabled={isBilling} className="w-full">
+              {isBilling ? 'Generating...' : `Generate ${unbilled} Invoice${unbilled !== 1 ? 's' : ''} for ${monthName}`}
+            </Button>
+          )}
+
+          {status === 'complete' && (
+            <div className="p-3 bg-emerald-50 rounded-lg text-center">
+              <p className="text-sm text-emerald-700">All {activeLeases} leases are billed for {monthName} {billingForm.year}</p>
+            </div>
+          )}
+
+          {activeLeases === 0 && (
+            <div className="p-3 bg-gray-50 rounded-lg text-center">
+              <p className="text-sm text-gray-500">No active leases found for this property</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
