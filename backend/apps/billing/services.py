@@ -36,20 +36,22 @@ def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, cre
     invoice_date = date.today()
     due_date = date(year, month, 15)
 
+    # Get IDs of leases already billed for this period (fast indexed query)
+    lease_id_list = list(leases.values_list('id', flat=True))
     existing_lease_ids = set(
         Invoice.objects.filter(
-            lease__in=leases,
+            lease_id__in=lease_id_list,
             period_start=period_start,
             period_end=period_end
         ).values_list('lease_id', flat=True)
-    )
+    ) if lease_id_list else set()
 
+    # Only iterate unbilled leases
+    unbilled_leases = [l for l in leases if l.id not in existing_lease_ids]
     invoices_to_create = []
     errors = []
 
-    for lease in leases:
-        if lease.id in existing_lease_ids:
-            continue  # Silently skip already-billed leases (not an error)
+    for lease in unbilled_leases:
 
         # Skip vacant units for rental leases (levy always bills regardless)
         if lease.lease_type == 'rental' and lease.unit and not lease.unit.is_occupied:

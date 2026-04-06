@@ -2,7 +2,7 @@ import toast from 'react-hot-toast'
 
 // User-friendly error message mappings
 const errorMessages: Record<string, string> = {
-  'Network Error': 'Unable to connect to the server. Please check your internet connection.',
+  'Network Error': 'Request failed — the server may be processing a large operation. Please try again or use property-level billing for faster results.',
   'Request failed with status code 500': 'Something went wrong on our end. Please try again later.',
   'Request failed with status code 503': 'Service temporarily unavailable. Please try again in a moment.',
   'Request failed with status code 401': 'Your session has expired. Please log in again.',

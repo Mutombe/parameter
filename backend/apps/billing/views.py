@@ -116,25 +116,43 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
         period_start = date(year, month, 1)
         period_end = date(year, month, monthrange(year, month)[1])
 
-        properties = Property.objects.annotate(
-            active_leases=Count(
-                'units__leases', filter=Q(units__leases__status='active'), distinct=True
-            ),
-            levy_leases=Count(
-                'leases', filter=Q(leases__status='active', leases__lease_type='levy'), distinct=True
-            ),
-            billed_count=Count(
-                'invoices', filter=Q(
-                    invoices__period_start=period_start,
-                    invoices__period_end=period_end,
-                ), distinct=True
-            ),
-        ).select_related('landlord').order_by('name')
+        from apps.masterfile.models import LeaseAgreement
+
+        # Fast: get active lease counts per property using lease table directly
+        from django.db.models import F
+        lease_counts = {}
+        for row in (LeaseAgreement.objects.filter(status='active')
+            .values(prop_id=F('unit__property_id'))
+            .annotate(cnt=Count('id'))
+        ):
+            if row['prop_id']:
+                lease_counts[row['prop_id']] = lease_counts.get(row['prop_id'], 0) + row['cnt']
+        # Also count levy leases (property FK, no unit)
+        for row in (LeaseAgreement.objects.filter(status='active', lease_type='levy', unit__isnull=True)
+            .values(prop_id=F('property_id'))
+            .annotate(cnt=Count('id'))
+        ):
+            if row['prop_id']:
+                lease_counts[row['prop_id']] = lease_counts.get(row['prop_id'], 0) + row['cnt']
+
+        # Fast: get billed counts per property for this period
+        from .models import Invoice
+        billed_counts = {}
+        for row in (Invoice.objects.filter(period_start=period_start, period_end=period_end)
+            .values(prop_id=F('property_id'))
+            .annotate(cnt=Count('id'))
+        ):
+            if row['prop_id']:
+                billed_counts[row['prop_id']] = row['cnt']
+
+        # Only fetch properties that have active leases
+        prop_ids = set(lease_counts.keys())
+        properties = Property.objects.filter(id__in=prop_ids).select_related('landlord').order_by('name')
 
         results = []
         for prop in properties:
-            total_active = (prop.active_leases or 0) + (prop.levy_leases or 0)
-            billed = prop.billed_count or 0
+            total_active = lease_counts.get(prop.id, 0)
+            billed = billed_counts.get(prop.id, 0)
             if total_active == 0 and billed == 0:
                 continue
             if billed >= total_active and total_active > 0:

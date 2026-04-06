@@ -61,6 +61,7 @@ const getSubdomain = (): string | null => {
 const api = axios.create({
   baseURL: `${API_BASE_URL}/api`,
   withCredentials: true,
+  timeout: 120000, // 2 minutes — handles large operations like bulk billing
   headers: {
     'Content-Type': 'application/json',
   },
