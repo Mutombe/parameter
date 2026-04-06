@@ -88,12 +88,20 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
         lease_ids = serializer.validated_data.get('lease_ids', [])
         property_id = serializer.validated_data.get('property_id')
 
-        created_invoices, errors = generate_monthly_invoices(
-            month, year,
-            lease_ids=lease_ids or None,
-            property_id=property_id,
-            created_by=request.user,
-        )
+        try:
+            created_invoices, errors = generate_monthly_invoices(
+                month, year,
+                lease_ids=lease_ids or None,
+                property_id=property_id,
+                created_by=request.user,
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception(f'[BILLING] Failed: {e}')
+            return Response(
+                {'error': f'{type(e).__name__}: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         return Response({
             'created': len(created_invoices),

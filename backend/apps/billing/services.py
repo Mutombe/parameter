@@ -39,7 +39,7 @@ def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, cre
     # Evaluate leases once, then check which are already billed
     all_leases = list(leases)
     if not all_leases:
-        return [], errors
+        return [], []
 
     lease_id_list = [l.id for l in all_leases]
     existing_lease_ids = set(
