@@ -73,10 +73,9 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['post'])
-    @transaction.atomic
     def generate_monthly(self, request):
         """
-        Generate monthly rent invoices for all active leases.
+        Generate monthly rent invoices for active leases.
         This is the automated billing cron job (Activity 1).
         """
         from .services import generate_monthly_invoices

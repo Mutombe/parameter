@@ -92,13 +92,27 @@ def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, cre
             created_by=created_by
         ))
 
-    created_invoices = []
-    for invoice in invoices_to_create:
-        try:
-            invoice.save()
-            created_invoices.append(invoice)
-        except Exception as e:
-            errors.append(f'Error creating invoice for {invoice.tenant}: {str(e)}')
+    # Bulk create for performance — skip signals (auto-post happens separately)
+    if not invoices_to_create:
+        return [], errors
+
+    # Pre-compute fields that save() normally calculates (bulk_create skips save)
+    from django.utils import timezone as tz
+    prefix = tz.now().strftime('INV%Y%m%d')
+    last = Invoice.all_objects.filter(invoice_number__startswith=prefix).order_by('-invoice_number').first()
+    start_num = int(last.invoice_number[len(prefix):]) + 1 if last else 1
+    for i, inv in enumerate(invoices_to_create):
+        inv.invoice_number = f'{prefix}{start_num + i:04d}'
+        inv.total_amount = inv.amount + (inv.vat_amount or Decimal('0'))
+        inv.balance = inv.total_amount - (inv.amount_paid or Decimal('0'))
+        if inv.unit and not inv.property:
+            inv.property = inv.unit.property
+
+    try:
+        created_invoices = Invoice.objects.bulk_create(invoices_to_create, batch_size=500)
+    except Exception as e:
+        errors.append(f'Bulk create failed: {str(e)}')
+        return [], errors
 
     return created_invoices, errors
 
