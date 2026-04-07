@@ -20,76 +20,9 @@ import {
 } from '../services/api'
 import api from '../services/api'
 
-const PREFETCH_STALE_TIME = 10 * 60 * 1000 // 10 minutes
+const PREFETCH_STALE = 15 * 60 * 1000 // 15 minutes — keep prefetched data fresh long
 
-// Map of sidebar route paths to their primary query prefetch configs.
-// Query keys must match the EXACT keys used in each page's useQuery call.
-// List pages use ['entity', '', 1] for the default (empty search, page 1) view.
-const prefetchMap: Record<string, () => { queryKey: unknown[]; queryFn: () => Promise<unknown> }[]> = {
-  '/dashboard': () => [
-    { queryKey: ['dashboard-stats'], queryFn: () => reportsApi.dashboard().then(r => r.data) },
-  ],
-  '/dashboard/properties': () => [
-    { queryKey: ['properties', '', 1], queryFn: () => propertyApi.list({ search: '', page: 1, page_size: 12 }).then(r => r.data) },
-  ],
-  '/dashboard/landlords': () => [
-    { queryKey: ['landlords', '', 1], queryFn: () => landlordApi.list({ search: '', page: 1, page_size: 12 }).then(r => r.data) },
-  ],
-  '/dashboard/tenants': () => [
-    { queryKey: ['tenants', '', 1, '', ''], queryFn: () => tenantApi.list({ search: '', page: 1, page_size: 12 }).then(r => r.data) },
-  ],
-  '/dashboard/units': () => [
-    { queryKey: ['units', '', 'all'], queryFn: () => unitApi.list({ search: '' }).then(r => r.data.results || r.data) },
-  ],
-  '/dashboard/leases': () => [
-    { queryKey: ['leases', '', ''], queryFn: () => leaseApi.list({ search: '' }).then(r => r.data.results || r.data) },
-  ],
-  '/dashboard/invoices': () => [
-    { queryKey: ['invoices', '', ''], queryFn: () => invoiceApi.list({}).then(r => r.data.results || r.data) },
-  ],
-  '/dashboard/receipts': () => [
-    { queryKey: ['receipts', ''], queryFn: () => receiptApi.list({ search: '' }).then(r => r.data.results || r.data) },
-  ],
-  '/dashboard/expenses': () => [
-    { queryKey: ['expenses', '', '', ''], queryFn: () => expenseApi.list({}).then(r => r.data.results || r.data) },
-  ],
-  '/dashboard/reports': () => [
-    { queryKey: ['trial-balance'], queryFn: () => reportsApi.trialBalance().then(r => r.data) },
-  ],
-  '/dashboard/reports/aged-analysis': () => {
-    const today = new Date().toISOString().split('T')[0]
-    return [
-      { queryKey: ['aged-analysis', today, '', ''], queryFn: () => reportsApi.agedAnalysis({ as_of_date: today }).then(r => r.data) },
-    ]
-  },
-  '/dashboard/accounting/journals': () => [
-    { queryKey: ['journals', '', ''], queryFn: () => journalApi.list({}).then(r => r.data.results || r.data) },
-  ],
-  '/dashboard/accounting/chart-of-accounts': () => [
-    { queryKey: ['accounts'], queryFn: () => accountApi.list().then(r => r.data.results || r.data) },
-  ],
-  '/dashboard/accounting/bank-accounts': () => [
-    { queryKey: ['bank-accounts'], queryFn: () => bankAccountApi.list().then(r => r.data.results || r.data) },
-  ],
-  '/dashboard/maintenance': () => [
-    { queryKey: ['maintenance-requests', { page: 1, page_size: 25 }], queryFn: () => api.get('/maintenance/requests/', { params: { page: 1, page_size: 25 } }).then(r => r.data) },
-  ],
-  '/dashboard/audit-trail': () => [
-    { queryKey: ['audit-trail'], queryFn: () => auditApi.list().then(r => r.data.results || r.data) },
-  ],
-  '/dashboard/income-types': () => [
-    { queryKey: ['income-types'], queryFn: () => incomeTypeApi.list().then(r => r.data.results || r.data) },
-  ],
-  '/dashboard/expense-categories': () => [
-    { queryKey: ['expense-categories'], queryFn: () => expenseCategoryApi.list().then(r => r.data.results || r.data) },
-  ],
-  '/dashboard/subsidiary-ledger': () => [
-    { queryKey: ['subsidiary-accounts'], queryFn: () => subsidiaryApi.list().then(r => r.data.results || r.data) },
-  ],
-}
-
-// Map of entity singular names to their API modules and detail query key prefix.
-// Detail pages use ['entity-singular', numericId] as query keys.
+// Detail page API map
 const detailApiMap: Record<string, { api: { get: (id: number) => Promise<any> }; keyPrefix: string }> = {
   properties: { api: propertyApi, keyPrefix: 'property' },
   landlords: { api: landlordApi, keyPrefix: 'landlord' },
@@ -101,20 +34,17 @@ const detailApiMap: Record<string, { api: { get: (id: number) => Promise<any> };
   expenses: { api: expenseApi, keyPrefix: 'expense' },
 }
 
-// Related queries to prefetch alongside each entity's detail page.
-// These are the most important sub-queries that detail pages fire on mount.
+// Related queries for detail pages
 const detailRelatedQueries: Record<string, (id: number) => { queryKey: unknown[]; queryFn: () => Promise<unknown> }[]> = {
   properties: (id) => [
     { queryKey: ['property-units', id], queryFn: () => unitApi.list({ property: id }).then(r => r.data) },
-    { queryKey: ['property-lease-charges', id], queryFn: () => reportsApi.leaseCharges({ property_id: id }).then(r => r.data) },
   ],
   tenants: (id) => [
     { queryKey: ['tenant-detail-view', id], queryFn: () => tenantApi.detailView(id).then(r => r.data) },
-    { queryKey: ['tenant-ledger', id], queryFn: () => tenantApi.ledger(id).then(r => r.data) },
+    { queryKey: ['tenant-ledger', id, '', ''], queryFn: () => tenantApi.ledger(id).then(r => r.data) },
   ],
   landlords: (id) => [
     { queryKey: ['landlord-statement', id], queryFn: () => landlordApi.statement(id).then(r => r.data) },
-    { queryKey: ['landlord-financial', id], queryFn: () => reportsApi.landlordStatement({ landlord_id: id }).then(r => r.data) },
   ],
   leases: (id) => [
     { queryKey: ['lease-invoices', id], queryFn: () => invoiceApi.list({ lease: id }).then(r => r.data) },
@@ -126,16 +56,7 @@ export function usePrefetch() {
 
   const prefetch = useCallback(
     (path: string) => {
-      // 1. Try exact path match for list pages
-      const configs = prefetchMap[path]
-      if (configs) {
-        for (const { queryKey, queryFn } of configs()) {
-          queryClient.prefetchQuery({ queryKey, queryFn, staleTime: PREFETCH_STALE_TIME })
-        }
-        return
-      }
-
-      // 2. Try detail page pattern:  /dashboard/<entity>/<id>
+      // Try detail page pattern: /dashboard/<entity>/<id>
       const detailMatch = path.match(
         /\/dashboard\/(properties|landlords|tenants|units|leases|invoices|receipts|expenses)\/(\d+)/,
       )
@@ -147,18 +68,19 @@ export function usePrefetch() {
           queryClient.prefetchQuery({
             queryKey: [config.keyPrefix, numericId],
             queryFn: () => config.api.get(numericId).then((r: any) => r.data),
-            staleTime: PREFETCH_STALE_TIME,
+            staleTime: PREFETCH_STALE,
           })
-
-          // Also prefetch the most important related queries for this detail page
-          const relatedFn = detailRelatedQueries[entity]
-          if (relatedFn) {
-            for (const { queryKey, queryFn } of relatedFn(numericId)) {
-              queryClient.prefetchQuery({ queryKey, queryFn, staleTime: PREFETCH_STALE_TIME })
+          // Prefetch related queries
+          const related = detailRelatedQueries[entity]
+          if (related) {
+            for (const { queryKey, queryFn } of related(numericId)) {
+              queryClient.prefetchQuery({ queryKey, queryFn, staleTime: PREFETCH_STALE })
             }
           }
         }
       }
+
+      // List pages are prefetched on login — no need to re-prefetch on hover
     },
     [queryClient],
   )
@@ -167,34 +89,53 @@ export function usePrefetch() {
 }
 
 /**
- * Prefetch all core data endpoints in parallel.
- * Call on login success to warm the cache so pages load instantly.
+ * Prefetch ALL data on login. Every page's data loads in parallel.
+ * Query keys MUST match exactly what each page uses.
  */
 export function prefetchAllCoreData(queryClient: QueryClient) {
-  const stale = PREFETCH_STALE_TIME
+  const s = PREFETCH_STALE
+  const pf = (queryKey: unknown[], queryFn: () => Promise<unknown>) =>
+    queryClient.prefetchQuery({ queryKey, queryFn, staleTime: s })
 
-  // Dashboard
-  queryClient.prefetchQuery({ queryKey: ['dashboard-stats'], queryFn: () => reportsApi.dashboard().then(r => r.data), staleTime: stale })
+  // ═══ DASHBOARD ═══
+  pf(['dashboard-stats'], () => reportsApi.dashboard().then(r => r.data))
 
-  // Masterfile
-  queryClient.prefetchQuery({ queryKey: ['properties', '', 1], queryFn: () => propertyApi.list({ search: '', page: 1, page_size: 12 }).then(r => r.data), staleTime: stale })
-  queryClient.prefetchQuery({ queryKey: ['landlords', '', 1], queryFn: () => landlordApi.list({ search: '', page: 1, page_size: 12 }).then(r => r.data), staleTime: stale })
-  queryClient.prefetchQuery({ queryKey: ['tenants', '', 1, '', ''], queryFn: () => tenantApi.list({ search: '', page: 1, page_size: 12 }).then(r => r.data), staleTime: stale })
-  queryClient.prefetchQuery({ queryKey: ['units', '', 'all'], queryFn: () => unitApi.list({ search: '' }).then(r => r.data.results || r.data), staleTime: stale })
-  queryClient.prefetchQuery({ queryKey: ['leases', '', ''], queryFn: () => leaseApi.list({ search: '' }).then(r => r.data.results || r.data), staleTime: stale })
+  // ═══ MASTERFILE LIST PAGES ═══
+  // Keys match: ['entity', search, filter, page] with defaults
+  pf(['properties', '', 1], () => propertyApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data))
+  pf(['landlords', '', 1], () => landlordApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data))
+  pf(['tenants', '', 1, '', ''], () => tenantApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data))
+  pf(['leases', '', '', 1], () => leaseApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data))
+  pf(['units', '', 'all'], () => unitApi.list({ search: '' }).then(r => r.data))
 
-  // Billing
-  queryClient.prefetchQuery({ queryKey: ['invoices', '', ''], queryFn: () => invoiceApi.list({}).then(r => r.data.results || r.data), staleTime: stale })
-  queryClient.prefetchQuery({ queryKey: ['receipts', ''], queryFn: () => receiptApi.list({ search: '' }).then(r => r.data.results || r.data), staleTime: stale })
-  queryClient.prefetchQuery({ queryKey: ['expenses', '', '', ''], queryFn: () => expenseApi.list({}).then(r => r.data.results || r.data), staleTime: stale })
+  // ═══ BILLING LIST PAGES ═══
+  pf(['invoices', '', '', '', '', 1], () => invoiceApi.list({ page: 1, page_size: 25 }).then(r => r.data))
+  pf(['receipts', '', 1], () => receiptApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data))
+  pf(['expenses', '', '', '', 1], () => expenseApi.list({ page: 1, page_size: 25 }).then(r => r.data))
 
-  // Accounting
-  queryClient.prefetchQuery({ queryKey: ['accounts'], queryFn: () => accountApi.list().then(r => r.data.results || r.data), staleTime: stale })
-  queryClient.prefetchQuery({ queryKey: ['journals', '', ''], queryFn: () => journalApi.list({}).then(r => r.data.results || r.data), staleTime: stale })
-  queryClient.prefetchQuery({ queryKey: ['bank-accounts'], queryFn: () => bankAccountApi.list().then(r => r.data.results || r.data), staleTime: stale })
-  queryClient.prefetchQuery({ queryKey: ['income-types'], queryFn: () => incomeTypeApi.list().then(r => r.data.results || r.data), staleTime: stale })
-  queryClient.prefetchQuery({ queryKey: ['expense-categories'], queryFn: () => expenseCategoryApi.list().then(r => r.data.results || r.data), staleTime: stale })
+  // ═══ ACCOUNTING ═══
+  pf(['accounts'], () => accountApi.list().then(r => r.data))
+  pf(['journals', '', '', 1], () => journalApi.list({ page: 1, page_size: 25 }).then(r => r.data))
+  pf(['bank-accounts'], () => bankAccountApi.list().then(r => r.data))
+  pf(['income-types'], () => incomeTypeApi.list().then(r => r.data))
+  pf(['expense-categories'], () => expenseCategoryApi.list().then(r => r.data))
+  pf(['subsidiary-accounts'], () => subsidiaryApi.list().then(r => r.data))
 
-  // Reports
-  queryClient.prefetchQuery({ queryKey: ['trial-balance'], queryFn: () => reportsApi.trialBalance().then(r => r.data), staleTime: stale })
+  // ═══ ADMIN ═══
+  pf(['audit-trail'], () => auditApi.list().then(r => r.data))
+  pf(['maintenance-requests', { page: 1, page_size: 25 }], () =>
+    api.get('/maintenance/requests/', { params: { page: 1, page_size: 25 } }).then(r => r.data))
+
+  // ═══ REPORTS ═══
+  pf(['trial-balance'], () => reportsApi.trialBalance().then(r => r.data))
+
+  // ═══ FORM DROPDOWNS (pre-warm so forms open instantly) ═══
+  pf(['tenants-select'], () => tenantApi.list({ page_size: 500 }).then(r => r.data.results || r.data))
+  pf(['properties-list'], () => propertyApi.list().then(r => r.data.results || r.data))
+  pf(['tenants-list'], () => tenantApi.list().then(r => r.data.results || r.data))
+  pf(['units-all'], () => unitApi.list().then(r => r.data.results || r.data))
+
+  // ═══ DASHBOARD SUB-ACCOUNTS ═══
+  pf(['dashboard-landlord-sub-accounts'], () => subsidiaryApi.list({ entity_type: 'landlord' }).then(r => r.data))
+  pf(['dashboard-tenant-sub-accounts'], () => subsidiaryApi.list({ entity_type: 'tenant' }).then(r => r.data))
 }
