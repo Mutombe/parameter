@@ -938,7 +938,7 @@ export default function Invoices() {
                                     <span className="text-xs text-blue-500">Processing...</span>
                                   )}
                                 </div>
-                                <p className="text-xs text-gray-500">{formatDate(invoice.date)}</p>
+                                <p className="text-xs text-gray-500">{invoice.date ? formatDate(invoice.date) : '\u2014'}</p>
                               </div>
                             </div>
                           </td>
@@ -949,10 +949,10 @@ export default function Invoices() {
                                 onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${invoice.tenant}`) }}
                                 className="text-primary-600 hover:text-primary-700 hover:underline"
                               >
-                                {invoice.tenant_name}
+                                {invoice.tenant_name || 'Unknown Tenant'}
                               </button>
                             ) : (
-                              <p className="text-gray-900">{invoice.tenant_name}</p>
+                              <p className="text-gray-900">{invoice.tenant_name || 'Unknown Tenant'}</p>
                             )}
                             {invoice.unit_name && (
                               <p className="text-xs text-gray-500">{invoice.unit_name}</p>
@@ -960,7 +960,7 @@ export default function Invoices() {
                           </td>
                           <td className="px-6 py-4">
                             <p className="font-semibold text-gray-900 tabular-nums">
-                              {formatCurrency(invoice.total_amount)}
+                              {formatCurrency(invoice.total_amount || 0)}
                             </p>
                           </td>
                           <td className="px-6 py-4">
@@ -968,7 +968,7 @@ export default function Invoices() {
                               'font-semibold tabular-nums',
                               Number(invoice.balance) > 0 ? 'text-rose-600' : 'text-emerald-600'
                             )}>
-                              {formatCurrency(invoice.balance)}
+                              {formatCurrency(invoice.balance ?? 0)}
                             </p>
                           </td>
                           <td className="px-6 py-4">
@@ -977,8 +977,8 @@ export default function Invoices() {
                               <span className={cn(
                                 'text-sm',
                                 isOverdue ? 'text-rose-600 font-medium' : 'text-gray-600'
-                              )} title={`Due: ${formatDate(invoice.due_date)}`}>
-                                {formatDate(invoice.due_date)}
+                              )} title={invoice.due_date ? `Due: ${formatDate(invoice.due_date)}` : undefined}>
+                                {invoice.due_date ? formatDate(invoice.due_date) : '\u2014'}
                               </span>
                             </div>
                           </td>

@@ -437,10 +437,10 @@ export default function Receipts() {
                         {receipt.income_type_name}
                       </span>
                     ) : (
-                      <span className="text-gray-400 text-sm">-</span>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-600">General</span>
                     )}
                   </td>
-                  <td className="px-6 py-4 font-medium text-green-600" title={String(receipt.amount)}>{formatCurrency(receipt.amount)}</td>
+                  <td className="px-6 py-4 font-medium text-green-600" title={String(receipt.amount)}>{formatCurrency(receipt.amount || 0)}</td>
                   <td className="px-6 py-4">
                     <Tooltip content={`${methodLabels[receipt.payment_method] || receipt.payment_method}${receipt.reference ? ' - Ref: ' + receipt.reference : ''}`}>
                       <span className="px-2 py-1 bg-gray-100 rounded-full text-xs">
@@ -448,8 +448,8 @@ export default function Receipts() {
                       </span>
                     </Tooltip>
                   </td>
-                  <td className="px-6 py-4 text-gray-600">{receipt.reference || '-'}</td>
-                  <td className="px-6 py-4 text-gray-600">{formatDate(receipt.date)}</td>
+                  <td className="px-6 py-4 text-gray-900">{receipt.reference || '\u2014'}</td>
+                  <td className="px-6 py-4 text-gray-900">{receipt.date ? formatDate(receipt.date) : '\u2014'}</td>
                   <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                     {receipt._isOptimistic ? (
                       <span className="text-blue-600 text-sm">Processing...</span>
@@ -460,7 +460,7 @@ export default function Receipts() {
                           onMouseEnter={() => prefetch(`/dashboard/journals/${receipt.journal}`)}
                           className="text-green-600 hover:text-green-700 hover:underline text-sm"
                         >
-                          {receipt.journal_number}
+                          {receipt.journal_number || ''}
                         </button>
                       </Tooltip>
                     ) : (

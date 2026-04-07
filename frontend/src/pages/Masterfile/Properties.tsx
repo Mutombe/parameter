@@ -252,6 +252,7 @@ export default function Properties() {
     queryKey: ['preview-units', selectedProperty?.id],
     queryFn: () => selectedProperty ? propertyApi.previewUnits(selectedProperty.id).then(r => r.data) : null,
     enabled: showGenerateModal && !!selectedProperty?.id && !!selectedProperty?.unit_definition,
+    placeholderData: keepPreviousData,
   })
 
   // Generate units mutation
@@ -284,6 +285,7 @@ export default function Properties() {
       return users.filter((u: any) => u.role !== 'tenant_portal' && u.is_active)
     }),
     enabled: showManagerModal,
+    placeholderData: keepPreviousData,
   })
 
   // Fetch managers for selected property
@@ -291,6 +293,7 @@ export default function Properties() {
     queryKey: ['property-managers', selectedProperty?.id],
     queryFn: () => propertyManagerApi.list({ property: selectedProperty?.id }).then(r => r.data.results || r.data),
     enabled: showManagerModal && !!selectedProperty?.id,
+    placeholderData: keepPreviousData,
   })
 
   const assignManagerMutation = useMutation({
@@ -700,7 +703,7 @@ export default function Properties() {
                         {property.landlord_name}
                       </button>
                     ) : (
-                      <span className="text-gray-600 truncate">{property.landlord_name}</span>
+                      <span className="text-gray-600 truncate">{property.landlord_name || 'Unassigned'}</span>
                     )}
                   </div>
 
@@ -733,7 +736,7 @@ export default function Properties() {
                         !hasUnits ? 'text-gray-400' :
                         occupancyRate >= 80 ? 'text-emerald-600' :
                         occupancyRate >= 50 ? 'text-amber-600' : 'text-rose-600'
-                      )}>{hasUnits ? formatPercent(occupancyRate) : 'N/A'}</span>
+                      )}>{hasUnits ? formatPercent(occupancyRate) : '0%'}</span>
                     </div>
                     <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
                       <div

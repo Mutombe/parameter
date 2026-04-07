@@ -186,6 +186,7 @@ export default function Expenses() {
     queryKey: ['income-types-for-expenses'],
     queryFn: () => incomeTypeApi.list({ is_active: true }).then((r: any) => r.data.results || r.data),
     staleTime: 60000,
+    placeholderData: keepPreviousData,
   })
 
   // Fetch expenses
@@ -216,7 +217,8 @@ export default function Expenses() {
     queryFn: async () => {
       const response = await landlordApi.list()
       return response.data.results || response.data
-    }
+    },
+    placeholderData: keepPreviousData,
   })
 
   // Create mutation - optimistic
@@ -652,12 +654,12 @@ export default function Expenses() {
                           {expense.payee_name}
                         </button>
                       ) : (
-                        <p className="text-sm text-gray-600 truncate">{expense.payee_name}</p>
+                        <p className="text-sm text-gray-900 truncate">{expense.payee_name}</p>
                       )}
                       <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
-                          {formatDate(expense.date)}
+                          {expense.date ? formatDate(expense.date) : '\u2014'}
                         </span>
                         <span className="flex items-center gap-1">
                           <FileText className="h-3 w-3" />
@@ -668,13 +670,13 @@ export default function Expenses() {
 
                     <div className="text-right">
                       <Tooltip content={expenseTypes.find(t => t.value === expense.expense_type)?.label || expense.expense_type}>
-                        <span className="font-bold text-lg">{formatCurrency(expense.amount, expense.currency)}</span>
+                        <span className="font-bold text-lg">{formatCurrency(expense.amount || 0, expense.currency)}</span>
                       </Tooltip>
-                      {expense.journal_number && (
+                      {expense.journal_number ? (
                         <Tooltip content="Posted to general ledger">
                           <p className="text-xs text-gray-500">JRN: {expense.journal_number}</p>
                         </Tooltip>
-                      )}
+                      ) : null}
                     </div>
 
                     <div className="flex items-center gap-2">

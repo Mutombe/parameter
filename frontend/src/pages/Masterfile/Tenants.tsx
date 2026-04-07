@@ -132,6 +132,7 @@ export default function Tenants() {
     queryKey: ['tenant-detail', selectedTenantId],
     queryFn: () => tenantApi.detailView(selectedTenantId!).then(r => r.data),
     enabled: !!selectedTenantId && showDetailModal,
+    placeholderData: keepPreviousData,
   })
 
   const handleViewDetails = (tenantId: number) => {
@@ -523,8 +524,8 @@ export default function Tenants() {
                           {tenant.account_type === 'levy' ? 'Levy' : 'Rental'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 truncate max-w-[200px]">{tenant.email || '-'}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{tenant.phone || '-'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900 truncate max-w-[200px]">{tenant.email || '\u2014'}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">{tenant.phone || '\u2014'}</td>
                       <td className="px-6 py-4 text-sm">
                         {tenant.unit_name ? (
                           <div className="space-y-0.5">
@@ -551,7 +552,7 @@ export default function Tenants() {
                         <span className={cn(
                           Number(balance) > 0 ? 'text-red-600' : Number(balance) === 0 ? 'text-emerald-600' : 'text-gray-900'
                         )}>
-                          {formatCurrency(balance)}
+                          {formatCurrency(Number(balance) || 0)}
                         </span>
                       </td>
                       <td className="px-6 py-4">

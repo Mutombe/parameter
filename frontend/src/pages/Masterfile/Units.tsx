@@ -588,10 +588,10 @@ export default function Units() {
                       </Tooltip>
                     </td>
                     <td className="px-6 py-4">
-                      <Tooltip content={`Rent: ${formatCurrency(unit.rental_amount)} | Deposit: ${formatCurrency(unit.deposit_amount)}`}>
+                      <Tooltip content={`Rent: ${formatCurrency(unit.rental_amount || 0)} | Deposit: ${formatCurrency(unit.deposit_amount || 0)}`}>
                         <div className="flex items-center gap-1">
                           <DollarSign className="w-4 h-4 text-gray-400" />
-                          <span className="font-semibold text-gray-900">{formatCurrency(unit.rental_amount)}</span>
+                          <span className="font-semibold text-gray-900">{formatCurrency(unit.rental_amount || 0)}</span>
                         </div>
                       </Tooltip>
                     </td>
@@ -623,7 +623,7 @@ export default function Units() {
                           </button>
                         </div>
                       ) : (
-                        <span className="text-gray-400">-</span>
+                        <span className="text-gray-400">{'\u2014'}</span>
                       )}
                     </td>
                     <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>

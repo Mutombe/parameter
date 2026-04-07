@@ -763,7 +763,7 @@ export default function Leases() {
                               {lease.property_name}
                             </button>
                           ) : (
-                            <span className="text-gray-400 italic text-sm">No property</span>
+                            <span className="text-gray-500 text-sm">Property-level</span>
                           )
                         ) : lease.unit ? (
                           <button
@@ -775,14 +775,14 @@ export default function Leases() {
                             {lease.unit_display}
                           </button>
                         ) : (
-                          <span className="text-gray-400 italic text-sm">No unit</span>
+                          <span className="text-gray-400 italic text-sm">{'\u2014'}</span>
                         )}
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1">
                         <DollarSign className="w-4 h-4 text-gray-400" />
-                        <span className="font-semibold text-gray-900" title={`Monthly rent: ${lease.monthly_rent}`}>{formatCurrency(lease.monthly_rent)}</span>
+                        <span className="font-semibold text-gray-900" title={`Monthly rent: ${lease.monthly_rent}`}>{formatCurrency(lease.monthly_rent || 0)}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -795,7 +795,7 @@ export default function Leases() {
                           )}
                           title={`Duration: ${durationMonths} month${durationMonths !== 1 ? 's' : ''} (${durationDays} days)`}
                         >
-                          {formatDate(lease.start_date)} - {formatDate(lease.end_date)}
+                          {lease.start_date ? formatDate(lease.start_date) : '\u2014'} - {lease.end_date ? formatDate(lease.end_date) : '\u2014'}
                         </span>
                         {isExpiringSoon && (
                           <Tooltip content="Expires within 30 days">
