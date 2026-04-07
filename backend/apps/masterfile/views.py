@@ -202,11 +202,16 @@ class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets
             _lease_count=Count('leases'),
             _has_active_lease=Count('leases', filter=Q(leases__status='active')),
         )
+        active_lease_prefetch = Prefetch(
+            'leases',
+            queryset=LeaseAgreement.objects.filter(status='active').select_related('unit', 'unit__property', 'property'),
+            to_attr='_active_leases_list',
+        )
         if self.action == 'list':
-            queryset = base.prefetch_related('leases').all()
+            queryset = base.prefetch_related(active_lease_prefetch).all()
         else:
             queryset = base.prefetch_related(
-                Prefetch('leases', queryset=LeaseAgreement.objects.filter(status='active').select_related('unit', 'unit__property'), to_attr='_active_leases'),
+                active_lease_prefetch,
                 'leases', 'leases__unit', 'leases__unit__property',
             ).all()
 

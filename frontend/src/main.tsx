@@ -13,7 +13,7 @@ const queryClient = new QueryClient({
       gcTime: 30 * 60 * 1000, // 30 minutes — keep cache for reuse
       retry: 1,
       refetchOnWindowFocus: false, // Don't refetch on tab-back (causes loading flashes)
-      refetchOnMount: 'always', // Always show cached data, refetch in background if stale
+      refetchOnMount: true, // Show cached data, only refetch if stale (after 5 min)
       refetchOnReconnect: true,
       structuralSharing: true, // Smooth transitions between data updates
     },

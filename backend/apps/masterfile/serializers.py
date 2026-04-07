@@ -178,17 +178,67 @@ class RentalTenantListSerializer(serializers.ModelSerializer):
     has_active_lease = serializers.SerializerMethodField()
     lease_count = serializers.SerializerMethodField()
     unit_name = serializers.SerializerMethodField()
+    unit_id = serializers.SerializerMethodField()
+    property_name = serializers.SerializerMethodField()
+    property_id = serializers.SerializerMethodField()
 
     class Meta:
         model = RentalTenant
         fields = [
-            'id', 'code', 'name', 'tenant_type', 'account_type', 'unit', 'unit_name',
+            'id', 'code', 'name', 'tenant_type', 'account_type',
+            'unit', 'unit_name', 'unit_id', 'property_name', 'property_id',
             'email', 'phone', 'is_active', 'has_active_lease', 'lease_count',
             'created_at', 'updated_at'
         ]
 
     def get_unit_name(self, obj):
-        return str(obj.unit) if obj.unit else None
+        # Get from active lease
+        leases = getattr(obj, '_active_leases_list', None)
+        if leases is None:
+            lease = obj.leases.filter(status='active').select_related('unit', 'unit__property', 'property').first()
+        else:
+            lease = leases[0] if leases else None
+        if lease and lease.unit:
+            return lease.unit.unit_number
+        return None
+
+    def get_unit_id(self, obj):
+        leases = getattr(obj, '_active_leases_list', None)
+        if leases is None:
+            lease = obj.leases.filter(status='active').select_related('unit').first()
+        else:
+            lease = leases[0] if leases else None
+        if lease and lease.unit:
+            return lease.unit.id
+        return None
+
+    def get_property_name(self, obj):
+        leases = getattr(obj, '_active_leases_list', None)
+        if leases is None:
+            lease = obj.leases.filter(status='active').select_related('unit__property', 'property').first()
+        else:
+            lease = leases[0] if leases else None
+        if not lease:
+            return None
+        if lease.unit and lease.unit.property:
+            return lease.unit.property.name
+        if lease.property:
+            return lease.property.name
+        return None
+
+    def get_property_id(self, obj):
+        leases = getattr(obj, '_active_leases_list', None)
+        if leases is None:
+            lease = obj.leases.filter(status='active').select_related('unit__property', 'property').first()
+        else:
+            lease = leases[0] if leases else None
+        if not lease:
+            return None
+        if lease.unit and lease.unit.property:
+            return lease.unit.property.id
+        if lease.property:
+            return lease.property.id
+        return None
 
     def get_has_active_lease(self, obj):
         return getattr(obj, '_has_active_lease', 0) > 0
