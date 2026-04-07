@@ -255,16 +255,32 @@ class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets
 class LeaseAgreementViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Lease Agreements."""
     queryset = LeaseAgreement.objects.select_related(
-        'tenant', 'unit', 'unit__property', 'unit__property__landlord',
-        'property', 'property__landlord', 'created_by'
+        'tenant', 'unit', 'unit__property', 'property'
     ).all()
     serializer_class = LeaseAgreementSerializer
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-    filterset_fields = ['tenant', 'unit', 'unit__property', 'status', 'lease_type', 'currency']
-    search_fields = ['lease_number', 'tenant__name', 'tenant__code', 'unit__unit_number', 'unit__property__name']
+    filterset_fields = ['tenant', 'unit', 'unit__property', 'status', 'lease_type', 'currency', 'property']
+    search_fields = ['lease_number', 'tenant__name', 'tenant__code']
     ordering_fields = ['start_date', 'end_date', 'created_at', 'monthly_rent', 'lease_number']
     ordering = ['-created_at']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Only add heavy joins for detail view
+        if self.action == 'retrieve':
+            qs = qs.select_related(
+                'unit__property__landlord', 'property__landlord', 'created_by'
+            )
+        # Property filter for PropertyDetail billing
+        prop = self.request.query_params.get('property')
+        if prop:
+            qs = qs.filter(Q(unit__property_id=prop) | Q(property_id=prop))
+        # Landlord filter
+        landlord = self.request.query_params.get('landlord')
+        if landlord:
+            qs = qs.filter(Q(unit__property__landlord_id=landlord) | Q(property__landlord_id=landlord))
+        return qs
 
     def create(self, request, *args, **kwargs):
         """Override create to catch unexpected exceptions and return JSON."""

@@ -156,13 +156,19 @@ class ExchangeRateViewSet(viewsets.ModelViewSet):
 class JournalViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
     """CRUD for journal entries."""
     queryset = Journal.objects.select_related(
-        'created_by', 'posted_by', 'reversed_by'
-    ).prefetch_related(
-        Prefetch('entries', queryset=JournalEntry.objects.select_related('account'))
+        'created_by'
     ).annotate(
         _total_debit=Sum('entries__debit_amount'),
         _total_credit=Sum('entries__credit_amount'),
     ).all()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.action == 'retrieve':
+            qs = qs.select_related('posted_by', 'reversed_by').prefetch_related(
+                Prefetch('entries', queryset=JournalEntry.objects.select_related('account'))
+            )
+        return qs
     permission_classes = [IsAuthenticated]
     filterset_fields = ['journal_type', 'status', 'date', 'currency']
     search_fields = ['journal_number', 'description', 'reference']

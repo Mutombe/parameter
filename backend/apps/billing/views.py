@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Invoices."""
     queryset = Invoice.objects.select_related(
-        'tenant', 'unit', 'lease', 'unit__property', 'created_by', 'journal'
+        'tenant', 'unit', 'unit__property'
     ).all()
     permission_classes = [IsAuthenticated]
 
@@ -692,9 +692,7 @@ class BulkMailingViewSet(viewsets.ViewSet):
 class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Receipts."""
     queryset = Receipt.objects.select_related(
-        'tenant', 'invoice', 'invoice__unit', 'invoice__unit__property',
-        'invoice__unit__property__landlord',
-        'created_by', 'journal', 'income_type'
+        'tenant', 'invoice', 'income_type', 'journal'
     ).all()
     permission_classes = [IsAuthenticated]
     filterset_fields = [
@@ -930,7 +928,7 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
 class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Expenses."""
     queryset = Expense.objects.select_related(
-        'expense_category', 'income_type', 'journal', 'created_by', 'approved_by'
+        'expense_category', 'income_type'
     ).all()
     serializer_class = ExpenseSerializer
     permission_classes = [IsAuthenticated]
