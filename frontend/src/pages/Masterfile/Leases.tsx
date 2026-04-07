@@ -89,10 +89,10 @@ const statusConfig: Record<string, { color: string; bgColor: string; icon: any; 
 function SkeletonTableRow() {
   return (
     <tr className="animate-pulse">
-      <td className="px-4 py-4 w-10">
+      <td className="px-4 py-3.5 w-10">
         <div className="w-4 h-4 bg-gray-200 rounded" />
       </td>
-      <td className="px-6 py-4">
+      <td className="px-5 py-3.5">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
             <FileText className="w-5 h-5 text-blue-600" />
@@ -100,34 +100,31 @@ function SkeletonTableRow() {
           <span className="h-4 w-24 bg-gray-200 rounded" />
         </div>
       </td>
-      <td className="px-6 py-4">
+      <td className="px-5 py-3.5">
         <div className="flex items-center gap-2">
           <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
           <span className="h-4 w-28 bg-gray-200 rounded" />
         </div>
       </td>
-      <td className="px-6 py-4">
+      <td className="px-5 py-3.5">
         <div className="flex items-center gap-2">
           <Home className="w-4 h-4 text-gray-400" />
           <span className="h-4 w-32 bg-gray-200 rounded" />
         </div>
       </td>
-      <td className="px-6 py-4">
-        <div className="flex items-center gap-1">
-          <DollarSign className="w-4 h-4 text-gray-400" />
-          <span className="h-4 w-20 bg-gray-200 rounded" />
-        </div>
+      <td className="px-5 py-3.5">
+        <span className="h-4 w-20 bg-gray-200 rounded" />
       </td>
-      <td className="px-6 py-4">
+      <td className="px-5 py-3.5 hidden lg:table-cell">
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-gray-400" />
           <span className="h-4 w-36 bg-gray-200 rounded" />
         </div>
       </td>
-      <td className="px-6 py-4">
+      <td className="px-5 py-3.5">
         <span className="h-6 w-20 bg-gray-200 rounded-full inline-block" />
       </td>
-      <td className="px-6 py-4 text-right">
+      <td className="px-5 py-3.5 text-right">
         <div className="flex items-center justify-end gap-1">
           <button className="p-2 text-gray-300 rounded-lg"><Edit2 className="w-4 h-4" /></button>
         </div>
@@ -658,24 +655,24 @@ export default function Leases() {
       </div>
 
       {/* Leases Table - headers always visible */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="sticky top-0 z-10 bg-gray-50/80 backdrop-blur-sm border-b-2 border-gray-100">
             <tr>
-              <th className="px-4 py-4 w-10">
+              <th className="px-4 py-3.5 w-10">
                 <SelectionCheckbox
                   checked={selection.isAllPageSelected(pageIds)}
                   indeterminate={selection.isPartialPageSelected(pageIds)}
                   onChange={() => selection.selectPage(pageIds)}
                 />
               </th>
-              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Lease</th>
-              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
-              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Property / Unit</th>
-              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Monthly Rent</th>
-              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Period</th>
-              <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Lease</th>
+              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
+              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Property / Unit</th>
+              <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Monthly Rent</th>
+              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden lg:table-cell">Period</th>
+              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -721,26 +718,26 @@ export default function Leases() {
                     onMouseEnter={() => prefetch(`/dashboard/leases/${lease.id}`)}
                     className={cn('hover:bg-gray-50 transition-colors group cursor-pointer', selection.isSelected(lease.id) && 'bg-primary-50/60')}
                   >
-                    <td className="px-4 py-4 w-10" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-4 py-3.5 w-10" onClick={(e) => e.stopPropagation()}>
                       <SelectionCheckbox
                         checked={selection.isSelected(lease.id)}
                         onChange={() => selection.toggle(lease.id)}
                       />
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-gray-900">{lease.lease_number}</span>
                         {lease.document && <Paperclip className="w-3.5 h-3.5 text-gray-400" />}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
                         <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
                         {lease.tenant ? (
                           <button
                             onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${lease.tenant}`) }}
                             onMouseEnter={() => prefetch(`/dashboard/tenants/${lease.tenant}`)}
-                            className="text-primary-600 hover:text-primary-700 hover:underline"
+                            className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
                           >
                             {lease.tenant_name}
                           </button>
@@ -749,7 +746,7 @@ export default function Leases() {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
                         <Home className="w-4 h-4 text-gray-400 flex-shrink-0" />
                         {lease.lease_type === 'levy' ? (
@@ -779,13 +776,10 @@ export default function Leases() {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-1">
-                        <DollarSign className="w-4 h-4 text-gray-400" />
-                        <span className="font-semibold text-gray-900" title={`Monthly rent: ${lease.monthly_rent}`}>{formatCurrency(lease.monthly_rent || 0)}</span>
-                      </div>
+                    <td className="px-5 py-3.5 text-right">
+                      <span className="font-semibold text-gray-900 tabular-nums" title={`Monthly rent: ${lease.monthly_rent}`}>{formatCurrency(lease.monthly_rent || 0)}</span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-3.5 hidden lg:table-cell">
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-gray-400" />
                         <span
@@ -804,11 +798,11 @@ export default function Leases() {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-3.5">
                       <div className="flex items-center gap-1.5">
                         <Tooltip content={statusTooltips[lease.status] || config.label}>
                           <span className={cn(
-                            'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
+                            'inline-flex items-center whitespace-nowrap gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium',
                             config.bgColor, config.color
                           )}>
                             <StatusIcon className="w-3 h-3" />
@@ -816,7 +810,7 @@ export default function Leases() {
                           </span>
                         </Tooltip>
                         <span className={cn(
-                          'px-2 py-0.5 rounded-full text-xs font-medium',
+                          'inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium',
                           lease.lease_type === 'levy'
                             ? 'bg-violet-50 text-violet-600'
                             : 'bg-sky-50 text-sky-600'
@@ -825,8 +819,8 @@ export default function Leases() {
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                    <td className="px-5 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => navigate(`/dashboard/leases/${lease.id}`)}
                           onMouseEnter={() => prefetch(`/dashboard/leases/${lease.id}`)}

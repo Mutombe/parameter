@@ -413,7 +413,7 @@ export default function Tenants() {
       )}
 
       {/* Table View */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           {isLoading ? (
             <div className="p-6">
@@ -446,23 +446,23 @@ export default function Tenants() {
             </div>
           ) : (
             <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="w-10 px-3 py-3">
+              <thead className="sticky top-0 z-10 bg-gray-50/80 backdrop-blur-sm border-b-2 border-gray-100">
+                <tr>
+                  <th className="w-10 px-3 py-3.5">
                     <SelectionCheckbox
                       checked={selection.isAllPageSelected(pageIds)}
                       indeterminate={selection.isPartialPageSelected(pageIds)}
                       onChange={() => selection.selectPage(pageIds)}
                     />
                   </th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Tenant Name</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Account Type</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Email</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Phone</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Property / Unit</th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Status</th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3 w-28">Actions</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5">Tenant Name</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5">Account Type</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5 hidden lg:table-cell">Email</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5 hidden xl:table-cell">Phone</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5">Property / Unit</th>
+                  <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5">Balance</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5">Status</th>
+                  <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5 w-28">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -483,7 +483,7 @@ export default function Tenants() {
                         !isOptimistic && selection.isSelected(tenant.id) && 'bg-primary-50/30'
                       )}
                     >
-                      <td className="w-10 px-3 py-4" onClick={(e) => e.stopPropagation()}>
+                      <td className="w-10 px-3 py-3.5" onClick={(e) => e.stopPropagation()}>
                         {!isOptimistic && !isUpdating && (
                           <SelectionCheckbox
                             checked={selection.isSelected(tenant.id)}
@@ -491,7 +491,7 @@ export default function Tenants() {
                           />
                         )}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
                           <div className={cn(
                             'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
@@ -514,9 +514,9 @@ export default function Tenants() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-5 py-3.5">
                         <span className={cn(
-                          'inline-flex px-2 py-0.5 rounded-full text-xs font-medium',
+                          'inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium',
                           tenant.account_type === 'levy'
                             ? 'bg-violet-50 text-violet-600'
                             : 'bg-sky-50 text-sky-600'
@@ -524,19 +524,22 @@ export default function Tenants() {
                           {tenant.account_type === 'levy' ? 'Levy' : 'Rental'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 truncate max-w-[200px]">{tenant.email || '\u2014'}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{tenant.phone || '\u2014'}</td>
-                      <td className="px-6 py-4 text-sm">
+                      <td className="px-5 py-3.5 text-sm text-gray-900 truncate max-w-[200px] hidden lg:table-cell">{tenant.email || '\u2014'}</td>
+                      <td className="px-5 py-3.5 text-sm text-gray-900 hidden xl:table-cell">{tenant.phone || '\u2014'}</td>
+                      <td className="px-5 py-3.5 text-sm">
                         {tenant.unit_name ? (
-                          <div className="space-y-0.5">
+                          <div className="flex items-center gap-1">
                             {tenant.property_name && (
-                              <span className="text-gray-500 text-xs block">{tenant.property_name}</span>
+                              <>
+                                <span className="text-gray-500 text-xs">{tenant.property_name}</span>
+                                <span className="text-gray-300 text-xs">&middot;</span>
+                              </>
                             )}
                             {tenant.unit_id ? (
                               <button
                                 onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/units/${tenant.unit_id}`) }}
                                 onMouseEnter={() => prefetch(`/dashboard/units/${tenant.unit_id}`)}
-                                className="text-primary-600 hover:text-primary-700 hover:underline"
+                                className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
                               >
                                 {tenant.unit_name}
                               </button>
@@ -548,25 +551,25 @@ export default function Tenants() {
                           <span className="text-gray-400">-</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-sm font-medium text-right tabular-nums">
+                      <td className="px-5 py-3.5 text-sm font-semibold text-right tabular-nums">
                         <span className={cn(
                           Number(balance) > 0 ? 'text-red-600' : Number(balance) === 0 ? 'text-emerald-600' : 'text-gray-900'
                         )}>
                           {formatCurrency(Number(balance) || 0)}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-5 py-3.5">
                         {tenant.has_active_lease ? (
-                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
+                          <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
                             Active
                           </span>
                         ) : (
-                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                          <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
                             No lease
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-5 py-3.5 text-right">
                         {!isOptimistic && !isUpdating ? (
                           <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
                             <button

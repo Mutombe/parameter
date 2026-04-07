@@ -239,11 +239,11 @@ function BillingStatusTable({ month, year, onBillProperty, onBillAll, isBilling 
         <table className="w-full text-sm">
           <thead className="bg-gray-50 sticky top-0">
             <tr>
-              <th className="text-left px-4 py-2 font-medium text-gray-500">Property</th>
-              <th className="text-center px-4 py-2 font-medium text-gray-500">Leases</th>
-              <th className="text-center px-4 py-2 font-medium text-gray-500">Billed</th>
-              <th className="text-center px-4 py-2 font-medium text-gray-500">Status</th>
-              <th className="text-right px-4 py-2 font-medium text-gray-500">Action</th>
+              <th className="text-left px-4 py-2 font-semibold text-gray-500">Property</th>
+              <th className="text-center px-4 py-2 font-semibold text-gray-500">Leases</th>
+              <th className="text-center px-4 py-2 font-semibold text-gray-500">Billed</th>
+              <th className="text-center px-4 py-2 font-semibold text-gray-500">Status</th>
+              <th className="text-right px-4 py-2 font-semibold text-gray-500">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -789,24 +789,24 @@ export default function Invoices() {
 
       {/* Invoice Table */}
       {isLoading ? (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="sticky top-0 z-10 bg-gray-50/80 backdrop-blur-sm border-b-2 border-gray-100">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
+                  <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
+                  <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-primary-50 flex items-center justify-center">
                           <Receipt className="w-5 h-5 text-primary-600" />
@@ -817,17 +817,17 @@ export default function Invoices() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4"><div className="h-4 w-28 bg-gray-200 rounded" /></td>
-                    <td className="px-6 py-4"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
-                    <td className="px-6 py-4"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-3.5"><div className="h-4 w-28 bg-gray-200 rounded" /></td>
+                    <td className="px-5 py-3.5"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
+                    <td className="px-5 py-3.5"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
+                    <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-gray-400" />
                         <div className="h-4 w-20 bg-gray-200 rounded" />
                       </div>
                     </td>
-                    <td className="px-6 py-4"><div className="h-6 w-16 bg-gray-200 rounded-full" /></td>
-                    <td className="px-6 py-4">
+                    <td className="px-5 py-3.5"><div className="h-6 w-16 bg-gray-200 rounded-full" /></td>
+                    <td className="px-5 py-3.5">
                       <div className="flex items-center justify-end gap-2">
                         <button className="p-2 text-gray-300 rounded-lg"><Eye className="w-4 h-4" /></button>
                         <button className="p-2 text-gray-300 rounded-lg"><Printer className="w-4 h-4" /></button>
@@ -858,25 +858,25 @@ export default function Invoices() {
               }
             />
           ) : (
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
+                  <thead className="sticky top-0 z-10 bg-gray-50/80 backdrop-blur-sm border-b-2 border-gray-100">
                     <tr>
-                      <th className="px-4 py-4 w-10">
+                      <th className="px-4 py-3.5 w-10">
                         <SelectionCheckbox
                           checked={selection.isAllPageSelected(pageIds)}
                           indeterminate={selection.isPartialPageSelected(pageIds)}
                           onChange={() => selection.selectPage(pageIds)}
                         />
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                      <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice</th>
+                      <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
+                      <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
+                      <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
+                      <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
+                      <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -899,12 +899,12 @@ export default function Invoices() {
                           onClick={() => !isOptimistic && navigate(`/dashboard/invoices/${invoice.id}`)}
                           onMouseEnter={() => !isOptimistic && prefetch(`/dashboard/invoices/${invoice.id}`)}
                           className={cn(
-                            'transition-colors',
+                            'transition-colors group',
                             isOptimistic ? 'bg-blue-50' : selection.isSelected(invoice.id) ? 'bg-primary-50' : 'hover:bg-gray-50',
                             !isOptimistic && 'cursor-pointer'
                           )}
                         >
-                          <td className="px-4 py-4 w-10" onClick={(e) => e.stopPropagation()}>
+                          <td className="px-4 py-3.5 w-10" onClick={(e) => e.stopPropagation()}>
                             {!isOptimistic && (
                               <SelectionCheckbox
                                 checked={selection.isSelected(invoice.id)}
@@ -912,7 +912,7 @@ export default function Invoices() {
                               />
                             )}
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-5 py-3.5">
                             <div className="flex items-center gap-3">
                               <div className={cn(
                                 'w-10 h-10 rounded-lg flex items-center justify-center',
@@ -942,12 +942,12 @@ export default function Invoices() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-5 py-3.5">
                             {invoice.tenant ? (
                               <button
                                 onMouseEnter={() => prefetch(`/dashboard/tenants/${invoice.tenant}`)}
                                 onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${invoice.tenant}`) }}
-                                className="text-primary-600 hover:text-primary-700 hover:underline"
+                                className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
                               >
                                 {invoice.tenant_name || 'Unknown Tenant'}
                               </button>
@@ -958,12 +958,12 @@ export default function Invoices() {
                               <p className="text-xs text-gray-500">{invoice.unit_name}</p>
                             )}
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-5 py-3.5 text-right">
                             <p className="font-semibold text-gray-900 tabular-nums">
                               {formatCurrency(invoice.total_amount || 0)}
                             </p>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-5 py-3.5 text-right">
                             <p className={cn(
                               'font-semibold tabular-nums',
                               Number(invoice.balance) > 0 ? 'text-rose-600' : 'text-emerald-600'
@@ -971,7 +971,7 @@ export default function Invoices() {
                               {formatCurrency(invoice.balance ?? 0)}
                             </p>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-5 py-3.5">
                             <div className="flex items-center gap-2">
                               <Calendar className="w-4 h-4 text-gray-400" />
                               <span className={cn(
@@ -982,10 +982,10 @@ export default function Invoices() {
                               </span>
                             </div>
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-5 py-3.5">
                             <Tooltip content={statusTooltips[invoice.status] || invoice.status}>
                               <span className={cn(
-                                'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
+                                'inline-flex items-center whitespace-nowrap gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium',
                                 config.bgColor, config.color
                               )}>
                                 <StatusIcon className="w-3 h-3" />
@@ -993,11 +993,11 @@ export default function Invoices() {
                               </span>
                             </Tooltip>
                           </td>
-                          <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                          <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
                             {isOptimistic ? (
                               <span className="text-sm text-blue-600">Processing...</span>
                             ) : (
-                              <div className="flex items-center justify-end gap-2">
+                              <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 {invoice.status === 'draft' && (
                                   <Button
                                     size="sm"

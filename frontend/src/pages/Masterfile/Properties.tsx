@@ -641,7 +641,7 @@ export default function Properties() {
                 onClick={() => navigate(`/dashboard/properties/${property.id}`)}
                 onMouseEnter={() => prefetch(`/dashboard/properties/${property.id}`)}
                 className={cn(
-                  'relative bg-white rounded-xl border border-gray-200 p-4 pl-10 hover:shadow-md hover:border-gray-300 transition-all group cursor-pointer',
+                  'relative bg-white rounded-xl border border-gray-200 shadow-sm p-4 pl-10 hover:shadow-md hover:border-gray-300 transition-all group cursor-pointer',
                   selection.isSelected(property.id) && 'ring-2 ring-primary-500 bg-primary-50/30'
                 )}
               >
@@ -674,7 +674,7 @@ export default function Properties() {
                   {/* Type Badge */}
                   <Tooltip content={config.label}>
                     <span className={cn(
-                      'hidden sm:inline-flex px-2.5 py-1 rounded-full text-xs font-medium',
+                      'hidden sm:inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium',
                       config.bgColor, config.color
                     )}>
                       {config.label}
@@ -683,7 +683,7 @@ export default function Properties() {
 
                   {/* Management Type Badge */}
                   <span className={cn(
-                    'hidden sm:inline-flex px-2.5 py-1 rounded-full text-xs font-medium',
+                    'hidden sm:inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium',
                     property.management_type === 'levy'
                       ? 'bg-violet-50 text-violet-600'
                       : 'bg-sky-50 text-sky-600'
@@ -710,7 +710,7 @@ export default function Properties() {
                   {/* Manager */}
                   {property.primary_manager && (
                     <Tooltip content={property.primary_manager.name}>
-                      <div className="hidden lg:flex items-center gap-1.5 text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
+                      <div className="hidden lg:flex items-center whitespace-nowrap gap-1.5 text-xs text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full">
                         <Shield className="w-3 h-3" />
                         <span className="truncate max-w-[80px]">{property.primary_manager.name}</span>
                       </div>
@@ -721,7 +721,7 @@ export default function Properties() {
                   <Tooltip content={`${property.unit_count || 0} units in this property`}>
                     <div className="hidden lg:flex items-center gap-4 text-sm">
                       <div className="text-center min-w-[60px]">
-                        <span className="font-semibold text-gray-900">{property.unit_count || 0}</span>
+                        <span className="font-semibold text-gray-900 tabular-nums">{property.unit_count || 0}</span>
                         <span className="text-gray-400 ml-1">units</span>
                       </div>
                     </div>

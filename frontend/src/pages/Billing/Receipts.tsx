@@ -321,34 +321,34 @@ export default function Receipts() {
       </div>
 
       {/* Receipts Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="sticky top-0 z-10 bg-gray-50/80 backdrop-blur-sm border-b-2 border-gray-100">
             <tr>
-              <th className="px-4 py-4 w-10">
+              <th className="px-4 py-3.5 w-10">
                 <SelectionCheckbox
                   checked={selection.isAllPageSelected(pageIds)}
                   indeterminate={selection.isPartialPageSelected(pageIds)}
                   onChange={() => selection.selectPage(pageIds)}
                 />
               </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Receipt</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Tenant</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Paid For</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Amount</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Method</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Reference</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">GL Posted</th>
-              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Actions</th>
+              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Receipt</th>
+              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
+              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Paid For</th>
+              <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
+              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Method</th>
+              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden xl:table-cell">Reference</th>
+              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden lg:table-cell">GL Posted</th>
+              <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-gray-100">
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <tr key={i} className="animate-pulse">
-                  <td className="px-4 py-4 w-10"><Skeleton className="h-4 w-4" /></td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-3.5 w-10"><Skeleton className="h-4 w-4" /></td>
+                  <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
                         <CreditCard className="w-5 h-5 text-emerald-600" />
@@ -356,13 +356,13 @@ export default function Receipts() {
                       <Skeleton className="h-4 w-28" />
                     </div>
                   </td>
-                  <td className="px-6 py-4"><Skeleton className="h-4 w-32" /></td>
-                  <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
-                  <td className="px-6 py-4"><Skeleton className="h-5 w-24 rounded-full" /></td>
-                  <td className="px-6 py-4"><Skeleton className="h-4 w-28" /></td>
-                  <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
-                  <td className="px-6 py-4"><Skeleton className="h-8 w-16" /></td>
-                  <td className="px-6 py-4"><Skeleton className="h-8 w-8" /></td>
+                  <td className="px-5 py-3.5"><Skeleton className="h-4 w-32" /></td>
+                  <td className="px-5 py-3.5"><Skeleton className="h-4 w-20" /></td>
+                  <td className="px-5 py-3.5"><Skeleton className="h-5 w-24 rounded-full" /></td>
+                  <td className="px-5 py-3.5"><Skeleton className="h-4 w-28" /></td>
+                  <td className="px-5 py-3.5 hidden xl:table-cell"><Skeleton className="h-4 w-24" /></td>
+                  <td className="px-5 py-3.5"><Skeleton className="h-8 w-16" /></td>
+                  <td className="px-5 py-3.5 hidden lg:table-cell"><Skeleton className="h-8 w-8" /></td>
                 </tr>
               ))
             ) : !receipts.length ? (
@@ -384,13 +384,13 @@ export default function Receipts() {
                   onClick={() => !receipt._isOptimistic && navigate(`/dashboard/receipts/${receipt.id}`)}
                   onMouseEnter={() => !receipt._isOptimistic && prefetch(`/dashboard/receipts/${receipt.id}`)}
                   className={cn(
-                    'hover:bg-gray-50 transition-colors',
+                    'hover:bg-gray-50 transition-colors group',
                     !receipt._isOptimistic && 'cursor-pointer',
                     receipt._isOptimistic && 'bg-blue-50',
                     selection.isSelected(receipt.id) && 'bg-primary-50'
                   )}
                 >
-                  <td className="px-4 py-4 w-10" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-4 py-3.5 w-10" onClick={(e) => e.stopPropagation()}>
                     {!receipt._isOptimistic && (
                       <SelectionCheckbox
                         checked={selection.isSelected(receipt.id)}
@@ -398,7 +398,7 @@ export default function Receipts() {
                       />
                     )}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
                       <div className={cn(
                         'w-10 h-10 rounded-lg flex items-center justify-center',
@@ -418,12 +418,12 @@ export default function Receipts() {
                       </span>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-5 py-3.5">
                     {receipt.tenant ? (
                       <button
                         onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${receipt.tenant}`) }}
                         onMouseEnter={() => prefetch(`/dashboard/tenants/${receipt.tenant}`)}
-                        className="text-primary-600 hover:text-primary-700 hover:underline"
+                        className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
                       >
                         {receipt.tenant_name}
                       </button>
@@ -431,26 +431,26 @@ export default function Receipts() {
                       <span className="text-gray-600">{receipt.tenant_name}</span>
                     )}
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-5 py-3.5">
                     {receipt.income_type_name ? (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">
+                      <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">
                         {receipt.income_type_name}
                       </span>
                     ) : (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-600">General</span>
+                      <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">General</span>
                     )}
                   </td>
-                  <td className="px-6 py-4 font-medium text-green-600" title={String(receipt.amount)}>{formatCurrency(receipt.amount || 0)}</td>
-                  <td className="px-6 py-4">
+                  <td className="px-5 py-3.5 text-right font-semibold tabular-nums text-emerald-600" title={String(receipt.amount)}>{formatCurrency(receipt.amount || 0)}</td>
+                  <td className="px-5 py-3.5">
                     <Tooltip content={`${methodLabels[receipt.payment_method] || receipt.payment_method}${receipt.reference ? ' - Ref: ' + receipt.reference : ''}`}>
-                      <span className="px-2 py-1 bg-gray-100 rounded-full text-xs">
+                      <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 bg-gray-100 rounded-full text-xs">
                         {methodLabels[receipt.payment_method] || receipt.payment_method}
                       </span>
                     </Tooltip>
                   </td>
-                  <td className="px-6 py-4 text-gray-900">{receipt.reference || '\u2014'}</td>
-                  <td className="px-6 py-4 text-gray-900">{receipt.date ? formatDate(receipt.date) : '\u2014'}</td>
-                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-5 py-3.5 text-gray-900 hidden xl:table-cell">{receipt.reference || '\u2014'}</td>
+                  <td className="px-5 py-3.5 text-gray-900">{receipt.date ? formatDate(receipt.date) : '\u2014'}</td>
+                  <td className="px-5 py-3.5 hidden lg:table-cell" onClick={(e) => e.stopPropagation()}>
                     {receipt._isOptimistic ? (
                       <span className="text-blue-600 text-sm">Processing...</span>
                     ) : receipt.journal ? (
@@ -481,16 +481,18 @@ export default function Receipts() {
                       </button>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-5 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
                     {!receipt._isOptimistic && (
-                      <button
-                        onClick={() => handleViewDetails(receipt)}
-                        onMouseEnter={() => prefetch(`/dashboard/receipts/${receipt.id}`)}
-                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                        title="View Details"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleViewDetails(receipt)}
+                          onMouseEnter={() => prefetch(`/dashboard/receipts/${receipt.id}`)}
+                          className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                          title="View Details"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      </div>
                     )}
                   </td>
                 </motion.tr>
