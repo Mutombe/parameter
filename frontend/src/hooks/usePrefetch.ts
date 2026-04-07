@@ -89,33 +89,89 @@ export function usePrefetch() {
 }
 
 /**
- * Prefetch ALL data on login. Every page's data loads in parallel.
- * Query keys MUST match exactly what each page uses.
+ * Prefetch ALL data on login + seed every item into detail cache.
+ * When user clicks any item in any list, detail data is already there.
  */
 export function prefetchAllCoreData(queryClient: QueryClient) {
   const s = PREFETCH_STALE
+
+  // Helper: fetch list, cache list result, AND seed each item into detail cache
+  const fetchAndSeed = async (
+    listKey: unknown[],
+    listFn: () => Promise<any>,
+    detailPrefix: string,
+  ) => {
+    try {
+      const data = await listFn()
+      queryClient.setQueryData(listKey, data)
+      // Seed individual items from results
+      const items = data?.results || (Array.isArray(data) ? data : [])
+      for (const item of items) {
+        if (item.id) {
+          queryClient.setQueryData([detailPrefix, item.id], item)
+        }
+      }
+    } catch { /* silent */ }
+  }
+
+  // Helper: simple prefetch without seeding
   const pf = (queryKey: unknown[], queryFn: () => Promise<unknown>) =>
     queryClient.prefetchQuery({ queryKey, queryFn, staleTime: s })
 
   // ═══ DASHBOARD ═══
   pf(['dashboard-stats'], () => reportsApi.dashboard().then(r => r.data))
 
-  // ═══ MASTERFILE LIST PAGES ═══
-  // Keys match: ['entity', search, filter, page] with defaults
-  pf(['properties', '', 1], () => propertyApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data))
-  pf(['landlords', '', 1], () => landlordApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data))
-  pf(['tenants', '', 1, '', ''], () => tenantApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data))
-  pf(['leases', '', '', 1], () => leaseApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data))
-  pf(['units', '', 'all'], () => unitApi.list({ search: '' }).then(r => r.data))
+  // ═══ MASTERFILE — fetch + seed detail cache ═══
+  fetchAndSeed(
+    ['properties', '', 1],
+    () => propertyApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data),
+    'property',
+  )
+  fetchAndSeed(
+    ['landlords', '', 1],
+    () => landlordApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data),
+    'landlord',
+  )
+  fetchAndSeed(
+    ['tenants', '', 1, '', ''],
+    () => tenantApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data),
+    'tenant',
+  )
+  fetchAndSeed(
+    ['leases', '', '', 1],
+    () => leaseApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data),
+    'lease',
+  )
+  fetchAndSeed(
+    ['units', '', 'all'],
+    () => unitApi.list({ search: '' }).then(r => r.data),
+    'unit',
+  )
 
-  // ═══ BILLING LIST PAGES ═══
-  pf(['invoices', '', '', '', '', 1], () => invoiceApi.list({ page: 1, page_size: 25 }).then(r => r.data))
-  pf(['receipts', '', 1], () => receiptApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data))
-  pf(['expenses', '', '', '', 1], () => expenseApi.list({ page: 1, page_size: 25 }).then(r => r.data))
+  // ═══ BILLING — fetch + seed ═══
+  fetchAndSeed(
+    ['invoices', '', '', '', '', 1],
+    () => invoiceApi.list({ page: 1, page_size: 25 }).then(r => r.data),
+    'invoice',
+  )
+  fetchAndSeed(
+    ['receipts', '', 1],
+    () => receiptApi.list({ search: '', page: 1, page_size: 25 }).then(r => r.data),
+    'receipt',
+  )
+  fetchAndSeed(
+    ['expenses', '', '', '', 1],
+    () => expenseApi.list({ page: 1, page_size: 25 }).then(r => r.data),
+    'expense',
+  )
 
   // ═══ ACCOUNTING ═══
   pf(['accounts'], () => accountApi.list().then(r => r.data))
-  pf(['journals', '', '', 1], () => journalApi.list({ page: 1, page_size: 25 }).then(r => r.data))
+  fetchAndSeed(
+    ['journals', '', '', 1],
+    () => journalApi.list({ page: 1, page_size: 25 }).then(r => r.data),
+    'journal',
+  )
   pf(['bank-accounts'], () => bankAccountApi.list().then(r => r.data))
   pf(['income-types'], () => incomeTypeApi.list().then(r => r.data))
   pf(['expense-categories'], () => expenseCategoryApi.list().then(r => r.data))
@@ -129,7 +185,7 @@ export function prefetchAllCoreData(queryClient: QueryClient) {
   // ═══ REPORTS ═══
   pf(['trial-balance'], () => reportsApi.trialBalance().then(r => r.data))
 
-  // ═══ FORM DROPDOWNS (pre-warm so forms open instantly) ═══
+  // ═══ FORM DROPDOWNS ═══
   pf(['tenants-select'], () => tenantApi.list({ page_size: 500 }).then(r => r.data.results || r.data))
   pf(['properties-list'], () => propertyApi.list().then(r => r.data.results || r.data))
   pf(['tenants-list'], () => tenantApi.list().then(r => r.data.results || r.data))
@@ -138,4 +194,36 @@ export function prefetchAllCoreData(queryClient: QueryClient) {
   // ═══ DASHBOARD SUB-ACCOUNTS ═══
   pf(['dashboard-landlord-sub-accounts'], () => subsidiaryApi.list({ entity_type: 'landlord' }).then(r => r.data))
   pf(['dashboard-tenant-sub-accounts'], () => subsidiaryApi.list({ entity_type: 'tenant' }).then(r => r.data))
+
+  // ═══ DETAIL PAGE SUB-QUERIES ═══
+  // After list data arrives, also prefetch detail sub-queries for the first few items
+  setTimeout(() => {
+    // Seed tenant detail views for visible tenants
+    const tenantCache = queryClient.getQueryData(['tenants', '', 1, '', '']) as any
+    const tenantItems = tenantCache?.results || (Array.isArray(tenantCache) ? tenantCache : [])
+    for (const t of tenantItems.slice(0, 10)) {
+      if (t.id) {
+        pf(['tenant-detail-view', t.id], () => tenantApi.detailView(t.id).then(r => r.data))
+        pf(['tenant-ledger', t.id, '', ''], () => tenantApi.ledger(t.id).then(r => r.data))
+      }
+    }
+
+    // Seed landlord detail views
+    const landlordCache = queryClient.getQueryData(['landlords', '', 1]) as any
+    const landlordItems = landlordCache?.results || (Array.isArray(landlordCache) ? landlordCache : [])
+    for (const l of landlordItems.slice(0, 10)) {
+      if (l.id) {
+        pf(['landlord-statement', l.id], () => landlordApi.statement(l.id).then(r => r.data))
+      }
+    }
+
+    // Seed property detail views
+    const propCache = queryClient.getQueryData(['properties', '', 1]) as any
+    const propItems = propCache?.results || (Array.isArray(propCache) ? propCache : [])
+    for (const p of propItems.slice(0, 10)) {
+      if (p.id) {
+        pf(['property-units', p.id], () => unitApi.list({ property: p.id }).then(r => r.data))
+      }
+    }
+  }, 3000) // Wait 3s for list fetches to complete, then seed detail queries
 }
