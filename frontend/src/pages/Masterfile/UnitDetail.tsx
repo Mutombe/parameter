@@ -870,8 +870,8 @@ export default function UnitDetail() {
                           <td className="px-6 py-4 text-sm text-gray-600">{txn.date || '-'}</td>
                           <td className="px-6 py-4 text-sm text-gray-500 font-mono text-xs">{txn.reference || txn.ref || '-'}</td>
                           <td className="px-6 py-4 text-sm text-gray-900"><span className="flex items-center gap-1.5">{txn.description || txn.narration || '-'}{txn.is_consolidated && (<span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold" title="Consolidated entry">C</span>)}</span></td>
-                          <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.debit ? formatCurrency(txn.debit) : '-'}</td>
-                          <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.credit ? formatCurrency(txn.credit) : '-'}</td>
+                          <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.debit ? formatCurrency(txn.debit) : ''}</td>
+                          <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.credit ? formatCurrency(txn.credit) : ''}</td>
                           <td className="px-6 py-4 text-sm font-medium text-right tabular-nums"><span className={(txn.balance || txn.running_balance || 0) < 0 ? 'text-red-600' : 'text-gray-900'}>{formatCurrency(txn.balance || txn.running_balance || 0)}</span></td>
                         </tr>
                       ))}

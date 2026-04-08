@@ -1912,8 +1912,8 @@ export default function PropertyDetail() {
                             )}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.debit ? formatCurrency(txn.debit) : '-'}</td>
-                        <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.credit ? formatCurrency(txn.credit) : '-'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.debit ? formatCurrency(txn.debit) : ''}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.credit ? formatCurrency(txn.credit) : ''}</td>
                         <td className="px-6 py-4 text-sm font-medium text-right tabular-nums">
                           <span className={(txn.balance || txn.running_balance || 0) < 0 ? 'text-red-600' : 'text-gray-900'}>
                             {formatCurrency(txn.balance || txn.running_balance || 0)}

@@ -201,8 +201,8 @@
             <td>{{ e.contra }}</td>
             <td>{{ e.ref }}</td>
             <td>{{ e.desc }}</td>
-            <td class="right">{% if e.dr %}{{ e.dr }}{% endif %}</td>
-            <td class="right">{% if e.cr %}{{ e.cr }}{% endif %}</td>
+            <td class="right">{% if e.dr and e.dr != 0 %}{{ e.dr }}{% endif %}</td>
+            <td class="right">{% if e.cr and e.cr != 0 %}{{ e.cr }}{% endif %}</td>
             <td class="right">{{ e.balance }}</td>
         </tr>
         {% endfor %}

@@ -166,8 +166,8 @@
             <td>{{ t.contra_account }}</td>
             <td>{{ t.reference }}</td>
             <td>{{ t.description }}{% if t.marker %} [C]{% endif %}</td>
-            <td class="right">{% if t.debit_amount %}{{ t.debit_amount }}{% endif %}</td>
-            <td class="right">{% if t.credit_amount %}{{ t.credit_amount }}{% endif %}</td>
+            <td class="right">{% if t.debit_amount and t.debit_amount != 0 %}{{ t.debit_amount }}{% endif %}</td>
+            <td class="right">{% if t.credit_amount and t.credit_amount != 0 %}{{ t.credit_amount }}{% endif %}</td>
             <td class="right">{{ t.balance }}</td>
         </tr>
         {% endfor %}

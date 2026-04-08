@@ -1544,8 +1544,8 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
             writer.writerow([
                 t['transaction_number'], t['date'], t['contra_account'], t['reference'],
                 f'{t["description"]}{marker_str}',
-                f'{t["debit_amount"]:.2f}' if t['debit_amount'] else '',
-                f'{t["credit_amount"]:.2f}' if t['credit_amount'] else '',
+                f'{t["debit_amount"]:.2f}' if t.get('debit_amount') and t['debit_amount'] != 0 else '',
+                f'{t["credit_amount"]:.2f}' if t.get('credit_amount') and t['credit_amount'] != 0 else '',
                 t['balance'],
             ])
 
@@ -1652,8 +1652,8 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
                 'contra': e['contra'],
                 'ref': e['ref'],
                 'desc': e['desc'],
-                'dr': f'{e["dr"]:.2f}' if e['dr'] else None,
-                'cr': f'{e["cr"]:.2f}' if e['cr'] else None,
+                'dr': f'{e["dr"]:.2f}' if e.get('dr') and e['dr'] != 0 else None,
+                'cr': f'{e["cr"]:.2f}' if e.get('cr') and e['cr'] != 0 else None,
                 'balance': f'{e["balance"]:.2f}',
             })
 

@@ -936,8 +936,8 @@ export default function LandlordDetail() {
                             <span className="text-gray-600">{item.property_name || item.property || '-'}</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{item.debit ? formatCurrency(item.debit) : '-'}</td>
-                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{item.credit ? formatCurrency(item.credit) : '-'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{item.debit ? formatCurrency(item.debit) : ''}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 text-right">{item.credit ? formatCurrency(item.credit) : ''}</td>
                         <td className="px-6 py-4 text-sm font-medium text-right">{formatCurrency(item.balance || item.running_balance || 0)}</td>
                       </tr>
                     ))}
@@ -1484,8 +1484,8 @@ export default function LandlordDetail() {
                               )}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.debit ? formatCurrency(txn.debit) : '-'}</td>
-                          <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.credit ? formatCurrency(txn.credit) : '-'}</td>
+                          <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.debit ? formatCurrency(txn.debit) : ''}</td>
+                          <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.credit ? formatCurrency(txn.credit) : ''}</td>
                           <td className="px-6 py-4 text-sm font-medium text-right tabular-nums">
                             <span className={(txn.balance || txn.running_balance || 0) < 0 ? 'text-red-600' : 'text-gray-900'}>
                               {formatCurrency(txn.balance || txn.running_balance || 0)}
@@ -1623,8 +1623,8 @@ export default function LandlordDetail() {
                                     )}
                                   </span>
                                 </td>
-                                <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.debit ? formatCurrency(txn.debit) : '-'}</td>
-                                <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.credit ? formatCurrency(txn.credit) : '-'}</td>
+                                <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.debit ? formatCurrency(txn.debit) : ''}</td>
+                                <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.credit ? formatCurrency(txn.credit) : ''}</td>
                                 <td className="px-6 py-4 text-sm font-medium text-right tabular-nums">
                                   <span className={runningBal < 0 ? 'text-red-600' : 'text-gray-900'}>
                                     {formatCurrency(runningBal)}
