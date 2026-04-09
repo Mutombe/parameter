@@ -55,6 +55,9 @@ def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, cre
     invoices_to_create = []
     errors = []
 
+    if not unbilled_leases and all_leases:
+        errors.append(f'All {len(all_leases)} leases already billed for {period_start.strftime("%B %Y")}')
+
     for lease in unbilled_leases:
 
         # Skip vacant units for rental leases (levy always bills regardless)

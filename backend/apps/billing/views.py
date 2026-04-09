@@ -119,6 +119,12 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f'[BILLING] month={month}, year={year}, property={property_id}, '
+                    f'invoice_date={invoice_date}, due_date={due_date_val}, '
+                    f'created={len(created_invoices)}, errors={len(errors)}')
+
         return Response({
             'created': len(created_invoices),
             'invoices': InvoiceSerializer(created_invoices, many=True).data,
