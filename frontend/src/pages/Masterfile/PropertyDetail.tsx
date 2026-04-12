@@ -648,14 +648,16 @@ export default function PropertyDetail() {
             <Plus className="w-4 h-4" />
             Add Lease
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => setShowBillingModal(true)}
-            className="gap-2"
-          >
-            <FileText className="w-4 h-4" />
-            Billing
-          </Button>
+          {leases.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => setShowBillingModal(true)}
+              className="gap-2"
+            >
+              <FileText className="w-4 h-4" />
+              Billing
+            </Button>
+          )}
           <Button
             variant="outline"
             onClick={openEditModal}
