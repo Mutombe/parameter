@@ -72,19 +72,21 @@ function getEntityName(entity: EntityType, data: any): string {
   }
 }
 
-function getInvalidateKeys(entity: EntityType): string[][] {
-  switch (entity) {
-    case 'landlord':
-      return [['landlords'], ['landlords-select']]
-    case 'property':
-      return [['properties'], ['properties-list']]
-    case 'unit':
-      return [['units'], ['units-all']]
-    case 'tenant':
-      return [['tenants'], ['tenants-list']]
-    case 'lease':
-      return [['leases'], ['units-all']]
+function invalidateEntity(entity: EntityType, queryClient: any) {
+  const prefixes: Record<EntityType, string[]> = {
+    landlord: ['landlord', 'landlords'],
+    property: ['propert', 'properties'],
+    unit: ['unit', 'units'],
+    tenant: ['tenant', 'tenants'],
+    lease: ['lease', 'leases'],
   }
+  const entityPrefixes = prefixes[entity] || []
+  queryClient.invalidateQueries({
+    predicate: (q: any) => {
+      const key = q.queryKey[0] as string
+      return entityPrefixes.some((p: string) => key === p || key.startsWith(p))
+    },
+  })
 }
 
 // Breadcrumb component
@@ -299,8 +301,7 @@ export default function ChainedCreationModal() {
       const name = getEntityName(entity, variables.formData)
 
       // Invalidate relevant queries
-      const keys = getInvalidateKeys(entity)
-      keys.forEach((key) => queryClient.invalidateQueries({ queryKey: key }))
+      invalidateEntity(entity, queryClient)
 
       const action = saveActionRef.current
 

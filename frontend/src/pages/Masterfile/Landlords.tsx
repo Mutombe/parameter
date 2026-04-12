@@ -188,12 +188,16 @@ export default function Landlords() {
 
       return { previousData, isUpdating }
     },
-    onSuccess: (_, __, context) => {
+    onSuccess: (response, __, context) => {
       showToast.success(context?.isUpdating ? 'Landlord updated successfully' : 'Landlord created successfully')
       queryClient.invalidateQueries({ predicate: (q) => {
         const key = q.queryKey[0] as string
         return key === 'landlords' || key.startsWith('landlord')
       }})
+      // Navigate to detail page after creation (not update)
+      if (!context?.isUpdating && response?.data?.id) {
+        navigate(`/dashboard/landlords/${response.data.id}`)
+      }
     },
     onError: (error, _, context) => {
       // Rollback on error

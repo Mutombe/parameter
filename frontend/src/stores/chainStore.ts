@@ -26,7 +26,7 @@ interface ChainState {
 
 const CHAIN_MAP: Record<EntityType, { next: EntityType | null; prefillField: string | null }> = {
   landlord: { next: 'property', prefillField: 'landlord' },
-  property: { next: 'unit', prefillField: 'property' },
+  property: { next: 'lease', prefillField: 'property' },
   unit: { next: null, prefillField: null },
   tenant: { next: 'lease', prefillField: 'tenant' },
   lease: { next: null, prefillField: null },

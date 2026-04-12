@@ -209,12 +209,16 @@ export default function Properties() {
       }
       return { previousData, isUpdating }
     },
-    onSuccess: (_, __, context) => {
+    onSuccess: (response, __, context) => {
       showToast.success(context?.isUpdating ? 'Property updated successfully' : 'Property created successfully')
       queryClient.invalidateQueries({ predicate: (q) => {
         const key = q.queryKey[0] as string
         return key === 'properties' || key.startsWith('propert')
       }})
+      // Navigate to detail page after creation (not update)
+      if (!context?.isUpdating && response?.data?.id) {
+        navigate(`/dashboard/properties/${response.data.id}`)
+      }
     },
     onError: (error, _, context) => {
       if (context?.previousData) {
