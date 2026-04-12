@@ -115,16 +115,12 @@ const TenantForm = forwardRef<TenantFormRef, TenantFormProps>(
               { value: 'company', label: 'Company' },
             ]}
           />
-          <Select
-            label="Account Type"
-            value={form.account_type}
-            onChange={(e) => setForm({ ...form, account_type: e.target.value })}
-            options={[
-              { value: 'rental', label: 'Rental Tenant' },
-              { value: 'levy', label: 'Levy Account Holder' },
-              { value: 'both', label: 'Both (Rental & Levy)' },
-            ]}
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Account Type</label>
+            <p className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
+              Auto-assigned when lease is created
+            </p>
+          </div>
         </div>
 
         <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 space-y-3">

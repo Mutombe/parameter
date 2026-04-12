@@ -635,6 +635,13 @@ export default function TenantDetail() {
         </div>
         <div className="flex items-center gap-2">
           <Button
+            onClick={() => navigate('/dashboard/tenants?action=create')}
+            className="gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Add Tenant
+          </Button>
+          <Button
             variant="outline"
             onClick={() => {
               startImpersonation(tenantId, tenantInfo?.name || `Tenant #${tenantId}`)
@@ -643,7 +650,7 @@ export default function TenantDetail() {
             className="gap-2"
           >
             <Eye className="w-4 h-4" />
-            View Portal
+            Portal
           </Button>
           <Button variant="outline" onClick={() => navigate('/dashboard/tenants')} className="gap-2">
             <Edit2 className="w-4 h-4" />

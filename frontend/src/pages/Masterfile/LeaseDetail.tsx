@@ -400,16 +400,19 @@ export default function LeaseDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            onClick={() => navigate('/dashboard/leases?action=create')}
+            className="gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Add Lease
+          </Button>
           <Button variant="outline" onClick={() => {
             setReceiptForm(f => ({ ...f, tenant: String(lease?.tenant || '') }))
             setShowReceiptModal(true)
           }} className="gap-2">
-            <Plus className="w-4 h-4" />
+            <DollarSign className="w-4 h-4" />
             Record Payment
-          </Button>
-          <Button variant="outline" onClick={() => navigate('/dashboard/invoices')} className="gap-2">
-            <Receipt className="w-4 h-4" />
-            View Invoices
           </Button>
           {lease?.status === 'draft' && (
             <>

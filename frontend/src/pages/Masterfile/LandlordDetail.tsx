@@ -612,14 +612,23 @@ export default function LandlordDetail() {
             )}
           </div>
         </div>
-        <Button
-          variant="outline"
-          onClick={openEditModal}
-          className="gap-2"
-        >
-          <Edit2 className="w-4 h-4" />
-          Edit
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => setShowPropertyModal(true)}
+            className="gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Add Property
+          </Button>
+          <Button
+            variant="outline"
+            onClick={openEditModal}
+            className="gap-2"
+          >
+            <Edit2 className="w-4 h-4" />
+            Edit
+          </Button>
+        </div>
       </motion.div>
 
       {/* Profile Info Bar */}
