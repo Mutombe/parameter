@@ -385,15 +385,22 @@ export default function PropertyDetail() {
       })
       return leaseApi.create(formData)
     },
-    onSuccess: () => {
-      showToast.success('Lease created successfully')
+    onMutate: () => {
       setShowLeaseModal(false)
-      queryClient.invalidateQueries({ queryKey: ['property-lease-charges'] })
-      queryClient.invalidateQueries({ queryKey: ['property-units'] })
-      queryClient.invalidateQueries({ queryKey: ['leases'] })
+    },
+    onSuccess: (response) => {
+      showToast.success('Lease created — redirecting...')
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key.startsWith('propert') || key.startsWith('lease') || key.startsWith('unit')
+      }})
+      if (response?.data?.id) {
+        navigate(`/dashboard/leases/${response.data.id}`)
+      }
     },
     onError: (error) => {
       showToast.error(parseApiError(error, 'Failed to create lease'))
+      setShowLeaseModal(true)
     },
   })
 

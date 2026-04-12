@@ -358,15 +358,25 @@ export default function LandlordDetail() {
   // Create property mutation
   const createPropertyMutation = useMutation({
     mutationFn: (data: any) => propertyApi.create(data),
-    onSuccess: () => {
-      showToast.success('Property created successfully')
+    onMutate: () => {
+      // Close modal immediately (optimistic)
       setShowPropertyModal(false)
-      queryClient.invalidateQueries({ queryKey: ['landlord-financial', landlordId] })
-      queryClient.invalidateQueries({ queryKey: ['landlord-statement', landlordId] })
-      queryClient.invalidateQueries({ queryKey: ['properties'] })
+    },
+    onSuccess: (response) => {
+      showToast.success('Property created — redirecting...')
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key.startsWith('landlord') || key.startsWith('propert')
+      }})
+      // Navigate to the new property's detail page
+      if (response?.data?.id) {
+        navigate(`/dashboard/properties/${response.data.id}`)
+      }
     },
     onError: (error) => {
       showToast.error(parseApiError(error, 'Failed to create property'))
+      // Reopen modal so user can fix
+      setShowPropertyModal(true)
     },
   })
 
@@ -381,15 +391,21 @@ export default function LandlordDetail() {
       })
       return leaseApi.create(formData)
     },
-    onSuccess: () => {
-      showToast.success('Lease created successfully')
+    onMutate: () => {
       setShowLeaseModal(false)
-      queryClient.invalidateQueries({ queryKey: ['landlord-lease-charges', landlordId] })
-      queryClient.invalidateQueries({ queryKey: ['landlord-financial', landlordId] })
-      queryClient.invalidateQueries({ queryKey: ['landlord-leases', landlordId] })
-      queryClient.invalidateQueries({ queryKey: ['leases'] })
+    },
+    onSuccess: (response) => {
+      showToast.success('Lease created — redirecting...')
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key.startsWith('landlord') || key.startsWith('lease') || key.startsWith('propert')
+      }})
+      if (response?.data?.id) {
+        navigate(`/dashboard/leases/${response.data.id}`)
+      }
     },
     onError: (error) => {
+      setShowLeaseModal(true)
       showToast.error(parseApiError(error, 'Failed to create lease'))
     },
   })
