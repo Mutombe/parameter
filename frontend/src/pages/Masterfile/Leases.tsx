@@ -293,7 +293,10 @@ export default function Leases() {
         showToast.success(context?.isUpdating ? 'Lease updated successfully' : 'Lease created successfully')
       }
       (createMutation as any)._pendingDoc = null
-      queryClient.invalidateQueries({ queryKey: ['leases'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'leases' || key.startsWith('lease')
+      }})
       queryClient.invalidateQueries({ queryKey: ['units-all'] })
     },
     onError: (error: any, _, context) => {
@@ -323,7 +326,10 @@ export default function Leases() {
     },
     onSuccess: () => {
       showToast.success('Lease activated successfully')
-      queryClient.invalidateQueries({ queryKey: ['leases'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'leases' || key.startsWith('lease')
+      }})
       queryClient.invalidateQueries({ queryKey: ['units-all'] })
       setSelectedLease(null)
     },
@@ -353,7 +359,10 @@ export default function Leases() {
     },
     onSuccess: () => {
       showToast.success('Lease terminated')
-      queryClient.invalidateQueries({ queryKey: ['leases'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'leases' || key.startsWith('lease')
+      }})
       queryClient.invalidateQueries({ queryKey: ['units-all'] })
       setSelectedLease(null)
     },
@@ -480,7 +489,10 @@ export default function Leases() {
         const ids = Array.from(selection.selectedIds)
         for (const id of ids) { try { await leaseApi.update(id, { status: 'terminated' }) } catch {} }
         selection.clearSelection()
-        queryClient.invalidateQueries({ queryKey: ['leases'] })
+        queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'leases' || key.startsWith('lease')
+      }})
         showToast.success(`Terminated ${ids.length} leases`)
         setBulkConfirm(d => ({ ...d, open: false }))
       },
@@ -506,7 +518,10 @@ export default function Leases() {
           const errors = res.data?.errors || []
           showToast.success(`Activated ${count} lease${count !== 1 ? 's' : ''}${errors.length ? ` (${errors.length} errors)` : ''}`)
           selection.clearSelection()
-          queryClient.invalidateQueries({ queryKey: ['leases'] })
+          queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'leases' || key.startsWith('lease')
+      }})
         } catch (error: any) {
           showToast.error(parseApiError(error, 'Failed to bulk activate'))
         }

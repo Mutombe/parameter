@@ -211,7 +211,10 @@ export default function Properties() {
     },
     onSuccess: (_, __, context) => {
       showToast.success(context?.isUpdating ? 'Property updated successfully' : 'Property created successfully')
-      queryClient.invalidateQueries({ queryKey: ['properties'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'properties' || key.startsWith('propert')
+      }})
     },
     onError: (error, _, context) => {
       if (context?.previousData) {
@@ -236,7 +239,10 @@ export default function Properties() {
     },
     onSuccess: () => {
       showToast.success('Property deleted')
-      queryClient.invalidateQueries({ queryKey: ['properties'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'properties' || key.startsWith('propert')
+      }})
       setSelectedProperty(null)
     },
     onError: (error, _, context) => {
@@ -264,7 +270,10 @@ export default function Properties() {
         unit_type: data.unit_type,
       }),
     onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['properties'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'properties' || key.startsWith('propert')
+      }})
       showToast.success(`Created ${response.data.created_count} units successfully`)
       setShowGenerateModal(false)
       setShowDetailsModal(false)
@@ -300,7 +309,10 @@ export default function Properties() {
     mutationFn: (data: { user: number; property: number; is_primary: boolean }) =>
       propertyManagerApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['properties'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'properties' || key.startsWith('propert')
+      }})
       queryClient.invalidateQueries({ queryKey: ['property-managers'] })
       showToast.success('Manager assigned successfully')
       setSelectedManagerUserId('')
@@ -313,7 +325,10 @@ export default function Properties() {
   const removeManagerMutation = useMutation({
     mutationFn: (id: number) => propertyManagerApi.delete(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['properties'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'properties' || key.startsWith('propert')
+      }})
       queryClient.invalidateQueries({ queryKey: ['property-managers'] })
       showToast.success('Manager removed')
       refetchManagers()
@@ -434,7 +449,10 @@ export default function Properties() {
       message: `Deleting ${count} properties...`,
       onConfirm: async () => {
         for (const id of ids) { try { await propertyApi.delete(id) } catch {} }
-        queryClient.invalidateQueries({ queryKey: ['properties'] })
+        queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'properties' || key.startsWith('propert')
+      }})
         showToast.success(`Deleted ${count} properties`)
       },
     })

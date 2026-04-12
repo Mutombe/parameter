@@ -434,7 +434,10 @@ export default function Invoices() {
     },
     onSuccess: () => {
       showToast.success('Invoice created successfully')
-      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'invoices' || key.startsWith('invoice')
+      }})
     },
     onError: (error, _, context) => {
       // Rollback on error
@@ -448,7 +451,10 @@ export default function Invoices() {
   const postMutation = useMutation({
     mutationFn: (id: number) => invoiceApi.postToLedger(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'invoices' || key.startsWith('invoice')
+      }})
       showToast.success('Invoice posted to ledger')
       setPostingId(null)
     },
@@ -519,7 +525,10 @@ export default function Invoices() {
       return { data: { created: totalCreated, errors: allErrors, months: months.length } }
     },
     onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'invoices' || key.startsWith('invoice')
+      }})
       queryClient.invalidateQueries({ queryKey: ['billing-status'] })
       const count = response.data?.created || 0
       const months = response.data?.months || 1
@@ -600,7 +609,10 @@ export default function Invoices() {
         })
         for (const id of ids) { await invoiceApi.postToLedger(id as number) }
         selection.clearSelection()
-        queryClient.invalidateQueries({ queryKey: ['invoices'] })
+        queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'invoices' || key.startsWith('invoice')
+      }})
         showToast.success(`Posted ${ids.length} invoices to ledger`)
         setConfirmDialog(d => ({ ...d, open: false }))
       },
@@ -611,7 +623,10 @@ export default function Invoices() {
     const ids = Array.from(selection.selectedIds) as number[]
     invoiceApi.sendInvoices({ invoice_ids: ids }).then(() => {
       selection.clearSelection()
-      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'invoices' || key.startsWith('invoice')
+      }})
       showToast.success(`Sent ${ids.length} invoices`)
     }).catch((err) => showToast.error(parseApiError(err, 'Failed to send invoices')))
   }
@@ -634,7 +649,10 @@ export default function Invoices() {
           } catch { /* skip */ }
         }
         selection.clearSelection()
-        queryClient.invalidateQueries({ queryKey: ['invoices'] })
+        queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'invoices' || key.startsWith('invoice')
+      }})
         showToast.success(`Deleted ${deleted} invoices`)
         setConfirmDialog(d => ({ ...d, open: false }))
       },

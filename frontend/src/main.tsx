@@ -13,7 +13,7 @@ const queryClient = new QueryClient({
       gcTime: 60 * 60 * 1000, // 60 minutes — keep cache for 1 hour
       retry: 1,
       refetchOnWindowFocus: false, // No loading flash on tab-back
-      refetchOnMount: false, // NEVER refetch if cached — use what login prefetched
+      refetchOnMount: true, // Refetch if stale (after 10 min) — but show cached data first
       refetchOnReconnect: false, // Don't refetch on reconnect either
       structuralSharing: true,
     },

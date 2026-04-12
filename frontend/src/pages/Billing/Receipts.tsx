@@ -162,7 +162,10 @@ export default function Receipts() {
     },
     onSuccess: () => {
       showToast.success('Receipt recorded successfully')
-      queryClient.invalidateQueries({ queryKey: ['receipts'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'receipts' || key.startsWith('receipt')
+      }})
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
     },
     onError: (error: any, newData, context) => {
@@ -181,7 +184,10 @@ export default function Receipts() {
   const postMutation = useMutation({
     mutationFn: (id: number) => receiptApi.postToLedger(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['receipts'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'receipts' || key.startsWith('receipt')
+      }})
       showToast.success('Receipt posted to ledger')
       setPostingId(null)
     },

@@ -226,7 +226,10 @@ export default function Tenants() {
     },
     onSuccess: (_, __, context) => {
       showToast.success(context?.isUpdating ? 'Tenant updated' : 'Tenant created')
-      queryClient.invalidateQueries({ queryKey: ['tenants'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'tenants' || key.startsWith('tenant')
+      }})
     },
     onError: (error, _, context) => {
       if (context?.previousData) {
@@ -252,7 +255,10 @@ export default function Tenants() {
     onSuccess: () => {
       setDeletingId(null)
       showToast.success('Tenant deleted')
-      queryClient.invalidateQueries({ queryKey: ['tenants'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'tenants' || key.startsWith('tenant')
+      }})
     },
     onError: (error, _, context) => {
       setDeletingId(null)
@@ -306,7 +312,10 @@ export default function Tenants() {
       message: `Deleting ${count} tenants...`,
       onConfirm: async () => {
         for (const id of ids) { try { await tenantApi.delete(id) } catch {} }
-        queryClient.invalidateQueries({ queryKey: ['tenants'] })
+        queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'tenants' || key.startsWith('tenant')
+      }})
         showToast.success(`Deleted ${count} tenants`)
       },
     })

@@ -190,7 +190,10 @@ export default function Landlords() {
     },
     onSuccess: (_, __, context) => {
       showToast.success(context?.isUpdating ? 'Landlord updated successfully' : 'Landlord created successfully')
-      queryClient.invalidateQueries({ queryKey: ['landlords'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'landlords' || key.startsWith('landlord')
+      }})
     },
     onError: (error, _, context) => {
       // Rollback on error
@@ -225,7 +228,10 @@ export default function Landlords() {
     },
     onSuccess: () => {
       showToast.success('Landlord deleted successfully')
-      queryClient.invalidateQueries({ queryKey: ['landlords'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'landlords' || key.startsWith('landlord')
+      }})
       setSelectedLandlord(null)
     },
     onError: (error, _, context) => {
