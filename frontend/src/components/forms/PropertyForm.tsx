@@ -32,9 +32,10 @@ const PropertyForm = forwardRef<PropertyFormRef, PropertyFormProps>(
       unit_definition: '',
     })
 
-    const { data: landlords, isLoading: landlordsLoading } = useQuery({
+    const { data: landlords, isLoading: landlordsLoading, error: landlordsError } = useQuery({
       queryKey: ['landlords-select'],
-      queryFn: () => landlordApi.list().then((r) => r.data.results || r.data),
+      queryFn: () => landlordApi.list({ page_size: 500 }).then((r) => r.data.results || r.data),
+      placeholderData: [],
     })
 
     // Fetch existing properties for address/city suggestions
@@ -101,6 +102,7 @@ const PropertyForm = forwardRef<PropertyFormRef, PropertyFormProps>(
           onChange={(val) => setForm({ ...form, landlord: String(val) })}
           options={landlords?.map((l: any) => ({ value: l.id, label: l.name })) || []}
           isLoading={landlordsLoading}
+          error={landlordsError ? 'Failed to load landlords. Please refresh.' : undefined}
           required
           searchable
           emptyMessage="No landlords found. Create a landlord first."
