@@ -138,10 +138,13 @@ export default function Landlords() {
 
   // Optimistic create/update mutation
   const createMutation = useMutation({
-    mutationFn: (data: typeof form) =>
-      editingId ? landlordApi.update(editingId, data) : landlordApi.create(data),
+    mutationFn: (data: typeof form & { _editingId?: number | null }) => {
+      const id = data._editingId
+      const { _editingId, ...payload } = data
+      return id ? landlordApi.update(id, payload) : landlordApi.create(payload)
+    },
     onMutate: async (newData) => {
-      const isUpdating = !!editingId
+      const isUpdating = !!newData._editingId
 
       // Close modal immediately (optimistic)
       resetForm()
@@ -287,7 +290,7 @@ export default function Landlords() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    createMutation.mutate(form)
+    createMutation.mutate({ ...form, _editingId: editingId })
   }
 
   const filteredLandlords = typeFilter
@@ -765,7 +768,7 @@ export default function Landlords() {
       >
         <LandlordForm
           initialValues={form}
-          onSubmit={(data) => createMutation.mutate(data)}
+          onSubmit={(data) => createMutation.mutate({ ...data, _editingId: editingId })}
           isSubmitting={createMutation.isPending}
           onCancel={resetForm}
         />

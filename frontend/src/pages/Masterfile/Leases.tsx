@@ -225,10 +225,12 @@ export default function Leases() {
 
   const createMutation = useMutation({
     mutationFn: (data: any) => {
-      return editingId ? leaseApi.update(editingId, data) : leaseApi.create(data)
+      const id = data._editingId
+      const { _editingId, ...payload } = data
+      return id ? leaseApi.update(id, payload) : leaseApi.create(payload)
     },
     onMutate: async (newData) => {
-      const isUpdating = !!editingId
+      const isUpdating = !!newData._editingId
       const savedDoc = documentFile
       resetForm()
       await queryClient.cancelQueries({ queryKey: ['leases'] })
@@ -446,7 +448,7 @@ export default function Leases() {
       }
     }
 
-    createMutation.mutate(data)
+    createMutation.mutate({ ...data, _editingId: editingId })
   }
 
   // Stats
@@ -889,7 +891,7 @@ export default function Leases() {
           initialValues={form}
           onSubmit={(data, docFile) => {
             if (docFile) setDocumentFile(docFile)
-            createMutation.mutate(data)
+            createMutation.mutate({ ...data, _editingId: editingId })
           }}
           isSubmitting={createMutation.isPending}
           onCancel={resetForm}

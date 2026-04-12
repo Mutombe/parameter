@@ -187,10 +187,13 @@ export default function Tenants() {
   }
 
   const createMutation = useMutation({
-    mutationFn: (data: typeof form) =>
-      editingId ? tenantApi.update(editingId, data) : tenantApi.create(data),
+    mutationFn: (data: any) => {
+      const id = data._editingId
+      const { _editingId, ...payload } = data
+      return id ? tenantApi.update(id, payload) : tenantApi.create(payload)
+    },
     onMutate: async (newData) => {
-      const isUpdating = !!editingId
+      const isUpdating = !!newData._editingId
       resetForm()
       await queryClient.cancelQueries({ queryKey: ['tenants'] })
       const previousData = queryClient.getQueryData(['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter])
@@ -413,7 +416,7 @@ export default function Tenants() {
             <h2 className="text-lg font-semibold mb-4">{editingId ? 'Edit Tenant' : 'Add New Tenant'}</h2>
             <TenantForm
               initialValues={form}
-              onSubmit={(data) => createMutation.mutate(data as typeof form)}
+              onSubmit={(data) => createMutation.mutate({ ...(data as typeof form), _editingId: editingId })}
               isSubmitting={createMutation.isPending}
               onCancel={resetForm}
             />

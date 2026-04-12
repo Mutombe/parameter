@@ -170,10 +170,13 @@ export default function Properties() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: { landlord: number; name: string; property_type: string; address: string; city: string; total_units: number; unit_definition: string }) =>
-      editingId ? propertyApi.update(editingId, data) : propertyApi.create(data),
+    mutationFn: (data: any) => {
+      const id = data._editingId
+      const { _editingId, ...payload } = data
+      return id ? propertyApi.update(id, payload) : propertyApi.create(payload)
+    },
     onMutate: async (newData) => {
-      const isUpdating = !!editingId
+      const isUpdating = !!newData._editingId
       resetForm()
       await queryClient.cancelQueries({ queryKey: ['properties'] })
       const previousData = queryClient.getQueryData(['properties', debouncedSearch, currentPage])
@@ -405,6 +408,7 @@ export default function Properties() {
       ...form,
       landlord: parseInt(form.landlord, 10),
       total_units: parseInt(String(form.total_units), 10) || 0,
+      _editingId: editingId,
     })
   }
 
@@ -1021,7 +1025,7 @@ export default function Properties() {
       >
         <PropertyForm
           initialValues={form}
-          onSubmit={(data) => createMutation.mutate(data)}
+          onSubmit={(data) => createMutation.mutate({ ...data, _editingId: editingId })}
           isSubmitting={createMutation.isPending}
           onCancel={resetForm}
         />
