@@ -9,12 +9,12 @@ import './index.css'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 10 * 60 * 1000, // 10 minutes — data stays fresh, no refetch
-      gcTime: 60 * 60 * 1000, // 60 minutes — keep cache for 1 hour
+      staleTime: 10 * 60 * 1000, // 10 min: cached data shown instantly, no refetch
+      gcTime: 60 * 60 * 1000,  // 60 min: cache kept for 1 hour
       retry: 1,
-      refetchOnWindowFocus: false, // No loading flash on tab-back
-      refetchOnMount: true, // Refetch if stale (after 10 min) — but show cached data first
-      refetchOnReconnect: false, // Don't refetch on reconnect either
+      refetchOnWindowFocus: false, // No flash on tab-back
+      refetchOnMount: 'always',   // Always render cached data first, refetch silently if stale
+      refetchOnReconnect: false,
       structuralSharing: true,
     },
     mutations: {
