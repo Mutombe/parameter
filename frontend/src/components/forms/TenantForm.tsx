@@ -182,9 +182,9 @@ const TenantForm = forwardRef<TenantFormRef, TenantFormProps>(
           />
           <Input
             label="ID Number"
+            placeholder="Optional for companies"
             value={form.id_number}
             onChange={(e) => setForm({ ...form, id_number: e.target.value })}
-            required
           />
         </div>
 

@@ -170,87 +170,115 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
           />
         </div>
 
-        <AsyncSelect
-          label="Existing Unit (optional)"
-          placeholder={form.property ? 'Select existing unit or leave empty' : 'Select a property first'}
-          value={form.unit}
-          onChange={(val) => setForm({ ...form, unit: String(val), unit_number: '' })}
-          options={
-            units?.map((u: any) => ({
-              value: u.id,
-              label: `${u.unit_number} - ${u.property_name}`,
-            })) || []
-          }
-          isLoading={unitsLoading}
-          searchable
-          clearable
-          disabled={!form.property}
-        />
-
-        {!form.unit && (
-          <div>
-            <Input
-              label="Unit Number"
-              placeholder="e.g. A101"
-              value={form.unit_number}
-              onChange={(e) => setForm({ ...form, unit_number: e.target.value, unit: '' })}
-            />
-            <p className="text-xs text-gray-500 mt-1">New unit will be auto-created</p>
-          </div>
-        )}
-
-        {/* Auto-derived lease type from property */}
-        {form.property && (() => {
+        {/* Detect management type from selected property */}
+        {(() => {
           const selectedProp = properties?.find((p: any) => String(p.id) === form.property)
-          const leaseType = selectedProp?.management_type || 'rental'
+          const isLevy = selectedProp?.management_type === 'levy'
+
           return (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Lease Type</label>
-              <div className="flex items-center gap-2">
-                <span className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
-                  leaseType === 'levy' ? 'bg-violet-50 text-violet-700' : 'bg-sky-50 text-sky-700'
-                }`}>
-                  {leaseType === 'levy' ? 'Levy Account' : 'Rental Lease'}
-                </span>
-                <span className="text-xs text-gray-500">Auto-set from property management type</span>
+            <>
+              {/* Unit selection — only for rental, not levy */}
+              {!isLevy && (
+                <>
+                  <AsyncSelect
+                    label="Existing Unit (optional)"
+                    placeholder={form.property ? 'Select existing unit or leave empty' : 'Select a property first'}
+                    value={form.unit}
+                    onChange={(val) => setForm({ ...form, unit: String(val), unit_number: '' })}
+                    options={
+                      units?.map((u: any) => ({
+                        value: u.id,
+                        label: `${u.unit_number} - ${u.property_name}`,
+                      })) || []
+                    }
+                    isLoading={unitsLoading}
+                    searchable
+                    clearable
+                    disabled={!form.property}
+                  />
+
+                  {!form.unit && (
+                    <div>
+                      <Input
+                        label="Unit Number"
+                        placeholder="e.g. A101"
+                        value={form.unit_number}
+                        onChange={(e) => setForm({ ...form, unit_number: e.target.value, unit: '' })}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">New unit will be auto-created</p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Lease type indicator */}
+              {form.property && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Lease Type</label>
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center whitespace-nowrap px-3 py-1.5 rounded-lg text-sm font-medium ${
+                      isLevy ? 'bg-violet-50 text-violet-700' : 'bg-sky-50 text-sky-700'
+                    }`}>
+                      {isLevy ? 'Levy Account' : 'Rental Lease'}
+                    </span>
+                    <span className="text-xs text-gray-500">Auto-set from property</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Rent + Deposit — only for rental, not levy */}
+              <div className={`grid grid-cols-1 gap-4 ${isLevy ? 'sm:grid-cols-1' : 'sm:grid-cols-3'}`}>
+                {!isLevy && (
+                  <>
+                    <Input
+                      type="number"
+                      label="Monthly Rent"
+                      placeholder="1000.00"
+                      step="0.01"
+                      min="0"
+                      value={form.monthly_rent}
+                      onChange={(e) => setForm({ ...form, monthly_rent: e.target.value })}
+                      required
+                    />
+
+                    <Input
+                      type="number"
+                      label="Deposit Amount"
+                      placeholder="0.00"
+                      step="0.01"
+                      min="0"
+                      value={form.deposit_amount}
+                      onChange={(e) => setForm({ ...form, deposit_amount: e.target.value })}
+                    />
+                  </>
+                )}
+
+                {isLevy && (
+                  <Input
+                    type="number"
+                    label="Monthly Levy"
+                    placeholder="50.00"
+                    step="0.01"
+                    min="0"
+                    value={form.monthly_rent}
+                    onChange={(e) => setForm({ ...form, monthly_rent: e.target.value })}
+                    required
+                  />
+                )}
+
+                <Select
+                  label="Currency"
+                  value={form.currency}
+                  onChange={(e) => setForm({ ...form, currency: e.target.value })}
+                  options={[
+                    { value: 'USD', label: 'USD' },
+                    { value: 'ZiG', label: 'ZiG' },
+                  ]}
+                />
               </div>
-            </div>
+            </>
           )
         })()}
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Input
-            type="number"
-            label="Monthly Rent"
-            placeholder="1000.00"
-            step="0.01"
-            min="0"
-            value={form.monthly_rent}
-            onChange={(e) => setForm({ ...form, monthly_rent: e.target.value })}
-            required
-          />
-
-          <Input
-            type="number"
-            label="Deposit Amount"
-            placeholder="1000.00"
-            step="0.01"
-            min="0"
-            value={form.deposit_amount}
-            onChange={(e) => setForm({ ...form, deposit_amount: e.target.value })}
-            hint="Typically 2x monthly rent"
-          />
-
-          <Select
-            label="Currency"
-            value={form.currency}
-            onChange={(e) => setForm({ ...form, currency: e.target.value })}
-            options={[
-              { value: 'USD', label: 'USD' },
-              { value: 'ZiG', label: 'ZiG' },
-            ]}
-          />
-        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Input
