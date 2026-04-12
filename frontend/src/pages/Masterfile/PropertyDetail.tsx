@@ -642,11 +642,19 @@ export default function PropertyDetail() {
         </div>
         <div className="flex items-center gap-2">
           <Button
+            onClick={() => setShowLeaseModal(true)}
+            className="gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Add Lease
+          </Button>
+          <Button
+            variant="outline"
             onClick={() => setShowBillingModal(true)}
             className="gap-2"
           >
             <FileText className="w-4 h-4" />
-            Generate Billing
+            Billing
           </Button>
           <Button
             variant="outline"
