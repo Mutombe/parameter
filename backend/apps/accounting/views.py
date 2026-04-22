@@ -1383,7 +1383,7 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
     queryset = SubsidiaryAccount.objects.all()
     serializer_class = SubsidiaryAccountSerializer
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['entity_type', 'is_active', 'currency']
+    filterset_fields = ['entity_type', 'is_active', 'currency', 'landlord', 'tenant', 'category']
     search_fields = ['code', 'name']
     ordering = ['code']
 

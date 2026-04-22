@@ -1177,6 +1177,25 @@ class SubsidiaryAccount(models.Model):
             landlord, category='general', currency=currency
         )
 
+    @classmethod
+    def seed_for_landlord(cls, landlord, management_type='rental'):
+        """Pre-create the full set of category-specific sub-accounts for a landlord.
+
+        Rental: 12 accounts (6 categories × 2 currencies)
+        Levy:   10 accounts (5 categories × 2 currencies)
+
+        Idempotent — uses get_or_create on each (category, currency) pair.
+        Called from the Property post_save signal once we know the management type.
+        """
+        suffix_map = cls.LEVY_SUFFIX_MAP if management_type == 'levy' else cls.RENTAL_SUFFIX_MAP
+        created_accounts = []
+        for (category, currency) in suffix_map.keys():
+            account = cls.get_or_create_for_landlord_category(
+                landlord, category=category, currency=currency
+            )
+            created_accounts.append(account)
+        return created_accounts
+
 
 class SubsidiaryTransaction(models.Model):
     """
