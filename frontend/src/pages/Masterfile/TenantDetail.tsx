@@ -21,6 +21,9 @@ import {
   Wrench,
   Download,
   Layers,
+  ChevronLeft,
+  ChevronRight,
+  Search,
 } from 'lucide-react'
 import {
   BarChart,
@@ -128,6 +131,51 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
           <div className="h-4 flex-1 bg-gray-200 rounded" />
         </div>
       ))}
+    </div>
+  )
+}
+
+function shiftISODate(value: string, days: number): string {
+  if (!value) {
+    const d = new Date()
+    d.setDate(d.getDate() + days)
+    return d.toISOString().slice(0, 10)
+  }
+  const [y, m, d] = value.split('-').map(Number)
+  const dt = new Date(y, (m || 1) - 1, d || 1)
+  dt.setDate(dt.getDate() + days)
+  const yyyy = dt.getFullYear()
+  const mm = String(dt.getMonth() + 1).padStart(2, '0')
+  const dd = String(dt.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function DateNav({ value, onChange, ariaLabel }: { value: string; onChange: (v: string) => void; ariaLabel?: string }) {
+  return (
+    <div className="inline-flex items-center">
+      <button
+        type="button"
+        aria-label={`Previous day${ariaLabel ? ` for ${ariaLabel}` : ''}`}
+        onClick={() => onChange(shiftISODate(value, -1))}
+        className="h-[30px] w-7 flex items-center justify-center border border-gray-200 rounded-l-lg bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-800 transition-colors"
+      >
+        <ChevronLeft className="w-3.5 h-3.5" />
+      </button>
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={ariaLabel}
+        className="h-[30px] px-2 text-sm border-y border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
+      />
+      <button
+        type="button"
+        aria-label={`Next day${ariaLabel ? ` for ${ariaLabel}` : ''}`}
+        onClick={() => onChange(shiftISODate(value, 1))}
+        className="h-[30px] w-7 flex items-center justify-center border border-gray-200 rounded-r-lg bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-800 transition-colors"
+      >
+        <ChevronRight className="w-3.5 h-3.5" />
+      </button>
     </div>
   )
 }
@@ -860,17 +908,35 @@ export default function TenantDetail() {
         {statementSource === 'operational' && (
           <>
         {!loadingLedger && ledger.length > 0 && (
-          <TableFilter
-            searchPlaceholder="Search by reference or description..."
-            searchValue={ledgerSearch}
-            onSearchChange={setLedgerSearch}
-            showDateFilter
-            dateFrom={ledgerDateFrom}
-            dateTo={ledgerDateTo}
-            onDateFromChange={setLedgerDateFrom}
-            onDateToChange={setLedgerDateTo}
-            resultCount={filteredLedger.length}
-          />
+          <div className="flex flex-wrap items-center gap-3 px-6 py-3 bg-gray-50 border-b border-gray-100">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search by reference or description..."
+                value={ledgerSearch}
+                onChange={(e) => setLedgerSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-gray-400" />
+              <DateNav
+                value={ledgerDateFrom}
+                onChange={setLedgerDateFrom}
+                ariaLabel="ledger start date"
+              />
+              <span className="text-gray-400 text-sm">to</span>
+              <DateNav
+                value={ledgerDateTo}
+                onChange={setLedgerDateTo}
+                ariaLabel="ledger end date"
+              />
+            </div>
+            <span className="text-xs text-gray-500 ml-auto">
+              {filteredLedger.length} result{filteredLedger.length !== 1 ? 's' : ''}
+            </span>
+          </div>
         )}
         <div className="overflow-x-auto">
           {loadingLedger ? (
@@ -945,9 +1011,17 @@ export default function TenantDetail() {
             <div className="p-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-gray-400" />
-                <input type="date" value={subAccountDateRange.period_start} onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_start: e.target.value }))} className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                <DateNav
+                  value={subAccountDateRange.period_start}
+                  onChange={(v) => setSubAccountDateRange((p) => ({ ...p, period_start: v }))}
+                  ariaLabel="statement start date"
+                />
                 <span className="text-gray-400">to</span>
-                <input type="date" value={subAccountDateRange.period_end} onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_end: e.target.value }))} className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                <DateNav
+                  value={subAccountDateRange.period_end}
+                  onChange={(v) => setSubAccountDateRange((p) => ({ ...p, period_end: v }))}
+                  ariaLabel="statement end date"
+                />
               </div>
               <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
                 <button onClick={() => setSubAccountStatementView('consolidated')} className={cn('px-2.5 py-1 text-xs font-medium rounded-md transition-colors', subAccountStatementView === 'consolidated' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>Consolidated</button>
