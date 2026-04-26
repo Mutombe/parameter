@@ -4,16 +4,31 @@ from .models import Invoice, Receipt, Expense, LatePenaltyConfig, LatePenaltyExc
 from apps.accounting.models import IncomeType, BankAccount
 
 
+def _resolve_property_from_lease(lease):
+    """Lease → Property: prefer unit.property, fall back to lease.property (levy)."""
+    if not lease:
+        return None
+    if lease.unit_id and getattr(lease, 'unit', None) and lease.unit.property_id:
+        return lease.unit.property
+    return getattr(lease, 'property', None)
+
+
 class InvoiceSerializer(serializers.ModelSerializer):
     tenant_name = serializers.CharField(source='tenant.name', read_only=True)
     unit_display = serializers.CharField(source='unit.__str__', read_only=True)
     journal_number = serializers.CharField(source='journal.journal_number', read_only=True)
+    property_name = serializers.SerializerMethodField()
+    property_id = serializers.SerializerMethodField()
+    landlord_name = serializers.SerializerMethodField()
+    landlord_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
         fields = [
             'id', 'invoice_number', 'tenant', 'tenant_name', 'lease', 'unit',
-            'unit_display', 'invoice_type', 'status', 'date', 'due_date',
+            'unit_display', 'property_name', 'property_id',
+            'landlord_name', 'landlord_id',
+            'invoice_type', 'status', 'date', 'due_date',
             'period_start', 'period_end', 'amount', 'vat_amount', 'total_amount',
             'amount_paid', 'balance', 'currency', 'description', 'notes',
             'journal', 'journal_number', 'created_by', 'created_at', 'updated_at'
@@ -23,9 +38,35 @@ class InvoiceSerializer(serializers.ModelSerializer):
             'journal', 'created_at', 'updated_at'
         ]
 
+    def _resolve_property(self, obj):
+        # Direct property FK on Invoice wins if set; otherwise resolve via lease.
+        if obj.property_id:
+            return obj.property
+        return _resolve_property_from_lease(obj.lease)
+
+    def get_property_name(self, obj):
+        prop = self._resolve_property(obj)
+        return prop.name if prop else None
+
+    def get_property_id(self, obj):
+        prop = self._resolve_property(obj)
+        return prop.id if prop else None
+
+    def get_landlord_name(self, obj):
+        prop = self._resolve_property(obj)
+        return prop.landlord.name if prop and prop.landlord_id else None
+
+    def get_landlord_id(self, obj):
+        prop = self._resolve_property(obj)
+        return prop.landlord_id if prop else None
+
 
 class InvoiceCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating invoices."""
+    """Serializer for creating invoices.
+
+    Enforces: an invoice must be tied to a lease, and the lease must belong
+    to the submitted tenant. A tenant with no lease cannot be invoiced.
+    """
 
     class Meta:
         model = Invoice
@@ -34,6 +75,26 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
             'period_start', 'period_end', 'amount', 'vat_amount', 'currency',
             'description', 'notes'
         ]
+        extra_kwargs = {
+            'lease': {'required': True, 'allow_null': False},
+        }
+
+    def validate(self, data):
+        lease = data.get('lease')
+        tenant = data.get('tenant')
+
+        if not lease:
+            raise serializers.ValidationError({
+                'lease': 'Cannot invoice a tenant without a lease. '
+                        'Create a lease for this tenant first.'
+            })
+
+        if tenant and lease.tenant_id != tenant.id:
+            raise serializers.ValidationError({
+                'lease': 'Lease does not belong to the selected tenant.'
+            })
+
+        return data
 
 
 class ReceiptSerializer(serializers.ModelSerializer):

@@ -198,13 +198,18 @@ class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets
 
     def get_queryset(self):
         """Use lightweight queryset for list, full prefetch for detail, with lease_status filtering."""
-        base = RentalTenant.objects.select_related('unit', 'unit__property').annotate(
+        base = RentalTenant.objects.select_related(
+            'unit', 'unit__property', 'unit__property__landlord'
+        ).annotate(
             _lease_count=Count('leases'),
             _has_active_lease=Count('leases', filter=Q(leases__status='active')),
         )
         active_lease_prefetch = Prefetch(
             'leases',
-            queryset=LeaseAgreement.objects.filter(status='active').select_related('unit', 'unit__property', 'property'),
+            queryset=LeaseAgreement.objects.filter(status='active').select_related(
+                'unit', 'unit__property', 'unit__property__landlord',
+                'property', 'property__landlord',
+            ),
             to_attr='_active_leases_list',
         )
         if self.action == 'list':
@@ -213,6 +218,7 @@ class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets
             queryset = base.prefetch_related(
                 active_lease_prefetch,
                 'leases', 'leases__unit', 'leases__unit__property',
+                'leases__unit__property__landlord',
             ).all()
 
         # Filter by lease_status (active/inactive based on having active leases)

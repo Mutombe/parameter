@@ -181,12 +181,15 @@ class RentalTenantListSerializer(serializers.ModelSerializer):
     unit_id = serializers.SerializerMethodField()
     property_name = serializers.SerializerMethodField()
     property_id = serializers.SerializerMethodField()
+    landlord_name = serializers.SerializerMethodField()
+    landlord_id = serializers.SerializerMethodField()
 
     class Meta:
         model = RentalTenant
         fields = [
             'id', 'code', 'name', 'tenant_type', 'account_type',
             'unit', 'unit_name', 'unit_id', 'property_name', 'property_id',
+            'landlord_name', 'landlord_id',
             'email', 'phone', 'is_active', 'has_active_lease', 'lease_count',
             'created_at', 'updated_at'
         ]
@@ -246,17 +249,47 @@ class RentalTenantListSerializer(serializers.ModelSerializer):
     def get_lease_count(self, obj):
         return getattr(obj, '_lease_count', obj.leases.count())
 
+    def _resolve_property(self, obj):
+        leases = getattr(obj, '_active_leases_list', None)
+        if leases is None:
+            lease = obj.leases.filter(status='active').select_related(
+                'unit__property__landlord', 'property__landlord'
+            ).first()
+        else:
+            lease = leases[0] if leases else None
+        if not lease:
+            return None
+        if lease.unit and lease.unit.property:
+            return lease.unit.property
+        if lease.property:
+            return lease.property
+        return None
+
+    def get_landlord_name(self, obj):
+        prop = self._resolve_property(obj)
+        return prop.landlord.name if prop and prop.landlord_id else None
+
+    def get_landlord_id(self, obj):
+        prop = self._resolve_property(obj)
+        return prop.landlord_id if prop else None
+
 
 class RentalTenantSerializer(serializers.ModelSerializer):
     active_leases = serializers.SerializerMethodField()
     has_active_lease = serializers.SerializerMethodField()
     lease_count = serializers.SerializerMethodField()
     unit_name = serializers.SerializerMethodField()
+    unit_id = serializers.SerializerMethodField()
+    property_name = serializers.SerializerMethodField()
+    property_id = serializers.SerializerMethodField()
+    landlord_name = serializers.SerializerMethodField()
+    landlord_id = serializers.SerializerMethodField()
 
     class Meta:
         model = RentalTenant
         fields = [
             'id', 'code', 'name', 'tenant_type', 'account_type', 'unit', 'unit_name',
+            'unit_id', 'property_name', 'property_id', 'landlord_name', 'landlord_id',
             'email', 'phone', 'alt_phone', 'id_type', 'id_number',
             'emergency_contact_name', 'emergency_contact_phone',
             'emergency_contact_relation', 'employer_name', 'employer_address',
@@ -268,6 +301,48 @@ class RentalTenantSerializer(serializers.ModelSerializer):
     def get_unit_name(self, obj):
         """Return unit name or None if no unit assigned."""
         return str(obj.unit) if obj.unit else None
+
+    def _active_lease(self, obj):
+        """Most recent active lease — derives property/landlord context."""
+        leases = getattr(obj, '_active_leases_list', None)
+        if leases is None:
+            leases = getattr(obj, '_active_leases', None)
+        if leases is None:
+            return obj.leases.filter(status='active').select_related(
+                'unit', 'unit__property', 'unit__property__landlord',
+                'property', 'property__landlord',
+            ).first()
+        return leases[0] if leases else None
+
+    def _resolve_property(self, obj):
+        lease = self._active_lease(obj)
+        if not lease:
+            return None
+        if lease.unit_id and lease.unit and lease.unit.property_id:
+            return lease.unit.property
+        return getattr(lease, 'property', None)
+
+    def get_unit_id(self, obj):
+        if obj.unit_id:
+            return obj.unit_id
+        lease = self._active_lease(obj)
+        return lease.unit_id if lease and lease.unit_id else None
+
+    def get_property_name(self, obj):
+        prop = self._resolve_property(obj)
+        return prop.name if prop else None
+
+    def get_property_id(self, obj):
+        prop = self._resolve_property(obj)
+        return prop.id if prop else None
+
+    def get_landlord_name(self, obj):
+        prop = self._resolve_property(obj)
+        return prop.landlord.name if prop and prop.landlord_id else None
+
+    def get_landlord_id(self, obj):
+        prop = self._resolve_property(obj)
+        return prop.landlord_id if prop else None
 
     def get_active_leases(self, obj):
         active = getattr(obj, '_active_leases', None)

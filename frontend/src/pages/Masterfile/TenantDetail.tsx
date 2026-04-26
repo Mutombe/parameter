@@ -787,6 +787,16 @@ export default function TenantDetail() {
                         <span>{activeLeases[0].property}</span>
                       </div>
                     )}
+                    {activeLeases[0].landlord_id && (
+                      <button
+                        onClick={() => navigate(`/dashboard/landlords/${activeLeases[0].landlord_id}`)}
+                        onMouseEnter={() => prefetch(`/dashboard/landlords/${activeLeases[0].landlord_id}`)}
+                        className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
+                      >
+                        <Briefcase className="w-3.5 h-3.5" />
+                        <span>{activeLeases[0].landlord}</span>
+                      </button>
+                    )}
                     <div className="flex items-center gap-2 text-sm text-gray-600">
                       <Calendar className="w-3.5 h-3.5 text-gray-400" />
                       <span>{formatDate(activeLeases[0].start_date)} - {formatDate(activeLeases[0].end_date)}</span>

@@ -328,6 +328,7 @@ export default function Invoices() {
   })
   const [form, setForm] = useState({
     tenant: '',
+    lease: '',
     unit: '',
     invoice_type: 'rent',
     date: new Date().toISOString().split('T')[0],
@@ -387,6 +388,7 @@ export default function Invoices() {
     lastAutoDescRef.current = ''
     setForm({
       tenant: '',
+      lease: '',
       unit: '',
       invoice_type: 'rent',
       date: new Date().toISOString().split('T')[0],
@@ -395,6 +397,33 @@ export default function Invoices() {
       description: '',
     })
   }
+
+  // Active leases for the chosen tenant — gates invoice creation.
+  const { data: tenantLeases, isLoading: tenantLeasesLoading } = useQuery({
+    queryKey: ['tenant-active-leases', form.tenant],
+    queryFn: () => leaseApi.list({ tenant: form.tenant, status: 'active', page_size: 50 })
+      .then(r => r.data.results || r.data),
+    enabled: !!form.tenant,
+    staleTime: 30000,
+  })
+
+  const tenantActiveLeases: any[] = Array.isArray(tenantLeases) ? tenantLeases : (tenantLeases?.results || [])
+
+  // Auto-select the only active lease (and its unit) the moment a tenant is picked.
+  useEffect(() => {
+    if (!form.tenant) {
+      if (form.lease) setForm(f => ({ ...f, lease: '', unit: '' }))
+      return
+    }
+    if (tenantActiveLeases.length === 1) {
+      const only = tenantActiveLeases[0]
+      if (String(form.lease) !== String(only.id)) {
+        setForm(f => ({ ...f, lease: String(only.id), unit: only.unit ? String(only.unit) : f.unit }))
+      }
+    } else if (tenantActiveLeases.length === 0 && form.lease) {
+      setForm(f => ({ ...f, lease: '' }))
+    }
+  }, [form.tenant, tenantActiveLeases])
 
   // Auto-populate description as "{Month} {Type} Charge" while the user
   // hasn't typed their own text. lastAutoDescRef tracks what we last wrote so
@@ -1112,19 +1141,70 @@ export default function Invoices() {
         title="Create Invoice"
         icon={Plus}
       >
-        <form onSubmit={(e) => { e.preventDefault(); createMutation.mutate(form); }} className="space-y-5">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (!form.lease) {
+              showToast.error('Cannot invoice a tenant without an active lease. Create a lease first.')
+              return
+            }
+            createMutation.mutate(form)
+          }}
+          className="space-y-5"
+        >
           {/* Tenant Select */}
           <AsyncSelect
             label="Tenant"
             placeholder="Select tenant"
             value={form.tenant}
-            onChange={(val) => setForm({ ...form, tenant: String(val) })}
+            onChange={(val) => setForm({ ...form, tenant: String(val), lease: '', unit: '' })}
             options={tenants?.map((t: any) => ({ value: t.id, label: `${t.name} (${t.code})${t.unit_name ? ` - ${t.unit_name}` : ''}` })) || []}
             isLoading={tenantsLoading}
             required
             searchable
             emptyMessage="No tenants found. Create a tenant first in Masterfile."
           />
+
+          {/* Lease — required. Auto-selected when only one active lease exists. */}
+          {form.tenant && (
+            tenantLeasesLoading ? (
+              <div className="text-sm text-gray-500">Loading leases…</div>
+            ) : tenantActiveLeases.length === 0 ? (
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
+                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <div>
+                  This tenant has no active lease. An invoice must be tied to a lease —
+                  create a lease for this tenant first.
+                </div>
+              </div>
+            ) : tenantActiveLeases.length === 1 ? (
+              <div className="text-sm text-gray-700 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200">
+                <span className="text-gray-500">Lease:</span>{' '}
+                <span className="font-medium">{tenantActiveLeases[0].lease_number}</span>
+                {tenantActiveLeases[0].unit_display && (
+                  <span className="text-gray-500"> · {tenantActiveLeases[0].unit_display}</span>
+                )}
+              </div>
+            ) : (
+              <Select
+                label="Lease"
+                value={form.lease}
+                onChange={(e) => {
+                  const leaseId = e.target.value
+                  const picked = tenantActiveLeases.find((l: any) => String(l.id) === leaseId)
+                  setForm({ ...form, lease: leaseId, unit: picked?.unit ? String(picked.unit) : '' })
+                }}
+                options={[
+                  { value: '', label: 'Select lease' },
+                  ...tenantActiveLeases.map((l: any) => ({
+                    value: String(l.id),
+                    label: `${l.lease_number}${l.unit_display ? ` — ${l.unit_display}` : ''}`,
+                  })),
+                ]}
+                required
+              />
+            )
+          )}
 
           {/* Unit Select */}
           <AsyncSelect

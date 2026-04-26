@@ -29,7 +29,11 @@ logger = logging.getLogger(__name__)
 class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Invoices."""
     queryset = Invoice.objects.select_related(
-        'tenant', 'unit', 'unit__property'
+        'tenant', 'unit', 'unit__property', 'unit__property__landlord',
+        'lease', 'lease__unit', 'lease__unit__property',
+        'lease__unit__property__landlord',
+        'lease__property', 'lease__property__landlord',
+        'property', 'property__landlord',
     ).all()
     permission_classes = [IsAuthenticated]
 

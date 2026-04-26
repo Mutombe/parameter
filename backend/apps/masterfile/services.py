@@ -191,10 +191,43 @@ def get_tenant_detail(tenant):
 
     active_leases = tenant.leases.filter(
         status='active'
-    ).select_related('unit', 'unit__property').order_by('-start_date')
+    ).select_related(
+        'unit', 'unit__property', 'unit__property__landlord',
+        'property', 'property__landlord',
+    ).order_by('-start_date')
     past_leases = tenant.leases.exclude(
         status='active'
-    ).select_related('unit', 'unit__property').order_by('-start_date')
+    ).select_related(
+        'unit', 'unit__property', 'unit__property__landlord',
+        'property', 'property__landlord',
+    ).order_by('-start_date')
+
+    def _lease_property(l):
+        if l.unit_id and l.unit and l.unit.property_id:
+            return l.unit.property
+        return l.property if l.property_id else None
+
+    def _serialize_lease(l, include_termination=False):
+        prop = _lease_property(l)
+        landlord = prop.landlord if prop and prop.landlord_id else None
+        data = {
+            'id': l.id,
+            'lease_number': l.lease_number,
+            'unit': str(l.unit) if l.unit_id else '-',
+            'unit_id': l.unit_id,
+            'property': prop.name if prop else '-',
+            'property_id': prop.id if prop else None,
+            'landlord': landlord.name if landlord else None,
+            'landlord_id': landlord.id if landlord else None,
+            'monthly_rent': str(l.monthly_rent),
+            'currency': l.currency,
+            'start_date': l.start_date,
+            'end_date': l.end_date,
+            'status': l.status,
+        }
+        if include_termination:
+            data['termination_reason'] = l.termination_reason
+        return data
 
     billing = tenant.invoices.aggregate(
         total_invoiced=Sum('total_amount'),
@@ -213,33 +246,8 @@ def get_tenant_detail(tenant):
     recent_receipts = tenant.receipts.order_by('-date')
 
     return {
-        'active_leases': [{
-            'id': l.id,
-            'lease_number': l.lease_number,
-            'unit': str(l.unit),
-            'unit_id': l.unit_id,
-            'property': l.unit.property.name if l.unit and l.unit.property else '-',
-            'property_id': l.property_id or (l.unit.property_id if l.unit and l.unit.property else None),
-            'monthly_rent': str(l.monthly_rent),
-            'currency': l.currency,
-            'start_date': l.start_date,
-            'end_date': l.end_date,
-            'status': l.status,
-        } for l in active_leases],
-        'lease_history': [{
-            'id': l.id,
-            'lease_number': l.lease_number,
-            'unit': str(l.unit),
-            'unit_id': l.unit_id,
-            'property': l.unit.property.name if l.unit and l.unit.property else '-',
-            'property_id': l.property_id or (l.unit.property_id if l.unit and l.unit.property else None),
-            'monthly_rent': str(l.monthly_rent),
-            'currency': l.currency,
-            'start_date': l.start_date,
-            'end_date': l.end_date,
-            'status': l.status,
-            'termination_reason': l.termination_reason,
-        } for l in past_leases],
+        'active_leases': [_serialize_lease(l) for l in active_leases],
+        'lease_history': [_serialize_lease(l, include_termination=True) for l in past_leases],
         'billing_summary': {
             'total_invoiced': total_invoiced,
             'total_paid': total_paid,
