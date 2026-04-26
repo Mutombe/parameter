@@ -311,6 +311,7 @@ export const invoiceApi = {
   get: (id: number) => api.get(`/billing/invoices/${id}/`),
   create: (data: object) => api.post('/billing/invoices/', data),
   update: (id: number, data: object) => api.patch(`/billing/invoices/${id}/`, data),
+  delete: (id: number) => api.delete(`/billing/invoices/${id}/`),
   postToLedger: (id: number) => api.post(`/billing/invoices/${id}/post_to_ledger/`),
   generateMonthly: (data: { month: number; year: number; lease_ids?: number[]; property_id?: number; invoice_date?: string; due_date?: string }) =>
     api.post('/billing/invoices/generate_monthly/', data),

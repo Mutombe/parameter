@@ -8,7 +8,7 @@ from django.db import transaction
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
 from django.conf import settings
-from datetime import date
+from datetime import date, datetime
 from calendar import monthrange
 import logging
 from .models import Invoice, Receipt, Expense, LatePenaltyConfig, LatePenaltyExclusion
@@ -359,7 +359,12 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
                     amount=amount,
                     vat_amount=Decimal('0'),
                     currency=lease.currency,
-                    description=description or f'{invoice_type.title()} charge for {lease.unit}',
+                    description=description or (
+                        f'{datetime.strptime(period_start, "%Y-%m-%d").strftime("%B")} '
+                        f'{Invoice.InvoiceType(invoice_type).label} Charge'
+                        if period_start else
+                        f'{Invoice.InvoiceType(invoice_type).label} Charge'
+                    ),
                     created_by=request.user
                 )
                 invoice.save()

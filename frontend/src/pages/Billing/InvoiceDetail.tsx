@@ -23,6 +23,7 @@ import {
   Edit2,
   Check,
   X,
+  Trash2,
 } from 'lucide-react'
 import { invoiceApi, receiptApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
@@ -192,6 +193,33 @@ export default function InvoiceDetail() {
     onError: (err) => showToast.error(parseApiError(err)),
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: () => invoiceApi.delete(invoiceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const k = q.queryKey[0] as string
+        return k === 'invoices' || (typeof k === 'string' && k.startsWith('invoice'))
+      }})
+      showToast.success('Invoice deleted')
+      navigate('/dashboard/invoices')
+    },
+    onError: (err) => showToast.error(parseApiError(err)),
+  })
+
+  const handleDelete = () => {
+    if (!invoice) return
+    const hasPayments = Number(invoice.amount_paid || 0) > 0
+    const warn = hasPayments
+      ? `\n\nThis invoice has ${formatCurrency(invoice.amount_paid)} in recorded payments — receipts will be left orphaned.`
+      : ''
+    if (window.confirm(
+      `Delete invoice ${invoice.invoice_number}?\n\n` +
+      `It will be soft-deleted (recoverable by an admin).${warn}`
+    )) {
+      deleteMutation.mutate()
+    }
+  }
+
   const handlePrint = () => {
     if (!invoice) return
     printInvoice({
@@ -255,6 +283,15 @@ export default function InvoiceDetail() {
           <Button variant="outline" onClick={handlePrint} className="gap-2">
             <Printer className="w-4 h-4" />
             Print
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleDelete}
+            disabled={isLoading || deleteMutation.isPending}
+            className="gap-2 text-red-600 hover:text-red-700 hover:border-red-300"
+          >
+            <Trash2 className="w-4 h-4" />
+            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
           </Button>
         </div>
       </motion.div>

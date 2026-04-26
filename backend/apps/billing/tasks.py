@@ -141,7 +141,7 @@ def generate_monthly_invoices_for_tenant(tenant):
                     amount=lease.monthly_rent,
                     vat_amount=Decimal('0'),
                     currency=lease.currency,
-                    description=f'Rent for {period_start.strftime("%B %Y")} - {lease.unit.unit_number}',
+                    description=f'{period_start.strftime("%B")} Rent Charge',
                     created_by=system_user
                 )
                 invoices_created += 1

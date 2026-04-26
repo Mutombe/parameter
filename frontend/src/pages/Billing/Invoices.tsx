@@ -49,6 +49,7 @@ interface Invoice {
   due_date: string
   total_amount: number
   balance: number
+  amount_paid?: number
   status: 'draft' | 'sent' | 'partial' | 'paid' | 'overdue' | 'cancelled'
   description?: string
   created_at: string
@@ -383,6 +384,7 @@ export default function Invoices() {
 
   const resetForm = () => {
     setShowForm(false)
+    lastAutoDescRef.current = ''
     setForm({
       tenant: '',
       unit: '',
@@ -393,6 +395,27 @@ export default function Invoices() {
       description: '',
     })
   }
+
+  // Auto-populate description as "{Month} {Type} Charge" while the user
+  // hasn't typed their own text. lastAutoDescRef tracks what we last wrote so
+  // we can detect whether the current value is still our suggestion.
+  const lastAutoDescRef = useRef('')
+  useEffect(() => {
+    if (!form.date || !form.invoice_type) return
+    const monthName = new Date(form.date + 'T00:00:00').toLocaleString('en-US', { month: 'long' })
+    const typeLabel: Record<string, string> = {
+      rent: 'Rent', utilities: 'Utilities', deposit: 'Deposit', other: 'Other',
+      levy: 'Levy', special_levy: 'Special Levy', rates: 'Rates',
+      parking: 'Parking', maintenance: 'Maintenance', vat: 'VAT',
+      penalty: 'Late Payment Penalty', utility: 'Utility',
+    }
+    const label = typeLabel[form.invoice_type] || form.invoice_type
+    const suggested = `${monthName} ${label} Charge`
+    if (form.description === '' || form.description === lastAutoDescRef.current) {
+      lastAutoDescRef.current = suggested
+      setForm((prev) => ({ ...prev, description: suggested }))
+    }
+  }, [form.date, form.invoice_type])
 
   // Optimistic create mutation
   const createMutation = useMutation({
@@ -632,28 +655,34 @@ export default function Invoices() {
   }
 
   const handleBulkDelete = () => {
+    const ids = Array.from(selection.selectedIds)
+    const selected = selectableInvoices.filter((i: Invoice) => ids.includes(i.id))
+    const paidCount = selected.filter((i: Invoice) => Number(i.amount_paid || 0) > 0).length
+    const warning = paidCount > 0
+      ? ` ${paidCount} of these have payments recorded — receipts will be left orphaned.`
+      : ''
     setConfirmDialog({
       open: true,
-      title: `Delete ${selection.selectedCount} invoices?`,
-      message: 'This action cannot be undone. Only draft invoices will be deleted.',
+      title: `Delete ${selection.selectedCount} invoice${selection.selectedCount === 1 ? '' : 's'}?`,
+      message: `Invoices will be soft-deleted (recoverable by an admin).${warning}`,
       onConfirm: async () => {
-        const ids = Array.from(selection.selectedIds)
         let deleted = 0
+        let failed = 0
         for (const id of ids) {
           try {
-            const inv = selectableInvoices.find((i: Invoice) => i.id === id)
-            if (inv?.status === 'draft') {
-              await invoiceApi.update(id as number, { status: 'cancelled' })
-              deleted++
-            }
-          } catch { /* skip */ }
+            await invoiceApi.delete(id as number)
+            deleted++
+          } catch {
+            failed++
+          }
         }
         selection.clearSelection()
         queryClient.invalidateQueries({ predicate: (q) => {
-        const key = q.queryKey[0] as string
-        return key === 'invoices' || key.startsWith('invoice')
-      }})
-        showToast.success(`Deleted ${deleted} invoices`)
+          const key = q.queryKey[0] as string
+          return key === 'invoices' || key.startsWith('invoice')
+        }})
+        if (deleted > 0) showToast.success(`Deleted ${deleted} invoice${deleted === 1 ? '' : 's'}`)
+        if (failed > 0) showToast.error(`${failed} could not be deleted`)
         setConfirmDialog(d => ({ ...d, open: false }))
       },
     })
