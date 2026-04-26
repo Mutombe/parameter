@@ -20,6 +20,7 @@ import {
   TrendingUp,
   Plus,
   Building2,
+  Briefcase,
   Edit2,
   Check,
   X,
@@ -350,10 +351,10 @@ export default function InvoiceDetail() {
             {/* Property */}
             <div className="space-y-2">
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Property</p>
-              {invoice?.property ? (
+              {invoice?.property_id ? (
                 <button
-                  onMouseEnter={() => invoice?.property && prefetch(`/dashboard/properties/${invoice.property}`)}
-                  onClick={() => navigate(`/dashboard/properties/${invoice.property}`)}
+                  onMouseEnter={() => prefetch(`/dashboard/properties/${invoice.property_id}`)}
+                  onClick={() => navigate(`/dashboard/properties/${invoice.property_id}`)}
                   className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
                 >
                   <Building2 className="w-3.5 h-3.5" />
@@ -366,6 +367,28 @@ export default function InvoiceDetail() {
                 </div>
               )}
             </div>
+
+            {/* Landlord */}
+            {(invoice?.landlord_id || invoice?.landlord_name) && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Landlord</p>
+                {invoice?.landlord_id ? (
+                  <button
+                    onMouseEnter={() => prefetch(`/dashboard/landlords/${invoice.landlord_id}`)}
+                    onClick={() => navigate(`/dashboard/landlords/${invoice.landlord_id}`)}
+                    className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
+                  >
+                    <Briefcase className="w-3.5 h-3.5" />
+                    <span>{invoice.landlord_name || 'View Landlord'}</span>
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Briefcase className="w-3.5 h-3.5 text-gray-400" />
+                    <span>{invoice.landlord_name}</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Dates */}
             <div className="space-y-2">

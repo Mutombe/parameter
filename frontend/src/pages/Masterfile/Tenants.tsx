@@ -539,24 +539,36 @@ export default function Tenants() {
                       <td className="px-5 py-3.5 text-sm text-gray-900 truncate max-w-[200px] hidden lg:table-cell">{tenant.email || '\u2014'}</td>
                       <td className="px-5 py-3.5 text-sm text-gray-900 hidden xl:table-cell">{tenant.phone || '\u2014'}</td>
                       <td className="px-5 py-3.5 text-sm">
-                        {tenant.unit_name ? (
-                          <div className="flex items-center gap-1">
+                        {tenant.property_name || tenant.unit_name ? (
+                          <div className="flex items-center gap-1 flex-wrap">
                             {tenant.property_name && (
-                              <>
+                              tenant.property_id ? (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/properties/${tenant.property_id}`) }}
+                                  onMouseEnter={() => prefetch(`/dashboard/properties/${tenant.property_id}`)}
+                                  className="text-gray-600 text-xs hover:text-primary-600 hover:underline"
+                                >
+                                  {tenant.property_name}
+                                </button>
+                              ) : (
                                 <span className="text-gray-500 text-xs">{tenant.property_name}</span>
-                                <span className="text-gray-300 text-xs">&middot;</span>
-                              </>
+                              )
                             )}
-                            {tenant.unit_id ? (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/units/${tenant.unit_id}`) }}
-                                onMouseEnter={() => prefetch(`/dashboard/units/${tenant.unit_id}`)}
-                                className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
-                              >
-                                {tenant.unit_name}
-                              </button>
-                            ) : (
-                              <span className="text-gray-700">{tenant.unit_name}</span>
+                            {tenant.property_name && tenant.unit_name && (
+                              <span className="text-gray-300 text-xs">&middot;</span>
+                            )}
+                            {tenant.unit_name && (
+                              tenant.unit_id ? (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/units/${tenant.unit_id}`) }}
+                                  onMouseEnter={() => prefetch(`/dashboard/units/${tenant.unit_id}`)}
+                                  className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
+                                >
+                                  {tenant.unit_name}
+                                </button>
+                              ) : (
+                                <span className="text-gray-700">{tenant.unit_name}</span>
+                              )
                             )}
                           </div>
                         ) : (
