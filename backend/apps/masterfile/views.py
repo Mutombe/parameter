@@ -259,7 +259,7 @@ class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets
 
     @action(detail=True, methods=['get'], url_path='export_statement')
     def export_statement(self, request, pk=None):
-        """Download tenant's statement as CSV — bank-statement style."""
+        """Download tenant's statement as CSV or PDF — bank-statement style."""
         import csv
         from django.http import HttpResponse
         from django.utils import timezone
@@ -267,6 +267,7 @@ class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets
         tenant = self.get_object()
         period_start = request.query_params.get('period_start') or ''
         period_end = request.query_params.get('period_end') or ''
+        export_format = (request.query_params.get('format') or 'csv').lower()
         ledger = get_tenant_ledger(
             tenant,
             period_start=period_start or None,
@@ -278,10 +279,37 @@ class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets
             if period_start and period_end
             else timezone.now().strftime('%Y-%m-%d')
         )
-        filename = f'{tenant.code}_statement_{period_label}.csv'.replace('/', '-')
+        base_filename = f'{tenant.code}_statement_{period_label}'.replace('/', '-')
 
+        if export_format == 'pdf':
+            from apps.accounting.pdf_utils import render_pdf
+            entries = []
+            for e in ledger['entries']:
+                entries.append({
+                    'date': e['date'],
+                    'type': e['type'],
+                    'reference': e.get('reference') or '',
+                    'description': e.get('description') or '',
+                    'debit': f'{e["debit"]:.2f}' if e['debit'] else '',
+                    'credit': f'{e["credit"]:.2f}' if e['credit'] else '',
+                    'balance': f'{e["balance"]:.2f}',
+                })
+            context = {
+                'tenant': tenant,
+                'period_start': period_start or '',
+                'period_end': period_end or '',
+                'opening_balance': f'{ledger["opening_balance"]:.2f}',
+                'entries': entries,
+                'total_debits': f'{ledger["total_debits"]:.2f}',
+                'total_credits': f'{ledger["total_credits"]:.2f}',
+                'closing_balance': f'{ledger["closing_balance"]:.2f}',
+                'generated_at': timezone.now().strftime('%Y-%m-%d %H:%M'),
+            }
+            return render_pdf('pdf/tenant_statement.html', context, f'{base_filename}.pdf')
+
+        # CSV (default)
         response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response['Content-Disposition'] = f'attachment; filename="{base_filename}.csv"'
         writer = csv.writer(response)
         writer.writerow(['TENANT STATEMENT'])
         writer.writerow([f'Tenant: {tenant.code} - {tenant.name}'])

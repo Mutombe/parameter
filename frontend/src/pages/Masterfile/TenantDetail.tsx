@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -24,6 +24,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Search,
+  Printer,
+  Loader2,
+  ChevronDown,
 } from 'lucide-react'
 import {
   BarChart,
@@ -502,6 +505,22 @@ export default function TenantDetail() {
 
   // --- Ledger filter state ---
   const [ledgerSearch, setLedgerSearch] = useState('')
+
+  // --- Statement export state ---
+  type ExportAction = 'csv' | 'pdf' | 'print'
+  const [exportLoading, setExportLoading] = useState<ExportAction | null>(null)
+  const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const exportMenuRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!exportMenuOpen) return
+    const onClick = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [exportMenuOpen])
   // Date filters now drive server-side API params (ledgerPeriodStart/End defined above)
   const ledgerDateFrom = ledgerPeriodStart
   const setLedgerDateFrom = setLedgerPeriodStart
@@ -915,27 +934,91 @@ export default function TenantDetail() {
               </button>
             </div>
             {statementSource === 'operational' && (
-              <button
-                onClick={async () => {
-                  try {
-                    const res = await tenantApi.exportStatement(tenantId, {
-                      period_start: ledgerDateFrom || undefined,
-                      period_end: ledgerDateTo || undefined,
-                    })
-                    const url = URL.createObjectURL(new Blob([res.data]))
-                    const a = document.createElement('a')
-                    a.href = url
-                    a.download = `${tenantInfo?.code || 'tenant'}_statement.csv`
-                    a.click()
-                    URL.revokeObjectURL(url)
-                  } catch (err) {
-                    showToast.error(parseApiError(err, 'Failed to download statement'))
-                  }
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <Download className="w-3.5 h-3.5" /> Download
-              </button>
+              <div ref={exportMenuRef} className="relative">
+                <button
+                  onClick={() => setExportMenuOpen((o) => !o)}
+                  disabled={exportLoading !== null}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {exportLoading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      {exportLoading === 'print' ? 'Preparing print...' : `Generating ${exportLoading.toUpperCase()}...`}
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5" /> Download
+                      <ChevronDown className="w-3 h-3" />
+                    </>
+                  )}
+                </button>
+                {exportMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[160px] py-1">
+                    {([
+                      { key: 'pdf', label: 'Download PDF', icon: FileText },
+                      { key: 'csv', label: 'Download CSV', icon: Download },
+                      { key: 'print', label: 'Print', icon: Printer },
+                    ] as const).map(({ key, label, icon: Icon }) => {
+                      const isLoading = exportLoading === key
+                      const isDisabled = exportLoading !== null && !isLoading
+                      return (
+                        <button
+                          key={key}
+                          disabled={isDisabled}
+                          onClick={async () => {
+                            setExportLoading(key)
+                            try {
+                              if (key === 'print') {
+                                const res = await tenantApi.exportStatement(tenantId, {
+                                  period_start: ledgerDateFrom || undefined,
+                                  period_end: ledgerDateTo || undefined,
+                                  format: 'pdf',
+                                })
+                                const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+                                const w = window.open(url, '_blank')
+                                if (w) {
+                                  w.addEventListener('load', () => {
+                                    try { w.print() } catch { /* ignore */ }
+                                  })
+                                } else {
+                                  showToast.error('Pop-up blocked — allow pop-ups to print')
+                                }
+                                // Revoke later so the new tab can load it
+                                setTimeout(() => URL.revokeObjectURL(url), 60000)
+                              } else {
+                                const res = await tenantApi.exportStatement(tenantId, {
+                                  period_start: ledgerDateFrom || undefined,
+                                  period_end: ledgerDateTo || undefined,
+                                  format: key,
+                                })
+                                const url = URL.createObjectURL(new Blob([res.data]))
+                                const a = document.createElement('a')
+                                a.href = url
+                                a.download = `${tenantInfo?.code || 'tenant'}_statement.${key}`
+                                a.click()
+                                URL.revokeObjectURL(url)
+                              }
+                            } catch (err) {
+                              showToast.error(parseApiError(err, `Failed to ${key === 'print' ? 'prepare print' : 'download statement'}`))
+                            } finally {
+                              setExportLoading(null)
+                              setExportMenuOpen(false)
+                            }
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                        >
+                          {isLoading ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary-600" />
+                          ) : (
+                            <Icon className="w-3.5 h-3.5 text-gray-400" />
+                          )}
+                          <span>{label}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
