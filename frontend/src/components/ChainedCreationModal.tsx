@@ -8,12 +8,14 @@ import {
   ChevronRight,
   Loader2,
   Wand2,
+  Building2,
 } from 'lucide-react'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
 import { landlordApi, propertyApi, unitApi, tenantApi, accountHolderApi, leaseApi } from '../services/api'
 import { showToast, parseApiError } from '../lib/toast'
 import { Button } from './ui'
+import { cn } from '../lib/utils'
 import {
   useChainStore,
   getNextEntity,
@@ -39,7 +41,9 @@ const ENTITY_ICONS: Record<EntityType, any> = {
   property: PiBuildingApartmentLight,
   unit: PiBuildingApartmentLight,
   tenant: TbUserSquareRounded,
-  'account-holder': TbUserSquareRounded,
+  // Account holders represent strata/levy unit ownership — Building2 reads
+  // truer than the generic person icon, anchoring the levy framing.
+  'account-holder': Building2,
   lease: TbUserSquareRounded,
 }
 
@@ -391,21 +395,36 @@ export default function ChainedCreationModal() {
             transition={{ type: 'spring', duration: 0.3 }}
             className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden"
           >
+            {/* Levy accent bar — anchors the levy framing for account-holder
+                so users can't confuse it with the rental tenant flow. */}
+            {currentEntity === 'account-holder' && (
+              <div className="h-1 bg-violet-500" />
+            )}
             {/* Header */}
             <div className="flex items-start justify-between p-6 border-b border-gray-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
-                  <Wand2 className="w-5 h-5 text-primary-600" />
+                <div className={cn(
+                  'w-10 h-10 rounded-xl flex items-center justify-center',
+                  currentEntity === 'account-holder' ? 'bg-violet-50' : 'bg-primary-50'
+                )}>
+                  <EntityIcon className={cn(
+                    'w-5 h-5',
+                    currentEntity === 'account-holder' ? 'text-violet-600' : 'text-primary-600'
+                  )} />
                 </div>
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900">
                     Add {CHAIN_LABELS[currentEntity]}
                   </h2>
-                  {completedSteps.length > 0 && (
+                  {currentEntity === 'account-holder' ? (
+                    <p className="text-sm text-violet-600">
+                      Levy-side payer — pays levies, special levies, rates, parking, maintenance
+                    </p>
+                  ) : completedSteps.length > 0 ? (
                     <p className="text-sm text-gray-500">
                       Step {completedSteps.length + 1} of chain
                     </p>
-                  )}
+                  ) : null}
                 </div>
               </div>
               <button

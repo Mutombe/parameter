@@ -32,6 +32,7 @@ import { showToast, parseApiError } from '../../lib/toast'
 import LeaseForm from '../../components/forms/LeaseForm'
 import { TbUserSquareRounded } from "react-icons/tb";
 import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
+import { PayerCell } from '../../components/PayerCell'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
@@ -472,7 +473,7 @@ export default function Leases() {
     const selected = selectableItems.filter((l: any) => selection.isSelected(l.id))
     exportTableData(selected, [
       { key: 'lease_number', header: 'Lease Number' },
-      { key: 'tenant_name', header: 'Tenant' },
+      { key: 'tenant_name', header: 'Payer' },
       { key: 'unit_display', header: 'Unit' },
       { key: 'monthly_rent', header: 'Monthly Rent' },
       { key: 'start_date', header: 'Start Date' },
@@ -684,7 +685,7 @@ export default function Leases() {
                 />
               </th>
               <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Lease</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
+              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Payer</th>
               <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Property / Unit</th>
               <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Monthly Rent</th>
               <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden lg:table-cell">Period</th>
@@ -748,19 +749,23 @@ export default function Leases() {
                       </div>
                     </td>
                     <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2">
-                        <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
-                        {lease.tenant ? (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${lease.tenant}`) }}
-                            onMouseEnter={() => prefetch(`/dashboard/tenants/${lease.tenant}`)}
-                            className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
-                          >
-                            {lease.tenant_name}
-                          </button>
-                        ) : (
-                          <span className="text-gray-700">{lease.tenant_name}</span>
-                        )}
+                      <div className="flex items-start gap-2">
+                        <TbUserSquareRounded className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                        {(() => {
+                          const isLevy = (lease as any).payer_type === 'levy'
+                          const route = isLevy
+                            ? `/dashboard/account-holders/${lease.tenant}`
+                            : `/dashboard/tenants/${lease.tenant}`
+                          return (
+                            <PayerCell
+                              name={lease.tenant_name}
+                              code={(lease as any).tenant_code}
+                              payerType={(lease as any).payer_type}
+                              onClick={lease.tenant ? () => navigate(route) : undefined}
+                              onMouseEnter={lease.tenant ? () => prefetch(route) : undefined}
+                            />
+                          )
+                        })()}
                       </div>
                     </td>
                     <td className="px-5 py-3.5">

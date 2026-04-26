@@ -375,6 +375,8 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
     Otherwise, a new unit is created automatically.
     """
     tenant_name = serializers.CharField(source='tenant.name', read_only=True)
+    tenant_code = serializers.CharField(source='tenant.code', read_only=True)
+    payer_type = serializers.CharField(source='tenant.account_type', read_only=True)
     unit_display = serializers.SerializerMethodField()
     property_name = serializers.SerializerMethodField()
     property_id = serializers.SerializerMethodField()
@@ -397,7 +399,8 @@ class LeaseAgreementSerializer(serializers.ModelSerializer):
     class Meta:
         model = LeaseAgreement
         fields = [
-            'id', 'tenant', 'tenant_name', 'unit', 'unit_display',
+            'id', 'tenant', 'tenant_name', 'tenant_code', 'payer_type',
+            'unit', 'unit_display',
             'property_name', 'property_id', 'landlord_name', 'landlord_id',
             'property', 'unit_number',  # For auto-creating units
             'lease_number', 'lease_type', 'status', 'start_date', 'end_date',

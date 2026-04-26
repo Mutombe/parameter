@@ -6,6 +6,8 @@ import { Search, CreditCard, Plus, Send, Loader2, Eye, X, User, Download, Printe
 import { receiptApi, tenantApi, invoiceApi } from '../../services/api'
 import { formatCurrency, formatDate, useDebounce, cn } from '../../lib/utils'
 import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination } from '../../components/ui'
+import { PayerSelect } from '../../components/PayerSelect'
+import { PayerCell } from '../../components/PayerCell'
 import { AutocompleteInput } from '../../components/ui/AutocompleteInput'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
@@ -238,7 +240,7 @@ export default function Receipts() {
     const selected = selectableItems.filter((r: any) => selection.isSelected(r.id))
     exportTableData(selected, [
       { key: 'receipt_number', header: 'Receipt Number' },
-      { key: 'tenant_name', header: 'Tenant' },
+      { key: 'tenant_name', header: 'Payer' },
       { key: 'amount', header: 'Amount' },
       { key: 'payment_method', header: 'Payment Method' },
       { key: 'date', header: 'Date' },
@@ -339,7 +341,7 @@ export default function Receipts() {
                 />
               </th>
               <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Receipt</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
+              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Payer</th>
               <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Paid For</th>
               <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
               <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Method</th>
@@ -425,17 +427,21 @@ export default function Receipts() {
                     </div>
                   </td>
                   <td className="px-5 py-3.5">
-                    {receipt.tenant ? (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${receipt.tenant}`) }}
-                        onMouseEnter={() => prefetch(`/dashboard/tenants/${receipt.tenant}`)}
-                        className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
-                      >
-                        {receipt.tenant_name}
-                      </button>
-                    ) : (
-                      <span className="text-gray-600">{receipt.tenant_name}</span>
-                    )}
+                    {(() => {
+                      const isLevy = (receipt as any).payer_type === 'levy'
+                      const route = isLevy
+                        ? `/dashboard/account-holders/${receipt.tenant}`
+                        : `/dashboard/tenants/${receipt.tenant}`
+                      return (
+                        <PayerCell
+                          name={receipt.tenant_name}
+                          code={(receipt as any).tenant_code}
+                          payerType={(receipt as any).payer_type}
+                          onClick={receipt.tenant ? () => navigate(route) : undefined}
+                          onMouseEnter={receipt.tenant ? () => prefetch(route) : undefined}
+                        />
+                      )
+                    })()}
                   </td>
                   <td className="px-5 py-3.5">
                     {receipt.income_type_name ? (
@@ -529,16 +535,11 @@ export default function Receipts() {
         icon={Plus}
       >
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Tenant Select */}
-          <AsyncSelect
-            label="Tenant"
-            placeholder="Select tenant"
+          {/* Payer Select — covers both Tenants and Account Holders */}
+          <PayerSelect
             value={form.tenant}
             onChange={(val) => setForm({ ...form, tenant: String(val) })}
-            options={tenants?.map((t: any) => ({ value: t.id, label: t.name })) || []}
-            isLoading={tenantsLoading}
             required
-            searchable
           />
 
           {/* Invoice Select */}

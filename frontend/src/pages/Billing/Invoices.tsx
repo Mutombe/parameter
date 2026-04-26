@@ -28,6 +28,8 @@ import { invoiceApi, tenantApi, unitApi, leaseApi, propertyApi } from '../../ser
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { printInvoice } from '../../lib/printTemplate'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination } from '../../components/ui'
+import { PayerSelect } from '../../components/PayerSelect'
+import { PayerCell } from '../../components/PayerCell'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
 import { exportTableData } from '../../lib/export'
@@ -43,6 +45,8 @@ interface Invoice {
   invoice_number: string
   tenant: number
   tenant_name: string
+  tenant_code?: string
+  payer_type?: 'rental' | 'levy'
   unit_name?: string
   invoice_type: string
   date: string
@@ -618,7 +622,7 @@ export default function Invoices() {
     const selected = selectableInvoices.filter((i: Invoice) => selection.isSelected(i.id))
     exportTableData(selected, [
       { key: 'invoice_number', header: 'Invoice Number' },
-      { key: 'tenant_name', header: 'Tenant' },
+      { key: 'tenant_name', header: 'Payer' },
       { key: 'unit_name', header: 'Unit' },
       { key: 'invoice_type', header: 'Type' },
       { key: 'date', header: 'Date' },
@@ -871,7 +875,7 @@ export default function Invoices() {
               <thead className="sticky top-0 z-10 bg-gray-50/80 backdrop-blur-sm border-b-2 border-gray-100">
                 <tr>
                   <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Payer</th>
                   <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
                   <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
                   <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
@@ -947,7 +951,7 @@ export default function Invoices() {
                         />
                       </th>
                       <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice</th>
-                      <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
+                      <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Payer</th>
                       <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
                       <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
                       <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
@@ -1019,19 +1023,23 @@ export default function Invoices() {
                             </div>
                           </td>
                           <td className="px-5 py-3.5">
-                            {invoice.tenant ? (
-                              <button
-                                onMouseEnter={() => prefetch(`/dashboard/tenants/${invoice.tenant}`)}
-                                onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${invoice.tenant}`) }}
-                                className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
-                              >
-                                {invoice.tenant_name || 'Unknown Tenant'}
-                              </button>
-                            ) : (
-                              <p className="text-gray-900">{invoice.tenant_name || 'Unknown Tenant'}</p>
-                            )}
+                            {(() => {
+                              const isLevy = invoice.payer_type === 'levy'
+                              const route = isLevy
+                                ? `/dashboard/account-holders/${invoice.tenant}`
+                                : `/dashboard/tenants/${invoice.tenant}`
+                              return (
+                                <PayerCell
+                                  name={invoice.tenant_name}
+                                  code={invoice.tenant_code}
+                                  payerType={invoice.payer_type}
+                                  onClick={invoice.tenant ? () => navigate(route) : undefined}
+                                  onMouseEnter={invoice.tenant ? () => prefetch(route) : undefined}
+                                />
+                              )
+                            })()}
                             {invoice.unit_name && (
-                              <p className="text-xs text-gray-500">{invoice.unit_name}</p>
+                              <p className="text-xs text-gray-500 mt-0.5">{invoice.unit_name}</p>
                             )}
                           </td>
                           <td className="px-5 py-3.5 text-right">
@@ -1152,17 +1160,11 @@ export default function Invoices() {
           }}
           className="space-y-5"
         >
-          {/* Tenant Select */}
-          <AsyncSelect
-            label="Tenant"
-            placeholder="Select tenant"
+          {/* Payer Select — covers both Tenants and Account Holders */}
+          <PayerSelect
             value={form.tenant}
             onChange={(val) => setForm({ ...form, tenant: String(val), lease: '', unit: '' })}
-            options={tenants?.map((t: any) => ({ value: t.id, label: `${t.name} (${t.code})${t.unit_name ? ` - ${t.unit_name}` : ''}` })) || []}
-            isLoading={tenantsLoading}
             required
-            searchable
-            emptyMessage="No tenants found. Create a tenant first in Masterfile."
           />
 
           {/* Lease — required. Auto-selected when only one active lease exists. */}
@@ -1413,7 +1415,7 @@ export default function Invoices() {
               <div className="p-6 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-gray-500">Tenant</p>
+                    <p className="text-sm text-gray-500">Payer</p>
                     <p className="font-medium text-gray-900">{selectedInvoice.tenant_name}</p>
                   </div>
                   <div>

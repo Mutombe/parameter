@@ -15,6 +15,8 @@ def _resolve_property_from_lease(lease):
 
 class InvoiceSerializer(serializers.ModelSerializer):
     tenant_name = serializers.CharField(source='tenant.name', read_only=True)
+    tenant_code = serializers.CharField(source='tenant.code', read_only=True)
+    payer_type = serializers.CharField(source='tenant.account_type', read_only=True)
     unit_display = serializers.CharField(source='unit.__str__', read_only=True)
     journal_number = serializers.CharField(source='journal.journal_number', read_only=True)
     property_name = serializers.SerializerMethodField()
@@ -25,7 +27,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invoice
         fields = [
-            'id', 'invoice_number', 'tenant', 'tenant_name', 'lease', 'unit',
+            'id', 'invoice_number', 'tenant', 'tenant_name', 'tenant_code',
+            'payer_type', 'lease', 'unit',
             'unit_display', 'property_name', 'property_id',
             'landlord_name', 'landlord_id',
             'invoice_type', 'status', 'date', 'due_date',
@@ -99,6 +102,8 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
 
 class ReceiptSerializer(serializers.ModelSerializer):
     tenant_name = serializers.CharField(source='tenant.name', read_only=True)
+    tenant_code = serializers.CharField(source='tenant.code', read_only=True)
+    payer_type = serializers.CharField(source='tenant.account_type', read_only=True)
     invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
     journal_number = serializers.CharField(source='journal.journal_number', read_only=True)
     income_type_name = serializers.CharField(source='income_type.name', read_only=True, default=None)
@@ -106,7 +111,8 @@ class ReceiptSerializer(serializers.ModelSerializer):
     class Meta:
         model = Receipt
         fields = [
-            'id', 'receipt_number', 'tenant', 'tenant_name', 'invoice',
+            'id', 'receipt_number', 'tenant', 'tenant_name', 'tenant_code',
+            'payer_type', 'invoice',
             'invoice_number', 'income_type', 'income_type_name', 'bank_account',
             'date', 'amount', 'currency', 'payment_method',
             'reference', 'bank_name', 'description', 'notes', 'journal',
