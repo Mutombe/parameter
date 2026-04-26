@@ -1,5 +1,6 @@
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -19,6 +20,9 @@ import {
   TrendingUp,
   Plus,
   Building2,
+  Edit2,
+  Check,
+  X,
 } from 'lucide-react'
 import { invoiceApi, receiptApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
@@ -26,6 +30,7 @@ import { printInvoice } from '../../lib/printTemplate'
 import { Button } from '../../components/ui'
 import { usePrefetch } from '../../hooks/usePrefetch'
 import { TbUserSquareRounded } from 'react-icons/tb'
+import { showToast, parseApiError } from '../../lib/toast'
 
 const container = {
   hidden: { opacity: 0 },
@@ -164,6 +169,28 @@ export default function InvoiceDetail() {
 
   // Line items from invoice
   const lineItems = invoice?.line_items || invoice?.items || []
+
+  // --- Editable description ---
+  const queryClient = useQueryClient()
+  const [editingDesc, setEditingDesc] = useState(false)
+  const [descDraft, setDescDraft] = useState('')
+
+  useEffect(() => {
+    if (!editingDesc && invoice?.description !== undefined) {
+      setDescDraft(invoice.description || '')
+    }
+  }, [invoice?.description, editingDesc])
+
+  const updateDescriptionMutation = useMutation({
+    mutationFn: (description: string) => invoiceApi.update(invoiceId, { description }),
+    onSuccess: (res) => {
+      queryClient.setQueryData(['invoice', invoiceId], res.data)
+      queryClient.invalidateQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'invoices' })
+      setEditingDesc(false)
+      showToast.success('Description updated')
+    },
+    onError: (err) => showToast.error(parseApiError(err)),
+  })
 
   const handlePrint = () => {
     if (!invoice) return
@@ -335,6 +362,65 @@ export default function InvoiceDetail() {
             </div>
           </div>
         )}
+      </motion.div>
+
+      {/* Description */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="bg-white rounded-xl border border-gray-200 p-4 md:p-6"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Description</p>
+            {editingDesc ? (
+              <textarea
+                value={descDraft}
+                onChange={(e) => setDescDraft(e.target.value)}
+                rows={2}
+                autoFocus
+                className="w-full text-sm text-gray-900 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-y"
+                placeholder="e.g. March Rent Charge"
+              />
+            ) : (
+              <p className="text-sm text-gray-900 whitespace-pre-wrap min-h-[1.25rem]">
+                {invoice?.description || <span className="text-gray-400 italic">No description</span>}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {editingDesc ? (
+              <>
+                <button
+                  onClick={() => updateDescriptionMutation.mutate(descDraft.trim())}
+                  disabled={updateDescriptionMutation.isPending || descDraft.trim() === (invoice?.description || '')}
+                  className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title="Save"
+                >
+                  <Check className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => { setDescDraft(invoice?.description || ''); setEditingDesc(false) }}
+                  disabled={updateDescriptionMutation.isPending}
+                  className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Cancel"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setEditingDesc(true)}
+                disabled={isLoading}
+                className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg disabled:opacity-40 transition-colors"
+                title="Edit description"
+              >
+                <Edit2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
       </motion.div>
 
       {/* KPI Cards */}

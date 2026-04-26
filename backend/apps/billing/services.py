@@ -97,7 +97,7 @@ def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, cre
             amount=lease.monthly_rent,
             vat_amount=Decimal('0'),
             currency=lease.currency,
-            description=f'{desc_label} for {period_start.strftime("%B %Y")} - {location}',
+            description=f'{period_start.strftime("%B")} {desc_label} Charge',
             created_by=created_by
         ))
 
