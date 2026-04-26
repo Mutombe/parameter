@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
-import { landlordApi, propertyApi, unitApi, tenantApi, leaseApi } from '../services/api'
+import { landlordApi, propertyApi, unitApi, tenantApi, accountHolderApi, leaseApi } from '../services/api'
 import { showToast, parseApiError } from '../lib/toast'
 import { Button } from './ui'
 import {
@@ -39,6 +39,7 @@ const ENTITY_ICONS: Record<EntityType, any> = {
   property: PiBuildingApartmentLight,
   unit: PiBuildingApartmentLight,
   tenant: TbUserSquareRounded,
+  'account-holder': TbUserSquareRounded,
   lease: TbUserSquareRounded,
 }
 
@@ -52,6 +53,8 @@ function createApiCall(entity: EntityType, data: any) {
       return unitApi.create(data)
     case 'tenant':
       return tenantApi.create(data)
+    case 'account-holder':
+      return accountHolderApi.create(data)
     case 'lease':
       return leaseApi.create(data)
   }
@@ -67,6 +70,8 @@ function getEntityName(entity: EntityType, data: any): string {
       return data.unit_number || 'Unit'
     case 'tenant':
       return data.name || 'Tenant'
+    case 'account-holder':
+      return data.name || 'Account Holder'
     case 'lease':
       return 'Lease'
   }
@@ -78,6 +83,7 @@ function invalidateEntity(entity: EntityType, queryClient: any) {
     property: ['propert', 'properties'],
     unit: ['unit', 'units'],
     tenant: ['tenant', 'tenants'],
+    'account-holder': ['account-holder', 'account-holders'],
     lease: ['lease', 'leases'],
   }
   const entityPrefixes = prefixes[entity] || []
@@ -462,6 +468,16 @@ export default function ChainedCreationModal() {
                   )}
                   {currentEntity === 'tenant' && (
                     <TenantForm
+                      ref={formRef as any}
+                      initialValues={prefill}
+                      onSubmit={handleSubmit}
+                      isSubmitting={mutation.isPending}
+                      showButtons={false}
+                    />
+                  )}
+                  {currentEntity === 'account-holder' && (
+                    <TenantForm
+                      kind="account-holder"
                       ref={formRef as any}
                       initialValues={prefill}
                       onSubmit={handleSubmit}

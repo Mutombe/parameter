@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type EntityType = 'landlord' | 'property' | 'unit' | 'tenant' | 'lease'
+export type EntityType = 'landlord' | 'property' | 'unit' | 'tenant' | 'account-holder' | 'lease'
 
 export interface ChainStep {
   entity: EntityType
@@ -29,6 +29,7 @@ const CHAIN_MAP: Record<EntityType, { next: EntityType | null; prefillField: str
   property: { next: 'lease', prefillField: 'property' },
   unit: { next: null, prefillField: null },
   tenant: { next: 'lease', prefillField: 'tenant' },
+  'account-holder': { next: 'lease', prefillField: 'tenant' },
   lease: { next: null, prefillField: null },
 }
 
@@ -37,6 +38,7 @@ export const CHAIN_LABELS: Record<EntityType, string> = {
   property: 'Property',
   unit: 'Unit',
   tenant: 'Tenant',
+  'account-holder': 'Account Holder',
   lease: 'Lease',
 }
 

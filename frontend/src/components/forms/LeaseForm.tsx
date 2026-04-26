@@ -183,7 +183,7 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
             required
             searchable
             onSearch={setTenantSearch}
-            onCreateNew={() => startChain('tenant')}
+            onCreateNew={() => startChain(isLevy ? 'account-holder' : 'tenant')}
             createNewLabel={isLevy ? '+ Create new account holder' : '+ Create new tenant'}
           />
 
