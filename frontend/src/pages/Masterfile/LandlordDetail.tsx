@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
@@ -200,6 +200,7 @@ export default function LandlordDetail() {
   const navigate = useNavigate()
   const prefetch = usePrefetch()
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const landlordId = Number(id)
 
   // Active tab tracking for lazy-loading queries
@@ -213,6 +214,19 @@ export default function LandlordDetail() {
 
   // Lease creation modal
   const [showLeaseModal, setShowLeaseModal] = useState(false)
+
+  // Auto-open the next modal in a creation chain (e.g. landlord → property).
+  // Triggered via ?createNext=property|lease in the URL after a redirect.
+  useEffect(() => {
+    const next = searchParams.get('createNext')
+    if (!next) return
+    if (next === 'property') setShowPropertyModal(true)
+    else if (next === 'lease') setShowLeaseModal(true)
+    // Strip the param so a refresh doesn't re-open the modal.
+    const sp = new URLSearchParams(searchParams)
+    sp.delete('createNext')
+    setSearchParams(sp, { replace: true })
+  }, [searchParams, setSearchParams])
 
   // Transactions tab type filter
   const [txnTypeFilter, setTxnTypeFilter] = useState<'all' | 'invoices' | 'receipts'>('all')
@@ -369,7 +383,8 @@ export default function LandlordDetail() {
         return key.startsWith('landlord') || key.startsWith('propert')
       }})
       if (response?.data?.id) {
-        navigate(`/dashboard/properties/${response.data.id}`)
+        // Chain: open the lease modal automatically on the property detail page.
+        navigate(`/dashboard/properties/${response.data.id}?createNext=lease`)
       }
     },
     onError: (error) => {

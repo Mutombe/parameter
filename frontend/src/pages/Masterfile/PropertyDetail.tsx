@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
@@ -151,6 +151,7 @@ export default function PropertyDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const propertyId = Number(id)
   const prefetch = usePrefetch()
 
@@ -165,6 +166,17 @@ export default function PropertyDetail() {
 
   // Lease creation modal
   const [showLeaseModal, setShowLeaseModal] = useState(false)
+
+  // Auto-open the lease modal when arriving via the creation chain
+  // (?createNext=lease set by the previous step's redirect).
+  useEffect(() => {
+    const next = searchParams.get('createNext')
+    if (!next) return
+    if (next === 'lease') setShowLeaseModal(true)
+    const sp = new URLSearchParams(searchParams)
+    sp.delete('createNext')
+    setSearchParams(sp, { replace: true })
+  }, [searchParams, setSearchParams])
 
   // Billing generation modal
   const [showBillingModal, setShowBillingModal] = useState(false)

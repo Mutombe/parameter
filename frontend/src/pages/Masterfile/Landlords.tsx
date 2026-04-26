@@ -200,9 +200,10 @@ export default function Landlords() {
         const key = q.queryKey[0] as string
         return key === 'landlords' || key.startsWith('landlord')
       }})
-      // Navigate to detail page after creation (not update)
+      // Navigate to detail page after creation (not update). Chain into the
+      // property modal so the user can keep building landlord → property → lease.
       if (!context?.isUpdating && response?.data?.id) {
-        navigate(`/dashboard/landlords/${response.data.id}`)
+        navigate(`/dashboard/landlords/${response.data.id}?createNext=property`)
       }
     },
     onError: (error, _, context) => {

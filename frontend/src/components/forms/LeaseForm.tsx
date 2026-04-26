@@ -4,7 +4,7 @@ import { Upload, XCircle } from 'lucide-react'
 import { Input, Select, Textarea } from '../ui'
 import { AutocompleteInput } from '../ui/AutocompleteInput'
 import { AsyncSelect } from '../ui/AsyncSelect'
-import { tenantApi, unitApi, propertyApi } from '../../services/api'
+import { tenantApi, accountHolderApi, unitApi, propertyApi } from '../../services/api'
 import { useDebounce } from '../../lib/utils'
 import { useChainStore } from '../../stores/chainStore'
 
@@ -39,21 +39,9 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
     })
     const [documentFile, setDocumentFile] = useState<File | null>(null)
 
-    // Server-side search for tenants
+    // Server-side search for tenants / account holders
     const [tenantSearch, setTenantSearch] = useState('')
     const debouncedTenantSearch = useDebounce(tenantSearch, 300)
-
-    const { data: tenants, isLoading: tenantsLoading } = useQuery({
-      queryKey: ['tenants-list', debouncedTenantSearch],
-      queryFn: () => tenantApi.list(debouncedTenantSearch ? { search: debouncedTenantSearch } : {}).then((r) => r.data.results || r.data),
-      staleTime: 30000,
-    })
-
-    const { data: allUnits, isLoading: unitsLoading } = useQuery({
-      queryKey: ['units-all'],
-      queryFn: () => unitApi.list().then((r) => r.data.results || r.data),
-      staleTime: 30000,
-    })
 
     const { data: properties, isLoading: propertiesLoading } = useQuery({
       queryKey: ['properties-list'],
@@ -61,9 +49,48 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
       staleTime: 30000,
     })
 
-    const selectedPropertyName = properties?.find(
-      (p: any) => String(p.id) === form.property
-    )?.name
+    const selectedProp = properties?.find((p: any) => String(p.id) === form.property)
+    const selectedPropertyName = selectedProp?.name
+    const isLevy = selectedProp?.management_type === 'levy'
+
+    // Levy properties pull from Account Holders; rental from Tenants.
+    const { data: tenants, isLoading: tenantsLoading } = useQuery({
+      queryKey: ['tenants-list', debouncedTenantSearch],
+      queryFn: () => tenantApi.list(debouncedTenantSearch ? { search: debouncedTenantSearch } : {}).then((r) => r.data.results || r.data),
+      staleTime: 30000,
+      enabled: !isLevy,
+    })
+
+    const { data: accountHolders, isLoading: accountHoldersLoading } = useQuery({
+      queryKey: ['account-holders-list', debouncedTenantSearch],
+      queryFn: () => accountHolderApi.list(debouncedTenantSearch ? { search: debouncedTenantSearch } : {}).then((r) => r.data.results || r.data),
+      staleTime: 30000,
+      enabled: isLevy,
+    })
+
+    const payerOptions: any[] = isLevy ? (accountHolders || []) : (tenants || [])
+    const payerLoading = isLevy ? accountHoldersLoading : tenantsLoading
+
+    // When property changes management type, the previously-selected payer
+    // (a tenant on the rental side, an account holder on the levy side) is
+    // no longer in the list — clear it so the user picks a valid one.
+    const lastIsLevyRef = useRef<boolean | null>(null)
+    useEffect(() => {
+      if (lastIsLevyRef.current === null) {
+        lastIsLevyRef.current = isLevy
+        return
+      }
+      if (lastIsLevyRef.current !== isLevy) {
+        lastIsLevyRef.current = isLevy
+        setForm(prev => ({ ...prev, tenant: '' }))
+      }
+    }, [isLevy])
+
+    const { data: allUnits, isLoading: unitsLoading } = useQuery({
+      queryKey: ['units-all'],
+      queryFn: () => unitApi.list().then((r) => r.data.results || r.data),
+      staleTime: 30000,
+    })
 
     const units = allUnits?.filter(
       (u: any) =>
@@ -147,17 +174,17 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <AsyncSelect
-            label="Tenant"
-            placeholder="Select Tenant"
+            label={isLevy ? 'Account Holder' : 'Tenant'}
+            placeholder={isLevy ? 'Select Account Holder' : 'Select Tenant'}
             value={form.tenant}
             onChange={(val) => setForm({ ...form, tenant: String(val) })}
-            options={tenants?.map((t: any) => ({ value: t.id, label: t.name })) || []}
-            isLoading={tenantsLoading}
+            options={payerOptions.map((t: any) => ({ value: t.id, label: t.name })) || []}
+            isLoading={payerLoading}
             required
             searchable
             onSearch={setTenantSearch}
             onCreateNew={() => startChain('tenant')}
-            createNewLabel="+ Create new tenant"
+            createNewLabel={isLevy ? '+ Create new account holder' : '+ Create new tenant'}
           />
 
           <AsyncSelect
