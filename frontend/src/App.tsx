@@ -23,6 +23,8 @@ const Units = lazy(() => import('./pages/Masterfile/Units'))
 const UnitDetail = lazy(() => import('./pages/Masterfile/UnitDetail'))
 const Tenants = lazy(() => import('./pages/Masterfile/Tenants'))
 const TenantDetail = lazy(() => import('./pages/Masterfile/TenantDetail'))
+const AccountHolders = lazy(() => import('./pages/Masterfile/AccountHolders'))
+const AccountHolderDetail = lazy(() => import('./pages/Masterfile/AccountHolderDetail'))
 const Leases = lazy(() => import('./pages/Masterfile/Leases'))
 const LeaseDetail = lazy(() => import('./pages/Masterfile/LeaseDetail'))
 const Invoices = lazy(() => import('./pages/Billing/Invoices'))
@@ -192,6 +194,8 @@ export default function App() {
         <Route path="units/:id" element={<LazyPage><UnitDetail /></LazyPage>} />
         <Route path="tenants" element={<LazyPage><Tenants /></LazyPage>} />
         <Route path="tenants/:id" element={<LazyPage><TenantDetail /></LazyPage>} />
+        <Route path="account-holders" element={<LazyPage><AccountHolders /></LazyPage>} />
+        <Route path="account-holders/:id" element={<LazyPage><AccountHolderDetail /></LazyPage>} />
         <Route path="leases" element={<LazyPage><Leases /></LazyPage>} />
         <Route path="leases/:id" element={<LazyPage><LeaseDetail /></LazyPage>} />
         <Route path="invoices" element={<LazyPage><Invoices /></LazyPage>} />

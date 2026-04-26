@@ -75,6 +75,7 @@ const navigation: NavSection[] = [
       { name: 'Properties', href: '/dashboard/properties', icon: PiBuildingApartmentLight },
       { name: 'Units', href: '/dashboard/units', icon: Home },
       { name: 'Tenants', href: '/dashboard/tenants', icon: LiaUsersSolid },
+      { name: 'Account Holders', href: '/dashboard/account-holders', icon: TbUserSquareRounded },
       { name: 'Leases', href: '/dashboard/leases', icon: FileText },
       { name: 'Maintenance', href: '/dashboard/maintenance', icon: Wrench },
     ],

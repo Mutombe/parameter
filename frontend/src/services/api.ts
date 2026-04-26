@@ -285,6 +285,17 @@ export const tenantApi = {
   detailView: (id: number) => api.get(`/masterfile/tenants/${id}/detail_view/`),
 }
 
+export const accountHolderApi = {
+  list: (params?: object) => api.get('/masterfile/account-holders/', { params }),
+  get: (id: number) => api.get(`/masterfile/account-holders/${id}/`),
+  create: (data: object) => api.post('/masterfile/account-holders/', data),
+  update: (id: number, data: object) => api.patch(`/masterfile/account-holders/${id}/`, data),
+  delete: (id: number) => api.delete(`/masterfile/account-holders/${id}/`),
+  ledger: (id: number, params?: { period_start?: string; period_end?: string }) =>
+    api.get(`/masterfile/account-holders/${id}/ledger/`, { params }),
+  detailView: (id: number) => api.get(`/masterfile/account-holders/${id}/detail_view/`),
+}
+
 export const leaseApi = {
   list: (params?: object) => api.get('/masterfile/leases/', { params }),
   get: (id: number) => api.get(`/masterfile/leases/${id}/`),

@@ -258,6 +258,21 @@ class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets
         })
 
 
+class AccountHolderViewSet(RentalTenantViewSet):
+    """CRUD for Account Holders — levy-side payers.
+
+    Backed by the same RentalTenant table as tenants, but locked to
+    account_type='levy'. Account holders pay levies, special levies,
+    rates, maintenance, and parking (vs. tenants who pay rent + extras).
+    """
+
+    def get_queryset(self):
+        return super().get_queryset().filter(account_type='levy')
+
+    def perform_create(self, serializer):
+        serializer.save(account_type='levy')
+
+
 class LeaseAgreementViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Lease Agreements."""
     queryset = LeaseAgreement.objects.select_related(

@@ -118,6 +118,7 @@ export default function Tenants() {
   const { data: tenantsData, isLoading } = useQuery({
     queryKey: ['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter],
     queryFn: () => tenantApi.list({
+      account_type: 'rental',
       search: debouncedSearch,
       page: currentPage,
       page_size: PAGE_SIZE,

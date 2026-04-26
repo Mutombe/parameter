@@ -4,6 +4,7 @@ import {
   propertyApi,
   landlordApi,
   tenantApi,
+  accountHolderApi,
   unitApi,
   leaseApi,
   invoiceApi,
@@ -27,6 +28,7 @@ const detailApiMap: Record<string, { api: { get: (id: number) => Promise<any> };
   properties: { api: propertyApi, keyPrefix: 'property' },
   landlords: { api: landlordApi, keyPrefix: 'landlord' },
   tenants: { api: tenantApi, keyPrefix: 'tenant' },
+  'account-holders': { api: accountHolderApi, keyPrefix: 'account-holder' },
   units: { api: unitApi, keyPrefix: 'unit' },
   leases: { api: leaseApi, keyPrefix: 'lease' },
   invoices: { api: invoiceApi, keyPrefix: 'invoice' },
@@ -43,6 +45,10 @@ const detailRelatedQueries: Record<string, (id: number) => { queryKey: unknown[]
     { queryKey: ['tenant-detail-view', id], queryFn: () => tenantApi.detailView(id).then(r => r.data) },
     { queryKey: ['tenant-ledger', id, '', ''], queryFn: () => tenantApi.ledger(id).then(r => r.data) },
   ],
+  'account-holders': (id) => [
+    { queryKey: ['account-holder-detail', id], queryFn: () => accountHolderApi.detailView(id).then(r => r.data) },
+    { queryKey: ['account-holder-ledger', id, '', ''], queryFn: () => accountHolderApi.ledger(id).then(r => r.data) },
+  ],
   landlords: (id) => [
     { queryKey: ['landlord-statement', id], queryFn: () => landlordApi.statement(id).then(r => r.data) },
   ],
@@ -58,7 +64,7 @@ export function usePrefetch() {
     (path: string) => {
       // Try detail page pattern: /dashboard/<entity>/<id>
       const detailMatch = path.match(
-        /\/dashboard\/(properties|landlords|tenants|units|leases|invoices|receipts|expenses)\/(\d+)/,
+        /\/dashboard\/(properties|landlords|tenants|account-holders|units|leases|invoices|receipts|expenses)\/(\d+)/,
       )
       if (detailMatch) {
         const [, entity, id] = detailMatch

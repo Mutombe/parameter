@@ -17,14 +17,17 @@ interface TenantFormProps {
   isSubmitting?: boolean
   showButtons?: boolean
   onCancel?: () => void
+  /** 'tenant' = rental side. 'account-holder' = levy side. */
+  kind?: 'tenant' | 'account-holder'
 }
 
 const TenantForm = forwardRef<TenantFormRef, TenantFormProps>(
-  ({ initialValues, onSubmit, isSubmitting, showButtons = true, onCancel }, ref) => {
+  ({ initialValues, onSubmit, isSubmitting, showButtons = true, onCancel, kind = 'tenant' }, ref) => {
+    const isLevy = kind === 'account-holder'
     const [form, setForm] = useState({
       name: '',
       tenant_type: 'individual',
-      account_type: 'rental',
+      account_type: isLevy ? 'levy' : 'rental',
       email: '',
       phone: '',
       id_type: 'national_id',
@@ -41,8 +44,10 @@ const TenantForm = forwardRef<TenantFormRef, TenantFormProps>(
     })
 
     const { data: propertiesData } = useQuery({
-      queryKey: ['properties-for-tenant'],
-      queryFn: () => propertyApi.list().then((r) => r.data),
+      queryKey: ['properties-for-tenant', kind],
+      queryFn: () => propertyApi.list(
+        isLevy ? { management_type: 'levy' } : { management_type: 'rental' }
+      ).then((r) => r.data),
     })
     const properties = propertiesData?.results || propertiesData || []
 
@@ -96,18 +101,18 @@ const TenantForm = forwardRef<TenantFormRef, TenantFormProps>(
     return (
       <form onSubmit={handleSubmit} className="space-y-4">
         <AutocompleteInput
-          label="Name"
-          placeholder="Tenant name"
+          label={isLevy ? 'Account Holder Name' : 'Name'}
+          placeholder={isLevy ? 'Account holder name' : 'Tenant name'}
           value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
           onFetchSuggestions={fetchNameSuggestions}
-          recentKey="tenant_names"
+          recentKey={isLevy ? 'account_holder_names' : 'tenant_names'}
           required
         />
 
         <div className="grid grid-cols-2 gap-4">
           <Select
-            label="Tenant Type"
+            label={isLevy ? 'Holder Type' : 'Tenant Type'}
             value={form.tenant_type}
             onChange={(e) => setForm({ ...form, tenant_type: e.target.value })}
             options={[
@@ -118,7 +123,7 @@ const TenantForm = forwardRef<TenantFormRef, TenantFormProps>(
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Account Type</label>
             <p className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
-              Auto-assigned when lease is created
+              {isLevy ? 'Levy (locked for account holders)' : 'Auto-assigned when lease is created'}
             </p>
           </div>
         </div>
