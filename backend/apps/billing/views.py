@@ -65,7 +65,21 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
         return InvoiceSerializer
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        """Save the invoice and post it to the GL immediately.
+
+        Auto-posting matches the user-facing flow: an invoice is recognized
+        debt the moment it is created. If posting fails, log it but keep the
+        invoice — the user can retry from the detail page.
+        """
+        import logging
+        invoice = serializer.save(created_by=self.request.user)
+        try:
+            invoice.post_to_ledger(self.request.user)
+        except Exception as e:
+            logging.getLogger(__name__).warning(
+                f'Auto-post failed for invoice {invoice.invoice_number}: {e}',
+                exc_info=True,
+            )
 
     @action(detail=True, methods=['post'])
     def post_to_ledger(self, request, pk=None):

@@ -134,6 +134,20 @@ def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, cre
         errors.append(f'Bulk create failed: {str(e)}')
         return [], errors
 
+    # Auto-post to GL — invoices are recognized debt the moment they exist.
+    # Per-invoice try/except so one bad post doesn't abort the batch.
+    import logging
+    logger = logging.getLogger(__name__)
+    for inv in created_invoices:
+        if inv.id and not inv.journal_id:
+            try:
+                inv.post_to_ledger()
+            except Exception as e:
+                logger.warning(
+                    f'Auto-post failed for invoice {inv.invoice_number}: {e}',
+                    exc_info=True,
+                )
+
     return created_invoices, errors
 
 

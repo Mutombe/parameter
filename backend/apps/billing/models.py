@@ -227,7 +227,15 @@ class Invoice(SoftDeleteModel):
             }
         )
 
-        ar_account = ChartOfAccount.objects.get(code='1200')
+        ar_account, _ = ChartOfAccount.objects.get_or_create(
+            code='1200',
+            defaults={
+                'name': 'Accounts Receivable',
+                'account_type': 'asset',
+                'account_subtype': 'accounts_receivable',
+                'is_system': True,
+            },
+        )
 
         # Build description in trust accounting format
         invoice_type_label = self.get_invoice_type_display()
@@ -393,11 +401,34 @@ class Receipt(SoftDeleteModel):
         return f'{prefix}{num:04d}'
 
     def _resolve_cash_account(self):
-        """Get the cash/bank GL account based on payment method."""
+        """Get the cash/bank GL account based on payment method.
+
+        Uses get_or_create so a fresh tenant schema without a fully seeded
+        chart of accounts can still post receipts — the missing account is
+        materialized with a sensible default and marked as a system account.
+        """
         if self.payment_method == self.PaymentMethod.CASH:
-            return ChartOfAccount.objects.get(code='1000')
+            account, _ = ChartOfAccount.objects.get_or_create(
+                code='1000',
+                defaults={
+                    'name': 'Cash on Hand',
+                    'account_type': 'asset',
+                    'account_subtype': 'cash',
+                    'is_system': True,
+                },
+            )
+            return account
         code = '1100' if self.currency == 'USD' else '1110'
-        return ChartOfAccount.objects.get(code=code)
+        account, _ = ChartOfAccount.objects.get_or_create(
+            code=code,
+            defaults={
+                'name': 'Bank Account' if code == '1100' else 'Bank Account (ZWG)',
+                'account_type': 'asset',
+                'account_subtype': 'bank',
+                'is_system': True,
+            },
+        )
+        return account
 
     def _get_cash_contra_code(self):
         """Get the spec-format cash account code for subsidiary entries."""
@@ -526,7 +557,15 @@ class Receipt(SoftDeleteModel):
 
         # === Resolve accounts ===
         cash_account = self._resolve_cash_account()
-        ar_account = ChartOfAccount.objects.get(code='1200')
+        ar_account, _ = ChartOfAccount.objects.get_or_create(
+            code='1200',
+            defaults={
+                'name': 'Accounts Receivable',
+                'account_type': 'asset',
+                'account_subtype': 'accounts_receivable',
+                'is_system': True,
+            },
+        )
         unpaid_rent_account = get_or_create_account(
             '2200', 'Unpaid Rent (Deferred Revenue)', 'liability', 'tenant_deposits'
         )
@@ -880,7 +919,15 @@ class Expense(SoftDeleteModel):
         else:
             debit_account = expense_account
 
-        cash_account = ChartOfAccount.objects.get(code='1100')  # Bank
+        cash_account, _ = ChartOfAccount.objects.get_or_create(
+            code='1100',
+            defaults={
+                'name': 'Bank Account',
+                'account_type': 'asset',
+                'account_subtype': 'bank',
+                'is_system': True,
+            },
+        )
 
         # Create journal
         journal = Journal.objects.create(

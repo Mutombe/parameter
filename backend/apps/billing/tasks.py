@@ -147,6 +147,12 @@ def generate_monthly_invoices_for_tenant(tenant):
                 invoices_created += 1
                 logger.info(f"Created invoice {invoice.invoice_number} for {lease.tenant.name}")
 
+                # Auto-post to GL
+                try:
+                    invoice.post_to_ledger(system_user)
+                except Exception as e:
+                    logger.warning(f"Auto-post failed for {invoice.invoice_number}: {e}", exc_info=True)
+
                 # Email tenant about the new invoice
                 try:
                     from apps.notifications.utils import send_tenant_email
