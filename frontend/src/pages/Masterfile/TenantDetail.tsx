@@ -893,25 +893,50 @@ export default function TenantDetail() {
                   : 'Trust accounting sub-ledger view'}
             </p>
           </div>
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-            <button
-              onClick={() => setStatementSource('operational')}
-              className={cn(
-                'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
-                statementSource === 'operational' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              )}
-            >
-              Operational
-            </button>
-            <button
-              onClick={() => setStatementSource('trust')}
-              className={cn(
-                'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
-                statementSource === 'trust' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              )}
-            >
-              Trust Accounting
-            </button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+              <button
+                onClick={() => setStatementSource('operational')}
+                className={cn(
+                  'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
+                  statementSource === 'operational' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                )}
+              >
+                Operational
+              </button>
+              <button
+                onClick={() => setStatementSource('trust')}
+                className={cn(
+                  'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
+                  statementSource === 'trust' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                )}
+              >
+                Trust Accounting
+              </button>
+            </div>
+            {statementSource === 'operational' && (
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await tenantApi.exportStatement(tenantId, {
+                      period_start: ledgerDateFrom || undefined,
+                      period_end: ledgerDateTo || undefined,
+                    })
+                    const url = URL.createObjectURL(new Blob([res.data]))
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `${tenantInfo?.code || 'tenant'}_statement.csv`
+                    a.click()
+                    URL.revokeObjectURL(url)
+                  } catch (err) {
+                    showToast.error(parseApiError(err, 'Failed to download statement'))
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" /> Download
+              </button>
+            )}
           </div>
         </div>
 

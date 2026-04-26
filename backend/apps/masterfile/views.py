@@ -257,6 +257,61 @@ class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets
             **ledger_data,
         })
 
+    @action(detail=True, methods=['get'], url_path='export_statement')
+    def export_statement(self, request, pk=None):
+        """Download tenant's statement as CSV — bank-statement style."""
+        import csv
+        from django.http import HttpResponse
+        from django.utils import timezone
+
+        tenant = self.get_object()
+        period_start = request.query_params.get('period_start') or ''
+        period_end = request.query_params.get('period_end') or ''
+        ledger = get_tenant_ledger(
+            tenant,
+            period_start=period_start or None,
+            period_end=period_end or None,
+        )
+
+        period_label = (
+            f'{period_start}_to_{period_end}'
+            if period_start and period_end
+            else timezone.now().strftime('%Y-%m-%d')
+        )
+        filename = f'{tenant.code}_statement_{period_label}.csv'.replace('/', '-')
+
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        writer = csv.writer(response)
+        writer.writerow(['TENANT STATEMENT'])
+        writer.writerow([f'Tenant: {tenant.code} - {tenant.name}'])
+        if period_start or period_end:
+            writer.writerow([f'Period: {period_start or "—"} to {period_end or "—"}'])
+        writer.writerow([f'Generated: {timezone.now().strftime("%Y-%m-%d %H:%M")}'])
+        writer.writerow([])
+
+        writer.writerow(['Date', 'Type', 'Reference', 'Description', 'Debit', 'Credit', 'Balance'])
+        writer.writerow(['', '', '', 'Balance brought forward', '', '',
+                         f'{ledger["opening_balance"]:.2f}'])
+
+        for e in ledger['entries']:
+            writer.writerow([
+                e['date'],
+                e['type'],
+                e['reference'] or '',
+                e['description'] or '',
+                f'{e["debit"]:.2f}' if e['debit'] else '',
+                f'{e["credit"]:.2f}' if e['credit'] else '',
+                f'{e["balance"]:.2f}',
+            ])
+
+        writer.writerow([])
+        writer.writerow(['', '', '', 'Totals',
+                         f'{ledger["total_debits"]:.2f}',
+                         f'{ledger["total_credits"]:.2f}',
+                         f'{ledger["closing_balance"]:.2f}'])
+        return response
+
 
 class AccountHolderViewSet(RentalTenantViewSet):
     """CRUD for Account Holders — levy-side payers.
@@ -322,7 +377,23 @@ class LeaseAgreementViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewse
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        """Create the lease as ACTIVE and mark its unit occupied.
+
+        New leases default to active per business rule — edits can change the
+        status later. Wrapped in a transaction so the 1:1 active-lease
+        constraints validated in LeaseAgreement.save() roll back the unit
+        occupancy update if they fail.
+        """
+        from django.db import transaction
+        with transaction.atomic():
+            instance = serializer.save(
+                created_by=self.request.user,
+                status=LeaseAgreement.Status.ACTIVE,
+            )
+            if instance.unit and instance.lease_type != LeaseAgreement.LeaseType.LEVY:
+                if not instance.unit.is_occupied:
+                    instance.unit.is_occupied = True
+                    instance.unit.save(update_fields=['is_occupied'])
 
     @action(detail=True, methods=['post'], url_path='upload_document')
     def upload_document(self, request, pk=None):

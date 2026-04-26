@@ -359,23 +359,21 @@ export default function LandlordDetail() {
   const createPropertyMutation = useMutation({
     mutationFn: (data: any) => propertyApi.create(data),
     onMutate: () => {
-      // Close modal immediately (optimistic)
+      // Close modal immediately + announce redirect so the wait feels intentional.
       setShowPropertyModal(false)
+      showToast.info('Creating property — redirecting...')
     },
     onSuccess: (response) => {
-      showToast.success('Property created — redirecting...')
       queryClient.invalidateQueries({ predicate: (q) => {
         const key = q.queryKey[0] as string
         return key.startsWith('landlord') || key.startsWith('propert')
       }})
-      // Navigate to the new property's detail page
       if (response?.data?.id) {
         navigate(`/dashboard/properties/${response.data.id}`)
       }
     },
     onError: (error) => {
       showToast.error(parseApiError(error, 'Failed to create property'))
-      // Reopen modal so user can fix
       setShowPropertyModal(true)
     },
   })
@@ -393,9 +391,9 @@ export default function LandlordDetail() {
     },
     onMutate: () => {
       setShowLeaseModal(false)
+      showToast.info('Creating lease — redirecting...')
     },
     onSuccess: (response) => {
-      showToast.success('Lease created — redirecting...')
       queryClient.invalidateQueries({ predicate: (q) => {
         const key = q.queryKey[0] as string
         return key.startsWith('landlord') || key.startsWith('lease') || key.startsWith('propert')

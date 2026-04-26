@@ -148,6 +148,7 @@ export default function Landlords() {
 
       // Close modal immediately (optimistic)
       resetForm()
+      if (!isUpdating) showToast.info('Creating landlord — redirecting...')
 
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['landlords'] })
@@ -192,7 +193,9 @@ export default function Landlords() {
       return { previousData, isUpdating }
     },
     onSuccess: (response, __, context) => {
-      showToast.success(context?.isUpdating ? 'Landlord updated successfully' : 'Landlord created successfully')
+      // For updates we still confirm; for creates the info toast on mutate
+      // already announced the redirect.
+      if (context?.isUpdating) showToast.success('Landlord updated successfully')
       queryClient.invalidateQueries({ predicate: (q) => {
         const key = q.queryKey[0] as string
         return key === 'landlords' || key.startsWith('landlord')

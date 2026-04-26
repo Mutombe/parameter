@@ -283,6 +283,8 @@ export const tenantApi = {
   ledger: (id: number, params?: { period_start?: string; period_end?: string }) =>
     api.get(`/masterfile/tenants/${id}/ledger/`, { params }),
   detailView: (id: number) => api.get(`/masterfile/tenants/${id}/detail_view/`),
+  exportStatement: (id: number, params?: { period_start?: string; period_end?: string }) =>
+    api.get(`/masterfile/tenants/${id}/export_statement/`, { params, responseType: 'blob' }),
 }
 
 export const accountHolderApi = {
@@ -294,6 +296,8 @@ export const accountHolderApi = {
   ledger: (id: number, params?: { period_start?: string; period_end?: string }) =>
     api.get(`/masterfile/account-holders/${id}/ledger/`, { params }),
   detailView: (id: number) => api.get(`/masterfile/account-holders/${id}/detail_view/`),
+  exportStatement: (id: number, params?: { period_start?: string; period_end?: string }) =>
+    api.get(`/masterfile/account-holders/${id}/export_statement/`, { params, responseType: 'blob' }),
 }
 
 export const leaseApi = {

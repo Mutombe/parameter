@@ -387,9 +387,9 @@ export default function PropertyDetail() {
     },
     onMutate: () => {
       setShowLeaseModal(false)
+      showToast.info('Creating lease — redirecting...')
     },
     onSuccess: (response) => {
-      showToast.success('Lease created — redirecting...')
       queryClient.invalidateQueries({ predicate: (q) => {
         const key = q.queryKey[0] as string
         return key.startsWith('propert') || key.startsWith('lease') || key.startsWith('unit')

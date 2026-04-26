@@ -1,4 +1,4 @@
-import { useState, useImperativeHandle, forwardRef, useEffect } from 'react'
+import { useState, useImperativeHandle, forwardRef, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Upload, XCircle } from 'lucide-react'
 import { Input, Select, Textarea } from '../ui'
@@ -93,7 +93,13 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
       }
     }, [form.start_date])
 
-    // Deposit defaults to 0 — optional for all lease types, especially levy leases
+    // Auto-fill deposit to 100% of rent unless the user has manually edited it.
+    const depositManuallyEdited = useRef(false)
+    useEffect(() => {
+      if (depositManuallyEdited.current) return
+      if (!form.monthly_rent) return
+      setForm(prev => ({ ...prev, deposit_amount: prev.monthly_rent }))
+    }, [form.monthly_rent])
 
     const handleSubmit = (e?: React.FormEvent) => {
       e?.preventDefault()
@@ -248,7 +254,11 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
                       step="0.01"
                       min="0"
                       value={form.deposit_amount}
-                      onChange={(e) => setForm({ ...form, deposit_amount: e.target.value })}
+                      onChange={(e) => {
+                        depositManuallyEdited.current = true
+                        setForm({ ...form, deposit_amount: e.target.value })
+                      }}
+                      hint="Defaults to 100% of monthly rent"
                     />
                   </>
                 )}
