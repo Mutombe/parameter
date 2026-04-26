@@ -133,7 +133,8 @@ export default function Dashboard() {
     queryKey: ['dashboard-stats'],
     queryFn: () => reportsApi.dashboard().then(r => r.data),
     staleTime: 60 * 1000, // 60 seconds — live-updating stats
-    refetchInterval: 60 * 1000, // Auto-refresh every 60 seconds
+    refetchInterval: 60 * 1000, // Auto-refresh every 60 seconds,
+    placeholderData: keepPreviousData,
   })
 
   // Subsidiary accounts for financial overview

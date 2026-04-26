@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, keepPreviousData } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Building2,
@@ -56,6 +56,7 @@ export default function Register() {
   const { data: plansData } = useQuery({
     queryKey: ['subscription-plans'],
     queryFn: () => tenantsApi.getPlans().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   // Check subdomain availability

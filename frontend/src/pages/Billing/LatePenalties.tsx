@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   AlertTriangle,
   Plus,
@@ -85,32 +85,38 @@ export default function LatePenalties() {
   const { data: configsData, isLoading: configsLoading } = useQuery({
     queryKey: ['penalty-configs'],
     queryFn: () => penaltyApi.listConfigs().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data: exclusionsData, isLoading: exclusionsLoading } = useQuery({
     queryKey: ['penalty-exclusions'],
     queryFn: () => penaltyApi.listExclusions().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data: penaltyInvoicesData, isLoading: invoicesLoading } = useQuery({
     queryKey: ['penalty-invoices'],
     queryFn: () => penaltyApi.penaltyInvoices().then(r => r.data),
     enabled: activeTab === 'invoices',
+    placeholderData: keepPreviousData,
   })
 
   const { data: overdueSummary } = useQuery({
     queryKey: ['overdue-summary'],
     queryFn: () => penaltyApi.overdueSummary().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data: properties } = useQuery({
     queryKey: ['properties-select'],
     queryFn: () => propertyApi.list({ page_size: 100 }).then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data: tenants } = useQuery({
     queryKey: ['tenants-select'],
     queryFn: () => tenantApi.list({ page_size: 200 }).then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   // Mutations

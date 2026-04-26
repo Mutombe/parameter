@@ -729,6 +729,7 @@ function TrialBalanceReport() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['trial-balance'],
     queryFn: () => reportsApi.trialBalance().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   // Store data for export
@@ -913,6 +914,7 @@ function IncomeStatementReport() {
   const { data, isLoading } = useQuery({
     queryKey: ['income-statement'],
     queryFn: () => reportsApi.incomeStatement().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   // Store data for export
@@ -1090,6 +1092,7 @@ function BalanceSheetReport() {
   const { data, isLoading } = useQuery({
     queryKey: ['balance-sheet'],
     queryFn: () => reportsApi.balanceSheet().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   // Store data for export
@@ -1280,6 +1283,7 @@ function CashFlowReport() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['cash-flow'],
     queryFn: () => reportsApi.cashFlow().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   // Store data for export
@@ -1508,6 +1512,7 @@ function VacancyReport() {
   const { data, isLoading } = useQuery({
     queryKey: ['vacancy-report'],
     queryFn: () => reportsApi.vacancy().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   // Store data for export
@@ -1681,6 +1686,7 @@ function RentRollReport() {
   const { data, isLoading } = useQuery({
     queryKey: ['rent-roll'],
     queryFn: () => reportsApi.rentRoll().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   // Store data for export
@@ -1901,6 +1907,7 @@ function RentRolloverReport() {
     queryKey: ['rent-rollover-l2', drillState.propertyId, startDate, endDate],
     queryFn: () => reportsApi.rentRollover({ start_date: startDate, end_date: endDate, property_id: drillState.propertyId! }).then(r => r.data),
     enabled: drillState.level === 2 && !!drillState.propertyId,
+    placeholderData: keepPreviousData,
   })
 
   if (data) currentReportData = data
@@ -2132,6 +2139,7 @@ function CommissionByPropertyReport() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['commission-property'],
     queryFn: () => reportsApi.commission().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   if (data) currentReportData = data
@@ -2152,6 +2160,7 @@ function CommissionByPropertyReport() {
     queryKey: ['commission-property-l2', drillState.propertyId],
     queryFn: () => reportsApi.commissionPropertyDrilldown({ property_id: drillState.propertyId! }).then(r => r.data),
     enabled: drillState.level === 2 && !!drillState.propertyId,
+    placeholderData: keepPreviousData,
   })
 
   const filteredProperties = useMemo(() => {
@@ -2415,6 +2424,7 @@ function CommissionByIncomeReport() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['commission-income'],
     queryFn: () => reportsApi.commissionAnalysis().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   if (data) currentReportData = data
@@ -2603,11 +2613,13 @@ function AgedAnalysisReport() {
   const { data: propertiesData } = useQuery({
     queryKey: ['properties-list'],
     queryFn: () => propertyApi.list().then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data: landlordsData } = useQuery({
     queryKey: ['landlords-list'],
     queryFn: () => landlordApi.list().then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   if (analysisData) currentReportData = analysisData
@@ -2810,6 +2822,7 @@ function TenantAccountReport() {
   const { data: tenantsData } = useQuery({
     queryKey: ['tenants-list'],
     queryFn: () => tenantApi.list().then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data, isLoading, refetch } = useQuery({
@@ -2925,6 +2938,7 @@ function LandlordAccountReport() {
   const { data: landlordsData } = useQuery({
     queryKey: ['landlords-list'],
     queryFn: () => landlordApi.list().then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data, isLoading, refetch } = useQuery({
@@ -3068,6 +3082,7 @@ function BankToIncomeReport() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['bank-to-income'],
     queryFn: () => reportsApi.incomeItemAnalysis().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   // Level 2 data
@@ -3075,6 +3090,7 @@ function BankToIncomeReport() {
     queryKey: ['bank-to-income-l2', drillState.bankAccountId],
     queryFn: () => reportsApi.incomeItemDrilldown({ level: 2, bank_account_id: drillState.bankAccountId! }).then(r => r.data),
     enabled: drillState.level >= 2 && !!drillState.bankAccountId,
+    placeholderData: keepPreviousData,
   })
 
   // Level 3 data
@@ -3082,6 +3098,7 @@ function BankToIncomeReport() {
     queryKey: ['bank-to-income-l3', drillState.bankAccountId, drillState.incomeType],
     queryFn: () => reportsApi.incomeItemDrilldown({ level: 3, bank_account_id: drillState.bankAccountId!, income_type: drillState.incomeType }).then(r => r.data),
     enabled: drillState.level === 3 && !!drillState.bankAccountId && !!drillState.incomeType,
+    placeholderData: keepPreviousData,
   })
 
   if (data) currentReportData = data
@@ -3415,6 +3432,7 @@ function ReceiptsListingReport() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['receipts-listing'],
     queryFn: () => reportsApi.receiptListing().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   if (data) currentReportData = data
@@ -3550,6 +3568,7 @@ function DepositsListingReport() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['deposits-listing'],
     queryFn: () => reportsApi.depositSummary().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   if (data) currentReportData = data
@@ -3703,11 +3722,13 @@ function LeaseChargeSummaryReport() {
   const { data: propertiesData } = useQuery({
     queryKey: ['properties-list'],
     queryFn: () => propertyApi.list().then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data: landlordsData } = useQuery({
     queryKey: ['landlords-list'],
     queryFn: () => landlordApi.list().then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data, isLoading, refetch } = useQuery({
@@ -3864,6 +3885,7 @@ function IncomeExpenditureReport() {
   const { data: landlordsData } = useQuery({
     queryKey: ['landlords-list'],
     queryFn: () => landlordApi.list().then(r => r.data.results || r.data),
+    placeholderData: keepPreviousData,
   })
 
   const { data, isLoading, isError, error, refetch } = useQuery({

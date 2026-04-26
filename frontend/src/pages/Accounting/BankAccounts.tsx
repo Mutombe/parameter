@@ -65,6 +65,7 @@ export default function BankAccounts() {
   const { data: summary } = useQuery({
     queryKey: ['bank-accounts-summary'],
     queryFn: () => bankAccountApi.summary().then(r => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const seedMutation = useMutation({

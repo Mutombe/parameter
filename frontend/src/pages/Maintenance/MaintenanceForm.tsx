@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import api from '../../services/api'
 import { Input, Select, Textarea } from '../../components/ui'
 
@@ -43,6 +43,7 @@ export function MaintenanceForm({
   const { data: propertiesData } = useQuery({
     queryKey: ['properties-list'],
     queryFn: () => api.get('/properties/').then((r) => r.data),
+    placeholderData: keepPreviousData,
   })
 
   const properties = propertiesData?.results || propertiesData || []
@@ -55,6 +56,7 @@ export function MaintenanceForm({
         .get('/units/', { params: { property: formData.property } })
         .then((r) => r.data),
     enabled: !!formData.property,
+    placeholderData: keepPreviousData,
   })
 
   const units = unitsData?.results || unitsData || []
