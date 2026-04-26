@@ -261,84 +261,98 @@ class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets
     def export_statement(self, request, pk=None):
         """Download tenant's statement as CSV or PDF — bank-statement style."""
         import csv
+        import logging
+        import traceback
         from django.http import HttpResponse
         from django.utils import timezone
 
-        tenant = self.get_object()
-        period_start = request.query_params.get('period_start') or ''
-        period_end = request.query_params.get('period_end') or ''
-        export_format = (request.query_params.get('format') or 'csv').lower()
-        ledger = get_tenant_ledger(
-            tenant,
-            period_start=period_start or None,
-            period_end=period_end or None,
-        )
+        try:
+            tenant = self.get_object()
+            period_start = request.query_params.get('period_start') or ''
+            period_end = request.query_params.get('period_end') or ''
+            export_format = (request.query_params.get('format') or 'csv').lower()
+            ledger = get_tenant_ledger(
+                tenant,
+                period_start=period_start or None,
+                period_end=period_end or None,
+            )
 
-        period_label = (
-            f'{period_start}_to_{period_end}'
-            if period_start and period_end
-            else timezone.now().strftime('%Y-%m-%d')
-        )
-        base_filename = f'{tenant.code}_statement_{period_label}'.replace('/', '-')
+            period_label = (
+                f'{period_start}_to_{period_end}'
+                if period_start and period_end
+                else timezone.now().strftime('%Y-%m-%d')
+            )
+            base_filename = f'{tenant.code}_statement_{period_label}'.replace('/', '-')
 
-        if export_format == 'pdf':
-            from apps.accounting.pdf_utils import render_pdf
-            entries = []
+            if export_format == 'pdf':
+                from apps.accounting.pdf_utils import render_pdf
+                entries = []
+                for e in ledger['entries']:
+                    entries.append({
+                        'date': e['date'],
+                        'type': e['type'],
+                        'reference': e.get('reference') or '',
+                        'description': e.get('description') or '',
+                        'debit': f'{e["debit"]:.2f}' if e['debit'] else '',
+                        'credit': f'{e["credit"]:.2f}' if e['credit'] else '',
+                        'balance': f'{e.get("balance", 0):.2f}',
+                    })
+                context = {
+                    'tenant': tenant,
+                    'period_start': period_start or '',
+                    'period_end': period_end or '',
+                    'opening_balance': f'{ledger["opening_balance"]:.2f}',
+                    'entries': entries,
+                    'total_debits': f'{ledger["total_debits"]:.2f}',
+                    'total_credits': f'{ledger["total_credits"]:.2f}',
+                    'closing_balance': f'{ledger["closing_balance"]:.2f}',
+                    'generated_at': timezone.now().strftime('%Y-%m-%d %H:%M'),
+                }
+                return render_pdf('pdf/tenant_statement.html', context, f'{base_filename}.pdf')
+
+            # CSV (default)
+            response = HttpResponse(content_type='text/csv')
+            response['Content-Disposition'] = f'attachment; filename="{base_filename}.csv"'
+            writer = csv.writer(response)
+            writer.writerow(['TENANT STATEMENT'])
+            writer.writerow([f'Tenant: {tenant.code} - {tenant.name}'])
+            if period_start or period_end:
+                writer.writerow([f'Period: {period_start or "—"} to {period_end or "—"}'])
+            writer.writerow([f'Generated: {timezone.now().strftime("%Y-%m-%d %H:%M")}'])
+            writer.writerow([])
+
+            writer.writerow(['Date', 'Type', 'Reference', 'Description', 'Debit', 'Credit', 'Balance'])
+            writer.writerow(['', '', '', 'Balance brought forward', '', '',
+                             f'{ledger["opening_balance"]:.2f}'])
+
             for e in ledger['entries']:
-                entries.append({
-                    'date': e['date'],
-                    'type': e['type'],
-                    'reference': e.get('reference') or '',
-                    'description': e.get('description') or '',
-                    'debit': f'{e["debit"]:.2f}' if e['debit'] else '',
-                    'credit': f'{e["credit"]:.2f}' if e['credit'] else '',
-                    'balance': f'{e["balance"]:.2f}',
-                })
-            context = {
-                'tenant': tenant,
-                'period_start': period_start or '',
-                'period_end': period_end or '',
-                'opening_balance': f'{ledger["opening_balance"]:.2f}',
-                'entries': entries,
-                'total_debits': f'{ledger["total_debits"]:.2f}',
-                'total_credits': f'{ledger["total_credits"]:.2f}',
-                'closing_balance': f'{ledger["closing_balance"]:.2f}',
-                'generated_at': timezone.now().strftime('%Y-%m-%d %H:%M'),
-            }
-            return render_pdf('pdf/tenant_statement.html', context, f'{base_filename}.pdf')
+                writer.writerow([
+                    e['date'],
+                    e['type'],
+                    e['reference'] or '',
+                    e['description'] or '',
+                    f'{e["debit"]:.2f}' if e['debit'] else '',
+                    f'{e["credit"]:.2f}' if e['credit'] else '',
+                    f'{e.get("balance", 0):.2f}',
+                ])
 
-        # CSV (default)
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="{base_filename}.csv"'
-        writer = csv.writer(response)
-        writer.writerow(['TENANT STATEMENT'])
-        writer.writerow([f'Tenant: {tenant.code} - {tenant.name}'])
-        if period_start or period_end:
-            writer.writerow([f'Period: {period_start or "—"} to {period_end or "—"}'])
-        writer.writerow([f'Generated: {timezone.now().strftime("%Y-%m-%d %H:%M")}'])
-        writer.writerow([])
-
-        writer.writerow(['Date', 'Type', 'Reference', 'Description', 'Debit', 'Credit', 'Balance'])
-        writer.writerow(['', '', '', 'Balance brought forward', '', '',
-                         f'{ledger["opening_balance"]:.2f}'])
-
-        for e in ledger['entries']:
-            writer.writerow([
-                e['date'],
-                e['type'],
-                e['reference'] or '',
-                e['description'] or '',
-                f'{e["debit"]:.2f}' if e['debit'] else '',
-                f'{e["credit"]:.2f}' if e['credit'] else '',
-                f'{e["balance"]:.2f}',
-            ])
-
-        writer.writerow([])
-        writer.writerow(['', '', '', 'Totals',
-                         f'{ledger["total_debits"]:.2f}',
-                         f'{ledger["total_credits"]:.2f}',
-                         f'{ledger["closing_balance"]:.2f}'])
-        return response
+            writer.writerow([])
+            writer.writerow(['', '', '', 'Totals',
+                             f'{ledger["total_debits"]:.2f}',
+                             f'{ledger["total_credits"]:.2f}',
+                             f'{ledger["closing_balance"]:.2f}'])
+            return response
+        except Exception as e:
+            logging.getLogger(__name__).error(
+                f'export_statement failed for tenant {pk}: {e}', exc_info=True
+            )
+            return Response(
+                {
+                    'error': f'{type(e).__name__}: {e}',
+                    'traceback': traceback.format_exc().splitlines()[-6:],
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 class AccountHolderViewSet(RentalTenantViewSet):

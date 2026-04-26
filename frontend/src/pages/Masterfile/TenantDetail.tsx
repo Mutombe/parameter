@@ -998,8 +998,24 @@ export default function TenantDetail() {
                                 a.click()
                                 URL.revokeObjectURL(url)
                               }
-                            } catch (err) {
-                              showToast.error(parseApiError(err, `Failed to ${key === 'print' ? 'prepare print' : 'download statement'}`))
+                            } catch (err: any) {
+                              // Blob responses from a 500 contain JSON the toast can't read directly.
+                              // Parse the blob to text and surface the server's error message.
+                              let detail = ''
+                              try {
+                                const data = err?.response?.data
+                                if (data instanceof Blob) {
+                                  const text = await data.text()
+                                  try {
+                                    const parsed = JSON.parse(text)
+                                    detail = parsed.error || parsed.message || text.slice(0, 200)
+                                  } catch {
+                                    detail = text.slice(0, 200)
+                                  }
+                                }
+                              } catch { /* ignore */ }
+                              const fallback = `Failed to ${key === 'print' ? 'prepare print' : 'download statement'}`
+                              showToast.error(detail ? `${fallback}: ${detail}` : parseApiError(err, fallback))
                             } finally {
                               setExportLoading(null)
                               setExportMenuOpen(false)
