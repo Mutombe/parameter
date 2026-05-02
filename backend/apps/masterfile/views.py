@@ -270,7 +270,10 @@ class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets
             tenant = self.get_object()
             period_start = request.query_params.get('period_start') or ''
             period_end = request.query_params.get('period_end') or ''
-            export_format = (request.query_params.get('format') or 'csv').lower()
+            # NOTE: parameter is `fmt`, not `format`. DRF's content negotiation
+            # treats `?format=` as a renderer selector and 404s when no
+            # matching renderer is registered (we don't register a PDF one).
+            export_format = (request.query_params.get('fmt') or 'csv').lower()
             ledger = get_tenant_ledger(
                 tenant,
                 period_start=period_start or None,

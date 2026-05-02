@@ -972,7 +972,7 @@ export default function TenantDetail() {
                                 const res = await tenantApi.exportStatement(tenantId, {
                                   period_start: ledgerDateFrom || undefined,
                                   period_end: ledgerDateTo || undefined,
-                                  format: 'pdf',
+                                  fmt: 'pdf',
                                 })
                                 const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
                                 const w = window.open(url, '_blank')
@@ -989,7 +989,7 @@ export default function TenantDetail() {
                                 const res = await tenantApi.exportStatement(tenantId, {
                                   period_start: ledgerDateFrom || undefined,
                                   period_end: ledgerDateTo || undefined,
-                                  format: key,
+                                  fmt: key,
                                 })
                                 const url = URL.createObjectURL(new Blob([res.data]))
                                 const a = document.createElement('a')
