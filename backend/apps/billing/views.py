@@ -961,7 +961,10 @@ class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
     ).all()
     serializer_class = ExpenseSerializer
     permission_classes = [IsAuthenticated]
-    filterset_fields = ['expense_type', 'status', 'date', 'currency', 'payee_type']
+    filterset_fields = [
+        'expense_type', 'status', 'date', 'currency', 'payee_type',
+        'expense_category', 'bank_account', 'landlord',
+    ]
     search_fields = ['expense_number', 'payee_name', 'description', 'reference']
     ordering_fields = ['date', 'amount', 'created_at', 'expense_number', 'status']
     ordering = ['-date', '-created_at']

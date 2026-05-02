@@ -788,16 +788,53 @@ class ReconciliationItem(models.Model):
 class ExpenseCategory(models.Model):
     """
     Dynamic Expense Categories - User-created expense types.
+
+    Each category maps to a GL expense account (USD) and optionally a
+    parallel ZWG account, plus a `funding_category` that tells the
+    posting engine which landlord sub-account to credit (Rent /
+    Maintenance / Rates / Parking / VAT). The default_description
+    pre-fills the Record Expense modal so staff don't retype boilerplate.
     """
+
+    class FundingCategory(models.TextChoices):
+        RENT = 'rent', 'Rent'
+        MAINTENANCE = 'maintenance', 'Maintenance'
+        RATES = 'rates', 'Rates'
+        PARKING = 'parking', 'Parking'
+        VAT = 'vat', 'VAT'
+
     code = models.CharField(max_length=20, unique=True)
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
 
-    # GL account mapping
+    # GL account mapping — one for USD, one for ZWG. The posting engine
+    # picks whichever matches the bank account's currency.
     gl_account = models.ForeignKey(
         ChartOfAccount, on_delete=models.PROTECT,
         related_name='expense_categories',
-        limit_choices_to={'account_type': 'expense'}
+        limit_choices_to={'account_type': 'expense'},
+        help_text='USD GL account for this expense type'
+    )
+    gl_account_zwg = models.ForeignKey(
+        ChartOfAccount, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='expense_categories_zwg',
+        limit_choices_to={'account_type': 'expense'},
+        help_text='ZWG GL account (defaults to gl_account if not set)'
+    )
+
+    # Determines which landlord sub-account is credited on posting.
+    funding_category = models.CharField(
+        max_length=20,
+        choices=FundingCategory.choices,
+        default=FundingCategory.RENT,
+        help_text='Landlord sub-account this expense is funded from'
+    )
+
+    # Pre-filled into the Record Expense form so staff don't retype.
+    default_description = models.CharField(
+        max_length=255, blank=True,
+        help_text='Auto-fills the description field on expense creation'
     )
 
     # Categorization

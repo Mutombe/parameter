@@ -822,6 +822,25 @@ class Expense(SoftDeleteModel):
         help_text='Income category this expense is matched against'
     )
 
+    # Bank account the funds are coming from. Drives currency selection
+    # (the chosen bank account locks the currency for the whole transaction)
+    # and provides the cash GL account for posting.
+    bank_account = models.ForeignKey(
+        'accounting.BankAccount', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='expenses',
+        help_text='Source of funds — drives currency and cash GL account'
+    )
+
+    # Landlord whose sub-account is credited on posting. Combined with the
+    # expense_category's funding_category, the posting engine knows which
+    # of the landlord's sub-accounts (Rent / Maintenance / Rates / etc.)
+    # to debit on the trust ledger.
+    landlord = models.ForeignKey(
+        'masterfile.Landlord', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='expenses',
+        help_text='Landlord whose trust sub-account funds this expense'
+    )
+
     # GL Reference
     journal = models.ForeignKey(
         Journal, on_delete=models.SET_NULL, null=True, blank=True,
@@ -880,54 +899,56 @@ class Expense(SoftDeleteModel):
         """
         Post expense to General Ledger — Activity 5: Expense Posting.
 
-        GL entries:
-            Dr: Expense Category account (or Landlord Trust Payable for landlord expenses)
-            Cr: Cash/Bank
+        Resolution rules (per cash expense mapping spec):
+            - Cash GL = self.bank_account.gl_account, falling back to
+              code 1100 if not wired.
+            - Expense GL = expense_category.gl_account_zwg when currency
+              is ZWG and the parallel account exists; otherwise
+              expense_category.gl_account.
+            - Landlord sub-account = landlord's sub-account for
+              expense_category.funding_category (rent / maintenance / rates
+              / parking / vat). Defaults to rent.
 
-        Subsidiary entries (for landlord expenses):
-            Dr Landlord Account (LD/xxx) — reduces what's owed to landlord
+        GL entries:
+            Dr Expense GL          (P&L expense recognized)
+            Cr Cash/Bank GL        (cash leaves the account)
+
+        Subsidiary entry (when a landlord is on the expense):
+            Dr Landlord {category} sub-account — reduces trust money
+            held on the landlord's behalf for that funding category.
         """
         from django.core.exceptions import ValidationError as DjangoValidationError
 
         if self.journal:
             return self.journal
 
-        if not self.income_type:
-            raise DjangoValidationError('Cannot post expense without an income_type.')
-
-        # Get accounts - prefer expense_category GL account if available
-        if self.expense_category and self.expense_category.gl_account:
-            expense_account = self.expense_category.gl_account
+        # Expense GL account — pick USD or ZWG variant per currency.
+        cat = self.expense_category
+        if cat and cat.gl_account:
+            if self.currency == 'ZWG' and cat.gl_account_zwg_id:
+                expense_account = cat.gl_account_zwg
+            else:
+                expense_account = cat.gl_account
         else:
-            expense_account = ChartOfAccount.objects.filter(
-                account_type='expense'
-            ).first()
+            expense_account = ChartOfAccount.objects.filter(account_type='expense').first()
+            if not expense_account:
+                raise DjangoValidationError(
+                    'No expense_category set and no fallback expense account exists.'
+                )
 
-        # For landlord expenses, debit Landlord Trust Payable (reduces liability)
-        is_landlord_expense = self.payee_type == 'landlord' and self.payee_id
-        if is_landlord_expense:
-            landlord_trust_account, _ = ChartOfAccount.objects.get_or_create(
-                code='2300',
+        # Cash GL — prefer the bank account's mapped GL, fall back to code 1100.
+        if self.bank_account and self.bank_account.gl_account:
+            cash_account = self.bank_account.gl_account
+        else:
+            cash_account, _ = ChartOfAccount.objects.get_or_create(
+                code='1100',
                 defaults={
-                    'name': 'Landlord Trust Payable',
-                    'account_type': 'liability',
-                    'account_subtype': 'accounts_payable',
-                    'is_system': True
-                }
+                    'name': 'Bank Account',
+                    'account_type': 'asset',
+                    'account_subtype': 'bank',
+                    'is_system': True,
+                },
             )
-            debit_account = landlord_trust_account
-        else:
-            debit_account = expense_account
-
-        cash_account, _ = ChartOfAccount.objects.get_or_create(
-            code='1100',
-            defaults={
-                'name': 'Bank Account',
-                'account_type': 'asset',
-                'account_subtype': 'bank',
-                'is_system': True,
-            },
-        )
 
         # Create journal
         journal = Journal.objects.create(
@@ -936,16 +957,16 @@ class Expense(SoftDeleteModel):
             description=f'Expense {self.expense_number} - {self.payee_name}',
             reference=self.expense_number,
             currency=self.currency,
-            created_by=user
+            created_by=user,
         )
 
         je_debit = JournalEntry.objects.create(
             journal=journal,
-            account=debit_account,
+            account=expense_account,
             description=self.description,
             debit_amount=self.amount,
             source_type='expense',
-            source_id=self.id
+            source_id=self.id,
         )
 
         JournalEntry.objects.create(
@@ -954,38 +975,38 @@ class Expense(SoftDeleteModel):
             description=f'Payment to {self.payee_name}',
             credit_amount=self.amount,
             source_type='expense',
-            source_id=self.id
+            source_id=self.id,
         )
 
         journal.post(user)
 
-        # === Subsidiary Ledger Entry for landlord expenses ===
-        if is_landlord_expense:
+        # === Subsidiary Ledger Entry for the landlord ===
+        # Use the explicit landlord FK if present, fall back to legacy
+        # payee_type/payee_id for back-compat with existing rows.
+        landlord_obj = self.landlord
+        if landlord_obj is None and self.payee_type == 'landlord' and self.payee_id:
             from apps.masterfile.models import Landlord
-            try:
-                landlord = Landlord.objects.get(id=self.payee_id)
-                # Resolve category from income_type code or default to 'general'
-                expense_category_name = 'general'
-                if self.income_type and self.income_type.code:
-                    expense_category_name = self.income_type.code.lower()
-                landlord_sub = SubsidiaryAccount.get_or_create_for_landlord_category(
-                    landlord, category=expense_category_name, currency=self.currency
-                )
+            landlord_obj = Landlord.objects.filter(id=self.payee_id).first()
 
-                # Get expense GL code for contra reference
-                expense_contra = expense_account.code if expense_account else '2000/001'
-
-                SubsidiaryTransaction.create_entry(
-                    account=landlord_sub,
-                    date=self.date,
-                    contra_account=expense_contra,
-                    reference=self.expense_number,
-                    description=self.description,
-                    debit_amount=self.amount,
-                    journal_entry=je_debit,
-                )
-            except Landlord.DoesNotExist:
-                pass
+        if landlord_obj:
+            # funding_category lives on the expense_category and tells us
+            # which sub-account (rent / maintenance / rates / parking / vat)
+            # to debit on the landlord's trust ledger.
+            funding_cat = (
+                cat.funding_category if cat and cat.funding_category else 'rent'
+            )
+            landlord_sub = SubsidiaryAccount.get_or_create_for_landlord_category(
+                landlord_obj, category=funding_cat, currency=self.currency
+            )
+            SubsidiaryTransaction.create_entry(
+                account=landlord_sub,
+                date=self.date,
+                contra_account=expense_account.code if expense_account else '',
+                reference=self.expense_number,
+                description=self.description,
+                debit_amount=self.amount,
+                journal_entry=je_debit,
+            )
 
         self.journal = journal
         self.status = self.Status.PAID

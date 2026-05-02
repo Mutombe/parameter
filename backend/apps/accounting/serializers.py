@@ -346,14 +346,18 @@ class ExpenseCategorySerializer(serializers.ModelSerializer):
     """Serializer for Expense Categories."""
     gl_account_name = serializers.CharField(source='gl_account.name', read_only=True)
     gl_account_code = serializers.CharField(source='gl_account.code', read_only=True)
+    gl_account_zwg_code = serializers.CharField(source='gl_account_zwg.code', read_only=True, default=None)
+    gl_account_zwg_name = serializers.CharField(source='gl_account_zwg.name', read_only=True, default=None)
 
     class Meta:
         model = ExpenseCategory
         fields = [
-            'id', 'code', 'name', 'description', 'gl_account',
-            'gl_account_name', 'gl_account_code', 'is_deductible',
-            'requires_approval', 'approval_threshold', 'is_active',
-            'is_system', 'created_at', 'updated_at'
+            'id', 'code', 'name', 'description',
+            'gl_account', 'gl_account_name', 'gl_account_code',
+            'gl_account_zwg', 'gl_account_zwg_name', 'gl_account_zwg_code',
+            'funding_category', 'default_description',
+            'is_deductible', 'requires_approval', 'approval_threshold',
+            'is_active', 'is_system', 'created_at', 'updated_at'
         ]
         read_only_fields = ['code', 'is_system', 'created_at', 'updated_at']
 

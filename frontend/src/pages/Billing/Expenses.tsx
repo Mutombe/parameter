@@ -25,7 +25,8 @@ import {
   Download,
   Trash2,
 } from 'lucide-react'
-import { expenseApi, landlordApi, incomeTypeApi } from '../../services/api'
+import { expenseApi, landlordApi, incomeTypeApi, expenseCategoryApi, bankAccountApi } from '../../services/api'
+import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, Tooltip, Pagination } from '../../components/ui'
 import { AutocompleteInput } from '../../components/ui/AutocompleteInput'
@@ -170,14 +171,24 @@ export default function Expenses() {
   const recentPayeeType = useRecentValues('expense_payee_type', 1)
 
   const [expenseForm, setExpenseForm] = useState({
-    expense_type: recentExpenseType.values[0] || '',
-    payee_name: '',
-    payee_type: recentPayeeType.values[0] || '',
+    // Step 1: date
     date: new Date().toISOString().split('T')[0],
-    amount: '',
+    // Step 2: bank account (drives currency)
+    bank_account: '',
     currency: 'USD',
+    // Step 3: expense category (drives GL account + funding category)
+    expense_category: '',
+    // Step 5: landlord (drives sub-account via category's funding_category)
+    landlord: '',
+    // Step 6: description (auto-prefilled from category, editable)
     description: '',
+    // Step 7: amount
+    amount: '',
+    // Misc / legacy
     reference: '',
+    payee_name: '',
+    payee_type: recentPayeeType.values[0] || 'landlord',
+    expense_type: recentExpenseType.values[0] || 'other',
     income_type: '',
   })
 
@@ -222,6 +233,62 @@ export default function Expenses() {
     },
     placeholderData: keepPreviousData,
   })
+
+  // Fetch active bank accounts for the source-of-funds picker.
+  const { data: bankAccountsData } = useQuery({
+    queryKey: ['bank-accounts-for-expenses'],
+    queryFn: () => bankAccountApi.list({ is_active: true }).then((r: any) => r.data.results || r.data),
+    staleTime: 60000,
+    placeholderData: keepPreviousData,
+  })
+  const bankAccounts: any[] = Array.isArray(bankAccountsData) ? bankAccountsData : (bankAccountsData?.results || [])
+
+  // Fetch expense categories — these encode GL routing + funding category.
+  const { data: expenseCategoriesData } = useQuery({
+    queryKey: ['expense-categories-for-form'],
+    queryFn: () => expenseCategoryApi.list({ is_active: true, page_size: 200 }).then((r: any) => r.data.results || r.data),
+    staleTime: 60000,
+    placeholderData: keepPreviousData,
+  })
+  const expenseCategories: any[] = Array.isArray(expenseCategoriesData) ? expenseCategoriesData : (expenseCategoriesData?.results || [])
+
+  // Derived selections used by the modal preview.
+  const selectedBank = bankAccounts.find((b: any) => String(b.id) === String(expenseForm.bank_account))
+  const selectedCategory = expenseCategories.find((c: any) => String(c.id) === String(expenseForm.expense_category))
+  const selectedLandlord = landlords.find((l: any) => String(l.id) === String(expenseForm.landlord))
+  // Whichever GL code matches the chosen currency.
+  const expenseGlCode = selectedCategory
+    ? (expenseForm.currency === 'ZWG' && selectedCategory.gl_account_zwg_code
+        ? selectedCategory.gl_account_zwg_code
+        : selectedCategory.gl_account_code)
+    : null
+  // Sub-account label that'll be debited on the landlord's trust ledger.
+  const fundingCategoryLabel: Record<string, string> = {
+    rent: 'Rent', maintenance: 'Maintenance', rates: 'Rates',
+    parking: 'Parking', vat: 'VAT',
+  }
+
+  // Step 2 → Step 3 effect: when bank account changes, sync currency + clear stale expense category if its USD/ZWG variant doesn't exist.
+  useEffect(() => {
+    if (!selectedBank) return
+    if (selectedBank.currency && selectedBank.currency !== expenseForm.currency) {
+      setExpenseForm(f => ({ ...f, currency: selectedBank.currency }))
+    }
+  }, [selectedBank?.id])
+
+  // Step 3 → Step 6 effect: when expense category changes, prefill the
+  // description from the category's default_description (only if the user
+  // hasn't typed something custom).
+  const lastAutoDescriptionRef = useRef('')
+  useEffect(() => {
+    if (!selectedCategory) return
+    const defaultDesc = selectedCategory.default_description || selectedCategory.name || ''
+    if (!defaultDesc) return
+    if (expenseForm.description === '' || expenseForm.description === lastAutoDescriptionRef.current) {
+      lastAutoDescriptionRef.current = defaultDesc
+      setExpenseForm(f => ({ ...f, description: defaultDesc }))
+    }
+  }, [selectedCategory?.id])
 
   // Create mutation - optimistic
   const createMutation = useMutation({
@@ -331,36 +398,49 @@ export default function Expenses() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
 
+    if (!expenseForm.bank_account) { showToast.error('Pick a bank account first.'); return }
+    if (!expenseForm.expense_category) { showToast.error('Pick an expense category.'); return }
+    if (!expenseForm.amount) { showToast.error('Enter an amount.'); return }
+
     recentExpenseType.add(expenseForm.expense_type)
     recentPayeeType.add(expenseForm.payee_type)
 
+    // Default the payee name to the landlord's name if no custom one was given.
+    const payeeName = expenseForm.payee_name || selectedLandlord?.name || 'Vendor'
+
     const data: Record<string, unknown> = {
       expense_type: expenseForm.expense_type,
-      payee_name: expenseForm.payee_name,
-      payee_type: expenseForm.payee_type,
-      payee_id: null,
+      payee_name: payeeName,
+      payee_type: expenseForm.landlord ? 'landlord' : (expenseForm.payee_type || 'vendor'),
+      payee_id: expenseForm.landlord ? Number(expenseForm.landlord) : null,
       date: expenseForm.date,
       amount: expenseForm.amount,
       currency: expenseForm.currency,
       description: expenseForm.description,
       reference: expenseForm.reference,
-      income_type: expenseForm.income_type ? parseInt(expenseForm.income_type) : null,
+      bank_account: Number(expenseForm.bank_account),
+      expense_category: Number(expenseForm.expense_category),
+      landlord: expenseForm.landlord ? Number(expenseForm.landlord) : null,
     }
 
     createMutation.mutate(data)
 
     // Reset form
     setExpenseForm({
-      expense_type: recentExpenseType.values[0] || '',
-      payee_name: '',
-      payee_type: recentPayeeType.values[0] || '',
       date: new Date().toISOString().split('T')[0],
-      amount: '',
+      bank_account: '',
       currency: 'USD',
+      expense_category: '',
+      landlord: '',
       description: '',
+      amount: '',
       reference: '',
+      payee_name: '',
+      payee_type: recentPayeeType.values[0] || 'landlord',
+      expense_type: recentExpenseType.values[0] || 'other',
       income_type: '',
     })
+    lastAutoDescriptionRef.current = ''
   }
 
   // Get description suggestions based on expense type
@@ -724,49 +804,90 @@ export default function Expenses() {
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title="Create New Expense"
+        title="Record Expense"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Select
-            label="Expense Type"
-            value={expenseForm.expense_type}
-            onChange={(e) => setExpenseForm({ ...expenseForm, expense_type: e.target.value })}
+          {/* Step 1 — Date */}
+          <Input
+            label="Date"
+            type="date"
+            value={expenseForm.date}
+            onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
             required
-            options={expenseTypes}
           />
 
-          <Select
-            label="Payee Type"
-            value={expenseForm.payee_type}
-            onChange={(e) => setExpenseForm({ ...expenseForm, payee_type: e.target.value })}
+          {/* Step 2 — Bank account (drives currency for the rest of the form) */}
+          <AsyncSelect
+            label="Bank Account (source of funds)"
+            placeholder="Pick the bank account funds will come from"
+            value={expenseForm.bank_account}
+            onChange={(val) => setExpenseForm({ ...expenseForm, bank_account: String(val) })}
+            options={bankAccounts.map((b: any) => ({
+              value: b.id,
+              label: `${b.name}${b.currency ? ` (${b.currency})` : ''}`,
+              description: b.bank_name || b.account_number || '',
+            }))}
             required
-            options={payeeTypes}
+            searchable
+            emptyMessage="No active bank accounts. Add one in Accounting → Bank Accounts."
+          />
+          {selectedBank && (
+            <p className="-mt-2 text-xs text-gray-500">
+              Currency locked to <span className="font-medium text-gray-700">{selectedBank.currency}</span> by the chosen bank account.
+            </p>
+          )}
+
+          {/* Step 3 — Expense category */}
+          <AsyncSelect
+            label="Expense Category"
+            placeholder="What is this expense for?"
+            value={expenseForm.expense_category}
+            onChange={(val) => setExpenseForm({ ...expenseForm, expense_category: String(val) })}
+            options={expenseCategories.map((c: any) => ({
+              value: c.id,
+              label: c.name,
+              description: `${c.gl_account_code}${c.gl_account_zwg_code ? ` / ${c.gl_account_zwg_code}` : ''} · ${fundingCategoryLabel[c.funding_category] || c.funding_category}`,
+            }))}
+            required
+            searchable
+            emptyMessage="No expense categories yet. Run seed_expense_categories to populate the standard set."
           />
 
+          {/* Step 5 — Landlord (skipping step 4 funding source per spec) */}
+          <AsyncSelect
+            label="Landlord (whose trust funds this expense)"
+            placeholder="Pick a landlord (or leave blank for agency overhead)"
+            value={expenseForm.landlord}
+            onChange={(val) => setExpenseForm({ ...expenseForm, landlord: String(val) })}
+            options={landlords.map((l: any) => ({
+              value: l.id,
+              label: l.name,
+              description: l.code || '',
+            }))}
+            searchable
+            clearable
+            emptyMessage="No landlords found."
+          />
+
+          {/* Step 6 — Description (auto-prefilled) */}
           <AutocompleteInput
-            label="Payee Name"
-            placeholder="Enter payee name"
-            value={expenseForm.payee_name}
-            onChange={(e) => setExpenseForm({ ...expenseForm, payee_name: e.target.value })}
-            suggestions={
-              expenseForm.payee_type === 'landlord'
-                ? landlords.map((l: any) => l.name)
-                : []
-            }
-            recentKey="expense_payee_names"
+            label="Description"
+            placeholder="Describe the expense..."
+            value={expenseForm.description}
+            onChange={(e) => {
+              // Once the user types over the auto-fill, stop syncing future
+              // category changes into the description field.
+              lastAutoDescriptionRef.current = ''
+              setExpenseForm({ ...expenseForm, description: e.target.value })
+            }}
+            recentKey="expense_descriptions"
             required
           />
 
+          {/* Step 7 — Amount */}
           <div className="grid grid-cols-2 gap-4">
             <Input
-              label="Date"
-              type="date"
-              value={expenseForm.date}
-              onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
-              required
-            />
-            <Input
-              label="Amount"
+              label={`Amount (${expenseForm.currency})`}
               type="number"
               step="0.01"
               min="0"
@@ -775,56 +896,45 @@ export default function Expenses() {
               onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
               required
             />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Select
-              label="Currency"
-              value={expenseForm.currency}
-              onChange={(e) => setExpenseForm({ ...expenseForm, currency: e.target.value })}
-              options={[
-                { value: 'USD', label: 'USD' },
-                { value: 'ZWG', label: 'ZiG' },
-              ]}
-            />
             <AutocompleteInput
-              label="Reference"
-              placeholder="Payment reference"
+              label="Reference (optional)"
+              placeholder="Bank ref, cheque #, EcoCash ref..."
               value={expenseForm.reference}
               onChange={(e) => setExpenseForm({ ...expenseForm, reference: e.target.value })}
               recentKey="expense_references"
             />
           </div>
 
-          <Select
-            label="Income Type"
-            value={expenseForm.income_type}
-            onChange={(e) => setExpenseForm({ ...expenseForm, income_type: e.target.value })}
-            required
-          >
-            <option value="">Select income type...</option>
-            {incomeTypesData?.map((it: any) => (
-              <option key={it.id} value={it.id}>{it.name} ({it.code})</option>
-            ))}
-          </Select>
+          {/* Posting preview — shows what the GL entries will look like */}
+          {selectedBank && selectedCategory && (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs space-y-1.5">
+              <p className="font-semibold text-gray-700 text-[11px] uppercase tracking-wider">Posting preview</p>
+              <div className="flex items-center justify-between text-gray-700">
+                <span>Dr</span>
+                <span className="font-mono text-[11px]">{expenseGlCode}</span>
+                <span className="text-gray-500 truncate ml-2 max-w-[160px]" title={selectedCategory.name}>{selectedCategory.name}</span>
+              </div>
+              <div className="flex items-center justify-between text-gray-700">
+                <span>Cr</span>
+                <span className="font-mono text-[11px]">{selectedBank.gl_account_code || '—'}</span>
+                <span className="text-gray-500 truncate ml-2 max-w-[160px]" title={selectedBank.name}>{selectedBank.name}</span>
+              </div>
+              {selectedLandlord && (
+                <div className="pt-1.5 border-t border-gray-200 text-[11px] text-violet-700">
+                  <span className="font-semibold">Trust ledger:</span>{' '}
+                  Dr {selectedLandlord.name}'s {fundingCategoryLabel[selectedCategory.funding_category] || selectedCategory.funding_category} sub-account
+                </div>
+              )}
+            </div>
+          )}
 
-          <AutocompleteInput
-            label="Description"
-            placeholder="Describe the expense..."
-            value={expenseForm.description}
-            onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
-            suggestions={getExpenseDescriptionSuggestions()}
-            recentKey="expense_descriptions"
-            required
-          />
-
-          <div className="flex justify-end gap-3 pt-4">
+          <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={() => setShowModal(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={createMutation.isPending}>
               {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Create Expense
+              Record Expense
             </Button>
           </div>
         </form>

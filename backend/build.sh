@@ -73,4 +73,7 @@ python manage.py sync_production_domains --domain-suffix parameter.co.zw || true
 echo "Seeding trust accounting Chart of Accounts and subsidiary accounts..."
 python manage.py seed_trust_accounts || true
 
+echo "Seeding standard expense categories from cash mapping spec..."
+python manage.py seed_expense_categories || true
+
 echo "Build completed successfully!"

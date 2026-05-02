@@ -169,15 +169,24 @@ class ReceiptCreateSerializer(serializers.ModelSerializer):
 class ExpenseSerializer(serializers.ModelSerializer):
     journal_number = serializers.CharField(source='journal.journal_number', read_only=True)
     expense_category_name = serializers.CharField(source='expense_category.name', read_only=True, default=None)
+    expense_category_funding = serializers.CharField(source='expense_category.funding_category', read_only=True, default=None)
     income_type_name = serializers.CharField(source='income_type.name', read_only=True, default=None)
+    bank_account_name = serializers.CharField(source='bank_account.name', read_only=True, default=None)
+    bank_account_currency = serializers.CharField(source='bank_account.currency', read_only=True, default=None)
+    landlord_name = serializers.CharField(source='landlord.name', read_only=True, default=None)
+    landlord_code = serializers.CharField(source='landlord.code', read_only=True, default=None)
 
     class Meta:
         model = Expense
         fields = [
             'id', 'expense_number', 'expense_type', 'status', 'payee_name',
             'payee_type', 'payee_id', 'date', 'amount', 'currency',
-            'description', 'reference', 'expense_category', 'expense_category_name',
-            'income_type', 'income_type_name', 'journal', 'journal_number',
+            'description', 'reference',
+            'expense_category', 'expense_category_name', 'expense_category_funding',
+            'income_type', 'income_type_name',
+            'bank_account', 'bank_account_name', 'bank_account_currency',
+            'landlord', 'landlord_name', 'landlord_code',
+            'journal', 'journal_number',
             'approved_by', 'approved_at', 'created_by', 'created_at', 'updated_at'
         ]
         read_only_fields = [
@@ -186,8 +195,10 @@ class ExpenseSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, data):
-        if not self.instance and not data.get('income_type'):
-            raise serializers.ValidationError({'income_type': 'Income type is required for new expenses.'})
+        # income_type is no longer required — the new flow uses
+        # expense_category for GL routing and funding_category for
+        # sub-account derivation. Keep payee_name as the only mandatory
+        # text field beyond what the model already enforces.
         return data
 
 
