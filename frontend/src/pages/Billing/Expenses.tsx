@@ -192,6 +192,26 @@ export default function Expenses() {
     income_type: '',
   })
 
+  // Mode toggle: 'single' uses expenseForm above; 'batch' uses batchLines
+  // and shares the date + bank_account from expenseForm with all lines.
+  const [expenseMode, setExpenseMode] = useState<'single' | 'batch'>('single')
+
+  type BatchLine = {
+    expense_category: string
+    landlord: string
+    description: string
+    amount: string
+    reference: string
+  }
+  const newBatchLine = (): BatchLine => ({
+    expense_category: '',
+    landlord: '',
+    description: '',
+    amount: '',
+    reference: '',
+  })
+  const [batchLines, setBatchLines] = useState<BatchLine[]>([newBatchLine(), newBatchLine()])
+
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
 
   // Fetch income types for expense form
@@ -331,6 +351,35 @@ export default function Expenses() {
     }
   })
 
+  // Batch create — posts N expense rows sharing date + bank account.
+  const bulkCreateMutation = useMutation({
+    mutationFn: (payload: any) => expenseApi.bulkCreate(payload).then(r => r.data),
+    onSuccess: (data: any) => {
+      const ok = data.created_count || 0
+      const failed = data.error_count || 0
+      if (ok > 0) {
+        showToast.success(
+          failed > 0
+            ? `Recorded ${ok} expense${ok === 1 ? '' : 's'} (${failed} failed)`
+            : `Recorded ${ok} expense${ok === 1 ? '' : 's'}`
+        )
+      }
+      if (failed > 0 && (data.errors || []).length) {
+        const first = data.errors[0]
+        showToast.error(`Line ${first.line}: ${first.error}`)
+      }
+      queryClient.invalidateQueries({ queryKey: ['expenses'] })
+      // Only close + reset the modal if at least one line landed.
+      if (ok > 0) {
+        setShowModal(false)
+        setBatchLines([newBatchLine(), newBatchLine()])
+      }
+    },
+    onError: (err) => {
+      showToast.error(parseApiError(err, 'Failed to record batch'))
+    },
+  })
+
   // Approve mutation - optimistic
   const approveMutation = useMutation({
     mutationFn: (id: number) => expenseApi.approve(id),
@@ -393,6 +442,50 @@ export default function Expenses() {
     totalAmount: expenses
       .filter((e: Expense) => e.status !== 'cancelled')
       .reduce((sum: number, e: Expense) => sum + Number(e.amount), 0),
+  }
+
+  // Batch totals + handler
+  const batchValidLines = batchLines.filter(l => l.expense_category && l.amount && l.description)
+  const batchTotal = batchValidLines.reduce((s, l) => s + (Number(l.amount) || 0), 0)
+
+  const handleBatchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    if (!expenseForm.bank_account) { showToast.error('Pick a bank account first.'); return }
+    if (batchValidLines.length === 0) { showToast.error('Add at least one complete expense line.'); return }
+    bulkCreateMutation.mutate({
+      date: expenseForm.date,
+      bank_account: Number(expenseForm.bank_account),
+      lines: batchValidLines.map(l => ({
+        expense_category: Number(l.expense_category),
+        landlord: l.landlord ? Number(l.landlord) : null,
+        amount: l.amount,
+        description: l.description,
+        reference: l.reference || '',
+      })),
+    })
+  }
+
+  const updateBatchLine = (idx: number, field: keyof BatchLine, value: string) => {
+    setBatchLines(prev => prev.map((l, i) => i === idx ? { ...l, [field]: value } : l))
+  }
+  const removeBatchLine = (idx: number) => {
+    setBatchLines(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev)
+  }
+  const addBatchLine = () => setBatchLines(prev => [...prev, newBatchLine()])
+
+  // When a category is picked on a batch line, auto-prefill the description
+  // (only if the line's description is still empty).
+  const onBatchCategoryChange = (idx: number, categoryId: string) => {
+    setBatchLines(prev => prev.map((l, i) => {
+      if (i !== idx) return l
+      const cat = expenseCategories.find((c: any) => String(c.id) === categoryId)
+      const defaultDesc = cat?.default_description || cat?.name || ''
+      return {
+        ...l,
+        expense_category: categoryId,
+        description: l.description || defaultDesc,
+      }
+    }))
   }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -804,8 +897,179 @@ export default function Expenses() {
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title="Record Expense"
+        title={expenseMode === 'batch' ? 'Record Expense Batch' : 'Record Expense'}
       >
+        {/* Mode toggle — Single vs Batch (multiple lines, one bank account). */}
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 mb-4 w-fit">
+          <button
+            type="button"
+            onClick={() => setExpenseMode('single')}
+            className={cn(
+              'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+              expenseMode === 'single' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            )}
+          >
+            Single
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpenseMode('batch')}
+            className={cn(
+              'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+              expenseMode === 'batch' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            )}
+          >
+            Batch
+          </button>
+        </div>
+
+        {expenseMode === 'batch' ? (
+          <form onSubmit={handleBatchSubmit} className="space-y-4">
+            {/* Shared header — date + bank account apply to every line */}
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Date"
+                type="date"
+                value={expenseForm.date}
+                onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
+                required
+              />
+              <AsyncSelect
+                label="Bank Account"
+                placeholder="Source of funds for the whole batch"
+                value={expenseForm.bank_account}
+                onChange={(val) => setExpenseForm({ ...expenseForm, bank_account: String(val) })}
+                options={bankAccounts.map((b: any) => ({
+                  value: b.id,
+                  label: `${b.name}${b.currency ? ` (${b.currency})` : ''}`,
+                  description: b.bank_name || b.account_number || '',
+                }))}
+                required
+                searchable
+              />
+            </div>
+            {selectedBank && (
+              <p className="-mt-2 text-xs text-gray-500">
+                Currency for all lines: <span className="font-medium text-gray-700">{selectedBank.currency}</span>
+              </p>
+            )}
+
+            {/* Line rows */}
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Expense lines</div>
+              {batchLines.map((line, idx) => {
+                const cat = expenseCategories.find((c: any) => String(c.id) === line.expense_category)
+                return (
+                  <div key={idx} className="border border-gray-200 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-gray-500">Line {idx + 1}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeBatchLine(idx)}
+                        disabled={batchLines.length === 1}
+                        className="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="Remove line"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <AsyncSelect
+                        label="Category"
+                        placeholder="What is this for?"
+                        value={line.expense_category}
+                        onChange={(val) => onBatchCategoryChange(idx, String(val))}
+                        options={expenseCategories.map((c: any) => ({
+                          value: c.id,
+                          label: c.name,
+                          description: `${c.gl_account_code} · ${fundingCategoryLabel[c.funding_category] || c.funding_category}`,
+                        }))}
+                        searchable
+                        required
+                      />
+                      <AsyncSelect
+                        label="Landlord (optional)"
+                        placeholder="Agency overhead if blank"
+                        value={line.landlord}
+                        onChange={(val) => updateBatchLine(idx, 'landlord', String(val))}
+                        options={landlords.map((l: any) => ({
+                          value: l.id,
+                          label: l.name,
+                          description: l.code || '',
+                        }))}
+                        searchable
+                        clearable
+                      />
+                    </div>
+                    <Input
+                      label="Description"
+                      placeholder="What is this expense for?"
+                      value={line.description}
+                      onChange={(e) => updateBatchLine(idx, 'description', e.target.value)}
+                      required
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        label={`Amount (${selectedBank?.currency || expenseForm.currency})`}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={line.amount}
+                        onChange={(e) => updateBatchLine(idx, 'amount', e.target.value)}
+                        required
+                      />
+                      <Input
+                        label="Reference (optional)"
+                        placeholder="Per-line ref"
+                        value={line.reference}
+                        onChange={(e) => updateBatchLine(idx, 'reference', e.target.value)}
+                      />
+                    </div>
+                    {cat && (
+                      <p className="text-[11px] text-gray-500">
+                        Will post to <span className="font-mono">{selectedBank?.currency === 'ZWG' && cat.gl_account_zwg_code ? cat.gl_account_zwg_code : cat.gl_account_code}</span>
+                        {line.landlord && (
+                          <> · Trust: {fundingCategoryLabel[cat.funding_category] || cat.funding_category}</>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
+              <button
+                type="button"
+                onClick={addBatchLine}
+                className="w-full flex items-center justify-center gap-2 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-primary-400 hover:bg-primary-50/30 hover:text-primary-700 transition-colors"
+              >
+                <Plus className="w-4 h-4" /> Add expense line
+              </button>
+            </div>
+
+            {/* Batch summary */}
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 flex items-center justify-between">
+              <div className="text-xs text-gray-500">
+                {batchValidLines.length} of {batchLines.length} line{batchLines.length === 1 ? '' : 's'} ready
+              </div>
+              <div className="text-sm">
+                <span className="text-gray-500">Batch total:</span>{' '}
+                <span className="font-bold text-gray-900 tabular-nums">
+                  {selectedBank?.currency || expenseForm.currency} {batchTotal.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={() => setShowModal(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={bulkCreateMutation.isPending || batchValidLines.length === 0}>
+                {bulkCreateMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Record {batchValidLines.length} Expense{batchValidLines.length === 1 ? '' : 's'}
+              </Button>
+            </div>
+          </form>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Step 1 — Date */}
           <Input
@@ -938,6 +1202,7 @@ export default function Expenses() {
             </Button>
           </div>
         </form>
+        )}
       </Modal>
 
       {/* Detail Modal */}

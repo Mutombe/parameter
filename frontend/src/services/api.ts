@@ -399,6 +399,17 @@ export const expenseApi = {
   delete: (id: number) => api.delete(`/billing/expenses/${id}/`),
   approve: (id: number) => api.post(`/billing/expenses/${id}/approve/`),
   pay: (id: number) => api.post(`/billing/expenses/${id}/pay/`),
+  bulkCreate: (data: {
+    date: string
+    bank_account: number
+    lines: Array<{
+      expense_category: number
+      landlord?: number | null
+      amount: number | string
+      description: string
+      reference?: string
+    }>
+  }) => api.post('/billing/expenses/bulk_create/', data),
 }
 
 // Accounting API

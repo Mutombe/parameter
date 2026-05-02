@@ -972,6 +972,118 @@ class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
+    @action(detail=False, methods=['post'], url_path='bulk_create')
+    def bulk_create(self, request):
+        """Record multiple expenses sharing a date + bank account in one go.
+
+        Body shape:
+            {
+                "date": "2026-05-02",
+                "bank_account": 1,
+                "lines": [
+                    {
+                        "expense_category": 7,
+                        "landlord": 12,            // optional
+                        "amount": "150.00",
+                        "description": "Lawn mower hire",
+                        "reference": ""            // optional
+                    },
+                    ...
+                ]
+            }
+
+        Each line creates its own Expense and is posted to the GL
+        independently. The action does NOT roll back the whole batch on
+        a per-line failure — it returns whatever succeeded plus a list of
+        error messages, so partial batches don't waste the user's typing.
+        """
+        from apps.accounting.models import BankAccount, ExpenseCategory
+        from apps.masterfile.models import Landlord
+
+        date = request.data.get('date')
+        bank_account_id = request.data.get('bank_account')
+        lines = request.data.get('lines') or []
+
+        if not date:
+            return Response({'error': 'date is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not bank_account_id:
+            return Response({'error': 'bank_account is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(lines, list) or len(lines) == 0:
+            return Response({'error': 'lines must be a non-empty list'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            bank_account = BankAccount.objects.get(pk=bank_account_id)
+        except BankAccount.DoesNotExist:
+            return Response({'error': f'Bank account {bank_account_id} not found'}, status=status.HTTP_400_BAD_REQUEST)
+
+        currency = bank_account.currency or 'USD'
+        created = []
+        errors = []
+
+        for idx, line in enumerate(lines):
+            cat_id = line.get('expense_category')
+            amount = line.get('amount')
+            description = (line.get('description') or '').strip()
+            reference = line.get('reference') or ''
+            landlord_id = line.get('landlord')
+
+            if not cat_id or not amount or not description:
+                errors.append({
+                    'line': idx + 1,
+                    'error': 'expense_category, amount, and description are required',
+                })
+                continue
+
+            try:
+                category = ExpenseCategory.objects.get(pk=cat_id)
+            except ExpenseCategory.DoesNotExist:
+                errors.append({'line': idx + 1, 'error': f'Expense category {cat_id} not found'})
+                continue
+
+            landlord = None
+            if landlord_id:
+                landlord = Landlord.objects.filter(pk=landlord_id).first()
+                if not landlord:
+                    errors.append({'line': idx + 1, 'error': f'Landlord {landlord_id} not found'})
+                    continue
+
+            try:
+                expense = Expense.objects.create(
+                    date=date,
+                    bank_account=bank_account,
+                    currency=currency,
+                    expense_category=category,
+                    landlord=landlord,
+                    amount=amount,
+                    description=description,
+                    reference=reference,
+                    payee_name=(landlord.name if landlord else 'Vendor'),
+                    payee_type=('landlord' if landlord else 'vendor'),
+                    payee_id=(landlord.id if landlord else None),
+                    expense_type='other',
+                    created_by=request.user,
+                )
+                # Auto-post each row so the batch lands in the GL immediately,
+                # matching the single-expense flow.
+                try:
+                    expense.post_to_ledger(request.user)
+                except Exception as post_err:
+                    errors.append({
+                        'line': idx + 1,
+                        'expense_number': expense.expense_number,
+                        'error': f'Created but post-to-ledger failed: {post_err}',
+                    })
+                created.append(ExpenseSerializer(expense).data)
+            except Exception as create_err:
+                errors.append({'line': idx + 1, 'error': str(create_err)})
+
+        return Response({
+            'created': created,
+            'errors': errors,
+            'created_count': len(created),
+            'error_count': len(errors),
+        }, status=status.HTTP_201_CREATED if created else status.HTTP_400_BAD_REQUEST)
+
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         """Approve an expense."""
