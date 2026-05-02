@@ -4,8 +4,24 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.negotiation import DefaultContentNegotiation
 from django.db import transaction
 from django.db.models import Sum, Count, Q, Prefetch
+
+
+class IgnoreFormatNegotiation(DefaultContentNegotiation):
+    """Don't raise Http404 when ?format= is unknown.
+
+    DRF's default behavior is to filter registered renderers to those whose
+    `format` attribute matches the request's `?format=` query — and raise
+    Http404 if none match. That breaks export endpoints that use `?format=`
+    (or `?fmt=`) as their own action param: the request 404s before the
+    view ever runs. Returning the unfiltered renderer list lets the action
+    handle format selection itself.
+    """
+
+    def filter_renderers(self, renderers, format):
+        return renderers
 from .models import Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager
 from .serializers import (
     LandlordSerializer, PropertySerializer, PropertyListSerializer,
@@ -191,6 +207,10 @@ class UnitViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelVi
 class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Rental Tenants."""
     permission_classes = [IsAuthenticated]
+    # Override DRF's default content negotiation so the export_statement
+    # action's ?format=pdf|csv (or ?fmt=) doesn't get intercepted as a
+    # renderer-selector and 404 the request before the view runs.
+    content_negotiation_class = IgnoreFormatNegotiation
     filterset_fields = ['tenant_type', 'is_active', 'account_type', 'unit', 'unit__property', 'id_type']
     search_fields = ['code', 'name', 'email', 'phone', 'id_number', 'employer_name', 'occupation']
     ordering_fields = ['name', 'created_at', 'code', 'email']
@@ -270,10 +290,14 @@ class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets
             tenant = self.get_object()
             period_start = request.query_params.get('period_start') or ''
             period_end = request.query_params.get('period_end') or ''
-            # NOTE: parameter is `fmt`, not `format`. DRF's content negotiation
-            # treats `?format=` as a renderer selector and 404s when no
-            # matching renderer is registered (we don't register a PDF one).
-            export_format = (request.query_params.get('fmt') or 'csv').lower()
+            # Accept both `?fmt=` (preferred) and `?format=` (legacy/cached
+            # frontends). The viewset's content_negotiation_class prevents
+            # `?format=` from being intercepted as a renderer selector.
+            export_format = (
+                request.query_params.get('fmt')
+                or request.query_params.get('format')
+                or 'csv'
+            ).lower()
             ledger = get_tenant_ledger(
                 tenant,
                 period_start=period_start or None,
