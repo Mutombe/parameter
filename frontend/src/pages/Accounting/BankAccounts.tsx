@@ -15,10 +15,11 @@ import {
   DollarSign,
   Download,
 } from 'lucide-react'
-import { bankAccountApi } from '../../services/api'
+import { bankAccountApi, accountApi } from '../../services/api'
 import { formatCurrency, cn } from '../../lib/utils'
-import { showToast } from '../../lib/toast'
-import { SelectionCheckbox, BulkActionsBar, Tooltip } from '../../components/ui'
+import { showToast, parseApiError } from '../../lib/toast'
+import { SelectionCheckbox, BulkActionsBar, Tooltip, Modal, Input, Select, Button } from '../../components/ui'
+import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 
@@ -77,6 +78,58 @@ export default function BankAccounts() {
     },
     onError: () => showToast.error('Failed to seed accounts'),
   })
+
+  // Chart of accounts (asset/bank/cash subset) for the gl_account picker
+  const { data: glAccountsData } = useQuery({
+    queryKey: ['gl-accounts-for-bank'],
+    queryFn: () => accountApi.list({ account_type: 'asset', page_size: 200 }).then(r => r.data.results || r.data),
+    staleTime: 60000,
+  })
+  const glAccounts: any[] = Array.isArray(glAccountsData) ? glAccountsData : (glAccountsData?.results || [])
+
+  const saveMutation = useMutation({
+    mutationFn: (payload: any) => {
+      const id = payload._editingId
+      const { _editingId, ...body } = payload
+      // Coerce gl_account to number when present so the FK PrimaryKeyRelatedField doesn't reject empty strings.
+      const cleanBody = { ...body, gl_account: body.gl_account ? Number(body.gl_account) : null }
+      return id ? bankAccountApi.update(id, cleanBody) : bankAccountApi.create(cleanBody)
+    },
+    onSuccess: () => {
+      showToast.success(editingAccount ? 'Bank account updated' : 'Bank account created')
+      queryClient.invalidateQueries({ queryKey: ['bank-accounts'] })
+      queryClient.invalidateQueries({ queryKey: ['bank-accounts-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['bank-accounts-for-expenses'] })
+      setShowModal(false)
+      setEditingAccount(null)
+    },
+    onError: (err) => showToast.error(parseApiError(err, 'Failed to save bank account')),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => bankAccountApi.delete(id),
+    onSuccess: () => {
+      showToast.success('Bank account deleted')
+      queryClient.invalidateQueries({ queryKey: ['bank-accounts'] })
+      queryClient.invalidateQueries({ queryKey: ['bank-accounts-summary'] })
+    },
+    onError: (err) => showToast.error(parseApiError(err, 'Failed to delete bank account')),
+  })
+
+  const openEdit = (account: BankAccount) => {
+    setEditingAccount(account)
+    setFormData({
+      code: account.code || '',
+      name: account.name || '',
+      account_type: account.account_type || 'bank',
+      bank_name: account.bank_name || '',
+      branch: account.branch || '',
+      account_number: account.account_number || '',
+      currency: account.currency || 'USD',
+      gl_account: account.gl_account ? String(account.gl_account) : '',
+    })
+    setShowModal(true)
+  }
 
   const accounts: BankAccount[] = data || []
 
@@ -290,9 +343,26 @@ export default function BankAccounts() {
                   <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center", getAccountColor(account.account_type))}>
                     <Icon className="w-6 h-6" />
                   </div>
-                  <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg" title="Account options">
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => openEdit(account)}
+                      className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg"
+                      title="Edit account"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm(`Delete bank account "${account.name}"? This cannot be undone.`)) {
+                          deleteMutation.mutate(account.id)
+                        }
+                      }}
+                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                      title="Delete account"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
                 <h3 className="font-semibold text-gray-900">{account.name}</h3>
                 <p className="text-sm text-gray-500">{account.bank_name || account.account_type}</p>
@@ -332,6 +402,106 @@ export default function BankAccounts() {
           { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
         ]}
       />
+
+      {/* Bank Account create / edit modal */}
+      <Modal
+        open={showModal}
+        onClose={() => { setShowModal(false); setEditingAccount(null) }}
+        title={editingAccount ? 'Edit Bank Account' : 'Add Bank Account'}
+        icon={Building2}
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            saveMutation.mutate({ ...formData, _editingId: editingAccount?.id })
+          }}
+          className="space-y-4"
+        >
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Account Name"
+              placeholder="e.g. Stanbic USD Operating"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              required
+            />
+            <Input
+              label="Code (optional)"
+              placeholder="Auto-generated if blank"
+              value={formData.code}
+              onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Account Type"
+              value={formData.account_type}
+              onChange={(e) => setFormData({ ...formData, account_type: e.target.value })}
+              options={[
+                { value: 'bank', label: 'Bank Account' },
+                { value: 'mobile_money', label: 'Mobile Money' },
+                { value: 'cash', label: 'Cash' },
+              ]}
+            />
+            <Select
+              label="Currency"
+              value={formData.currency}
+              onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+              options={[
+                { value: 'USD', label: 'USD' },
+                { value: 'ZWG', label: 'ZWG' },
+              ]}
+            />
+          </div>
+          {formData.account_type !== 'cash' && (
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Bank Name"
+                placeholder="e.g. Stanbic Bank"
+                value={formData.bank_name}
+                onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
+              />
+              <Input
+                label="Branch (optional)"
+                placeholder="e.g. Borrowdale"
+                value={formData.branch}
+                onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
+              />
+            </div>
+          )}
+          {formData.account_type !== 'cash' && (
+            <Input
+              label="Account Number"
+              placeholder="Account / wallet number"
+              value={formData.account_number}
+              onChange={(e) => setFormData({ ...formData, account_number: e.target.value })}
+            />
+          )}
+          <AsyncSelect
+            label="GL Account"
+            placeholder="Pick the chart-of-accounts entry this maps to"
+            value={formData.gl_account}
+            onChange={(val) => setFormData({ ...formData, gl_account: String(val) })}
+            options={glAccounts.map((a: any) => ({
+              value: a.id,
+              label: `${a.code} — ${a.name}`,
+              description: a.account_subtype || '',
+            }))}
+            searchable
+            required
+            emptyMessage="No asset accounts found. Seed your chart of accounts first."
+          />
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={() => { setShowModal(false); setEditingAccount(null) }}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saveMutation.isPending}>
+              {saveMutation.isPending ? 'Saving…' : (editingAccount ? 'Save changes' : 'Create account')}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

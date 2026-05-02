@@ -25,8 +25,9 @@ import {
   Download,
   Trash2,
 } from 'lucide-react'
-import { expenseApi, landlordApi, incomeTypeApi, expenseCategoryApi, bankAccountApi } from '../../services/api'
+import { expenseApi, landlordApi, incomeTypeApi, expenseCategoryApi, bankAccountApi, accountApi } from '../../services/api'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
+import { SubAccountBadge } from '../../components/SubAccountBadge'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, Tooltip, Pagination } from '../../components/ui'
 import { AutocompleteInput } from '../../components/ui/AutocompleteInput'
@@ -55,8 +56,15 @@ interface Expense {
   reference?: string
   expense_category?: number
   expense_category_name?: string
+  expense_category_funding?: string
   income_type?: number
   income_type_name?: string
+  bank_account?: number
+  bank_account_name?: string
+  bank_account_currency?: string
+  landlord?: number
+  landlord_name?: string
+  landlord_code?: string
   journal?: number
   journal_number?: string
   approved_by?: number
@@ -262,6 +270,49 @@ export default function Expenses() {
     placeholderData: keepPreviousData,
   })
   const bankAccounts: any[] = Array.isArray(bankAccountsData) ? bankAccountsData : (bankAccountsData?.results || [])
+
+  // Just-in-time bank account creation from inside the Expenses modal.
+  // Mirrors the JIT-invoice pattern in Receipts so users don't have to
+  // bounce out to Accounting → Bank Accounts mid-flow.
+  const [showQuickBank, setShowQuickBank] = useState(false)
+  // 'single' | 'batch' tells us which form's bank_account to auto-select
+  // after the new account lands (the batch form shares the same bank field).
+  const [quickBankFor, setQuickBankFor] = useState<'single' | 'batch'>('single')
+  const [quickBank, setQuickBank] = useState({
+    name: '',
+    account_type: 'bank',
+    bank_name: '',
+    account_number: '',
+    currency: 'USD',
+    gl_account: '',
+  })
+  const { data: glAccountsForBank } = useQuery({
+    queryKey: ['gl-accounts-for-bank-jit'],
+    queryFn: () => accountApi.list({ account_type: 'asset', page_size: 200 }).then((r: any) => r.data.results || r.data),
+    staleTime: 60000,
+    enabled: showQuickBank,
+  })
+  const glAccountsList: any[] = Array.isArray(glAccountsForBank) ? glAccountsForBank : (glAccountsForBank?.results || [])
+
+  const createBankMutation = useMutation({
+    mutationFn: (data: any) => bankAccountApi.create({
+      ...data,
+      gl_account: data.gl_account ? Number(data.gl_account) : null,
+    }).then(r => r.data),
+    onSuccess: (newBank: any) => {
+      showToast.success('Bank account created — selected for this expense')
+      queryClient.invalidateQueries({ queryKey: ['bank-accounts-for-expenses'] })
+      // Auto-select on whichever form opened the JIT modal.
+      setExpenseForm(f => ({
+        ...f,
+        bank_account: String(newBank.id),
+        currency: newBank.currency || f.currency,
+      }))
+      setShowQuickBank(false)
+      setQuickBank({ name: '', account_type: 'bank', bank_name: '', account_number: '', currency: 'USD', gl_account: '' })
+    },
+    onError: (err) => showToast.error(parseApiError(err, 'Failed to create bank account')),
+  })
 
   // Fetch expense categories — these encode GL routing + funding category.
   const { data: expenseCategoriesData } = useQuery({
@@ -833,16 +884,37 @@ export default function Expenses() {
                       ) : (
                         <p className="text-sm text-gray-900 truncate">{expense.payee_name}</p>
                       )}
-                      <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
+                      <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-500 flex-wrap">
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
                           {expense.date ? formatDate(expense.date) : '\u2014'}
                         </span>
-                        <span className="flex items-center gap-1">
-                          <FileText className="h-3 w-3" />
-                          {expenseTypes.find(t => t.value === expense.expense_type)?.label || expense.expense_type}
-                        </span>
+                        {expense.expense_category_name && (
+                          <span className="flex items-center gap-1">
+                            <FileText className="h-3 w-3" />
+                            {expense.expense_category_name}
+                          </span>
+                        )}
+                        {expense.bank_account_name && (
+                          <Tooltip content="Bank account funds came from">
+                            <span className="flex items-center gap-1">
+                              <Building2 className="h-3 w-3" />
+                              {expense.bank_account_name}
+                            </span>
+                          </Tooltip>
+                        )}
+                        <SubAccountBadge
+                          category={expense.expense_category_funding}
+                          currency={expense.currency}
+                        />
                       </div>
+                      {expense.landlord_name && (
+                        <div className="mt-1 text-xs text-violet-700">
+                          <span className="text-gray-500">Landlord:</span>{' '}
+                          <span className="font-medium">{expense.landlord_name}</span>
+                          {expense.landlord_code && <span className="text-gray-400 ml-1">({expense.landlord_code})</span>}
+                        </div>
+                      )}
                     </div>
 
                     <div className="text-right">
@@ -946,6 +1018,8 @@ export default function Expenses() {
                 }))}
                 required
                 searchable
+                onCreateNew={() => { setQuickBankFor('batch'); setShowQuickBank(true) }}
+                createNewLabel="+ Create new bank account"
               />
             </div>
             {selectedBank && (
@@ -1093,7 +1167,9 @@ export default function Expenses() {
             }))}
             required
             searchable
-            emptyMessage="No active bank accounts. Add one in Accounting → Bank Accounts."
+            onCreateNew={() => { setQuickBankFor('single'); setShowQuickBank(true) }}
+            createNewLabel="+ Create new bank account"
+            emptyMessage="No active bank accounts. Click + Create new bank account above."
           />
           {selectedBank && (
             <p className="-mt-2 text-xs text-gray-500">
@@ -1293,6 +1369,91 @@ export default function Expenses() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Just-in-time Create Bank Account modal — opens from the bank-account
+          dropdown so users don't have to leave the expense flow. */}
+      <Modal
+        isOpen={showQuickBank}
+        onClose={() => setShowQuickBank(false)}
+        title="Create Bank Account"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (!quickBank.name) { showToast.error('Account name is required.'); return }
+            if (!quickBank.gl_account) { showToast.error('Pick a GL account.'); return }
+            // Suppress the unused-var warning — quickBankFor is read inside the
+            // onSuccess effect of createBankMutation when invalidating queries.
+            void quickBankFor
+            createBankMutation.mutate(quickBank)
+          }}
+          className="space-y-4"
+        >
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Account Name"
+              placeholder="e.g. Stanbic USD Operating"
+              value={quickBank.name}
+              onChange={(e) => setQuickBank({ ...quickBank, name: e.target.value })}
+              required
+            />
+            <Select
+              label="Type"
+              value={quickBank.account_type}
+              onChange={(e) => setQuickBank({ ...quickBank, account_type: e.target.value })}
+              options={[
+                { value: 'bank', label: 'Bank Account' },
+                { value: 'mobile_money', label: 'Mobile Money' },
+                { value: 'cash', label: 'Cash' },
+              ]}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Bank Name"
+              placeholder="Stanbic Bank"
+              value={quickBank.bank_name}
+              onChange={(e) => setQuickBank({ ...quickBank, bank_name: e.target.value })}
+            />
+            <Select
+              label="Currency"
+              value={quickBank.currency}
+              onChange={(e) => setQuickBank({ ...quickBank, currency: e.target.value })}
+              options={[
+                { value: 'USD', label: 'USD' },
+                { value: 'ZWG', label: 'ZWG' },
+              ]}
+            />
+          </div>
+          <Input
+            label="Account Number"
+            placeholder="Optional"
+            value={quickBank.account_number}
+            onChange={(e) => setQuickBank({ ...quickBank, account_number: e.target.value })}
+          />
+          <AsyncSelect
+            label="GL Account"
+            placeholder="Map to chart-of-accounts entry"
+            value={quickBank.gl_account}
+            onChange={(val) => setQuickBank({ ...quickBank, gl_account: String(val) })}
+            options={glAccountsList.map((a: any) => ({
+              value: a.id,
+              label: `${a.code} — ${a.name}`,
+              description: a.account_subtype || '',
+            }))}
+            searchable
+            required
+          />
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={() => setShowQuickBank(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={createBankMutation.isPending}>
+              {createBankMutation.isPending ? 'Creating…' : 'Create & Use'}
+            </Button>
+          </div>
+        </form>
       </Modal>
 
       {/* Approve Confirmation */}
