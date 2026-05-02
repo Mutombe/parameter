@@ -12,13 +12,13 @@
     }
     .header {
         text-align: center;
-        margin-bottom: 18pt;
+        margin-bottom: 14pt;
         border-bottom: 2pt solid #333;
-        padding-bottom: 10pt;
+        padding-bottom: 8pt;
     }
     .header h1 {
         font-size: 14pt;
-        margin: 0 0 4pt 0;
+        margin: 0 0 3pt 0;
         color: #111;
         letter-spacing: 1pt;
         text-transform: uppercase;
@@ -29,50 +29,68 @@
         color: #555;
         font-weight: normal;
     }
-    .details-table { width: 100%; margin-bottom: 14pt; }
+    .details-table { width: 100%; margin-bottom: 12pt; }
     .details-table td { padding: 2pt 6pt; font-size: 8.5pt; }
-    .details-table .label { color: #666; font-weight: bold; width: 100pt; }
+    .details-table .label { color: #666; font-weight: bold; width: 90pt; }
     .details-table .value { color: #222; }
-    table.txn-table { width: 100%; border-collapse: collapse; margin-bottom: 10pt; }
+
+    /* The transaction table is the part that breaks easily in xhtml2pdf.
+       Use table-layout: fixed + colgroup with absolute widths so columns
+       don't collapse on top of each other when content is long. */
+    table.txn-table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        margin-bottom: 8pt;
+    }
     table.txn-table th {
-        background-color: #333;
+        background-color: #2c3e50;
         color: #fff;
-        font-size: 7.5pt;
+        font-size: 7pt;
         font-weight: bold;
         text-transform: uppercase;
-        letter-spacing: 0.5pt;
+        letter-spacing: 0.3pt;
         padding: 5pt 4pt;
         text-align: left;
-        border: 0.5pt solid #333;
+        border: 0.5pt solid #2c3e50;
     }
     table.txn-table th.right { text-align: right; }
     table.txn-table td {
-        padding: 4pt 4pt;
-        font-size: 8pt;
+        padding: 5pt 4pt;
+        font-size: 7.5pt;
         border-bottom: 0.5pt solid #ddd;
         vertical-align: top;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
     }
-    table.txn-table td.right { text-align: right; font-variant-numeric: tabular-nums; }
-    table.txn-table tr.alt { background-color: #f7f7f7; }
+    table.txn-table td.right { text-align: right; }
+    table.txn-table td.num {
+        text-align: right;
+        font-family: Courier, monospace;
+        font-size: 7.5pt;
+    }
+    table.txn-table tr.alt td { background-color: #f7f7f7; }
     table.txn-table tr.bf-row td {
         font-style: italic;
-        color: #555;
-        border-bottom: 1pt solid #bbb;
+        color: #666;
+        border-bottom: 1pt solid #999;
+        font-size: 7.5pt;
     }
     table.txn-table tr.totals-row td {
         font-weight: bold;
-        border-top: 1.5pt solid #333;
-        border-bottom: 1.5pt double #333;
+        border-top: 1.5pt solid #2c3e50;
+        border-bottom: 1.5pt double #2c3e50;
         padding-top: 6pt;
         padding-bottom: 6pt;
-        background-color: #f0f0f0;
+        background-color: #ecf0f1;
+        font-size: 8pt;
     }
     .footer {
-        margin-top: 20pt;
-        font-size: 7.5pt;
+        margin-top: 18pt;
+        font-size: 7pt;
         color: #888;
         border-top: 0.5pt solid #ccc;
-        padding-top: 6pt;
+        padding-top: 5pt;
         text-align: center;
     }
 </style>
@@ -95,7 +113,7 @@
         <td class="label">Name:</td>
         <td class="value">{{ tenant.name }}</td>
         <td class="label">Period:</td>
-        <td class="value">{% if period_start or period_end %}{{ period_start|default:"—" }} to {{ period_end|default:"—" }}{% else %}All time{% endif %}</td>
+        <td class="value">{% if period_start or period_end %}{{ period_start|default:"&mdash;" }} to {{ period_end|default:"&mdash;" }}{% else %}All time{% endif %}</td>
     </tr>
     {% if tenant.email or tenant.phone %}
     <tr>
@@ -110,26 +128,32 @@
 </table>
 
 <table class="txn-table">
+    <colgroup>
+        <col style="width: 60pt;" />   <!-- Date -->
+        <col style="width: 50pt;" />   <!-- Type -->
+        <col style="width: 80pt;" />   <!-- Reference -->
+        <col style="width: 155pt;" />  <!-- Description -->
+        <col style="width: 55pt;" />   <!-- Debit -->
+        <col style="width: 55pt;" />   <!-- Credit -->
+        <col style="width: 55pt;" />   <!-- Balance -->
+    </colgroup>
     <thead>
         <tr>
-            <th style="width:11%">Date</th>
-            <th style="width:9%">Type</th>
-            <th style="width:14%">Reference</th>
-            <th style="width:31%">Description</th>
-            <th class="right" style="width:11%">Debit</th>
-            <th class="right" style="width:11%">Credit</th>
-            <th class="right" style="width:13%">Balance</th>
+            <th>Date</th>
+            <th>Type</th>
+            <th>Reference</th>
+            <th>Description</th>
+            <th class="right">Debit</th>
+            <th class="right">Credit</th>
+            <th class="right">Balance</th>
         </tr>
     </thead>
     <tbody>
         <tr class="bf-row">
-            <td></td>
-            <td></td>
-            <td></td>
-            <td>Balance brought forward</td>
-            <td class="right"></td>
-            <td class="right"></td>
-            <td class="right">{{ opening_balance }}</td>
+            <td colspan="4">Balance brought forward</td>
+            <td class="num"></td>
+            <td class="num"></td>
+            <td class="num">{{ opening_balance }}</td>
         </tr>
         {% for e in entries %}
         <tr{% if forloop.counter|divisibleby:2 %} class="alt"{% endif %}>
@@ -137,19 +161,16 @@
             <td>{{ e.type|title }}</td>
             <td>{{ e.reference }}</td>
             <td>{{ e.description }}</td>
-            <td class="right">{{ e.debit }}</td>
-            <td class="right">{{ e.credit }}</td>
-            <td class="right">{{ e.balance }}</td>
+            <td class="num">{{ e.debit }}</td>
+            <td class="num">{{ e.credit }}</td>
+            <td class="num">{{ e.balance }}</td>
         </tr>
         {% endfor %}
         <tr class="totals-row">
-            <td></td>
-            <td></td>
-            <td></td>
-            <td>Totals</td>
-            <td class="right">{{ total_debits }}</td>
-            <td class="right">{{ total_credits }}</td>
-            <td class="right">{{ closing_balance }}</td>
+            <td colspan="4">Totals</td>
+            <td class="num">{{ total_debits }}</td>
+            <td class="num">{{ total_credits }}</td>
+            <td class="num">{{ closing_balance }}</td>
         </tr>
     </tbody>
 </table>

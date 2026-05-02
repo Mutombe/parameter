@@ -3,10 +3,7 @@
 <head>
 <meta charset="utf-8">
 <style>
-    @page {
-        size: A4;
-        margin: 1.5cm;
-    }
+    @page { size: A4; margin: 1.5cm; }
     body {
         font-family: Helvetica, Arial, sans-serif;
         font-size: 9pt;
@@ -15,13 +12,13 @@
     }
     .header {
         text-align: center;
-        margin-bottom: 18pt;
+        margin-bottom: 14pt;
         border-bottom: 2pt solid #333;
-        padding-bottom: 10pt;
+        padding-bottom: 8pt;
     }
     .header h1 {
         font-size: 14pt;
-        margin: 0 0 4pt 0;
+        margin: 0 0 3pt 0;
         color: #111;
         letter-spacing: 1pt;
         text-transform: uppercase;
@@ -32,77 +29,72 @@
         color: #555;
         font-weight: normal;
     }
-    .details-table {
-        width: 100%;
-        margin-bottom: 14pt;
-    }
-    .details-table td {
-        padding: 2pt 6pt;
-        font-size: 8.5pt;
-    }
-    .details-table .label {
-        color: #666;
-        font-weight: bold;
-        width: 100pt;
-    }
-    .details-table .value {
-        color: #222;
-    }
+    .details-table { width: 100%; margin-bottom: 12pt; }
+    .details-table td { padding: 2pt 6pt; font-size: 8.5pt; }
+    .details-table .label { color: #666; font-weight: bold; width: 90pt; }
+    .details-table .value { color: #222; }
+
+    /* Same fixed-layout + colgroup pattern as the tenant statement —
+       xhtml2pdf ignores % widths on <th>, so columns must be set
+       explicitly via <col> in pt. */
     table.txn-table {
         width: 100%;
         border-collapse: collapse;
-        margin-bottom: 10pt;
+        table-layout: fixed;
+        margin-bottom: 8pt;
     }
     table.txn-table th {
-        background-color: #333;
+        background-color: #2c3e50;
         color: #fff;
-        font-size: 7.5pt;
+        font-size: 7pt;
         font-weight: bold;
         text-transform: uppercase;
-        letter-spacing: 0.5pt;
-        padding: 5pt 4pt;
+        letter-spacing: 0.3pt;
+        padding: 5pt 3pt;
         text-align: left;
-        border: 0.5pt solid #333;
+        border: 0.5pt solid #2c3e50;
     }
-    table.txn-table th.right {
-        text-align: right;
-    }
+    table.txn-table th.right { text-align: right; }
     table.txn-table td {
-        padding: 4pt 4pt;
-        font-size: 8pt;
+        padding: 5pt 3pt;
+        font-size: 7pt;
         border-bottom: 0.5pt solid #ddd;
         vertical-align: top;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
     }
-    table.txn-table td.right {
+    table.txn-table td.right { text-align: right; }
+    table.txn-table td.num {
         text-align: right;
-        font-variant-numeric: tabular-nums;
+        font-family: Courier, monospace;
+        font-size: 7pt;
     }
     table.txn-table td.mono {
         font-family: Courier, monospace;
-        font-size: 7.5pt;
+        font-size: 6.5pt;
     }
-    table.txn-table tr.alt {
-        background-color: #f7f7f7;
-    }
+    table.txn-table tr.alt td { background-color: #f7f7f7; }
     table.txn-table tr.bf-row td {
         font-style: italic;
-        color: #555;
-        border-bottom: 1pt solid #bbb;
+        color: #666;
+        border-bottom: 1pt solid #999;
+        font-size: 7.5pt;
     }
     table.txn-table tr.totals-row td {
         font-weight: bold;
-        border-top: 1.5pt solid #333;
-        border-bottom: 1.5pt double #333;
+        border-top: 1.5pt solid #2c3e50;
+        border-bottom: 1.5pt double #2c3e50;
         padding-top: 6pt;
         padding-bottom: 6pt;
-        background-color: #f0f0f0;
+        background-color: #ecf0f1;
+        font-size: 8pt;
     }
     .footer {
-        margin-top: 20pt;
-        font-size: 7.5pt;
+        margin-top: 18pt;
+        font-size: 7pt;
         color: #888;
         border-top: 0.5pt solid #ccc;
-        padding-top: 6pt;
+        padding-top: 5pt;
         text-align: center;
     }
 </style>
@@ -136,50 +128,52 @@
 </table>
 
 <table class="txn-table">
+    <colgroup>
+        <col style="width: 32pt;" />   <!-- Txn # -->
+        <col style="width: 55pt;" />   <!-- Date -->
+        <col style="width: 55pt;" />   <!-- Contra -->
+        <col style="width: 70pt;" />   <!-- Reference -->
+        <col style="width: 138pt;" />  <!-- Description -->
+        <col style="width: 50pt;" />   <!-- Debit -->
+        <col style="width: 50pt;" />   <!-- Credit -->
+        <col style="width: 60pt;" />   <!-- Balance -->
+    </colgroup>
     <thead>
         <tr>
-            <th style="width:7%">Txn #</th>
-            <th style="width:10%">Date</th>
-            <th style="width:12%">Contra</th>
-            <th style="width:10%">Ref</th>
-            <th style="width:29%">Description</th>
-            <th class="right" style="width:11%">Debit</th>
-            <th class="right" style="width:11%">Credit</th>
-            <th class="right" style="width:11%">Balance</th>
+            <th>Txn #</th>
+            <th>Date</th>
+            <th>Contra</th>
+            <th>Ref</th>
+            <th>Description</th>
+            <th class="right">Debit</th>
+            <th class="right">Credit</th>
+            <th class="right">Balance</th>
         </tr>
     </thead>
     <tbody>
         <tr class="bf-row">
-            <td></td>
-            <td></td>
-            <td></td>
-            <td></td>
-            <td>Balance brought forward</td>
-            <td class="right"></td>
-            <td class="right"></td>
-            <td class="right">{{ opening_balance }}</td>
+            <td colspan="5">Balance brought forward</td>
+            <td class="num"></td>
+            <td class="num"></td>
+            <td class="num">{{ opening_balance }}</td>
         </tr>
         {% for t in transactions %}
         <tr{% if forloop.counter|divisibleby:2 %} class="alt"{% endif %}>
             <td class="mono">{{ t.transaction_number }}</td>
             <td>{{ t.date }}</td>
-            <td>{{ t.contra_account }}</td>
-            <td>{{ t.reference }}</td>
+            <td class="mono">{{ t.contra_account }}</td>
+            <td class="mono">{{ t.reference }}</td>
             <td>{{ t.description }}{% if t.marker %} [C]{% endif %}</td>
-            <td class="right">{% if t.debit_amount and t.debit_amount != 0 %}{{ t.debit_amount }}{% endif %}</td>
-            <td class="right">{% if t.credit_amount and t.credit_amount != 0 %}{{ t.credit_amount }}{% endif %}</td>
-            <td class="right">{{ t.balance }}</td>
+            <td class="num">{% if t.debit_amount and t.debit_amount != 0 %}{{ t.debit_amount }}{% endif %}</td>
+            <td class="num">{% if t.credit_amount and t.credit_amount != 0 %}{{ t.credit_amount }}{% endif %}</td>
+            <td class="num">{{ t.balance }}</td>
         </tr>
         {% endfor %}
         <tr class="totals-row">
-            <td></td>
-            <td></td>
-            <td></td>
-            <td></td>
-            <td>Totals</td>
-            <td class="right">{{ total_debits }}</td>
-            <td class="right">{{ total_credits }}</td>
-            <td class="right">{{ closing_balance }}</td>
+            <td colspan="5">Totals</td>
+            <td class="num">{{ total_debits }}</td>
+            <td class="num">{{ total_credits }}</td>
+            <td class="num">{{ closing_balance }}</td>
         </tr>
     </tbody>
 </table>
