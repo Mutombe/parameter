@@ -3875,7 +3875,13 @@ function LeaseChargeSummaryReport() {
 
 function IncomeExpenditureReport() {
   const navigate = useNavigate()
-  const [selectedLandlord, setSelectedLandlord] = useState<string>('')
+  const [searchParams] = useSearchParams()
+  // Pre-select the landlord when navigating in via ?landlord_id=… (e.g.
+  // from the Reports cards on the LandlordDetail page) so the user doesn't
+  // have to re-pick what they were already viewing.
+  const [selectedLandlord, setSelectedLandlord] = useState<string>(
+    () => searchParams.get('landlord_id') || ''
+  )
   const [currency, setCurrency] = useState<string>('USD')
   const [startDate, setStartDate] = useState(() => {
     const d = new Date(); return `${d.getFullYear()}-01-01`
@@ -4231,7 +4237,7 @@ function IncomeExpenditureReport() {
                     </button>
                     {/* Subtotal */}
                     <div className="flex justify-between py-2 bg-blue-50 rounded px-2 -mx-2">
-                      <span className="font-semibold text-gray-900">Total Debtors</span>
+                      <span className="font-semibold text-gray-900">Total Assets</span>
                       <span className="tabular-nums font-bold text-blue-700">{fmtNum(adjDebtorsSubtotal)}</span>
                     </div>
                   </div>
@@ -4275,7 +4281,7 @@ function IncomeExpenditureReport() {
                     </button>
                     {/* Subtotal */}
                     <div className="flex justify-between py-2 bg-orange-50 rounded px-2 -mx-2">
-                      <span className="font-semibold text-gray-900">Total Creditors</span>
+                      <span className="font-semibold text-gray-900">Total Liabilities</span>
                       <span className="tabular-nums font-bold text-orange-700">{fmtNum(adjCreditorsSubtotal)}</span>
                     </div>
                   </div>

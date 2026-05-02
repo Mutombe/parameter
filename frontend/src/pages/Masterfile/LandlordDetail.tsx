@@ -1478,7 +1478,23 @@ export default function LandlordDetail() {
                               a.download = `statement-${(acc?.code || acc?.account_code || selectedSubAccount).replace(/\//g, '-')}.${fmt}`
                               a.click()
                               URL.revokeObjectURL(url)
-                            } catch { /* ignore */ }
+                            } catch (err: any) {
+                              // Blob responses from a 5xx contain JSON the toast can't read directly.
+                              let detail = ''
+                              try {
+                                const data = err?.response?.data
+                                if (data instanceof Blob) {
+                                  const text = await data.text()
+                                  try {
+                                    const parsed = JSON.parse(text)
+                                    detail = parsed.error || parsed.detail || parsed.message || text.slice(0, 200)
+                                  } catch {
+                                    detail = text.slice(0, 200)
+                                  }
+                                }
+                              } catch { /* ignore */ }
+                              showToast.error(detail ? `Failed to export: ${detail}` : parseApiError(err, 'Failed to export statement'))
+                            }
                           }}
                           className="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left first:rounded-t-lg last:rounded-b-lg"
                         >
@@ -1532,11 +1548,19 @@ export default function LandlordDetail() {
                               )}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.debit ? formatCurrency(txn.debit) : ''}</td>
-                          <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">{txn.credit ? formatCurrency(txn.credit) : ''}</td>
+                          <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">
+                            {Number(txn.debit_amount ?? txn.debit ?? 0) > 0
+                              ? formatCurrency(txn.debit_amount ?? txn.debit)
+                              : ''}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600 text-right tabular-nums">
+                            {Number(txn.credit_amount ?? txn.credit ?? 0) > 0
+                              ? formatCurrency(txn.credit_amount ?? txn.credit)
+                              : ''}
+                          </td>
                           <td className="px-6 py-4 text-sm font-medium text-right tabular-nums">
-                            <span className={(txn.balance || txn.running_balance || 0) < 0 ? 'text-red-600' : 'text-gray-900'}>
-                              {formatCurrency(txn.balance || txn.running_balance || 0)}
+                            <span className={Number(txn.balance ?? txn.running_balance ?? 0) < 0 ? 'text-red-600' : 'text-gray-900'}>
+                              {formatCurrency(txn.balance ?? txn.running_balance ?? 0)}
                             </span>
                           </td>
                         </tr>

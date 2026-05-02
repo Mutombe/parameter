@@ -7,6 +7,20 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.negotiation import DefaultContentNegotiation
+
+
+class IgnoreFormatNegotiation(DefaultContentNegotiation):
+    """Don't 404 when ?format= is unknown — let the action handle it.
+
+    DRF's default filter_renderers raises Http404 when no registered
+    renderer matches the requested format, killing endpoints that use
+    `?format=pdf|csv` as their own action param. Returning the
+    unfiltered renderer list lets the view see the request.
+    """
+
+    def filter_renderers(self, renderers, format):
+        return renderers
 from django.db import transaction
 from django.db.models import Sum, Q, Count, Prefetch
 from django.http import HttpResponse
@@ -1383,6 +1397,9 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
     queryset = SubsidiaryAccount.objects.all()
     serializer_class = SubsidiaryAccountSerializer
     permission_classes = [IsAuthenticated]
+    # Bypass DRF's format-suffix Http404 so export_statement's ?format=pdf
+    # query param isn't intercepted as a renderer selector.
+    content_negotiation_class = IgnoreFormatNegotiation
     filterset_fields = ['entity_type', 'is_active', 'currency', 'landlord', 'tenant', 'category']
     search_fields = ['code', 'name']
     ordering = ['code']
