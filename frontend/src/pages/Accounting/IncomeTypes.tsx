@@ -22,6 +22,7 @@ import { Modal, ModalFooter, SelectionCheckbox, BulkActionsBar, Tooltip } from '
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
+import { useBulkLoading } from '../../hooks/useBulkLoading'
 
 interface IncomeType {
   id: number
@@ -72,6 +73,7 @@ export default function IncomeTypes() {
   const [form, setForm] = useState(emptyForm)
 
   const selection = useSelection<number>({ clearOnChange: [searchQuery] })
+  const bulkLoading = useBulkLoading()
 
   const { data, isLoading } = useQuery({
     queryKey: ['income-types'],
@@ -209,12 +211,14 @@ export default function IncomeTypes() {
     showToast.success(`Exported ${selected.length} income types`)
   }
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     const ids = Array.from(selection.selectedIds)
-    for (const id of ids) { try { await incomeTypeApi.delete(id) } catch {} }
-    selection.clearSelection()
-    queryClient.invalidateQueries({ queryKey: ['income-types'] })
-    showToast.success(`Deleted ${ids.length} income types`)
+    bulkLoading.run('delete', async () => {
+      for (const id of ids) { try { await incomeTypeApi.delete(id) } catch {} }
+      selection.clearSelection()
+      queryClient.invalidateQueries({ queryKey: ['income-types'] })
+      showToast.success(`Deleted ${ids.length} income types`)
+    })
   }
 
   return (
@@ -631,8 +635,8 @@ export default function IncomeTypes() {
         onClearSelection={selection.clearSelection}
         entityName="income types"
         actions={[
-          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
-          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger' },
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline', disabled: bulkLoading.busy },
+          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger', loading: bulkLoading.is('delete'), disabled: bulkLoading.busy && !bulkLoading.is('delete') },
         ]}
       />
     </div>

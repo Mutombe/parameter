@@ -35,6 +35,7 @@ import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { PayerCell } from '../../components/PayerCell'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
+import { useBulkLoading } from '../../hooks/useBulkLoading'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { usePrefetch } from '../../hooks/usePrefetch'
 interface Lease {
@@ -148,6 +149,7 @@ export default function Leases() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [documentFile, setDocumentFile] = useState<File | null>(null)
   const selection = useSelection<number>({ clearOnChange: [debouncedSearch, statusFilter] })
+  const bulkLoading = useBulkLoading()
   const prefetch = usePrefetch()
 
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -488,16 +490,18 @@ export default function Leases() {
       open: true,
       title: `Delete ${selection.selectedCount} leases?`,
       message: 'This action cannot be undone.',
-      onConfirm: async () => {
-        const ids = Array.from(selection.selectedIds)
-        for (const id of ids) { try { await leaseApi.update(id, { status: 'terminated' }) } catch {} }
-        selection.clearSelection()
-        queryClient.invalidateQueries({ predicate: (q) => {
-        const key = q.queryKey[0] as string
-        return key === 'leases' || key.startsWith('lease')
-      }})
-        showToast.success(`Terminated ${ids.length} leases`)
+      onConfirm: () => {
         setBulkConfirm(d => ({ ...d, open: false }))
+        bulkLoading.run('delete', async () => {
+          const ids = Array.from(selection.selectedIds)
+          for (const id of ids) { try { await leaseApi.update(id, { status: 'terminated' }) } catch {} }
+          selection.clearSelection()
+          queryClient.invalidateQueries({ predicate: (q) => {
+            const key = q.queryKey[0] as string
+            return key === 'leases' || key.startsWith('lease')
+          }})
+          showToast.success(`Terminated ${ids.length} leases`)
+        })
       },
     })
   }
@@ -514,21 +518,23 @@ export default function Leases() {
       open: true,
       title: `Activate ${selectedDraftIds.length} leases?`,
       message: `This will activate ${selectedDraftIds.length} draft lease${selectedDraftIds.length !== 1 ? 's' : ''} and mark their units as occupied.`,
-      onConfirm: async () => {
-        try {
-          const res = await leaseApi.bulkActivate({ lease_ids: selectedDraftIds })
-          const count = res.data?.activated || 0
-          const errors = res.data?.errors || []
-          showToast.success(`Activated ${count} lease${count !== 1 ? 's' : ''}${errors.length ? ` (${errors.length} errors)` : ''}`)
-          selection.clearSelection()
-          queryClient.invalidateQueries({ predicate: (q) => {
-        const key = q.queryKey[0] as string
-        return key === 'leases' || key.startsWith('lease')
-      }})
-        } catch (error: any) {
-          showToast.error(parseApiError(error, 'Failed to bulk activate'))
-        }
+      onConfirm: () => {
         setBulkConfirm(d => ({ ...d, open: false }))
+        bulkLoading.run('activate', async () => {
+          try {
+            const res = await leaseApi.bulkActivate({ lease_ids: selectedDraftIds })
+            const count = res.data?.activated || 0
+            const errors = res.data?.errors || []
+            showToast.success(`Activated ${count} lease${count !== 1 ? 's' : ''}${errors.length ? ` (${errors.length} errors)` : ''}`)
+            selection.clearSelection()
+            queryClient.invalidateQueries({ predicate: (q) => {
+              const key = q.queryKey[0] as string
+              return key === 'leases' || key.startsWith('lease')
+            }})
+          } catch (error: any) {
+            showToast.error(parseApiError(error, 'Failed to bulk activate'))
+          }
+        })
       },
     })
   }
@@ -951,9 +957,9 @@ export default function Leases() {
         onClearSelection={selection.clearSelection}
         entityName="leases"
         actions={[
-          { label: 'Activate', icon: Play, onClick: handleBulkActivate },
-          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
-          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger' },
+          { label: 'Activate', icon: Play, onClick: handleBulkActivate, loading: bulkLoading.is('activate'), disabled: bulkLoading.busy && !bulkLoading.is('activate') },
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline', disabled: bulkLoading.busy },
+          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger', loading: bulkLoading.is('delete'), disabled: bulkLoading.busy && !bulkLoading.is('delete') },
         ]}
       />
 

@@ -26,6 +26,7 @@ import { PiUsersFour } from "react-icons/pi";
 import { TbUserSquareRounded } from "react-icons/tb";
 import { useAuthStore } from '../../stores/authStore'
 import { useSelection } from '../../hooks/useSelection'
+import { useBulkLoading } from '../../hooks/useBulkLoading'
 
 
 // Full list of role options with descriptions
@@ -104,6 +105,7 @@ export default function TeamManagement() {
 
   // Selection for invitations tab
   const selection = useSelection<number>({ clearOnChange: [activeTab] })
+  const bulkLoading = useBulkLoading()
 
   // Check if current user can invite others
   const canInvite = Boolean(currentUser?.role && ['super_admin', 'admin', 'accountant'].includes(currentUser.role))
@@ -291,26 +293,30 @@ export default function TeamManagement() {
   }
 
   // Bulk actions for invitations tab
-  const handleBulkResend = async () => {
+  const handleBulkResend = () => {
     const ids = Array.from(selection.selectedIds)
-    let count = 0
-    for (const id of ids) {
-      try { await invitationsApi.resend(id); count++ } catch {}
-    }
-    selection.clearSelection()
-    queryClient.invalidateQueries({ queryKey: ['invitations'] })
-    toast.success(`Resent ${count} invitations`)
+    bulkLoading.run('resend', async () => {
+      let count = 0
+      for (const id of ids) {
+        try { await invitationsApi.resend(id); count++ } catch {}
+      }
+      selection.clearSelection()
+      queryClient.invalidateQueries({ queryKey: ['invitations'] })
+      toast.success(`Resent ${count} invitations`)
+    })
   }
 
-  const handleBulkCancel = async () => {
+  const handleBulkCancel = () => {
     const ids = Array.from(selection.selectedIds)
-    let count = 0
-    for (const id of ids) {
-      try { await invitationsApi.cancel(id); count++ } catch {}
-    }
-    selection.clearSelection()
-    queryClient.invalidateQueries({ queryKey: ['invitations'] })
-    toast.success(`Cancelled ${count} invitations`)
+    bulkLoading.run('cancel', async () => {
+      let count = 0
+      for (const id of ids) {
+        try { await invitationsApi.cancel(id); count++ } catch {}
+      }
+      selection.clearSelection()
+      queryClient.invalidateQueries({ queryKey: ['invitations'] })
+      toast.success(`Cancelled ${count} invitations`)
+    })
   }
 
   const userList = (users as any)?.results || users || []
@@ -703,8 +709,8 @@ export default function TeamManagement() {
         onClearSelection={selection.clearSelection}
         entityName="invitations"
         actions={[
-          { label: 'Resend', icon: RefreshCw, onClick: handleBulkResend, variant: 'primary' },
-          { label: 'Cancel', icon: XCircle, onClick: handleBulkCancel, variant: 'danger' },
+          { label: 'Resend', icon: RefreshCw, onClick: handleBulkResend, variant: 'primary', loading: bulkLoading.is('resend'), disabled: bulkLoading.busy && !bulkLoading.is('resend') },
+          { label: 'Cancel', icon: XCircle, onClick: handleBulkCancel, variant: 'danger', loading: bulkLoading.is('cancel'), disabled: bulkLoading.busy && !bulkLoading.is('cancel') },
         ]}
       />
 

@@ -34,6 +34,7 @@ import { undoToast } from '../../lib/undoToast'
 import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
+import { useBulkLoading } from '../../hooks/useBulkLoading'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { usePrefetch } from '../../hooks/usePrefetch'
 import { useRecentValues } from '../../hooks/useRecentValues'
@@ -157,6 +158,7 @@ export default function Expenses() {
   const [currentPage, setCurrentPage] = useState(1)
 
   const selection = useSelection<number | string>({ clearOnChange: [debouncedSearch, statusFilter, typeFilter] })
+  const bulkLoading = useBulkLoading()
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   useHotkeys([
@@ -389,15 +391,17 @@ export default function Expenses() {
     showToast.success(`Exported ${selected.length} expenses`)
   }
 
-  const handleBulkApprove = async () => {
+  const handleBulkApprove = () => {
     const ids = Array.from(selection.selectedIds)
-    let approved = 0
-    for (const id of ids) {
-      try { await expenseApi.approve(id as number); approved++ } catch {}
-    }
-    selection.clearSelection()
-    queryClient.invalidateQueries({ queryKey: ['expenses'] })
-    showToast.success(`Approved ${approved} expenses`)
+    bulkLoading.run('approve', async () => {
+      let approved = 0
+      for (const id of ids) {
+        try { await expenseApi.approve(id as number); approved++ } catch {}
+      }
+      selection.clearSelection()
+      queryClient.invalidateQueries({ queryKey: ['expenses'] })
+      showToast.success(`Approved ${approved} expenses`)
+    })
   }
 
   const handleBulkDelete = () => {
@@ -956,9 +960,9 @@ export default function Expenses() {
         onClearSelection={selection.clearSelection}
         entityName="expenses"
         actions={[
-          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
-          { label: 'Approve', icon: Check, onClick: handleBulkApprove, variant: 'primary' },
-          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger' },
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline', disabled: bulkLoading.busy },
+          { label: 'Approve', icon: Check, onClick: handleBulkApprove, variant: 'primary', loading: bulkLoading.is('approve'), disabled: bulkLoading.busy && !bulkLoading.is('approve') },
+          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger', disabled: bulkLoading.busy },
         ]}
       />
 

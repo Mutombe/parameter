@@ -378,13 +378,19 @@ export default function LandlordDetail() {
       showToast.info('Creating property — redirecting...')
     },
     onSuccess: (response) => {
+      const newProperty = response?.data
+      if (newProperty?.id) {
+        // Seed the detail cache so PropertyDetail renders instantly on
+        // arrival — no second roundtrip to fetch what we just created.
+        queryClient.setQueryData(['property', newProperty.id], newProperty)
+      }
       queryClient.invalidateQueries({ predicate: (q) => {
         const key = q.queryKey[0] as string
         return key.startsWith('landlord') || key.startsWith('propert')
       }})
-      if (response?.data?.id) {
+      if (newProperty?.id) {
         // Chain: open the lease modal automatically on the property detail page.
-        navigate(`/dashboard/properties/${response.data.id}?createNext=lease`)
+        navigate(`/dashboard/properties/${newProperty.id}?createNext=lease`)
       }
     },
     onError: (error) => {
@@ -409,12 +415,16 @@ export default function LandlordDetail() {
       showToast.info('Creating lease — redirecting...')
     },
     onSuccess: (response) => {
+      const newLease = response?.data
+      if (newLease?.id) {
+        queryClient.setQueryData(['lease', newLease.id], newLease)
+      }
       queryClient.invalidateQueries({ predicate: (q) => {
         const key = q.queryKey[0] as string
         return key.startsWith('landlord') || key.startsWith('lease') || key.startsWith('propert')
       }})
-      if (response?.data?.id) {
-        navigate(`/dashboard/leases/${response.data.id}`)
+      if (newLease?.id) {
+        navigate(`/dashboard/leases/${newLease.id}`)
       }
     },
     onError: (error) => {

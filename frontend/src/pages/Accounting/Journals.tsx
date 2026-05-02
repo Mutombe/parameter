@@ -31,6 +31,7 @@ import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton, 
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
+import { useBulkLoading } from '../../hooks/useBulkLoading'
 import toast from 'react-hot-toast'
 
 const PAGE_SIZE = 25
@@ -137,6 +138,7 @@ export default function Journals() {
     open: false, journalId: null, reason: ''
   })
   const selection = useSelection<number>({ clearOnChange: [debouncedSearch, statusFilter] })
+  const bulkLoading = useBulkLoading()
   const [newJournal, setNewJournal] = useState({
     date: new Date().toISOString().split('T')[0],
     description: '',
@@ -281,15 +283,17 @@ export default function Journals() {
     toast.success(`Exported ${selected.length} journals`)
   }
 
-  const handleBulkPost = async () => {
+  const handleBulkPost = () => {
     const ids = Array.from(selection.selectedIds)
-    let posted = 0
-    for (const id of ids) {
-      try { await journalApi.post(id); posted++ } catch {}
-    }
-    selection.clearSelection()
-    queryClient.invalidateQueries({ queryKey: ['journals'] })
-    toast.success(`Posted ${posted} journals`)
+    bulkLoading.run('post', async () => {
+      let posted = 0
+      for (const id of ids) {
+        try { await journalApi.post(id); posted++ } catch {}
+      }
+      selection.clearSelection()
+      queryClient.invalidateQueries({ queryKey: ['journals'] })
+      toast.success(`Posted ${posted} journals`)
+    })
   }
 
   return (
@@ -896,8 +900,8 @@ export default function Journals() {
         onClearSelection={selection.clearSelection}
         entityName="journals"
         actions={[
-          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
-          { label: 'Post', icon: Send, onClick: handleBulkPost, variant: 'primary' },
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline', disabled: bulkLoading.busy },
+          { label: 'Post', icon: Send, onClick: handleBulkPost, variant: 'primary', loading: bulkLoading.is('post'), disabled: bulkLoading.busy && !bulkLoading.is('post') },
         ]}
       />
     </div>

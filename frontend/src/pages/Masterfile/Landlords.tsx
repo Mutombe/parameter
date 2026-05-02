@@ -196,14 +196,19 @@ export default function Landlords() {
       // For updates we still confirm; for creates the info toast on mutate
       // already announced the redirect.
       if (context?.isUpdating) showToast.success('Landlord updated successfully')
+      const newLandlord = response?.data
+      if (!context?.isUpdating && newLandlord?.id) {
+        // Seed detail cache so LandlordDetail renders instantly on arrival.
+        queryClient.setQueryData(['landlord', newLandlord.id], newLandlord)
+      }
       queryClient.invalidateQueries({ predicate: (q) => {
         const key = q.queryKey[0] as string
         return key === 'landlords' || key.startsWith('landlord')
       }})
       // Navigate to detail page after creation (not update). Chain into the
       // property modal so the user can keep building landlord → property → lease.
-      if (!context?.isUpdating && response?.data?.id) {
-        navigate(`/dashboard/landlords/${response.data.id}?createNext=property`)
+      if (!context?.isUpdating && newLandlord?.id) {
+        navigate(`/dashboard/landlords/${newLandlord.id}?createNext=property`)
       }
     },
     onError: (error, _, context) => {

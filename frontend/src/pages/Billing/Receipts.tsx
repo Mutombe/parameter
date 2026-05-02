@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Search, CreditCard, Plus, Send, Loader2, Eye, X, User, Download, Printer, BookOpen } from 'lucide-react'
-import { receiptApi, tenantApi, invoiceApi } from '../../services/api'
+import { receiptApi, tenantApi, invoiceApi, leaseApi } from '../../services/api'
 import { formatCurrency, formatDate, useDebounce, cn } from '../../lib/utils'
 import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination } from '../../components/ui'
 import { PayerSelect } from '../../components/PayerSelect'
@@ -11,6 +11,7 @@ import { PayerCell } from '../../components/PayerCell'
 import { AutocompleteInput } from '../../components/ui/AutocompleteInput'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
+import { useBulkLoading } from '../../hooks/useBulkLoading'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { usePrefetch } from '../../hooks/usePrefetch'
 import { useRecentValues } from '../../hooks/useRecentValues'
@@ -57,6 +58,7 @@ export default function Receipts() {
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null)
   const [postingId, setPostingId] = useState<number | null>(null)
   const selection = useSelection<number | string>({ clearOnChange: [debouncedSearch] })
+  const bulkLoading = useBulkLoading()
   const prefetch = usePrefetch()
 
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -74,6 +76,18 @@ export default function Receipts() {
     amount: '',
     payment_method: recentPaymentMethod.values[0] || 'bank_transfer',
     reference: '',
+    description: '',
+  })
+
+  // Just-in-time invoice creation from inside the receipt modal — opens a
+  // small inline form pre-filled with the selected payer.
+  const [showQuickInvoice, setShowQuickInvoice] = useState(false)
+  const [quickInvoice, setQuickInvoice] = useState({
+    lease: '',
+    invoice_type: 'rent',
+    date: new Date().toISOString().split('T')[0],
+    due_date: '',
+    amount: '',
     description: '',
   })
 
@@ -112,6 +126,55 @@ export default function Receipts() {
   const invoices = allInvoices?.filter((inv: any) =>
     ['sent', 'partial', 'overdue'].includes(inv.status) && Number(inv.balance) > 0
   )
+
+  // Active leases for the selected payer — feeds the quick-invoice modal.
+  const { data: payerLeases } = useQuery({
+    queryKey: ['payer-active-leases', form.tenant],
+    queryFn: () => leaseApi.list({ tenant: form.tenant, status: 'active', page_size: 50 })
+      .then(r => r.data.results || r.data),
+    enabled: !!form.tenant && showQuickInvoice,
+    staleTime: 30000,
+  })
+  const activePayerLeases: any[] = Array.isArray(payerLeases) ? payerLeases : (payerLeases?.results || [])
+
+  // Auto-select the only active lease when the quick-invoice modal opens.
+  useEffect(() => {
+    if (!showQuickInvoice) return
+    if (activePayerLeases.length === 1 && !quickInvoice.lease) {
+      setQuickInvoice(prev => ({ ...prev, lease: String(activePayerLeases[0].id) }))
+    }
+  }, [showQuickInvoice, activePayerLeases])
+
+  const createInvoiceMutation = useMutation({
+    mutationFn: (data: any) => invoiceApi.create(data),
+    onSuccess: (response) => {
+      const newInv = response?.data
+      showToast.success('Invoice created — selected for this payment')
+      // Auto-pick the new invoice on the receipt form so the user resumes.
+      if (newInv?.id) {
+        setForm(prev => ({
+          ...prev,
+          invoice: String(newInv.id),
+          amount: prev.amount || String(Number(newInv.balance ?? newInv.total_amount ?? 0).toFixed(2)),
+        }))
+      }
+      queryClient.invalidateQueries({ queryKey: ['invoices-for-receipt'] })
+      queryClient.invalidateQueries({ predicate: (q) => {
+        const key = q.queryKey[0] as string
+        return key === 'invoices' || key.startsWith('invoice')
+      }})
+      setShowQuickInvoice(false)
+      setQuickInvoice({
+        lease: '',
+        invoice_type: 'rent',
+        date: new Date().toISOString().split('T')[0],
+        due_date: '',
+        amount: '',
+        description: '',
+      })
+    },
+    onError: (err) => showToast.error(parseApiError(err, 'Failed to create invoice')),
+  })
 
   // Auto-fill amount when invoice is selected
   useEffect(() => {
@@ -249,15 +312,17 @@ export default function Receipts() {
     showToast.success(`Exported ${selected.length} receipts`)
   }
 
-  const handleBulkPost = async () => {
+  const handleBulkPost = () => {
     const ids = Array.from(selection.selectedIds)
-    let posted = 0
-    for (const id of ids) {
-      try { await receiptApi.postToLedger(id as number); posted++ } catch {}
-    }
-    selection.clearSelection()
-    queryClient.invalidateQueries({ queryKey: ['receipts'] })
-    showToast.success(`Posted ${posted} receipts to ledger`)
+    bulkLoading.run('post', async () => {
+      let posted = 0
+      for (const id of ids) {
+        try { await receiptApi.postToLedger(id as number); posted++ } catch {}
+      }
+      selection.clearSelection()
+      queryClient.invalidateQueries({ queryKey: ['receipts'] })
+      showToast.success(`Posted ${posted} receipts to ledger`)
+    })
   }
 
   return (
@@ -552,7 +617,12 @@ export default function Receipts() {
             isLoading={invoicesLoading}
             searchable
             clearable
+            onCreateNew={form.tenant ? () => setShowQuickInvoice(true) : undefined}
+            createNewLabel="+ Create new invoice"
           />
+          {!form.tenant && (
+            <p className="text-xs text-gray-400 -mt-3">Pick a payer first to create a new invoice in-place.</p>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <Input
@@ -633,10 +703,121 @@ export default function Receipts() {
         onClearSelection={selection.clearSelection}
         entityName="receipts"
         actions={[
-          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
-          { label: 'Post to Ledger', icon: BookOpen, onClick: handleBulkPost, variant: 'primary' },
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline', disabled: bulkLoading.busy },
+          { label: 'Post to Ledger', icon: BookOpen, onClick: handleBulkPost, variant: 'primary', loading: bulkLoading.is('post'), disabled: bulkLoading.busy && !bulkLoading.is('post') },
         ]}
       />
+
+      {/* Just-in-time Create Invoice modal */}
+      <Modal
+        open={showQuickInvoice}
+        onClose={() => setShowQuickInvoice(false)}
+        title="Create Invoice"
+        icon={Plus}
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (!quickInvoice.lease) {
+              showToast.error('Pick a lease for this invoice.')
+              return
+            }
+            createInvoiceMutation.mutate({
+              tenant: Number(form.tenant),
+              lease: Number(quickInvoice.lease),
+              invoice_type: quickInvoice.invoice_type,
+              date: quickInvoice.date,
+              due_date: quickInvoice.due_date || quickInvoice.date,
+              amount: parseFloat(quickInvoice.amount),
+              description: quickInvoice.description,
+            })
+          }}
+          className="space-y-5"
+        >
+          {activePayerLeases.length === 0 ? (
+            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
+              This payer has no active lease — invoices must be tied to a lease. Create one from the lease module first.
+            </div>
+          ) : activePayerLeases.length === 1 ? (
+            <div className="text-sm text-gray-700 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200">
+              <span className="text-gray-500">Lease:</span>{' '}
+              <span className="font-medium">{activePayerLeases[0].lease_number}</span>
+              {activePayerLeases[0].unit_display && (
+                <span className="text-gray-500"> · {activePayerLeases[0].unit_display}</span>
+              )}
+            </div>
+          ) : (
+            <Select
+              label="Lease"
+              value={quickInvoice.lease}
+              onChange={(e) => setQuickInvoice({ ...quickInvoice, lease: e.target.value })}
+              options={[
+                { value: '', label: 'Select lease' },
+                ...activePayerLeases.map((l: any) => ({
+                  value: String(l.id),
+                  label: `${l.lease_number}${l.unit_display ? ` — ${l.unit_display}` : ''}`,
+                })),
+              ]}
+              required
+            />
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Invoice Type"
+              value={quickInvoice.invoice_type}
+              onChange={(e) => setQuickInvoice({ ...quickInvoice, invoice_type: e.target.value })}
+              options={[
+                { value: 'rent', label: 'Rent' },
+                { value: 'levy', label: 'Levy' },
+                { value: 'utilities', label: 'Utilities' },
+                { value: 'rates', label: 'Rates' },
+                { value: 'maintenance', label: 'Maintenance' },
+                { value: 'parking', label: 'Parking' },
+                { value: 'deposit', label: 'Deposit' },
+                { value: 'other', label: 'Other' },
+              ]}
+            />
+            <Input
+              type="date"
+              label="Date"
+              value={quickInvoice.date}
+              onChange={(e) => setQuickInvoice({ ...quickInvoice, date: e.target.value })}
+              required
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              type="date"
+              label="Due Date"
+              value={quickInvoice.due_date}
+              onChange={(e) => setQuickInvoice({ ...quickInvoice, due_date: e.target.value })}
+            />
+            <Input
+              type="number"
+              label="Amount"
+              placeholder="0.00"
+              step="0.01"
+              min="0"
+              value={quickInvoice.amount}
+              onChange={(e) => setQuickInvoice({ ...quickInvoice, amount: e.target.value })}
+              required
+            />
+          </div>
+          <Textarea
+            label="Description"
+            placeholder="Invoice description..."
+            value={quickInvoice.description}
+            onChange={(e) => setQuickInvoice({ ...quickInvoice, description: e.target.value })}
+            rows={2}
+          />
+          <div className="flex gap-3 pt-4">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowQuickInvoice(false)}>Cancel</Button>
+            <Button type="submit" className="flex-1" disabled={createInvoiceMutation.isPending || activePayerLeases.length === 0}>
+              {createInvoiceMutation.isPending ? 'Creating...' : 'Create & Use'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

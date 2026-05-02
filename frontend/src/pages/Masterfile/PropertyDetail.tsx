@@ -402,12 +402,17 @@ export default function PropertyDetail() {
       showToast.info('Creating lease — redirecting...')
     },
     onSuccess: (response) => {
+      const newLease = response?.data
+      if (newLease?.id) {
+        // Seed lease detail cache so the destination page paints instantly.
+        queryClient.setQueryData(['lease', newLease.id], newLease)
+      }
       queryClient.invalidateQueries({ predicate: (q) => {
         const key = q.queryKey[0] as string
         return key.startsWith('propert') || key.startsWith('lease') || key.startsWith('unit')
       }})
-      if (response?.data?.id) {
-        navigate(`/dashboard/leases/${response.data.id}`)
+      if (newLease?.id) {
+        navigate(`/dashboard/leases/${newLease.id}`)
       }
     },
     onError: (error) => {

@@ -30,6 +30,7 @@ import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
+import { useBulkLoading } from '../../hooks/useBulkLoading'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { usePrefetch } from '../../hooks/usePrefetch'
 
@@ -144,6 +145,7 @@ export default function Units() {
     is_active: true,
   })
   const selection = useSelection<number>({ clearOnChange: [debouncedSearch, filter] })
+  const bulkLoading = useBulkLoading()
   const prefetch = usePrefetch()
 
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -345,13 +347,15 @@ export default function Units() {
       open: true,
       title: `Delete ${selection.selectedCount} units?`,
       message: 'This action cannot be undone.',
-      onConfirm: async () => {
-        const ids = Array.from(selection.selectedIds)
-        for (const id of ids) { try { await unitApi.delete(id) } catch {} }
-        selection.clearSelection()
-        queryClient.invalidateQueries({ queryKey: ['units'] })
-        showToast.success(`Deleted ${ids.length} units`)
+      onConfirm: () => {
         setBulkConfirm(d => ({ ...d, open: false }))
+        bulkLoading.run('delete', async () => {
+          const ids = Array.from(selection.selectedIds)
+          for (const id of ids) { try { await unitApi.delete(id) } catch {} }
+          selection.clearSelection()
+          queryClient.invalidateQueries({ queryKey: ['units'] })
+          showToast.success(`Deleted ${ids.length} units`)
+        })
       },
     })
   }
@@ -712,8 +716,8 @@ export default function Units() {
         onClearSelection={selection.clearSelection}
         entityName="units"
         actions={[
-          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
-          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger' },
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline', disabled: bulkLoading.busy },
+          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger', loading: bulkLoading.is('delete'), disabled: bulkLoading.busy && !bulkLoading.is('delete') },
         ]}
       />
     </div>

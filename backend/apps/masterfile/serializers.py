@@ -297,6 +297,12 @@ class RentalTenantSerializer(serializers.ModelSerializer):
             'has_active_lease', 'lease_count', 'created_at', 'updated_at'
         ]
         read_only_fields = ['code', 'created_at', 'updated_at']
+        # ID number is optional for both individuals and companies — collected
+        # later for KYC/lease purposes. Empty string is allowed (model field
+        # is non-null but defaults to '' for CharField).
+        extra_kwargs = {
+            'id_number': {'required': False, 'allow_blank': True},
+        }
 
     def get_unit_name(self, obj):
         """Return unit name or None if no unit assigned."""

@@ -150,8 +150,11 @@ export default function LeaseDetail() {
     description: '',
   })
 
-  // Create Invoice modal
+  // Create Invoice modal — also used as a just-in-time picker source
+  // from the Record Payment modal (this flag tells the success handler
+  // to auto-select the new invoice in the receipt form).
   const [showInvoiceModal, setShowInvoiceModal] = useState(false)
+  const [invoiceForReceipt, setInvoiceForReceipt] = useState(false)
   const [invoiceForm, setInvoiceForm] = useState({
     tenant: '',
     lease: '',
@@ -235,13 +238,19 @@ export default function LeaseDetail() {
 
   const createInvoiceMutation = useMutation({
     mutationFn: (data: any) => invoiceApi.create(data),
-    onSuccess: () => {
+    onSuccess: (response) => {
       showToast.success('Invoice created successfully')
       setShowInvoiceModal(false)
       setInvoiceForm({ tenant: '', lease: '', invoice_type: 'rent', date: new Date().toISOString().split('T')[0], due_date: '', amount: '', description: '' })
       queryClient.invalidateQueries({ queryKey: ['lease'] })
       queryClient.invalidateQueries({ queryKey: ['lease-invoices'] })
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      // If the invoice was created mid-payment-flow, auto-select it in
+      // the receipt form so the user resumes exactly where they left off.
+      if (invoiceForReceipt && response?.data?.id) {
+        setReceiptForm(prev => ({ ...prev, invoice: String(response.data.id) }))
+        setInvoiceForReceipt(false)
+      }
     },
     onError: (error) => showToast.error(parseApiError(error, 'Failed to create invoice')),
   })
@@ -970,6 +979,19 @@ export default function LeaseDetail() {
             isLoading={invoicesFormLoading}
             searchable
             clearable
+            onCreateNew={() => {
+              // Just-in-time: open the Create Invoice modal pre-filled with
+              // this lease's tenant + lease, then auto-select on success.
+              setInvoiceForm(prev => ({
+                ...prev,
+                tenant: lease?.tenant ? String(lease.tenant) : '',
+                lease: leaseId ? String(leaseId) : '',
+                date: new Date().toISOString().split('T')[0],
+              }))
+              setInvoiceForReceipt(true)
+              setShowInvoiceModal(true)
+            }}
+            createNewLabel="+ Create new invoice"
           />
           <div className="grid grid-cols-2 gap-4">
             <Input type="date" label="Date" value={receiptForm.date} onChange={(e) => setReceiptForm({ ...receiptForm, date: e.target.value })} required />
@@ -990,7 +1012,7 @@ export default function LeaseDetail() {
       {/* Create Invoice Modal */}
       <Modal
         open={showInvoiceModal}
-        onClose={() => setShowInvoiceModal(false)}
+        onClose={() => { setShowInvoiceModal(false); setInvoiceForReceipt(false) }}
         title="Create Invoice"
         icon={Receipt}
       >

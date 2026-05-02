@@ -16,6 +16,7 @@ import { showToast, parseApiError } from '../../lib/toast'
 import { undoToast } from '../../lib/undoToast'
 import TenantForm from '../../components/forms/TenantForm'
 import { useSelection } from '../../hooks/useSelection'
+import { useBulkLoading } from '../../hooks/useBulkLoading'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { usePrefetch } from '../../hooks/usePrefetch'
 
@@ -36,6 +37,7 @@ export default function AccountHolders() {
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
 
   const selection = useSelection<number>({ clearOnChange: [debouncedSearch] })
+  const bulkLoading = useBulkLoading()
   const searchInputRef = useRef<HTMLInputElement>(null)
   useHotkeys([
     { key: 'c', handler: () => setShowForm(true) },
@@ -192,10 +194,12 @@ export default function AccountHolders() {
       open: true,
       title: `Delete ${ids.length} account holders?`,
       message: 'This will delete the selected account holders. Holders with active leases may fail.',
-      onConfirm: async () => {
+      onConfirm: () => {
         setConfirmDialog(d => ({ ...d, open: false }))
-        for (const id of ids) await deleteMutation.mutateAsync(id as number)
-        selection.clearSelection()
+        bulkLoading.run('delete', async () => {
+          for (const id of ids) await deleteMutation.mutateAsync(id as number)
+          selection.clearSelection()
+        })
       },
     })
   }
@@ -366,7 +370,7 @@ export default function AccountHolders() {
         onClearSelection={selection.clearSelection}
         entityName="account holders"
         actions={[
-          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger' },
+          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger', loading: bulkLoading.is('delete'), disabled: bulkLoading.busy && !bulkLoading.is('delete') },
         ]}
       />
 

@@ -34,6 +34,7 @@ import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
+import { useBulkLoading } from '../../hooks/useBulkLoading'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { usePrefetch } from '../../hooks/usePrefetch'
 import { TbUserSquareRounded } from "react-icons/tb";
@@ -344,6 +345,7 @@ export default function Invoices() {
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
 
   const selection = useSelection<number | string>({ clearOnChange: [debouncedSearch, statusFilter] })
+  const bulkLoading = useBulkLoading()
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   useHotkeys([
@@ -658,33 +660,40 @@ export default function Invoices() {
       open: true,
       title: `Post ${selection.selectedCount} invoices to ledger?`,
       message: 'This will post selected draft invoices to the general ledger.',
-      onConfirm: async () => {
-        const ids = Array.from(selection.selectedIds).filter(id => {
-          const inv = selectableInvoices.find((i: Invoice) => i.id === id)
-          return inv?.status === 'draft'
-        })
-        for (const id of ids) { await invoiceApi.postToLedger(id as number) }
-        selection.clearSelection()
-        queryClient.invalidateQueries({ predicate: (q) => {
-        const key = q.queryKey[0] as string
-        return key === 'invoices' || key.startsWith('invoice')
-      }})
-        showToast.success(`Posted ${ids.length} invoices to ledger`)
+      onConfirm: () => {
         setConfirmDialog(d => ({ ...d, open: false }))
+        bulkLoading.run('post', async () => {
+          const ids = Array.from(selection.selectedIds).filter(id => {
+            const inv = selectableInvoices.find((i: Invoice) => i.id === id)
+            return inv?.status === 'draft'
+          })
+          for (const id of ids) { await invoiceApi.postToLedger(id as number) }
+          selection.clearSelection()
+          queryClient.invalidateQueries({ predicate: (q) => {
+            const key = q.queryKey[0] as string
+            return key === 'invoices' || key.startsWith('invoice')
+          }})
+          showToast.success(`Posted ${ids.length} invoices to ledger`)
+        })
       },
     })
   }
 
   const handleBulkSend = () => {
     const ids = Array.from(selection.selectedIds) as number[]
-    invoiceApi.sendInvoices({ invoice_ids: ids }).then(() => {
-      selection.clearSelection()
-      queryClient.invalidateQueries({ predicate: (q) => {
-        const key = q.queryKey[0] as string
-        return key === 'invoices' || key.startsWith('invoice')
-      }})
-      showToast.success(`Sent ${ids.length} invoices`)
-    }).catch((err) => showToast.error(parseApiError(err, 'Failed to send invoices')))
+    bulkLoading.run('send', async () => {
+      try {
+        await invoiceApi.sendInvoices({ invoice_ids: ids })
+        selection.clearSelection()
+        queryClient.invalidateQueries({ predicate: (q) => {
+          const key = q.queryKey[0] as string
+          return key === 'invoices' || key.startsWith('invoice')
+        }})
+        showToast.success(`Sent ${ids.length} invoices`)
+      } catch (err) {
+        showToast.error(parseApiError(err, 'Failed to send invoices'))
+      }
+    })
   }
 
   const handleBulkDelete = () => {
@@ -698,25 +707,27 @@ export default function Invoices() {
       open: true,
       title: `Delete ${selection.selectedCount} invoice${selection.selectedCount === 1 ? '' : 's'}?`,
       message: `Invoices will be soft-deleted (recoverable by an admin).${warning}`,
-      onConfirm: async () => {
-        let deleted = 0
-        let failed = 0
-        for (const id of ids) {
-          try {
-            await invoiceApi.delete(id as number)
-            deleted++
-          } catch {
-            failed++
-          }
-        }
-        selection.clearSelection()
-        queryClient.invalidateQueries({ predicate: (q) => {
-          const key = q.queryKey[0] as string
-          return key === 'invoices' || key.startsWith('invoice')
-        }})
-        if (deleted > 0) showToast.success(`Deleted ${deleted} invoice${deleted === 1 ? '' : 's'}`)
-        if (failed > 0) showToast.error(`${failed} could not be deleted`)
+      onConfirm: () => {
         setConfirmDialog(d => ({ ...d, open: false }))
+        bulkLoading.run('delete', async () => {
+          let deleted = 0
+          let failed = 0
+          for (const id of ids) {
+            try {
+              await invoiceApi.delete(id as number)
+              deleted++
+            } catch {
+              failed++
+            }
+          }
+          selection.clearSelection()
+          queryClient.invalidateQueries({ predicate: (q) => {
+            const key = q.queryKey[0] as string
+            return key === 'invoices' || key.startsWith('invoice')
+          }})
+          if (deleted > 0) showToast.success(`Deleted ${deleted} invoice${deleted === 1 ? '' : 's'}`)
+          if (failed > 0) showToast.error(`${failed} could not be deleted`)
+        })
       },
     })
   }
@@ -1506,11 +1517,11 @@ export default function Invoices() {
         onClearSelection={selection.clearSelection}
         entityName="invoices"
         actions={[
-          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline' },
-          { label: 'Print', icon: Printer, onClick: handleBulkPrint, variant: 'outline' },
-          { label: 'Post to Ledger', icon: BookOpen, onClick: handleBulkPost, variant: 'primary' },
-          { label: 'Send', icon: Send, onClick: handleBulkSend, variant: 'primary' },
-          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger' },
+          { label: 'Export', icon: Download, onClick: handleBulkExport, variant: 'outline', disabled: bulkLoading.busy },
+          { label: 'Print', icon: Printer, onClick: handleBulkPrint, variant: 'outline', disabled: bulkLoading.busy },
+          { label: 'Post to Ledger', icon: BookOpen, onClick: handleBulkPost, variant: 'primary', loading: bulkLoading.is('post'), disabled: bulkLoading.busy && !bulkLoading.is('post') },
+          { label: 'Send', icon: Send, onClick: handleBulkSend, variant: 'primary', loading: bulkLoading.is('send'), disabled: bulkLoading.busy && !bulkLoading.is('send') },
+          { label: 'Delete', icon: Trash2, onClick: handleBulkDelete, variant: 'danger', loading: bulkLoading.is('delete'), disabled: bulkLoading.busy && !bulkLoading.is('delete') },
         ]}
       />
 
