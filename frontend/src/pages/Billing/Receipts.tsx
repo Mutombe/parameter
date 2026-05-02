@@ -8,6 +8,7 @@ import { formatCurrency, formatDate, useDebounce, cn } from '../../lib/utils'
 import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination } from '../../components/ui'
 import { PayerSelect } from '../../components/PayerSelect'
 import { PayerCell } from '../../components/PayerCell'
+import { SubAccountBadge } from '../../components/SubAccountBadge'
 import { AutocompleteInput } from '../../components/ui/AutocompleteInput'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
@@ -29,6 +30,8 @@ interface Receipt {
   invoice?: number
   invoice_number?: string
   income_type_name?: string
+  sub_account_category?: string
+  currency?: string
   date: string
   amount: number
   payment_method: string
@@ -72,6 +75,7 @@ export default function Receipts() {
   const [form, setForm] = useState({
     tenant: '',
     invoice: '',
+    sub_account_category: 'rent',
     date: new Date().toISOString().split('T')[0],
     amount: '',
     payment_method: recentPaymentMethod.values[0] || 'bank_transfer',
@@ -176,14 +180,19 @@ export default function Receipts() {
     onError: (err) => showToast.error(parseApiError(err, 'Failed to create invoice')),
   })
 
-  // Auto-fill amount when invoice is selected
+  // Auto-fill amount AND sub_account_category when invoice is selected.
+  // The invoice's invoice_type maps 1:1 onto the receipt's sub-account
+  // (rent / levy / maintenance / etc.) so picking an invoice should
+  // pre-categorize the receipt without the user typing twice.
   useEffect(() => {
-    if (form.invoice && invoices) {
-      const inv = invoices.find((i: any) => String(i.id) === form.invoice)
-      if (inv && !form.amount) {
-        setForm(prev => ({ ...prev, amount: String(Number(inv.balance).toFixed(2)) }))
-      }
-    }
+    if (!form.invoice || !invoices) return
+    const inv = invoices.find((i: any) => String(i.id) === form.invoice)
+    if (!inv) return
+    setForm(prev => ({
+      ...prev,
+      amount: prev.amount || String(Number(inv.balance).toFixed(2)),
+      sub_account_category: inv.invoice_type || prev.sub_account_category,
+    }))
   }, [form.invoice])
 
   // Optimistic create mutation
@@ -266,6 +275,7 @@ export default function Receipts() {
     setForm({
       tenant: '',
       invoice: '',
+      sub_account_category: 'rent',
       date: new Date().toISOString().split('T')[0],
       amount: '',
       payment_method: recentPaymentMethod.values[0] || 'bank_transfer',
@@ -407,7 +417,7 @@ export default function Receipts() {
               </th>
               <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Receipt</th>
               <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Payer</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Paid For</th>
+              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Sub-Account</th>
               <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
               <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Method</th>
               <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden xl:table-cell">Reference</th>
@@ -509,13 +519,10 @@ export default function Receipts() {
                     })()}
                   </td>
                   <td className="px-5 py-3.5">
-                    {receipt.income_type_name ? (
-                      <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">
-                        {receipt.income_type_name}
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">General</span>
-                    )}
+                    <SubAccountBadge
+                      category={(receipt as any).sub_account_category}
+                      currency={receipt.currency}
+                    />
                   </td>
                   <td className="px-5 py-3.5 text-right font-semibold tabular-nums text-emerald-600" title={String(receipt.amount)}>{formatCurrency(receipt.amount || 0)}</td>
                   <td className="px-5 py-3.5">
@@ -623,6 +630,26 @@ export default function Receipts() {
           {!form.tenant && (
             <p className="text-xs text-gray-400 -mt-3">Pick a payer first to create a new invoice in-place.</p>
           )}
+
+          {/* Sub-Account Category — explicit bucket this payment credits.
+              Auto-fills from invoice.invoice_type when an invoice is picked. */}
+          <Select
+            label="Sub-Account Category"
+            value={form.sub_account_category}
+            onChange={(e) => setForm({ ...form, sub_account_category: e.target.value })}
+            options={[
+              { value: 'rent', label: 'Rent' },
+              { value: 'levy', label: 'Levy' },
+              { value: 'special_levy', label: 'Special Levy' },
+              { value: 'maintenance', label: 'Maintenance' },
+              { value: 'parking', label: 'Parking' },
+              { value: 'rates', label: 'Rates' },
+              { value: 'vat', label: 'VAT' },
+              { value: 'deposit', label: 'Deposit' },
+              { value: 'general', label: 'General' },
+            ]}
+            hint="Which landlord sub-account this payment credits"
+          />
 
           <div className="grid grid-cols-2 gap-4">
             <Input

@@ -107,6 +107,7 @@ class ReceiptSerializer(serializers.ModelSerializer):
     invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
     journal_number = serializers.CharField(source='journal.journal_number', read_only=True)
     income_type_name = serializers.CharField(source='income_type.name', read_only=True, default=None)
+    sub_account_category_display = serializers.CharField(source='get_sub_account_category_display', read_only=True)
 
     class Meta:
         model = Receipt
@@ -114,6 +115,7 @@ class ReceiptSerializer(serializers.ModelSerializer):
             'id', 'receipt_number', 'tenant', 'tenant_name', 'tenant_code',
             'payer_type', 'invoice',
             'invoice_number', 'income_type', 'income_type_name', 'bank_account',
+            'sub_account_category', 'sub_account_category_display',
             'date', 'amount', 'currency', 'payment_method',
             'reference', 'bank_name', 'description', 'notes', 'journal',
             'journal_number', 'created_by', 'created_at', 'updated_at'
@@ -136,7 +138,9 @@ class ReceiptCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Receipt
         fields = [
-            'tenant', 'invoice', 'income_type', 'bank_account', 'date', 'amount',
+            'tenant', 'invoice', 'income_type', 'bank_account',
+            'sub_account_category',
+            'date', 'amount',
             'currency', 'payment_method', 'reference', 'bank_name', 'description',
             'notes'
         ]

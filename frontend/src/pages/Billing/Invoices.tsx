@@ -30,6 +30,7 @@ import { printInvoice } from '../../lib/printTemplate'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination } from '../../components/ui'
 import { PayerSelect } from '../../components/PayerSelect'
 import { PayerCell } from '../../components/PayerCell'
+import { SubAccountBadge } from '../../components/SubAccountBadge'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
 import { exportTableData } from '../../lib/export'
@@ -887,6 +888,7 @@ export default function Invoices() {
                 <tr>
                   <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice</th>
                   <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Payer</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Sub-Account</th>
                   <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
                   <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
                   <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
@@ -909,6 +911,7 @@ export default function Invoices() {
                       </div>
                     </td>
                     <td className="px-5 py-3.5"><div className="h-4 w-28 bg-gray-200 rounded" /></td>
+                    <td className="px-5 py-3.5"><div className="h-5 w-20 bg-gray-200 rounded-md" /></td>
                     <td className="px-5 py-3.5"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
                     <td className="px-5 py-3.5"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
                     <td className="px-5 py-3.5">
@@ -963,6 +966,7 @@ export default function Invoices() {
                       </th>
                       <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice</th>
                       <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Payer</th>
+                      <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Sub-Account</th>
                       <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
                       <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
                       <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
@@ -1052,6 +1056,12 @@ export default function Invoices() {
                             {invoice.unit_name && (
                               <p className="text-xs text-gray-500 mt-0.5">{invoice.unit_name}</p>
                             )}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <SubAccountBadge
+                              category={invoice.invoice_type}
+                              currency={(invoice as any).currency}
+                            />
                           </td>
                           <td className="px-5 py-3.5 text-right">
                             <p className="font-semibold text-gray-900 tabular-nums">

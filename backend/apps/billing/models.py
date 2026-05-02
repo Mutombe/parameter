@@ -314,6 +314,20 @@ class Receipt(SoftDeleteModel):
         CARD = 'card', 'Card'
         CHEQUE = 'cheque', 'Cheque'
 
+    # Mirrors SubsidiaryAccount.AccountCategory so the receipt explicitly
+    # carries the bucket it belongs to, instead of having post_to_ledger
+    # guess via income_type.code.
+    class SubAccountCategory(models.TextChoices):
+        RENT = 'rent', 'Rent'
+        LEVY = 'levy', 'Levy'
+        SPECIAL_LEVY = 'special_levy', 'Special Levy'
+        MAINTENANCE = 'maintenance', 'Maintenance'
+        PARKING = 'parking', 'Parking'
+        RATES = 'rates', 'Rates'
+        VAT = 'vat', 'VAT'
+        DEPOSIT = 'deposit', 'Deposit'
+        GENERAL = 'general', 'General'
+
     receipt_number = models.CharField(max_length=50, unique=True)
     tenant = models.ForeignKey(
         RentalTenant, on_delete=models.PROTECT, related_name='receipts'
@@ -334,6 +348,17 @@ class Receipt(SoftDeleteModel):
     income_type = models.ForeignKey(
         'accounting.IncomeType', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='receipts'
+    )
+
+    # Which landlord sub-account this receipt should credit. When unset,
+    # post_to_ledger derives it from the linked invoice's invoice_type
+    # (or falls back to RENT). Surfaces in the UI so users can categorize
+    # ad-hoc payments without needing an invoice first.
+    sub_account_category = models.CharField(
+        max_length=20,
+        choices=SubAccountCategory.choices,
+        default=SubAccountCategory.RENT,
+        help_text='Landlord sub-account this payment is credited to'
     )
 
     date = models.DateField()
@@ -674,7 +699,14 @@ class Receipt(SoftDeleteModel):
 
         # === Subsidiary Ledger Entries ===
         tenant_sub = SubsidiaryAccount.get_or_create_for_tenant(self.tenant)
-        invoice_type = self.invoice.invoice_type if self.invoice else 'rent'
+        # The receipt's sub_account_category is the source of truth for which
+        # landlord sub-account this payment credits. If unset (e.g. legacy
+        # rows), fall back to the linked invoice's invoice_type, then 'rent'.
+        invoice_type = (
+            self.sub_account_category
+            or (self.invoice.invoice_type if self.invoice else None)
+            or 'rent'
+        )
         billing_contra = Invoice(invoice_type=invoice_type)._get_billing_contra_code()
         income_contra = Invoice(invoice_type=invoice_type)._get_income_contra_code()
         unpaid_contra = Invoice(invoice_type=invoice_type)._get_unpaid_contra_code()
