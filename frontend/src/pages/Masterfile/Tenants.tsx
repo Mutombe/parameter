@@ -468,14 +468,15 @@ export default function Tenants() {
                       onChange={() => selection.selectPage(pageIds)}
                     />
                   </th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5">Tenant Name</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5">Account Type</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5 hidden lg:table-cell">Email</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5 hidden xl:table-cell">Phone</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5">Property / Unit</th>
-                  <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5">Balance</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5">Status</th>
-                  <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5 w-28">Actions</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2">Tenant Name</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2 hidden md:table-cell">Code</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2">Account Type</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2 hidden lg:table-cell">Email</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2 hidden xl:table-cell">Phone</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2">Property / Unit</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2">Balance</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2">Status</th>
+                  <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2 w-28">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -504,10 +505,10 @@ export default function Tenants() {
                           />
                         )}
                       </td>
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-3">
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2 min-w-0">
                           <div className={cn(
-                            'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
+                            'w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0',
                             isOptimistic || isUpdating ? 'bg-primary-100' : 'bg-purple-100'
                           )}>
                             {isOptimistic || isUpdating ? (
@@ -516,18 +517,17 @@ export default function Tenants() {
                               <TbUserSquareRounded className="w-4 h-4 text-purple-600" />
                             )}
                           </div>
-                          <div className="min-w-0">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${tenant.id}`) }}
-                              className="font-semibold text-gray-900 hover:text-primary-600 hover:underline truncate block text-left"
-                            >
-                              {tenant.name}
-                            </button>
-                            <span className="text-xs text-gray-500">{tenant.code}</span>
-                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${tenant.id}`) }}
+                            className="font-medium text-sm text-gray-900 hover:text-primary-600 hover:underline truncate text-left"
+                            title={tenant.name}
+                          >
+                            {tenant.name}
+                          </button>
                         </div>
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-2 text-[11px] text-gray-500 font-mono hidden md:table-cell whitespace-nowrap">{tenant.code || '—'}</td>
+                      <td className="px-4 py-2">
                         <span className={cn(
                           'inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium',
                           tenant.account_type === 'levy'
@@ -537,9 +537,9 @@ export default function Tenants() {
                           {tenant.account_type === 'levy' ? 'Levy' : 'Rental'}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5 text-sm text-gray-900 truncate max-w-[200px] hidden lg:table-cell">{tenant.email || '\u2014'}</td>
-                      <td className="px-5 py-3.5 text-sm text-gray-900 hidden xl:table-cell">{tenant.phone || '\u2014'}</td>
-                      <td className="px-5 py-3.5 text-sm">
+                      <td className="px-4 py-2 text-sm text-gray-900 truncate max-w-[200px] hidden lg:table-cell">{tenant.email || '\u2014'}</td>
+                      <td className="px-4 py-2 text-sm text-gray-900 hidden xl:table-cell">{tenant.phone || '\u2014'}</td>
+                      <td className="px-4 py-2 text-sm">
                         {tenant.property_name || tenant.unit_name ? (
                           <div className="flex items-center gap-1 flex-wrap">
                             {tenant.property_name && (
@@ -576,14 +576,14 @@ export default function Tenants() {
                           <span className="text-gray-400">-</span>
                         )}
                       </td>
-                      <td className="px-5 py-3.5 text-sm font-semibold text-right tabular-nums">
+                      <td className="px-4 py-2 text-sm font-semibold tabular-nums">
                         <span className={cn(
                           Number(balance) > 0 ? 'text-red-600' : Number(balance) === 0 ? 'text-emerald-600' : 'text-gray-900'
                         )}>
                           {formatCurrency(Number(balance) || 0)}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-2">
                         {tenant.has_active_lease ? (
                           <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
                             Active
@@ -594,7 +594,7 @@ export default function Tenants() {
                           </span>
                         )}
                       </td>
-                      <td className="px-5 py-3.5 text-right">
+                      <td className="px-4 py-2 text-right">
                         {!isOptimistic && !isUpdating ? (
                           <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
                             <button

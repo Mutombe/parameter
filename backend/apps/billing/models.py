@@ -827,6 +827,20 @@ class Expense(SoftDeleteModel):
         CASH = 'cash', 'Cash'
         NON_CASH = 'non_cash', 'Non-Cash'
 
+    # Mirrors SubsidiaryAccount.AccountCategory so the user can explicitly
+    # pick which of the landlord's trust pockets gets debited, instead of
+    # always inheriting from the expense_category's funding_category.
+    class SubAccountCategory(models.TextChoices):
+        RENT = 'rent', 'Rent'
+        LEVY = 'levy', 'Levy'
+        SPECIAL_LEVY = 'special_levy', 'Special Levy'
+        MAINTENANCE = 'maintenance', 'Maintenance'
+        PARKING = 'parking', 'Parking'
+        RATES = 'rates', 'Rates'
+        VAT = 'vat', 'VAT'
+        DEPOSIT = 'deposit', 'Deposit'
+        GENERAL = 'general', 'General'
+
     expense_number = models.CharField(max_length=50, unique=True)
     expense_type = models.CharField(
         max_length=20,
@@ -885,6 +899,16 @@ class Expense(SoftDeleteModel):
         'masterfile.Landlord', on_delete=models.PROTECT,
         null=True, blank=True, related_name='expenses',
         help_text='Landlord whose trust sub-account funds this expense'
+    )
+
+    # Explicit sub-account override. When set, post_to_ledger debits this
+    # pocket on the landlord's trust ledger; otherwise it falls back to the
+    # expense_category's funding_category. Only used for cash expenses.
+    sub_account_category = models.CharField(
+        max_length=20,
+        choices=SubAccountCategory.choices,
+        blank=True, default='',
+        help_text="Which of the landlord's trust pockets to deduct from"
     )
 
     # GL Reference
@@ -1057,11 +1081,12 @@ class Expense(SoftDeleteModel):
             landlord_obj = Landlord.objects.filter(id=self.payee_id).first()
 
         if landlord_obj and not is_non_cash:
-            # funding_category lives on the expense_category and tells us
-            # which sub-account (rent / maintenance / rates / parking / vat)
-            # to debit on the landlord's trust ledger.
+            # Explicit pick on the expense wins over the category default,
+            # so users can override which trust pocket is deducted (e.g. a
+            # maintenance expense funded out of the deposit pocket).
             funding_cat = (
-                cat.funding_category if cat and cat.funding_category else 'rent'
+                self.sub_account_category
+                or (cat.funding_category if cat and cat.funding_category else 'rent')
             )
             landlord_sub = SubsidiaryAccount.get_or_create_for_landlord_category(
                 landlord_obj, category=funding_cat, currency=self.currency

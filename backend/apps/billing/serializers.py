@@ -180,6 +180,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
     landlord_name = serializers.CharField(source='landlord.name', read_only=True, default=None)
     landlord_code = serializers.CharField(source='landlord.code', read_only=True, default=None)
     expense_kind_display = serializers.CharField(source='get_expense_kind_display', read_only=True)
+    sub_account_category_display = serializers.CharField(source='get_sub_account_category_display', read_only=True)
 
     class Meta:
         model = Expense
@@ -192,6 +193,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
             'income_type', 'income_type_name',
             'bank_account', 'bank_account_name', 'bank_account_currency',
             'landlord', 'landlord_name', 'landlord_code',
+            'sub_account_category', 'sub_account_category_display',
             'journal', 'journal_number',
             'approved_by', 'approved_at', 'created_by', 'created_at', 'updated_at'
         ]

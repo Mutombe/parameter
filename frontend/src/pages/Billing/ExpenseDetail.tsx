@@ -13,14 +13,17 @@ import {
   CheckCircle2,
   Check,
   XCircle,
-  Printer,
   User,
   Plus,
-  Home,
+  Building2,
+  Briefcase,
+  Layers,
+  ArrowRight,
 } from 'lucide-react'
 import { expenseApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { Button, ConfirmDialog, TimeAgo } from '../../components/ui'
+import { SubAccountBadge } from '../../components/SubAccountBadge'
 import { usePrefetch } from '../../hooks/usePrefetch'
 import { showToast, parseApiError } from '../../lib/toast'
 
@@ -170,6 +173,21 @@ export default function ExpenseDetail() {
                   <StatusIcon className="w-3 h-3" />
                   {config.label}
                 </span>
+                {/* Cash / Non-Cash pill — same colour language as the list. */}
+                <span className={cn(
+                  'inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ring-1',
+                  expense?.expense_kind === 'non_cash'
+                    ? 'bg-indigo-50 text-indigo-700 ring-indigo-200'
+                    : 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                )}>
+                  {expense?.expense_kind === 'non_cash' ? 'Non-Cash' : 'Cash'}
+                </span>
+                {(expense?.sub_account_category || expense?.expense_category_funding) && (
+                  <SubAccountBadge
+                    category={expense.sub_account_category || expense.expense_category_funding}
+                    currency={expense.currency}
+                  />
+                )}
               </>
             )}
           </div>
@@ -219,10 +237,10 @@ export default function ExpenseDetail() {
             <div className="space-y-2">
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Payee</p>
               <div className="space-y-1.5">
-                {expense?.payee_type === 'landlord' && expense?.payee_id ? (
+                {expense?.landlord ? (
                   <button
-                    onMouseEnter={() => prefetch(`/dashboard/landlords/${expense.payee_id}`)}
-                    onClick={() => navigate(`/dashboard/landlords/${expense.payee_id}`)}
+                    onMouseEnter={() => prefetch(`/dashboard/landlords/${expense.landlord}`)}
+                    onClick={() => navigate(`/dashboard/landlords/${expense.landlord}`)}
                     className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
                   >
                     <User className="w-3.5 h-3.5" />
@@ -238,22 +256,51 @@ export default function ExpenseDetail() {
               </div>
             </div>
 
-            {/* Details */}
+            {/* Bank Account (cash) or Accrual (non-cash) */}
             <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Details</p>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                {expense?.expense_kind === 'non_cash' ? 'Settled via' : 'Bank Account'}
+              </p>
               <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Receipt className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{expenseTypeLabels[expense?.expense_type] || expense?.expense_type}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <DollarSign className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{formatCurrency(expense?.amount || 0, expense?.currency)} ({expense?.currency})</span>
+                {expense?.expense_kind === 'non_cash' ? (
+                  <div className="flex items-center gap-2 text-sm text-indigo-700">
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Accrued Liabilities (2400)</span>
+                  </div>
+                ) : expense?.bank_account_name ? (
+                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <Building2 className="w-3.5 h-3.5 text-gray-400" />
+                    <span>{expense.bank_account_name}</span>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400">—</p>
+                )}
+                <div className="text-xs text-gray-400">
+                  {formatCurrency(expense?.amount || 0, expense?.currency)} {expense?.currency}
                 </div>
               </div>
             </div>
 
-            {/* Dates */}
+            {/* Expense Category + GL code */}
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Category</p>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 text-sm text-gray-700">
+                  <Layers className="w-3.5 h-3.5 text-gray-400" />
+                  <span>{expense?.expense_category_name || '—'}</span>
+                </div>
+                {(expense?.sub_account_category || expense?.expense_category_funding) && (
+                  <div className="text-xs text-gray-500 capitalize">
+                    Funded from {(expense.sub_account_category || expense.expense_category_funding || '').replace('_', ' ')}
+                    {expense.sub_account_category && expense.expense_category_funding && expense.sub_account_category !== expense.expense_category_funding && (
+                      <span className="ml-1 text-amber-600 normal-case">(overrides {expense.expense_category_funding.replace('_', ' ')})</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Dates + Audit */}
             <div className="space-y-2">
               <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Dates</p>
               <div className="space-y-1.5">
@@ -262,17 +309,17 @@ export default function ExpenseDetail() {
                   <span>{expense?.date ? formatDate(expense.date) : '-'}</span>
                 </div>
                 {expense?.approved_at && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-gray-400" />
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <CheckCircle2 className="w-3 h-3" />
                     <span>Approved <TimeAgo date={expense.approved_at} /></span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Accounting */}
+            {/* Accounting / Journal */}
             <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Accounting</p>
+              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">GL</p>
               <div className="space-y-1.5">
                 {expense?.journal_number ? (
                   <button
@@ -280,35 +327,15 @@ export default function ExpenseDetail() {
                     className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
                   >
                     <FileText className="w-3.5 h-3.5" />
-                    <span>{expense.journal_number}</span>
+                    <span className="font-mono text-xs">{expense.journal_number}</span>
                   </button>
                 ) : (
-                  <p className="text-sm text-gray-400">Not posted</p>
+                  <p className="text-sm text-gray-400">Not posted yet</p>
                 )}
                 {expense?.reference && (
-                  <div className="text-sm text-gray-600 font-mono">{expense.reference}</div>
+                  <div className="text-xs text-gray-500 font-mono">Ref: {expense.reference}</div>
                 )}
               </div>
-            </div>
-
-            {/* Property */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Property</p>
-              {expense?.property ? (
-                <button
-                  onMouseEnter={() => prefetch(`/dashboard/properties/${expense.property}`)}
-                  onClick={() => navigate(`/dashboard/properties/${expense.property}`)}
-                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
-                >
-                  <Home className="w-3.5 h-3.5" />
-                  <span>{expense?.property_name || 'View Property'}</span>
-                </button>
-              ) : (
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Home className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{expense?.property_name || '-'}</span>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -317,10 +344,67 @@ export default function ExpenseDetail() {
       {/* KPI Cards */}
       <motion.div variants={container} initial="hidden" animate="show" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard title="Amount" value={formatCurrency(expense?.amount || 0, expense?.currency)} subtitle={expense?.currency} icon={DollarSign} color="blue" isLoading={isLoading} />
-        <StatCard title="Type" value={expenseTypeLabels[expense?.expense_type] || expense?.expense_type || '-'} icon={Receipt} color="green" isLoading={isLoading} />
+        <StatCard title="Kind" value={expense?.expense_kind === 'non_cash' ? 'Non-Cash' : 'Cash'} subtitle={(expense?.sub_account_category || expense?.expense_category_funding) ? `From ${expense?.sub_account_category || expense?.expense_category_funding}` : undefined} icon={Receipt} color="green" isLoading={isLoading} />
         <StatCard title="Status" value={config.label} icon={StatusIcon} color="purple" isLoading={isLoading} />
-        <StatCard title="Journal Entry" value={expense?.journal_number || 'N/A'} icon={FileText} color="orange" isLoading={isLoading} />
+        <StatCard title="Journal Entry" value={expense?.journal_number || 'Not posted'} icon={FileText} color="orange" isLoading={isLoading} />
       </motion.div>
+
+      {/* GL Posting Summary — shows the Dr/Cr that did (or will) hit the
+          ledger plus the trust-ledger entry for cash expenses. */}
+      {!isLoading && expense && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="bg-white rounded-xl border border-gray-200 p-6"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-semibold text-gray-900">Posting Summary</h3>
+            <span className="text-xs text-gray-400">
+              {expense.journal_number ? 'Posted to GL' : 'Will post on approval'}
+            </span>
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm space-y-2">
+            <div className="flex items-center justify-between text-gray-700">
+              <span className="font-mono text-xs text-gray-500 w-6">Dr</span>
+              <span className="flex-1 truncate" title={expense.expense_category_name || ''}>
+                {expense.expense_category_name || 'Expense GL'}
+              </span>
+              <span className="font-semibold tabular-nums">
+                {formatCurrency(expense.amount || 0, expense.currency)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-gray-700">
+              <span className="font-mono text-xs text-gray-500 w-6">Cr</span>
+              <span className="flex-1 truncate">
+                {expense.expense_kind === 'non_cash'
+                  ? 'Accrued Liabilities (2400)'
+                  : (expense.bank_account_name || 'Bank Account')}
+              </span>
+              <span className="font-semibold tabular-nums">
+                {formatCurrency(expense.amount || 0, expense.currency)}
+              </span>
+            </div>
+            {expense.expense_kind === 'cash' && expense.landlord && (
+              <div className="pt-2 mt-2 border-t border-gray-200 flex items-center gap-2 text-xs text-violet-700">
+                <Briefcase className="w-3.5 h-3.5" />
+                <span>Trust ledger:</span>
+                <ArrowRight className="w-3 h-3" />
+                <span className="font-medium">{expense.landlord_name}</span>
+                <span className="text-gray-500 capitalize">
+                  · {(expense.sub_account_category || expense.expense_category_funding || '').replace('_', ' ')} sub-account
+                </span>
+              </div>
+            )}
+            {expense.expense_kind === 'non_cash' && (
+              <p className="pt-2 mt-2 border-t border-gray-200 text-xs text-gray-500 italic">
+                Non-cash entry — trust ledger untouched. Settled when the
+                accrued liability is paid in cash later.
+              </p>
+            )}
+          </div>
+        </motion.div>
+      )}
 
       {/* Expense Details Card */}
       <motion.div

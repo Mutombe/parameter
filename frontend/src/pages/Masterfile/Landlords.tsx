@@ -535,16 +535,16 @@ export default function Landlords() {
                 onClick={() => !isOptimistic && !isUpdating && navigate(`/dashboard/landlords/${landlord.id}`)}
                 onMouseEnter={() => !isOptimistic && !isUpdating && prefetch(`/dashboard/landlords/${landlord.id}`)}
                 className={cn(
-                  'bg-white rounded-xl border p-4 pl-10 transition-all group relative',
+                  'bg-white rounded-lg border p-2 pl-8 transition-all group relative',
                   isOptimistic || isUpdating
                     ? 'border-primary-200 bg-primary-50/50'
-                    : 'border-gray-200 hover:shadow-md hover:border-gray-300 cursor-pointer',
+                    : 'border-gray-200 hover:shadow-sm hover:border-gray-300 cursor-pointer',
                   !isOptimistic && selection.isSelected(landlord.id as number) && 'ring-2 ring-primary-500 bg-primary-50/30'
                 )}
               >
                 {/* Selection checkbox */}
                 {!isOptimistic && !isUpdating && (
-                  <div className="absolute left-2.5 top-1/2 -translate-y-1/2" onClick={(e) => e.stopPropagation()}>
+                  <div className="absolute left-2 top-1/2 -translate-y-1/2" onClick={(e) => e.stopPropagation()}>
                     <SelectionCheckbox
                       checked={selection.isSelected(landlord.id as number)}
                       onChange={() => selection.toggle(landlord.id as number)}
@@ -552,65 +552,66 @@ export default function Landlords() {
                   </div>
                 )}
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
                   {/* Icon */}
                   <div className={cn(
-                    'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
+                    'w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0',
                     isOptimistic || isUpdating ? 'bg-primary-100' : config.bgColor
                   )}>
                     {isOptimistic || isUpdating ? (
-                      <Loader2 className="w-5 h-5 text-primary-600 animate-spin" />
+                      <Loader2 className="w-4 h-4 text-primary-600 animate-spin" />
                     ) : (
-                      <TypeIcon className={cn('w-5 h-5', config.color)} />
+                      <TypeIcon className={cn('w-4 h-4', config.color)} />
                     )}
                   </div>
 
-                  {/* Name & Email */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className={cn(
-                        'font-semibold truncate',
-                        isOptimistic || isUpdating ? 'text-primary-700' : 'text-gray-900'
-                      )}>
-                        {landlord.name}
-                      </h3>
-                      {isOptimistic && (
-                        <span className="text-xs text-primary-600 font-medium">Creating...</span>
-                      )}
-                      {isUpdating && (
-                        <span className="text-xs text-primary-600 font-medium">Updating...</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-500">
-                      <Mail className="w-3 h-3" />
-                      <span className="truncate">{landlord.email}</span>
-                    </div>
+                  {/* Name + Email on a single line — saves vertical space. */}
+                  <div className="flex-1 min-w-0 flex items-center gap-2">
+                    <h3 className={cn(
+                      'font-semibold truncate',
+                      isOptimistic || isUpdating ? 'text-primary-700' : 'text-gray-900'
+                    )}>
+                      {landlord.name}
+                    </h3>
+                    {isOptimistic && (
+                      <span className="text-xs text-primary-600 font-medium">Creating...</span>
+                    )}
+                    {isUpdating && (
+                      <span className="text-xs text-primary-600 font-medium">Updating...</span>
+                    )}
+                    {landlord.email && (
+                      <span className="hidden md:inline text-xs text-gray-400 truncate">
+                        · <Mail className="w-3 h-3 inline mr-1 -mt-0.5" />{landlord.email}
+                      </span>
+                    )}
                   </div>
 
                   {/* Type Badge */}
-                  <span className={cn(
-                    'hidden sm:inline-flex px-2.5 py-1 rounded-full text-xs font-medium',
-                    config.bgColor, config.color
-                  )}>
-                    {config.label}
-                  </span>
+                  <div className="hidden sm:block w-[110px] flex-shrink-0">
+                    <span className={cn(
+                      'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium',
+                      config.bgColor, config.color
+                    )}>
+                      {config.label}
+                    </span>
+                  </div>
 
                   {/* Phone */}
-                  <div className="hidden md:flex items-center gap-2 text-sm text-gray-600 min-w-[130px]">
-                    <Phone className="w-4 h-4 text-gray-400" />
+                  <div className="hidden md:flex items-center gap-2 text-sm text-gray-600 w-[150px] flex-shrink-0">
+                    <Phone className="w-4 h-4 text-gray-400 flex-shrink-0" />
                     <span className="truncate">{landlord.phone}</span>
                   </div>
 
                   {/* Properties Count */}
-                  <div className="hidden lg:flex items-center gap-2 text-sm min-w-[80px]">
-                    <Home className="w-4 h-4 text-gray-400" />
+                  <div className="hidden lg:flex items-center gap-2 text-sm w-[100px] flex-shrink-0">
+                    <Home className="w-4 h-4 text-gray-400 flex-shrink-0" />
                     <span className="font-semibold text-gray-900">{landlord.property_count || 0}</span>
                     <span className="text-gray-400">props</span>
                   </div>
 
                   {/* Commission Rate */}
-                  <div className="hidden xl:flex items-center gap-1 min-w-[70px]">
-                    <Percent className="w-4 h-4 text-primary-500" />
+                  <div className="hidden xl:flex items-center gap-1 w-[80px] flex-shrink-0">
+                    <Percent className="w-4 h-4 text-primary-500 flex-shrink-0" />
                     <span className="text-sm font-semibold text-primary-600">{landlord.commission_rate}%</span>
                   </div>
 

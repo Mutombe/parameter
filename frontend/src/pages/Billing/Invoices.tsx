@@ -247,9 +247,9 @@ function BillingStatusTable({ month, year, onBillProperty, onBillAll, isBilling 
           <thead className="bg-gray-50 sticky top-0">
             <tr>
               <th className="text-left px-4 py-2 font-semibold text-gray-500">Property</th>
-              <th className="text-center px-4 py-2 font-semibold text-gray-500">Leases</th>
-              <th className="text-center px-4 py-2 font-semibold text-gray-500">Billed</th>
-              <th className="text-center px-4 py-2 font-semibold text-gray-500">Status</th>
+              <th className="text-left px-4 py-2 font-semibold text-gray-500">Leases</th>
+              <th className="text-left px-4 py-2 font-semibold text-gray-500">Billed</th>
+              <th className="text-left px-4 py-2 font-semibold text-gray-500">Status</th>
               <th className="text-right px-4 py-2 font-semibold text-gray-500">Action</th>
             </tr>
           </thead>
@@ -267,15 +267,15 @@ function BillingStatusTable({ month, year, onBillProperty, onBillAll, isBilling 
                     <p className="text-xs text-gray-400">{p.landlord_name}</p>
                   )}
                 </td>
-                <td className="px-4 py-2.5 text-center">{p.active_leases}</td>
-                <td className="px-4 py-2.5 text-center">
+                <td className="px-4 py-2.5">{p.active_leases}</td>
+                <td className="px-4 py-2.5">
                   <span className="font-medium">{p.billed}</span>
                   {p.unbilled > 0 && (
                     <span className="text-red-500 text-xs ml-1">({p.unbilled} left)</span>
                   )}
                 </td>
-                <td className="px-4 py-2.5 text-center">
-                  <span className={cn('px-2 py-0.5 rounded-full text-xs font-medium', statusColors[p.status])}>
+                <td className="px-4 py-2.5">
+                  <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium', statusColors[p.status])}>
                     {p.status === 'complete' ? 'Done' : p.status === 'partial' ? 'Partial' : 'Pending'}
                   </span>
                 </td>
@@ -886,20 +886,20 @@ export default function Invoices() {
             <table className="w-full">
               <thead className="sticky top-0 z-10 bg-gray-50/80 backdrop-blur-sm border-b-2 border-gray-100">
                 <tr>
-                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Payer</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Sub-Account</th>
-                  <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
-                  <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Payer</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Sub-Account</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
-                    <td className="px-5 py-3.5">
+                    <td className="px-4 py-2">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-primary-50 flex items-center justify-center">
                           <Receipt className="w-5 h-5 text-primary-600" />
@@ -910,18 +910,18 @@ export default function Invoices() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-5 py-3.5"><div className="h-4 w-28 bg-gray-200 rounded" /></td>
-                    <td className="px-5 py-3.5"><div className="h-5 w-20 bg-gray-200 rounded-md" /></td>
-                    <td className="px-5 py-3.5"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
-                    <td className="px-5 py-3.5"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
-                    <td className="px-5 py-3.5">
+                    <td className="px-4 py-2"><div className="h-4 w-28 bg-gray-200 rounded" /></td>
+                    <td className="px-4 py-2"><div className="h-5 w-20 bg-gray-200 rounded-md" /></td>
+                    <td className="px-4 py-2"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
+                    <td className="px-4 py-2"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
+                    <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-gray-400" />
                         <div className="h-4 w-20 bg-gray-200 rounded" />
                       </div>
                     </td>
-                    <td className="px-5 py-3.5"><div className="h-6 w-16 bg-gray-200 rounded-full" /></td>
-                    <td className="px-5 py-3.5">
+                    <td className="px-4 py-2"><div className="h-6 w-16 bg-gray-200 rounded-full" /></td>
+                    <td className="px-4 py-2">
                       <div className="flex items-center justify-end gap-2">
                         <button className="p-2 text-gray-300 rounded-lg"><Eye className="w-4 h-4" /></button>
                         <button className="p-2 text-gray-300 rounded-lg"><Printer className="w-4 h-4" /></button>
@@ -957,21 +957,21 @@ export default function Invoices() {
                 <table className="w-full">
                   <thead className="sticky top-0 z-10 bg-gray-50/80 backdrop-blur-sm border-b-2 border-gray-100">
                     <tr>
-                      <th className="px-4 py-3.5 w-10">
+                      <th className="px-4 py-2 w-10">
                         <SelectionCheckbox
                           checked={selection.isAllPageSelected(pageIds)}
                           indeterminate={selection.isPartialPageSelected(pageIds)}
                           onChange={() => selection.selectPage(pageIds)}
                         />
                       </th>
-                      <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice</th>
-                      <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Payer</th>
-                      <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Sub-Account</th>
-                      <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
-                      <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
-                      <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
-                      <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Payer</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Sub-Account</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Due Date</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -999,7 +999,7 @@ export default function Invoices() {
                             !isOptimistic && 'cursor-pointer'
                           )}
                         >
-                          <td className="px-4 py-3.5 w-10" onClick={(e) => e.stopPropagation()}>
+                          <td className="px-4 py-2 w-10" onClick={(e) => e.stopPropagation()}>
                             {!isOptimistic && (
                               <SelectionCheckbox
                                 checked={selection.isSelected(invoice.id)}
@@ -1007,37 +1007,35 @@ export default function Invoices() {
                               />
                             )}
                           </td>
-                          <td className="px-5 py-3.5">
+                          <td className="px-4 py-2">
                             <div className="flex items-center gap-3">
                               <div className={cn(
-                                'w-10 h-10 rounded-lg flex items-center justify-center',
+                                'w-7 h-7 rounded-md flex items-center justify-center',
                                 isOptimistic ? 'bg-blue-100' : isOverdue ? 'bg-rose-100' : 'bg-primary-50'
                               )}>
                                 {isOptimistic ? (
-                                  <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                                  <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
                                 ) : isOverdue ? (
-                                  <AlertTriangle className="w-5 h-5 text-rose-600" />
+                                  <AlertTriangle className="w-4 h-4 text-rose-600" />
                                 ) : (
-                                  <Receipt className="w-5 h-5 text-primary-600" />
+                                  <Receipt className="w-4 h-4 text-primary-600" />
                                 )}
                               </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <p className={cn(
-                                    'font-semibold',
-                                    isOptimistic ? 'text-blue-600' : 'text-gray-900'
-                                  )} title={!isOptimistic ? `Invoice ${invoice.invoice_number}` : undefined}>
-                                    {isOptimistic ? 'Creating...' : invoice.invoice_number}
-                                  </p>
-                                  {isOptimistic && (
-                                    <span className="text-xs text-blue-500">Processing...</span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-gray-500">{invoice.date ? formatDate(invoice.date) : '\u2014'}</p>
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className={cn(
+                                  'font-medium text-sm',
+                                  isOptimistic ? 'text-blue-600' : 'text-gray-900'
+                                )} title={!isOptimistic ? `Invoice ${invoice.invoice_number}` : undefined}>
+                                  {isOptimistic ? 'Creating...' : invoice.invoice_number}
+                                </span>
+                                {isOptimistic && (
+                                  <span className="text-xs text-blue-500">Processing...</span>
+                                )}
+                                <span className="text-[11px] text-gray-400 hidden md:inline">{invoice.date ? formatDate(invoice.date) : '\u2014'}</span>
                               </div>
                             </div>
                           </td>
-                          <td className="px-5 py-3.5">
+                          <td className="px-4 py-2">
                             {(() => {
                               const isLevy = invoice.payer_type === 'levy'
                               const route = isLevy
@@ -1054,21 +1052,21 @@ export default function Invoices() {
                               )
                             })()}
                             {invoice.unit_name && (
-                              <p className="text-xs text-gray-500 mt-0.5">{invoice.unit_name}</p>
+                              <span className="text-[11px] text-gray-400 ml-2 hidden lg:inline">· {invoice.unit_name}</span>
                             )}
                           </td>
-                          <td className="px-5 py-3.5">
+                          <td className="px-4 py-2">
                             <SubAccountBadge
                               category={invoice.invoice_type}
                               currency={(invoice as any).currency}
                             />
                           </td>
-                          <td className="px-5 py-3.5 text-right">
+                          <td className="px-4 py-2">
                             <p className="font-semibold text-gray-900 tabular-nums">
                               {formatCurrency(invoice.total_amount || 0)}
                             </p>
                           </td>
-                          <td className="px-5 py-3.5 text-right">
+                          <td className="px-4 py-2">
                             <p className={cn(
                               'font-semibold tabular-nums',
                               Number(invoice.balance) > 0 ? 'text-rose-600' : 'text-emerald-600'
@@ -1076,18 +1074,15 @@ export default function Invoices() {
                               {formatCurrency(invoice.balance ?? 0)}
                             </p>
                           </td>
-                          <td className="px-5 py-3.5">
-                            <div className="flex items-center gap-2">
-                              <Calendar className="w-4 h-4 text-gray-400" />
-                              <span className={cn(
-                                'text-sm',
-                                isOverdue ? 'text-rose-600 font-medium' : 'text-gray-600'
-                              )} title={invoice.due_date ? `Due: ${formatDate(invoice.due_date)}` : undefined}>
-                                {invoice.due_date ? formatDate(invoice.due_date) : '\u2014'}
-                              </span>
-                            </div>
+                          <td className="px-4 py-2">
+                            <span className={cn(
+                              'text-xs tabular-nums whitespace-nowrap',
+                              isOverdue ? 'text-rose-600 font-medium' : 'text-gray-600'
+                            )} title={invoice.due_date ? `Due: ${formatDate(invoice.due_date)}` : undefined}>
+                              {invoice.due_date ? formatDate(invoice.due_date) : '\u2014'}
+                            </span>
                           </td>
-                          <td className="px-5 py-3.5">
+                          <td className="px-4 py-2">
                             <Tooltip content={statusTooltips[invoice.status] || invoice.status}>
                               <span className={cn(
                                 'inline-flex items-center whitespace-nowrap gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium',
@@ -1098,7 +1093,7 @@ export default function Invoices() {
                               </span>
                             </Tooltip>
                           </td>
-                          <td className="px-5 py-3.5" onClick={(e) => e.stopPropagation()}>
+                          <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
                             {isOptimistic ? (
                               <span className="text-sm text-blue-600">Processing...</span>
                             ) : (

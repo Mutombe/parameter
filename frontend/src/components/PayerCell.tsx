@@ -11,12 +11,13 @@ interface PayerCellProps {
 }
 
 /**
- * Two-line payer cell for tables shared across tenants and account holders.
+ * Compact single-line payer cell for tables.
  *
- * Line 1: name (clickable when onClick is provided)
- * Line 2: code · Rental|Levy chip (sky for rental, violet for levy)
+ * Renders: name · code · Rental|Levy chip — all inline so each table row
+ * stays at one line height. The chip uses sky for rental and violet for levy.
  *
- * The chip is text-only so dense tables don't get visually noisy.
+ * The code + chip drop off below `md` to keep things readable on narrow
+ * screens, but the name always shows.
  */
 export function PayerCell({ name, code, payerType, onClick, onMouseEnter }: PayerCellProps) {
   const isLevy = payerType === 'levy'
@@ -28,24 +29,24 @@ export function PayerCell({ name, code, payerType, onClick, onMouseEnter }: Paye
   }
 
   return (
-    <div className="min-w-0">
-      {onClick ? (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onClick() }}
-          onMouseEnter={onMouseEnter}
-          className="font-medium text-sm text-gray-900 hover:text-primary-600 hover:underline truncate block text-left"
-        >
-          {name || '—'}
-        </button>
-      ) : (
-        <span className="font-medium text-sm text-gray-900 truncate block">{name || '—'}</span>
-      )}
-      <div className="text-[11px] text-gray-500 truncate">
-        {code && <span className="font-mono">{code}</span>}
-        {code && payerType && <span className="mx-1 text-gray-300">·</span>}
-        {payerType && <span className={cn('font-medium', typeColor)}>{typeLabel}</span>}
-      </div>
-    </div>
+    <span className="flex items-center gap-2 min-w-0 w-full">
+      <span className="flex-1 min-w-0 flex items-center">
+        {onClick ? (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onClick() }}
+            onMouseEnter={onMouseEnter}
+            className="font-medium text-sm text-gray-900 hover:text-primary-600 hover:underline truncate text-left"
+            title={name || ''}
+          >
+            {name || '—'}
+          </button>
+        ) : (
+          <span className="font-medium text-sm text-gray-900 truncate" title={name || ''}>{name || '—'}</span>
+        )}
+      </span>
+      <span className="text-[11px] text-gray-400 font-mono hidden md:inline-block w-[70px] truncate flex-shrink-0">{code || ''}</span>
+      <span className={cn('text-[11px] font-medium hidden md:inline-block w-[50px] flex-shrink-0', payerType ? typeColor : '')}>{payerType ? typeLabel : ''}</span>
+    </span>
   )
 }

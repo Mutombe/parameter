@@ -5,6 +5,13 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*', 'localhost', '127.0.0.1', '.localhost']
 
+# Force a fresh DB connection on every request locally. With CONN_MAX_AGE
+# > 0, django-tenants occasionally reuses a connection whose search_path
+# was set to a different schema (or to public), producing intermittent
+# `relation X does not exist` errors that look random. CONN_MAX_AGE=0
+# kills the reuse and the tenant schema is set fresh on every request.
+DATABASES['default']['CONN_MAX_AGE'] = 0
+
 # Allow all origins in development - override base.py settings
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = []  # Clear the whitelist when allowing all

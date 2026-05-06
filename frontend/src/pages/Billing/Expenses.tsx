@@ -67,6 +67,8 @@ interface Expense {
   landlord?: number
   landlord_name?: string
   landlord_code?: string
+  sub_account_category?: string
+  sub_account_category_display?: string
   journal?: number
   journal_number?: string
   approved_by?: number
@@ -191,6 +193,10 @@ export default function Expenses() {
     expense_category: '',
     // Step 5: landlord (drives sub-account via category's funding_category)
     landlord: '',
+    // Step 5b: explicit sub-account override. When blank, post_to_ledger
+    // falls back to the category's funding_category. Auto-populates from
+    // category when the user picks one, but can be changed.
+    sub_account_category: '',
     // Step 6: description (auto-prefilled from category, editable)
     description: '',
     // Step 7: amount
@@ -209,6 +215,12 @@ export default function Expenses() {
   // Cash vs Non-Cash. Non-cash skips the bank-account picker, hits an
   // accruals GL on post, and doesn't touch the landlord trust sub-account.
   const [expenseKind, setExpenseKind] = useState<'cash' | 'non_cash'>('cash')
+  // When checked, the create flow goes pending → approved → paid in one
+  // go (calls post_to_ledger on the backend right after save). Defaults
+  // ON for cash because that's the typical "I just paid this, record it"
+  // case; defaults OFF for non-cash where users may want a separate
+  // approval cycle on accruals.
+  const [autoPost, setAutoPost] = useState(true)
 
   type BatchLine = {
     expense_category: string
@@ -245,10 +257,32 @@ export default function Expenses() {
       if (typeFilter) params.expense_type = typeFilter
       if (kindFilter) params.expense_kind = kindFilter
       if (debouncedSearch) params.search = debouncedSearch
-      const response = await expenseApi.list(params)
-      return response.data
+      try {
+        const response = await expenseApi.list(params)
+        return response.data
+      } catch (err: any) {
+        // Log the underlying cause so the "Failed to load" screen has a
+        // diagnosable trail. Common culprits: tenant schema race (CONN_MAX_AGE),
+        // missing migration, or backend 500 on a serializer field.
+        console.error('[EXPENSES] list failed', {
+          status: err?.response?.status,
+          data: err?.response?.data,
+          message: err?.message,
+          url: err?.config?.url,
+          params: err?.config?.params,
+        })
+        throw err
+      }
     },
     placeholderData: keepPreviousData,
+    // Retry once on transient backend hiccups (schema race, connection drop)
+    // before showing the error screen. Network errors get up to 2 retries.
+    retry: (failureCount, err: any) => {
+      const status = err?.response?.status
+      if (status && status >= 400 && status < 500) return false
+      return failureCount < 2
+    },
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 4000),
   })
 
   const expenses = expensesData?.results || expensesData || []
@@ -345,6 +379,28 @@ export default function Expenses() {
     rent: 'Rent', maintenance: 'Maintenance', rates: 'Rates',
     parking: 'Parking', vat: 'VAT',
   }
+  // Full set of trust pockets a landlord can fund an expense from. Mirrors
+  // SubsidiaryAccount.AccountCategory on the backend.
+  const subAccountCategoryOptions: { value: string; label: string }[] = [
+    { value: 'rent', label: 'Rent' },
+    { value: 'levy', label: 'Levy' },
+    { value: 'special_levy', label: 'Special Levy' },
+    { value: 'maintenance', label: 'Maintenance' },
+    { value: 'parking', label: 'Parking' },
+    { value: 'rates', label: 'Rates' },
+    { value: 'vat', label: 'VAT' },
+    { value: 'deposit', label: 'Deposit' },
+    { value: 'general', label: 'General' },
+  ]
+  const subAccountCategoryLabel: Record<string, string> = Object.fromEntries(
+    subAccountCategoryOptions.map(o => [o.value, o.label])
+  )
+  // The pocket that'll actually get debited — explicit pick wins over the
+  // category default. Drives the posting preview and badge.
+  const effectiveSubAccount = (
+    expenseForm.sub_account_category
+    || (selectedCategory?.funding_category ?? '')
+  )
 
   // Step 2 → Step 3 effect: when bank account changes, sync currency + clear stale expense category if its USD/ZWG variant doesn't exist.
   useEffect(() => {
@@ -365,6 +421,20 @@ export default function Expenses() {
     if (expenseForm.description === '' || expenseForm.description === lastAutoDescriptionRef.current) {
       lastAutoDescriptionRef.current = defaultDesc
       setExpenseForm(f => ({ ...f, description: defaultDesc }))
+    }
+  }, [selectedCategory?.id])
+
+  // Step 3 → Step 5b effect: when category changes, default the trust
+  // pocket to that category's funding_category. Only auto-fills when the
+  // user hasn't manually picked one yet (or set it from a prior category).
+  const lastAutoSubAccountRef = useRef('')
+  useEffect(() => {
+    if (!selectedCategory) return
+    const defaultSub = selectedCategory.funding_category || ''
+    if (!defaultSub) return
+    if (expenseForm.sub_account_category === '' || expenseForm.sub_account_category === lastAutoSubAccountRef.current) {
+      lastAutoSubAccountRef.current = defaultSub
+      setExpenseForm(f => ({ ...f, sub_account_category: defaultSub }))
     }
   }, [selectedCategory?.id])
 
@@ -392,8 +462,15 @@ export default function Expenses() {
         _isOptimistic: true,
       }
       queryClient.setQueryData(['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage], (old: any) => {
-        const items = old || []
-        return [optimistic, ...items]
+        // The cached response is the paginated shape {count, results, ...},
+        // not a flat array. Spreading it into an array would throw
+        // (object not iterable) and the mutation would error out before
+        // the POST is even sent. Branch on shape.
+        if (old && typeof old === 'object' && Array.isArray(old.results)) {
+          return { ...old, results: [optimistic, ...old.results], count: (old.count ?? old.results.length) + 1 }
+        }
+        if (Array.isArray(old)) return [optimistic, ...old]
+        return { results: [optimistic], count: 1 }
       })
       return { previousData }
     },
@@ -401,11 +478,18 @@ export default function Expenses() {
       showToast.success('Expense created successfully')
       queryClient.invalidateQueries({ queryKey: ['expenses'] })
     },
-    onError: (err, _, context) => {
+    onError: (err: any, _, context) => {
       if (context?.previousData) {
         queryClient.setQueryData(['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage], context.previousData)
       }
-      showToast.error(parseApiError(err))
+      // Surface the underlying error so future failures don't show the
+      // useless "An error occurred" fallback. parseApiError handles axios
+      // shapes; for plain JS errors we fall back to err.message.
+      const detail = err?.message || err?.toString?.() || ''
+      const parsed = parseApiError(err)
+      showToast.error(parsed === 'An error occurred' && detail ? `Failed: ${detail}` : parsed)
+      // eslint-disable-next-line no-console
+      console.error('[Expense create error]', err)
     }
   })
 
@@ -446,10 +530,13 @@ export default function Expenses() {
       await queryClient.cancelQueries({ queryKey: ['expenses'] })
       const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage])
       queryClient.setQueryData(['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage], (old: any) => {
-        const items = old || []
-        return items.map((item: any) =>
+        const updateRow = (item: any) =>
           item.id === id ? { ...item, status: 'approved', _isOptimistic: true } : item
-        )
+        if (old && typeof old === 'object' && Array.isArray(old.results)) {
+          return { ...old, results: old.results.map(updateRow) }
+        }
+        if (Array.isArray(old)) return old.map(updateRow)
+        return old
       })
       return { previousData }
     },
@@ -473,10 +560,13 @@ export default function Expenses() {
       await queryClient.cancelQueries({ queryKey: ['expenses'] })
       const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage])
       queryClient.setQueryData(['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage], (old: any) => {
-        const items = old || []
-        return items.map((item: any) =>
+        const updateRow = (item: any) =>
           item.id === id ? { ...item, status: 'paid', _isOptimistic: true } : item
-        )
+        if (old && typeof old === 'object' && Array.isArray(old.results)) {
+          return { ...old, results: old.results.map(updateRow) }
+        }
+        if (Array.isArray(old)) return old.map(updateRow)
+        return old
       })
       return { previousData }
     },
@@ -588,6 +678,11 @@ export default function Expenses() {
         : null,
       expense_category: Number(expenseForm.expense_category),
       landlord: expenseForm.landlord ? Number(expenseForm.landlord) : null,
+      // Empty string = "no override; use category's funding_category".
+      // Sent verbatim so the backend can clear an existing override too.
+      sub_account_category: expenseForm.sub_account_category,
+      // Tells the backend's perform_create to approve + post immediately.
+      auto_post: autoPost,
     }
 
     createMutation.mutate(data)
@@ -599,6 +694,7 @@ export default function Expenses() {
       currency: 'USD',
       expense_category: '',
       landlord: '',
+      sub_account_category: '',
       description: '',
       amount: '',
       reference: '',
@@ -608,6 +704,7 @@ export default function Expenses() {
       income_type: '',
     })
     lastAutoDescriptionRef.current = ''
+    lastAutoSubAccountRef.current = ''
   }
 
   // Get description suggestions based on expense type
@@ -667,7 +764,7 @@ export default function Expenses() {
 
   if (isLoading) {
     return (
-      <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+      <div className="p-4 md:p-6 lg:p-8">
         <PageHeader
           title="Expenses"
           subtitle="Manage expenses and payouts"
@@ -684,7 +781,7 @@ export default function Expenses() {
 
   if (error) {
     return (
-      <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+      <div className="p-4 md:p-6 lg:p-8">
         <PageHeader
           title="Expenses"
           subtitle="Manage expenses and payouts"
@@ -697,7 +794,20 @@ export default function Expenses() {
         <EmptyState
           icon={XCircle}
           title="Failed to load expenses"
-          description="There was an error loading your expenses."
+          description={(() => {
+            const err = error as any
+            const status = err?.response?.status
+            const data = err?.response?.data
+            // Backend can surface the error in any of these fields, plus a
+            // `debug` block when DEBUG_API_ERRORS is on (development).
+            const detail = data?.detail
+              || data?.error
+              || (typeof data?.debug?.error === 'string' ? data.debug.error.split('\n')[0] : null)
+              || data?.message
+              || err?.message
+            if (status) return `${status} from backend${detail ? ` — ${detail}` : ''}`
+            return detail || 'There was an error loading your expenses. Check your connection and try again.'
+          })()}
           action={
             <Button onClick={() => queryClient.invalidateQueries({ queryKey: ['expenses'] })}>
               Try Again
@@ -709,7 +819,7 @@ export default function Expenses() {
   }
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+    <div className="p-4 md:p-6 lg:p-8">
       <PageHeader
         title="Expenses"
         subtitle={`${totalCount} total expenses`}
@@ -874,7 +984,7 @@ export default function Expenses() {
                   exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ delay: index * 0.05 }}
                   className={cn(
-                    "bg-white rounded-xl border p-4 pl-12 hover:shadow-md transition-all cursor-pointer relative",
+                    "bg-white rounded-lg border p-2.5 pl-9 hover:shadow-sm transition-all cursor-pointer relative",
                     config.borderColor,
                     expense._isOptimistic && "opacity-60",
                     selection.isSelected(expense.id) && "ring-2 ring-blue-500 border-blue-300"
@@ -883,126 +993,93 @@ export default function Expenses() {
                   onClick={() => navigate(`/dashboard/expenses/${expense.id}`)}
                 >
                   {!expense._isOptimistic && (
-                    <div className="absolute top-4 left-3" onClick={(e) => e.stopPropagation()}>
+                    <div className="absolute top-3 left-2.5" onClick={(e) => e.stopPropagation()}>
                       <SelectionCheckbox
                         checked={selection.isSelected(expense.id)}
                         onChange={() => selection.toggle(expense.id)}
                       />
                     </div>
                   )}
-                  <div className="flex items-center gap-4">
-                    <div className={cn("p-3 rounded-xl", config.bgColor)}>
-                      <StatusIcon className={cn("h-6 w-6", config.color)} />
+                  {/* Single-line layout with fixed column widths so chips/IDs align top-to-bottom. */}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className={cn("p-1 rounded flex-shrink-0", config.bgColor)}>
+                      <StatusIcon className={cn("h-3.5 w-3.5", config.color)} />
                     </div>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-semibold text-gray-900">{expense.expense_number}</h3>
-                        <Tooltip content={{ pending: 'Awaiting approval', approved: 'Approved, ready for payment', paid: 'Payment completed', cancelled: 'Expense cancelled' }[expense.status]}>
-                          <span>
-                            <Badge variant={expense.status === 'paid' ? 'success' : expense.status === 'pending' ? 'warning' : 'default'}>
-                              {config.label}
-                            </Badge>
-                          </span>
-                        </Tooltip>
-                        {/* Cash / Non-Cash pill — clearly distinguishes which
-                            entries actually moved money vs accruals. */}
-                        <Tooltip content={
-                          expense.expense_kind === 'non_cash'
-                            ? 'Accrual / depreciation — no cash movement; appears on P&L'
-                            : 'Cash leaves the bank account; reduces landlord trust balance'
-                        }>
-                          <span className={cn(
-                            'inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ring-1',
-                            expense.expense_kind === 'non_cash'
-                              ? 'bg-indigo-50 text-indigo-700 ring-indigo-200'
-                              : 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-                          )}>
-                            {expense.expense_kind === 'non_cash' ? 'Non-Cash' : 'Cash'}
-                          </span>
-                        </Tooltip>
-                      </div>
-                      {expense.payee_id && expense.payee_type === 'landlord' ? (
+                    <span className="font-semibold text-gray-900 text-sm whitespace-nowrap w-[110px] flex-shrink-0">{expense.expense_number}</span>
+
+                    <div className="w-[88px] flex-shrink-0">
+                      <Tooltip content={{ pending: 'Awaiting approval', approved: 'Approved, ready for payment', paid: 'Payment completed', cancelled: 'Expense cancelled' }[expense.status]}>
+                        <span><Badge variant={expense.status === 'paid' ? 'success' : expense.status === 'pending' ? 'warning' : 'default'}>{config.label}</Badge></span>
+                      </Tooltip>
+                    </div>
+
+                    <div className="w-[78px] flex-shrink-0">
+                      <span className={cn(
+                        'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ring-1',
+                        expense.expense_kind === 'non_cash'
+                          ? 'bg-indigo-50 text-indigo-700 ring-indigo-200'
+                          : 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                      )}>
+                        {expense.expense_kind === 'non_cash' ? 'Non-Cash' : 'Cash'}
+                      </span>
+                    </div>
+
+                    <div className="flex-1 min-w-0 flex items-center">
+                      {expense.landlord ? (
                         <button
-                          onMouseEnter={() => prefetch(`/dashboard/landlords/${expense.payee_id}`)}
-                          onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/landlords/${expense.payee_id}`) }}
-                          className="text-sm text-primary-600 hover:text-primary-700 hover:underline truncate"
+                          onMouseEnter={() => prefetch(`/dashboard/landlords/${expense.landlord}`)}
+                          onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/landlords/${expense.landlord}`) }}
+                          className="text-sm text-primary-600 hover:underline truncate text-left"
+                          title={expense.payee_name}
                         >
                           {expense.payee_name}
                         </button>
                       ) : (
-                        <p className="text-sm text-gray-900 truncate">{expense.payee_name}</p>
+                        <span className="text-sm text-gray-700 truncate" title={expense.payee_name}>{expense.payee_name}</span>
                       )}
-                      <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-500 flex-wrap">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          {expense.date ? formatDate(expense.date) : '\u2014'}
-                        </span>
-                        {expense.expense_category_name && (
-                          <span className="flex items-center gap-1">
-                            <FileText className="h-3 w-3" />
-                            {expense.expense_category_name}
+                    </div>
+
+                    <span className="text-xs text-gray-500 whitespace-nowrap hidden md:inline w-[90px] flex-shrink-0">
+                      {expense.date ? formatDate(expense.date) : '-'}
+                    </span>
+
+                    <span className="text-xs text-gray-500 truncate hidden lg:inline w-[140px] flex-shrink-0" title={expense.expense_category_name || ''}>
+                      {expense.expense_category_name || '—'}
+                    </span>
+
+                    <div className="hidden xl:block w-[150px] flex-shrink-0 truncate">
+                      {expense.bank_account_name ? (
+                        <Tooltip content="Bank account funds came from">
+                          <span className="text-xs text-gray-500" title={expense.bank_account_name}>
+                            <Building2 className="h-3 w-3 inline mr-1 -mt-0.5" />{expense.bank_account_name}
                           </span>
-                        )}
-                        {expense.bank_account_name && (
-                          <Tooltip content="Bank account funds came from">
-                            <span className="flex items-center gap-1">
-                              <Building2 className="h-3 w-3" />
-                              {expense.bank_account_name}
-                            </span>
-                          </Tooltip>
-                        )}
-                        <SubAccountBadge
-                          category={expense.expense_category_funding}
-                          currency={expense.currency}
-                        />
-                      </div>
-                      {expense.landlord_name && (
-                        <div className="mt-1 text-xs text-violet-700">
-                          <span className="text-gray-500">Landlord:</span>{' '}
-                          <span className="font-medium">{expense.landlord_name}</span>
-                          {expense.landlord_code && <span className="text-gray-400 ml-1">({expense.landlord_code})</span>}
-                        </div>
+                        </Tooltip>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
                       )}
                     </div>
 
-                    <div className="text-right">
-                      <Tooltip content={expenseTypes.find(t => t.value === expense.expense_type)?.label || expense.expense_type}>
-                        <span className="font-bold text-lg">{formatCurrency(expense.amount || 0, expense.currency)}</span>
-                      </Tooltip>
-                      {expense.journal_number ? (
-                        <Tooltip content="Posted to general ledger">
-                          <p className="text-xs text-gray-500">JRN: {expense.journal_number}</p>
-                        </Tooltip>
-                      ) : null}
+                    <div className="w-[130px] flex-shrink-0">
+                      <SubAccountBadge
+                        category={expense.sub_account_category || expense.expense_category_funding}
+                        currency={expense.currency}
+                      />
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <span className="font-semibold tabular-nums text-sm whitespace-nowrap w-[110px] flex-shrink-0">
+                      {formatCurrency(expense.amount || 0, expense.currency)}
+                    </span>
+
+                    <div className="flex items-center gap-1 w-[80px] flex-shrink-0 justify-end">
                       {expense.status === 'pending' && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          title="Approve"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setShowApproveConfirm(expense)
-                          }}
-                        >
-                          <Check className="h-4 w-4" />
+                        <Button variant="outline" size="sm" title="Approve" onClick={(e) => { e.stopPropagation(); setShowApproveConfirm(expense) }}>
+                          <Check className="h-3.5 w-3.5" />
                         </Button>
                       )}
                       {expense.status === 'approved' && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          title="Mark as paid"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setShowPayConfirm(expense)
-                          }}
-                        >
-                          <CreditCard className="h-4 w-4 mr-1" />
-                          Pay
+                        <Button variant="primary" size="sm" title="Mark as paid" onClick={(e) => { e.stopPropagation(); setShowPayConfirm(expense) }}>
+                          <CreditCard className="h-3.5 w-3.5 mr-1" />Pay
                         </Button>
                       )}
                     </div>
@@ -1011,6 +1088,20 @@ export default function Expenses() {
               )
             })}
           </AnimatePresence>
+        </div>
+      )}
+
+      {/* Pagination — fixed at the bottom of the list. */}
+      {totalPages > 1 && (
+        <div className="card overflow-hidden">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalCount}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
+            showPageSize={false}
+          />
         </div>
       )}
 
@@ -1317,6 +1408,35 @@ export default function Expenses() {
             emptyMessage="No landlords found."
           />
 
+          {/* Step 5b — Trust pocket the expense is deducted from. Always visible
+              (even before a landlord is picked) so users discover the override.
+              Disabled until a landlord exists, since there's nothing to deduct
+              from otherwise. Non-cash kind also disables it because non-cash
+              never touches the trust ledger. */}
+          <Select
+            label="Sub-account (landlord's pocket the expense comes out of)"
+            value={expenseForm.sub_account_category}
+            onChange={(e) => {
+              // Manual edit — break the auto-sync from category changes.
+              lastAutoSubAccountRef.current = ''
+              setExpenseForm({ ...expenseForm, sub_account_category: e.target.value })
+            }}
+            options={[
+              { value: '', label: 'Use category default' },
+              ...subAccountCategoryOptions,
+            ]}
+            disabled={!expenseForm.landlord || expenseKind !== 'cash'}
+            hint={
+              !expenseForm.landlord
+                ? 'Pick a landlord above to enable this.'
+                : expenseKind !== 'cash'
+                  ? 'Non-cash expenses skip the trust ledger — no pocket to deduct from.'
+                  : selectedCategory?.funding_category && !expenseForm.sub_account_category
+                    ? `Defaulting to ${fundingCategoryLabel[selectedCategory.funding_category] || selectedCategory.funding_category} from the category. Override here if it should come out of a different pocket.`
+                    : "Which of the landlord's trust pockets to deduct from."
+            }
+          />
+
           {/* Step 6 — Description (auto-prefilled) */}
           <AutocompleteInput
             label="Description"
@@ -1377,10 +1497,13 @@ export default function Expenses() {
                   <span className="text-indigo-500 truncate ml-2 max-w-[160px]">Accrued Liabilities</span>
                 </div>
               )}
-              {selectedLandlord && expenseKind === 'cash' && (
+              {selectedLandlord && expenseKind === 'cash' && effectiveSubAccount && (
                 <div className="pt-1.5 border-t border-gray-200 text-[11px] text-violet-700">
                   <span className="font-semibold">Trust ledger:</span>{' '}
-                  Dr {selectedLandlord.name}'s {fundingCategoryLabel[selectedCategory.funding_category] || selectedCategory.funding_category} sub-account
+                  Dr {selectedLandlord.name}'s {subAccountCategoryLabel[effectiveSubAccount] || fundingCategoryLabel[effectiveSubAccount] || effectiveSubAccount} sub-account
+                  {expenseForm.sub_account_category && selectedCategory?.funding_category && expenseForm.sub_account_category !== selectedCategory.funding_category && (
+                    <span className="ml-1 text-gray-500">(overrides category default)</span>
+                  )}
                 </div>
               )}
               {expenseKind === 'non_cash' && (
@@ -1391,14 +1514,26 @@ export default function Expenses() {
             </div>
           )}
 
-          <div className="flex justify-end gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={() => setShowModal(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={createMutation.isPending}>
-              {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Record Expense
-            </Button>
+          <div className="flex items-center justify-between gap-3 pt-2 flex-wrap">
+            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={autoPost}
+                onChange={(e) => setAutoPost(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span>Approve and post immediately</span>
+              <span className="text-xs text-gray-400">(else stays pending)</span>
+            </label>
+            <div className="flex gap-3">
+              <Button type="button" variant="outline" onClick={() => setShowModal(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {autoPost ? 'Record & Post' : 'Save Pending'}
+              </Button>
+            </div>
           </div>
         </form>
         )}

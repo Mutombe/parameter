@@ -408,44 +408,44 @@ export default function Receipts() {
         <table className="w-full">
           <thead className="sticky top-0 z-10 bg-gray-50/80 backdrop-blur-sm border-b-2 border-gray-100">
             <tr>
-              <th className="px-4 py-3.5 w-10">
+              <th className="px-4 py-2 w-10">
                 <SelectionCheckbox
                   checked={selection.isAllPageSelected(pageIds)}
                   indeterminate={selection.isPartialPageSelected(pageIds)}
                   onChange={() => selection.selectPage(pageIds)}
                 />
               </th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Receipt</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Payer</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Sub-Account</th>
-              <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Method</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden xl:table-cell">Reference</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden lg:table-cell">GL Posted</th>
-              <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Receipt</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Payer</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Sub-Account</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Method</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden xl:table-cell">Reference</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden lg:table-cell">GL Posted</th>
+              <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <tr key={i} className="animate-pulse">
-                  <td className="px-4 py-3.5 w-10"><Skeleton className="h-4 w-4" /></td>
-                  <td className="px-5 py-3.5">
+                  <td className="px-4 py-2 w-10"><Skeleton className="h-4 w-4" /></td>
+                  <td className="px-4 py-2">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-                        <CreditCard className="w-5 h-5 text-emerald-600" />
+                      <div className="w-7 h-7 rounded-md bg-emerald-100 flex items-center justify-center">
+                        <CreditCard className="w-4 h-4 text-emerald-600" />
                       </div>
                       <Skeleton className="h-4 w-28" />
                     </div>
                   </td>
-                  <td className="px-5 py-3.5"><Skeleton className="h-4 w-32" /></td>
-                  <td className="px-5 py-3.5"><Skeleton className="h-4 w-20" /></td>
-                  <td className="px-5 py-3.5"><Skeleton className="h-5 w-24 rounded-full" /></td>
-                  <td className="px-5 py-3.5"><Skeleton className="h-4 w-28" /></td>
-                  <td className="px-5 py-3.5 hidden xl:table-cell"><Skeleton className="h-4 w-24" /></td>
-                  <td className="px-5 py-3.5"><Skeleton className="h-8 w-16" /></td>
-                  <td className="px-5 py-3.5 hidden lg:table-cell"><Skeleton className="h-8 w-8" /></td>
+                  <td className="px-4 py-2"><Skeleton className="h-4 w-32" /></td>
+                  <td className="px-4 py-2"><Skeleton className="h-4 w-20" /></td>
+                  <td className="px-4 py-2"><Skeleton className="h-5 w-24 rounded-full" /></td>
+                  <td className="px-4 py-2"><Skeleton className="h-4 w-28" /></td>
+                  <td className="px-4 py-2 hidden xl:table-cell"><Skeleton className="h-4 w-24" /></td>
+                  <td className="px-4 py-2"><Skeleton className="h-8 w-16" /></td>
+                  <td className="px-4 py-2 hidden lg:table-cell"><Skeleton className="h-8 w-8" /></td>
                 </tr>
               ))
             ) : !receipts.length ? (
@@ -473,7 +473,7 @@ export default function Receipts() {
                     selection.isSelected(receipt.id) && 'bg-primary-50'
                   )}
                 >
-                  <td className="px-4 py-3.5 w-10" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-4 py-2 w-10" onClick={(e) => e.stopPropagation()}>
                     {!receipt._isOptimistic && (
                       <SelectionCheckbox
                         checked={selection.isSelected(receipt.id)}
@@ -481,16 +481,16 @@ export default function Receipts() {
                       />
                     )}
                   </td>
-                  <td className="px-5 py-3.5">
+                  <td className="px-4 py-2">
                     <div className="flex items-center gap-3">
                       <div className={cn(
-                        'w-10 h-10 rounded-lg flex items-center justify-center',
+                        'w-7 h-7 rounded-md flex items-center justify-center',
                         receipt._isOptimistic ? 'bg-blue-100' : 'bg-emerald-100'
                       )}>
                         {receipt._isOptimistic ? (
-                          <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                          <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
                         ) : (
-                          <CreditCard className="w-5 h-5 text-emerald-600" />
+                          <CreditCard className="w-4 h-4 text-emerald-600" />
                         )}
                       </div>
                       <span className={cn(
@@ -501,7 +501,7 @@ export default function Receipts() {
                       </span>
                     </div>
                   </td>
-                  <td className="px-5 py-3.5">
+                  <td className="px-4 py-2">
                     {(() => {
                       const isLevy = (receipt as any).payer_type === 'levy'
                       const route = isLevy
@@ -518,23 +518,23 @@ export default function Receipts() {
                       )
                     })()}
                   </td>
-                  <td className="px-5 py-3.5">
+                  <td className="px-4 py-2">
                     <SubAccountBadge
                       category={(receipt as any).sub_account_category}
                       currency={receipt.currency}
                     />
                   </td>
-                  <td className="px-5 py-3.5 text-right font-semibold tabular-nums text-emerald-600" title={String(receipt.amount)}>{formatCurrency(receipt.amount || 0)}</td>
-                  <td className="px-5 py-3.5">
+                  <td className="px-4 py-2 font-semibold tabular-nums text-emerald-600" title={String(receipt.amount)}>{formatCurrency(receipt.amount || 0)}</td>
+                  <td className="px-4 py-2">
                     <Tooltip content={`${methodLabels[receipt.payment_method] || receipt.payment_method}${receipt.reference ? ' - Ref: ' + receipt.reference : ''}`}>
                       <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 bg-gray-100 rounded-full text-xs">
                         {methodLabels[receipt.payment_method] || receipt.payment_method}
                       </span>
                     </Tooltip>
                   </td>
-                  <td className="px-5 py-3.5 text-gray-900 hidden xl:table-cell">{receipt.reference || '\u2014'}</td>
-                  <td className="px-5 py-3.5 text-gray-900">{receipt.date ? formatDate(receipt.date) : '\u2014'}</td>
-                  <td className="px-5 py-3.5 hidden lg:table-cell" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-4 py-2 text-gray-900 hidden xl:table-cell">{receipt.reference || '\u2014'}</td>
+                  <td className="px-4 py-2 text-gray-900">{receipt.date ? formatDate(receipt.date) : '\u2014'}</td>
+                  <td className="px-4 py-2 hidden lg:table-cell" onClick={(e) => e.stopPropagation()}>
                     {receipt._isOptimistic ? (
                       <span className="text-blue-600 text-sm">Processing...</span>
                     ) : receipt.journal ? (
@@ -565,7 +565,7 @@ export default function Receipts() {
                       </button>
                     )}
                   </td>
-                  <td className="px-5 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-4 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                     {!receipt._isOptimistic && (
                       <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                         <button

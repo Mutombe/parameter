@@ -255,12 +255,13 @@ export default function AccountHolders() {
                       onChange={() => selection.selectPage(pageIds)}
                     />
                   </th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5">Account Holder</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5 hidden md:table-cell">Type</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5 hidden lg:table-cell">Email</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5 hidden xl:table-cell">Phone</th>
-                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5">Property</th>
-                  <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5 w-28">Actions</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2">Account Holder</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2 hidden md:table-cell">Code</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2 hidden md:table-cell">Type</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2 hidden lg:table-cell">Email</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2 hidden xl:table-cell">Phone</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2">Property</th>
+                  <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-2 w-28">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -291,10 +292,10 @@ export default function AccountHolders() {
                             />
                           )}
                         </td>
-                        <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-3">
+                        <td className="px-4 py-2">
+                          <div className="flex items-center gap-2 min-w-0">
                             <div className={cn(
-                              'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0',
+                              'w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0',
                               isOptimistic || isUpdating ? 'bg-primary-100' : 'bg-violet-100'
                             )}>
                               {isOptimistic || isUpdating ? (
@@ -303,18 +304,14 @@ export default function AccountHolders() {
                                 <TbUserSquareRounded className="w-4 h-4 text-violet-600" />
                               )}
                             </div>
-                            <div className="min-w-0">
-                              <span className="font-semibold text-gray-900 hover:text-primary-600 truncate block">
-                                {holder.name}
-                              </span>
-                              <span className="text-xs text-gray-500">{holder.code}</span>
-                            </div>
+                            <span className="font-medium text-sm text-gray-900 truncate" title={holder.name}>{holder.name}</span>
                           </div>
                         </td>
-                        <td className="px-5 py-3.5 text-sm text-gray-700 hidden md:table-cell capitalize">{holder.tenant_type || '—'}</td>
-                        <td className="px-5 py-3.5 text-sm text-gray-700 truncate max-w-[200px] hidden lg:table-cell">{holder.email || '—'}</td>
-                        <td className="px-5 py-3.5 text-sm text-gray-700 hidden xl:table-cell">{holder.phone || '—'}</td>
-                        <td className="px-5 py-3.5 text-sm">
+                        <td className="px-4 py-2 text-[11px] text-gray-500 font-mono hidden md:table-cell whitespace-nowrap">{holder.code || '—'}</td>
+                        <td className="px-4 py-2 text-sm text-gray-700 hidden md:table-cell capitalize">{holder.tenant_type || '—'}</td>
+                        <td className="px-4 py-2 text-sm text-gray-700 truncate max-w-[200px] hidden lg:table-cell">{holder.email || '—'}</td>
+                        <td className="px-4 py-2 text-sm text-gray-700 hidden xl:table-cell">{holder.phone || '—'}</td>
+                        <td className="px-4 py-2 text-sm">
                           {holder.property_name ? (
                             <div className="flex items-center gap-1.5 text-gray-700">
                               <Building2 className="w-3.5 h-3.5 text-gray-400" />
@@ -324,7 +321,7 @@ export default function AccountHolders() {
                             <span className="text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="px-5 py-3.5 text-right">
+                        <td className="px-4 py-2 text-right">
                           <div className="inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                             <button
                               onClick={() => handleEdit(holder)}

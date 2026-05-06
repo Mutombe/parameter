@@ -76,7 +76,7 @@ const PAGE_SIZE = 25
 function SkeletonTableRow() {
   return (
     <tr className="animate-pulse">
-      <td className="px-5 py-3.5">
+      <td className="px-4 py-2">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-primary-100 flex items-center justify-center">
             <DoorOpen className="w-5 h-5 text-primary-600" />
@@ -84,28 +84,28 @@ function SkeletonTableRow() {
           <span className="h-4 w-16 bg-gray-200 rounded" />
         </div>
       </td>
-      <td className="px-5 py-3.5">
+      <td className="px-4 py-2">
         <div className="flex items-center gap-2">
           <Building2 className="w-4 h-4 text-gray-400" />
           <span className="h-4 w-24 bg-gray-200 rounded" />
         </div>
       </td>
-      <td className="px-5 py-3.5">
+      <td className="px-4 py-2">
         <span className="h-5 w-20 bg-gray-200 rounded-full inline-block" />
       </td>
-      <td className="px-5 py-3.5">
+      <td className="px-4 py-2">
         <span className="h-4 w-16 bg-gray-200 rounded" />
       </td>
-      <td className="px-5 py-3.5">
+      <td className="px-4 py-2">
         <span className="h-5 w-20 bg-gray-200 rounded-full inline-block" />
       </td>
-      <td className="px-5 py-3.5">
+      <td className="px-4 py-2">
         <div className="flex items-center gap-2">
           <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
           <span className="h-4 w-24 bg-gray-200 rounded" />
         </div>
       </td>
-      <td className="px-5 py-3.5 text-right">
+      <td className="px-4 py-2 text-right">
         <div className="flex items-center justify-end gap-1">
           <button className="p-2 text-gray-300 rounded-lg">
             <Edit2 className="w-4 h-4" />
@@ -500,20 +500,20 @@ export default function Units() {
         <table className="w-full">
           <thead className="sticky top-0 z-10 bg-gray-50/80 backdrop-blur-sm border-b-2 border-gray-100">
             <tr>
-              <th className="px-4 py-3.5 w-10">
+              <th className="px-4 py-2 w-10">
                 <SelectionCheckbox
                   checked={selection.isAllPageSelected(pageIds)}
                   indeterminate={selection.isPartialPageSelected(pageIds)}
                   onChange={() => selection.selectPage(pageIds)}
                 />
               </th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Property</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
-              <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Rent</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-              <th className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
-              <th className="px-5 py-3.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Property</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Rent</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
+              <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -548,21 +548,21 @@ export default function Units() {
                     onMouseEnter={() => prefetch(`/dashboard/units/${unit.id}`)}
                     className={cn("hover:bg-gray-50 transition-colors group cursor-pointer", selection.isSelected(unit.id) ? 'bg-primary-50' : '')}
                   >
-                    <td className="px-4 py-3.5 w-10" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-4 py-2 w-10" onClick={(e) => e.stopPropagation()}>
                       <SelectionCheckbox
                         checked={selection.isSelected(unit.id)}
                         onChange={() => selection.toggle(unit.id)}
                       />
                     </td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-primary-100 flex items-center justify-center">
-                          <DoorOpen className="w-5 h-5 text-primary-600" />
+                    <td className="px-4 py-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-md bg-primary-100 flex items-center justify-center">
+                          <DoorOpen className="w-4 h-4 text-primary-600" />
                         </div>
-                        <span className="font-semibold text-gray-900">{unit.unit_number}</span>
+                        <span className="font-medium text-sm text-gray-900">{unit.unit_number}</span>
                       </div>
                     </td>
-                    <td className="px-5 py-3.5">
+                    <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         <PiBuildingApartmentLight className="w-4 h-4 text-gray-400" />
                         {unit.property ? (
@@ -578,7 +578,7 @@ export default function Units() {
                         )}
                       </div>
                     </td>
-                    <td className="px-5 py-3.5">
+                    <td className="px-4 py-2">
                       <Tooltip content={typeConfig.label}>
                         <span className={cn(
                           'inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium',
@@ -588,12 +588,12 @@ export default function Units() {
                         </span>
                       </Tooltip>
                     </td>
-                    <td className="px-5 py-3.5 text-right">
+                    <td className="px-4 py-2">
                       <Tooltip content={`Rent: ${formatCurrency(unit.rental_amount || 0)} | Deposit: ${formatCurrency(unit.deposit_amount || 0)}`}>
                         <span className="font-semibold text-gray-900 tabular-nums">{formatCurrency(unit.rental_amount || 0)}</span>
                       </Tooltip>
                     </td>
-                    <td className="px-5 py-3.5">
+                    <td className="px-4 py-2">
                       {unit.is_occupied ? (
                         <Tooltip content="Currently leased to a tenant">
                           <Badge variant="success" className="gap-1">
@@ -608,7 +608,7 @@ export default function Units() {
                         </Tooltip>
                       )}
                     </td>
-                    <td className="px-5 py-3.5">
+                    <td className="px-4 py-2">
                       {unit.current_tenant ? (
                         <div className="flex items-center gap-2">
                           <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
@@ -624,7 +624,7 @@ export default function Units() {
                         <span className="text-gray-400">{'\u2014'}</span>
                       )}
                     </td>
-                    <td className="px-5 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-4 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => navigate(`/dashboard/units/${unit.id}`)}

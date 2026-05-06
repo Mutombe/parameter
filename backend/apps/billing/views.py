@@ -963,14 +963,42 @@ class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
     permission_classes = [IsAuthenticated]
     filterset_fields = [
         'expense_type', 'expense_kind', 'status', 'date', 'currency', 'payee_type',
-        'expense_category', 'bank_account', 'landlord',
+        'expense_category', 'bank_account', 'landlord', 'sub_account_category',
     ]
     search_fields = ['expense_number', 'payee_name', 'description', 'reference']
     ordering_fields = ['date', 'amount', 'created_at', 'expense_number', 'status']
     ordering = ['-date', '-created_at']
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        """Save the expense; optionally auto-post to ledger when the form
+        passed `auto_post=true`. Auto-posting takes the expense straight
+        from `pending` → `paid` (via approval) so users don't have to
+        click through a two-step dance for routine entries.
+        """
+        import logging
+        expense = serializer.save(created_by=self.request.user)
+        # Read the flag from the raw initial_data (it isn't a model field).
+        raw = self.request.data
+        auto_post = False
+        if isinstance(raw, dict):
+            auto_post = bool(raw.get('auto_post'))
+        else:
+            try:
+                auto_post = bool(raw.get('auto_post'))  # type: ignore[union-attr]
+            except Exception:
+                auto_post = False
+        if auto_post:
+            try:
+                expense.approved_by = self.request.user
+                expense.approved_at = timezone.now()
+                expense.status = Expense.Status.APPROVED
+                expense.save(update_fields=['approved_by', 'approved_at', 'status'])
+                expense.post_to_ledger(self.request.user)
+            except Exception as e:
+                logging.getLogger(__name__).warning(
+                    f'Auto-post failed for expense {expense.expense_number}: {e}',
+                    exc_info=True,
+                )
 
     @action(detail=False, methods=['post'], url_path='bulk_create')
     def bulk_create(self, request):
@@ -1068,6 +1096,7 @@ class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
                 if line_kind not in ('cash', 'non_cash'):
                     line_kind = 'cash'
 
+                line_sub_account = (line.get('sub_account_category') or '').strip()
                 expense = Expense.objects.create(
                     date=date,
                     # Non-cash rows leave bank_account null even if the batch
@@ -1076,6 +1105,7 @@ class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
                     currency=currency,
                     expense_category=category,
                     landlord=landlord,
+                    sub_account_category=line_sub_account,
                     amount=amount,
                     description=description,
                     reference=reference,

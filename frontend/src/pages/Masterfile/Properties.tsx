@@ -667,64 +667,69 @@ export default function Properties() {
                 onClick={() => navigate(`/dashboard/properties/${property.id}`)}
                 onMouseEnter={() => prefetch(`/dashboard/properties/${property.id}`)}
                 className={cn(
-                  'relative bg-white rounded-xl border border-gray-200 shadow-sm p-4 pl-10 hover:shadow-md hover:border-gray-300 transition-all group cursor-pointer',
+                  'relative bg-white rounded-lg border border-gray-200 shadow-sm p-2 pl-8 hover:shadow-md hover:border-gray-300 transition-all group cursor-pointer',
                   selection.isSelected(property.id) && 'ring-2 ring-primary-500 bg-primary-50/30'
                 )}
               >
                 {/* Selection checkbox */}
-                <div className="absolute left-3 top-1/2 -translate-y-1/2" onClick={(e) => e.stopPropagation()}>
+                <div className="absolute left-2 top-1/2 -translate-y-1/2" onClick={(e) => e.stopPropagation()}>
                   <SelectionCheckbox
                     checked={selection.isSelected(property.id)}
                     onChange={() => selection.toggle(property.id)}
                   />
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
                   {/* Icon */}
                   <div className={cn(
-                    'w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0',
+                    'w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0',
                     config.bgColor
                   )}>
-                    <TypeIcon className={cn('w-5 h-5', config.color)} />
+                    <TypeIcon className={cn('w-4 h-4', config.color)} />
                   </div>
 
-                  {/* Name & Address */}
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 truncate">{property.name}</h3>
-                    <div className="flex items-center gap-2 text-sm text-gray-500">
-                      <MapPin className="w-3 h-3" />
-                      <span className="truncate">{property.address || property.city}</span>
-                    </div>
+                  {/* Name + address inline — saves vertical space. */}
+                  <div className="flex-1 min-w-0 flex items-center gap-2">
+                    <h3 className="font-medium text-sm text-gray-900 truncate">{property.name}</h3>
+                    {(property.address || property.city) && (
+                      <span className="hidden md:inline-flex items-center text-xs text-gray-400 truncate">
+                        <MapPin className="w-3 h-3 mr-1" />{property.address || property.city}
+                      </span>
+                    )}
                   </div>
 
                   {/* Type Badge */}
-                  <Tooltip content={config.label}>
-                    <span className={cn(
-                      'hidden sm:inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium',
-                      config.bgColor, config.color
-                    )}>
-                      {config.label}
-                    </span>
-                  </Tooltip>
+                  <div className="hidden sm:block w-[110px] flex-shrink-0">
+                    <Tooltip content={config.label}>
+                      <span className={cn(
+                        'inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium',
+                        config.bgColor, config.color
+                      )}>
+                        {config.label}
+                      </span>
+                    </Tooltip>
+                  </div>
 
                   {/* Management Type Badge */}
-                  <span className={cn(
-                    'hidden sm:inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium',
-                    property.management_type === 'levy'
-                      ? 'bg-violet-50 text-violet-600'
-                      : 'bg-sky-50 text-sky-600'
-                  )}>
-                    {property.management_type === 'levy' ? 'Levy' : 'Rental'}
-                  </span>
+                  <div className="hidden sm:block w-[80px] flex-shrink-0">
+                    <span className={cn(
+                      'inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium',
+                      property.management_type === 'levy'
+                        ? 'bg-violet-50 text-violet-600'
+                        : 'bg-sky-50 text-sky-600'
+                    )}>
+                      {property.management_type === 'levy' ? 'Levy' : 'Rental'}
+                    </span>
+                  </div>
 
                   {/* Landlord */}
-                  <div className="hidden md:flex items-center gap-2 text-sm min-w-[120px]">
-                    <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
+                  <div className="hidden md:flex items-center gap-2 text-sm w-[150px] flex-shrink-0">
+                    <TbUserSquareRounded className="w-4 h-4 text-gray-400 flex-shrink-0" />
                     {property.landlord ? (
                       <button
                         onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/landlords/${property.landlord}`) }}
                         onMouseEnter={() => prefetch(`/dashboard/landlords/${property.landlord}`)}
-                        className="text-primary-600 hover:text-primary-700 hover:underline truncate"
+                        className="text-primary-600 hover:text-primary-700 hover:underline truncate text-left"
                       >
                         {property.landlord_name}
                       </button>
@@ -734,27 +739,29 @@ export default function Properties() {
                   </div>
 
                   {/* Manager */}
-                  {property.primary_manager && (
-                    <Tooltip content={property.primary_manager.name}>
-                      <div className="hidden lg:flex items-center whitespace-nowrap gap-1.5 text-xs text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full">
-                        <Shield className="w-3 h-3" />
-                        <span className="truncate max-w-[80px]">{property.primary_manager.name}</span>
-                      </div>
-                    </Tooltip>
-                  )}
+                  <div className="hidden lg:block w-[120px] flex-shrink-0">
+                    {property.primary_manager ? (
+                      <Tooltip content={property.primary_manager.name}>
+                        <div className="inline-flex items-center whitespace-nowrap gap-1.5 text-xs text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-full max-w-full">
+                          <Shield className="w-3 h-3 flex-shrink-0" />
+                          <span className="truncate">{property.primary_manager.name}</span>
+                        </div>
+                      </Tooltip>
+                    ) : (
+                      <span className="text-xs text-gray-400">—</span>
+                    )}
+                  </div>
 
                   {/* Units */}
                   <Tooltip content={`${property.unit_count || 0} units in this property`}>
-                    <div className="hidden lg:flex items-center gap-4 text-sm">
-                      <div className="text-center min-w-[60px]">
-                        <span className="font-semibold text-gray-900 tabular-nums">{property.unit_count || 0}</span>
-                        <span className="text-gray-400 ml-1">units</span>
-                      </div>
+                    <div className="hidden lg:flex items-center text-sm w-[80px] flex-shrink-0">
+                      <span className="font-semibold text-gray-900 tabular-nums">{property.unit_count || 0}</span>
+                      <span className="text-gray-400 ml-1">units</span>
                     </div>
                   </Tooltip>
 
                   {/* Occupancy Bar */}
-                  <div className="hidden xl:flex flex-col min-w-[100px]" title={hasUnits ? `${occupancyRate}% occupied` : 'No units'}>
+                  <div className="hidden xl:flex flex-col w-[110px] flex-shrink-0" title={hasUnits ? `${occupancyRate}% occupied` : 'No units'}>
                     <div className="flex justify-between text-xs mb-1">
                       <span className="text-gray-500">Occupancy</span>
                       <span className={cn(
