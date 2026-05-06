@@ -179,11 +179,13 @@ class ExpenseSerializer(serializers.ModelSerializer):
     bank_account_currency = serializers.CharField(source='bank_account.currency', read_only=True, default=None)
     landlord_name = serializers.CharField(source='landlord.name', read_only=True, default=None)
     landlord_code = serializers.CharField(source='landlord.code', read_only=True, default=None)
+    expense_kind_display = serializers.CharField(source='get_expense_kind_display', read_only=True)
 
     class Meta:
         model = Expense
         fields = [
-            'id', 'expense_number', 'expense_type', 'status', 'payee_name',
+            'id', 'expense_number', 'expense_type', 'expense_kind', 'expense_kind_display',
+            'status', 'payee_name',
             'payee_type', 'payee_id', 'date', 'amount', 'currency',
             'description', 'reference',
             'expense_category', 'expense_category_name', 'expense_category_funding',

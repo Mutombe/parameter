@@ -962,7 +962,7 @@ class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
     serializer_class = ExpenseSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = [
-        'expense_type', 'status', 'date', 'currency', 'payee_type',
+        'expense_type', 'expense_kind', 'status', 'date', 'currency', 'payee_type',
         'expense_category', 'bank_account', 'landlord',
     ]
     search_fields = ['expense_number', 'payee_name', 'description', 'reference']
@@ -1002,21 +1002,36 @@ class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
 
         date = request.data.get('date')
         bank_account_id = request.data.get('bank_account')
+        # Per-batch default; each line can still override. 'cash' / 'non_cash'.
+        batch_kind = (request.data.get('expense_kind') or 'cash').lower()
+        # Currency override only used when bank_account isn't provided
+        # (i.e. non-cash batches). Cash batches always derive from the bank.
+        batch_currency_override = request.data.get('currency')
         lines = request.data.get('lines') or []
 
         if not date:
             return Response({'error': 'date is required'}, status=status.HTTP_400_BAD_REQUEST)
-        if not bank_account_id:
-            return Response({'error': 'bank_account is required'}, status=status.HTTP_400_BAD_REQUEST)
         if not isinstance(lines, list) or len(lines) == 0:
             return Response({'error': 'lines must be a non-empty list'}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            bank_account = BankAccount.objects.get(pk=bank_account_id)
-        except BankAccount.DoesNotExist:
-            return Response({'error': f'Bank account {bank_account_id} not found'}, status=status.HTTP_400_BAD_REQUEST)
+        bank_account = None
+        if bank_account_id:
+            try:
+                bank_account = BankAccount.objects.get(pk=bank_account_id)
+            except BankAccount.DoesNotExist:
+                return Response({'error': f'Bank account {bank_account_id} not found'}, status=status.HTTP_400_BAD_REQUEST)
+        elif batch_kind == 'cash':
+            return Response(
+                {'error': 'bank_account is required for cash expenses'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        currency = bank_account.currency or 'USD'
+        # Currency: prefer bank account; else explicit override; else USD.
+        currency = (
+            (bank_account.currency if bank_account else None)
+            or batch_currency_override
+            or 'USD'
+        )
         created = []
         errors = []
 
@@ -1048,9 +1063,16 @@ class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
                     continue
 
             try:
+                # Per-line kind override falls back to the batch default.
+                line_kind = (line.get('expense_kind') or batch_kind).lower()
+                if line_kind not in ('cash', 'non_cash'):
+                    line_kind = 'cash'
+
                 expense = Expense.objects.create(
                     date=date,
-                    bank_account=bank_account,
+                    # Non-cash rows leave bank_account null even if the batch
+                    # passed one in — keeps the trust ledger from being touched.
+                    bank_account=bank_account if line_kind == 'cash' else None,
                     currency=currency,
                     expense_category=category,
                     landlord=landlord,
@@ -1061,6 +1083,7 @@ class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
                     payee_type=('landlord' if landlord else 'vendor'),
                     payee_id=(landlord.id if landlord else None),
                     expense_type='other',
+                    expense_kind=line_kind,
                     created_by=request.user,
                 )
                 # Auto-post each row so the batch lands in the GL immediately,

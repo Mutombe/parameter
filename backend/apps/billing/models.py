@@ -819,11 +819,25 @@ class Expense(SoftDeleteModel):
         PAID = 'paid', 'Paid'
         CANCELLED = 'cancelled', 'Cancelled'
 
+    # Cash expenses leave a real bank/cash account and reduce the landlord's
+    # trust sub-account. Non-cash expenses (accruals, depreciation) hit a
+    # payables/accrual liability account instead — they appear on the P&L
+    # but don't touch cash or the trust ledger.
+    class ExpenseKind(models.TextChoices):
+        CASH = 'cash', 'Cash'
+        NON_CASH = 'non_cash', 'Non-Cash'
+
     expense_number = models.CharField(max_length=50, unique=True)
     expense_type = models.CharField(
         max_length=20,
         choices=ExpenseType.choices,
         default=ExpenseType.OTHER
+    )
+    expense_kind = models.CharField(
+        max_length=20,
+        choices=ExpenseKind.choices,
+        default=ExpenseKind.CASH,
+        help_text='Cash leaves the bank; Non-Cash is an accrual / depreciation'
     )
     status = models.CharField(
         max_length=20,
@@ -931,28 +945,29 @@ class Expense(SoftDeleteModel):
         """
         Post expense to General Ledger — Activity 5: Expense Posting.
 
-        Resolution rules (per cash expense mapping spec):
-            - Cash GL = self.bank_account.gl_account, falling back to
-              code 1100 if not wired.
+        Branches on expense_kind:
+            - cash: Dr Expense GL, Cr Bank GL, plus a Dr to the landlord's
+              trust sub-account (reduces money the agent holds on their
+              behalf for the matching funding category).
+            - non_cash: Dr Expense GL, Cr a generic Accrued Liabilities
+              GL (code 2400). Skips the trust sub-account entry — the
+              expense exists for P&L purposes but doesn't move cash.
+
+        Resolution rules:
             - Expense GL = expense_category.gl_account_zwg when currency
               is ZWG and the parallel account exists; otherwise
               expense_category.gl_account.
+            - Cash GL = self.bank_account.gl_account, falling back to
+              code 1100 if not wired (cash kind only).
             - Landlord sub-account = landlord's sub-account for
-              expense_category.funding_category (rent / maintenance / rates
-              / parking / vat). Defaults to rent.
-
-        GL entries:
-            Dr Expense GL          (P&L expense recognized)
-            Cr Cash/Bank GL        (cash leaves the account)
-
-        Subsidiary entry (when a landlord is on the expense):
-            Dr Landlord {category} sub-account — reduces trust money
-            held on the landlord's behalf for that funding category.
+              expense_category.funding_category (cash kind only).
         """
         from django.core.exceptions import ValidationError as DjangoValidationError
 
         if self.journal:
             return self.journal
+
+        is_non_cash = self.expense_kind == self.ExpenseKind.NON_CASH
 
         # Expense GL account — pick USD or ZWG variant per currency.
         cat = self.expense_category
@@ -968,25 +983,46 @@ class Expense(SoftDeleteModel):
                     'No expense_category set and no fallback expense account exists.'
                 )
 
-        # Cash GL — prefer the bank account's mapped GL, fall back to code 1100.
-        if self.bank_account and self.bank_account.gl_account:
-            cash_account = self.bank_account.gl_account
-        else:
-            cash_account, _ = ChartOfAccount.objects.get_or_create(
-                code='1100',
+        # Credit-side account: bank for cash, accrued liabilities for non-cash.
+        if is_non_cash:
+            credit_account, _ = ChartOfAccount.objects.get_or_create(
+                code='2400',
                 defaults={
-                    'name': 'Bank Account',
-                    'account_type': 'asset',
-                    'account_subtype': 'bank',
+                    'name': 'Accrued Liabilities',
+                    'account_type': 'liability',
+                    'account_subtype': 'accrued_liabilities',
                     'is_system': True,
                 },
             )
+            credit_description = f'Accrued: {self.payee_name}'
+        else:
+            if self.bank_account and self.bank_account.gl_account:
+                credit_account = self.bank_account.gl_account
+            else:
+                credit_account, _ = ChartOfAccount.objects.get_or_create(
+                    code='1100',
+                    defaults={
+                        'name': 'Bank Account',
+                        'account_type': 'asset',
+                        'account_subtype': 'bank',
+                        'is_system': True,
+                    },
+                )
+            credit_description = f'Payment to {self.payee_name}'
 
-        # Create journal
+        # Create journal — type is PAYMENTS for cash, GENERAL for accruals
+        # so the cash journal listing isn't polluted by non-cash adjustments.
         journal = Journal.objects.create(
-            journal_type=Journal.JournalType.PAYMENTS,
+            journal_type=(
+                Journal.JournalType.GENERAL if is_non_cash
+                else Journal.JournalType.PAYMENTS
+            ),
             date=self.date,
-            description=f'Expense {self.expense_number} - {self.payee_name}',
+            description=(
+                f'Accrual {self.expense_number} - {self.payee_name}'
+                if is_non_cash else
+                f'Expense {self.expense_number} - {self.payee_name}'
+            ),
             reference=self.expense_number,
             currency=self.currency,
             created_by=user,
@@ -1003,8 +1039,8 @@ class Expense(SoftDeleteModel):
 
         JournalEntry.objects.create(
             journal=journal,
-            account=cash_account,
-            description=f'Payment to {self.payee_name}',
+            account=credit_account,
+            description=credit_description,
             credit_amount=self.amount,
             source_type='expense',
             source_id=self.id,
@@ -1013,14 +1049,14 @@ class Expense(SoftDeleteModel):
         journal.post(user)
 
         # === Subsidiary Ledger Entry for the landlord ===
-        # Use the explicit landlord FK if present, fall back to legacy
-        # payee_type/payee_id for back-compat with existing rows.
+        # Non-cash expenses don't touch the trust ledger — they're P&L only.
+        # Cash expenses reduce the landlord's matching sub-account.
         landlord_obj = self.landlord
         if landlord_obj is None and self.payee_type == 'landlord' and self.payee_id:
             from apps.masterfile.models import Landlord
             landlord_obj = Landlord.objects.filter(id=self.payee_id).first()
 
-        if landlord_obj:
+        if landlord_obj and not is_non_cash:
             # funding_category lives on the expense_category and tells us
             # which sub-account (rent / maintenance / rates / parking / vat)
             # to debit on the landlord's trust ledger.

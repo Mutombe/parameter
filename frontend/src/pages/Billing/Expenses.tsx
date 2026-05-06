@@ -45,6 +45,8 @@ interface Expense {
   id: number | string
   expense_number: string
   expense_type: string
+  expense_kind?: 'cash' | 'non_cash'
+  expense_kind_display?: string
   status: 'pending' | 'approved' | 'paid' | 'cancelled'
   payee_name: string
   payee_type: string
@@ -158,6 +160,7 @@ export default function Expenses() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [typeFilter, setTypeFilter] = useState<string>('')
+  const [kindFilter, setKindFilter] = useState<string>('')
   const [showModal, setShowModal] = useState(false)
   const [showDetail, setShowDetail] = useState<Expense | null>(null)
   const [showApproveConfirm, setShowApproveConfirm] = useState<Expense | null>(null)
@@ -166,7 +169,7 @@ export default function Expenses() {
   const debouncedSearch = useDebounce(searchQuery, 300)
   const [currentPage, setCurrentPage] = useState(1)
 
-  const selection = useSelection<number | string>({ clearOnChange: [debouncedSearch, statusFilter, typeFilter] })
+  const selection = useSelection<number | string>({ clearOnChange: [debouncedSearch, statusFilter, typeFilter, kindFilter] })
   const bulkLoading = useBulkLoading()
 
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -181,7 +184,7 @@ export default function Expenses() {
   const [expenseForm, setExpenseForm] = useState({
     // Step 1: date
     date: new Date().toISOString().split('T')[0],
-    // Step 2: bank account (drives currency)
+    // Step 2: bank account (drives currency) — empty for non-cash mode
     bank_account: '',
     currency: 'USD',
     // Step 3: expense category (drives GL account + funding category)
@@ -203,6 +206,9 @@ export default function Expenses() {
   // Mode toggle: 'single' uses expenseForm above; 'batch' uses batchLines
   // and shares the date + bank_account from expenseForm with all lines.
   const [expenseMode, setExpenseMode] = useState<'single' | 'batch'>('single')
+  // Cash vs Non-Cash. Non-cash skips the bank-account picker, hits an
+  // accruals GL on post, and doesn't touch the landlord trust sub-account.
+  const [expenseKind, setExpenseKind] = useState<'cash' | 'non_cash'>('cash')
 
   type BatchLine = {
     expense_category: string
@@ -232,11 +238,12 @@ export default function Expenses() {
 
   // Fetch expenses
   const { data: expensesData, isLoading, error } = useQuery({
-    queryKey: ['expenses', statusFilter, typeFilter, debouncedSearch, currentPage],
+    queryKey: ['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage],
     queryFn: async () => {
       const params: Record<string, string | number> = { page: currentPage, page_size: PAGE_SIZE }
       if (statusFilter) params.status = statusFilter
       if (typeFilter) params.expense_type = typeFilter
+      if (kindFilter) params.expense_kind = kindFilter
       if (debouncedSearch) params.search = debouncedSearch
       const response = await expenseApi.list(params)
       return response.data
@@ -250,7 +257,7 @@ export default function Expenses() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [debouncedSearch, statusFilter, typeFilter])
+  }, [debouncedSearch, statusFilter, typeFilter, kindFilter])
 
   // Fetch landlords for payee selection
   const { data: landlords = [] } = useQuery({
@@ -367,7 +374,7 @@ export default function Expenses() {
     onMutate: async (newData) => {
       setShowModal(false)
       await queryClient.cancelQueries({ queryKey: ['expenses'] })
-      const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage])
+      const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage])
 
       const optimistic: Expense = {
         id: `temp-${Date.now()}`,
@@ -384,7 +391,7 @@ export default function Expenses() {
         created_at: new Date().toISOString(),
         _isOptimistic: true,
       }
-      queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage], (old: any) => {
+      queryClient.setQueryData(['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage], (old: any) => {
         const items = old || []
         return [optimistic, ...items]
       })
@@ -396,7 +403,7 @@ export default function Expenses() {
     },
     onError: (err, _, context) => {
       if (context?.previousData) {
-        queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage], context.previousData)
+        queryClient.setQueryData(['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage], context.previousData)
       }
       showToast.error(parseApiError(err))
     }
@@ -437,8 +444,8 @@ export default function Expenses() {
     onMutate: async (id) => {
       setShowApproveConfirm(null)
       await queryClient.cancelQueries({ queryKey: ['expenses'] })
-      const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage])
-      queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage], (old: any) => {
+      const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage])
+      queryClient.setQueryData(['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage], (old: any) => {
         const items = old || []
         return items.map((item: any) =>
           item.id === id ? { ...item, status: 'approved', _isOptimistic: true } : item
@@ -452,7 +459,7 @@ export default function Expenses() {
     },
     onError: (err, _, context) => {
       if (context?.previousData) {
-        queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage], context.previousData)
+        queryClient.setQueryData(['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage], context.previousData)
       }
       showToast.error(parseApiError(err))
     }
@@ -464,8 +471,8 @@ export default function Expenses() {
     onMutate: async (id) => {
       setShowPayConfirm(null)
       await queryClient.cancelQueries({ queryKey: ['expenses'] })
-      const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage])
-      queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage], (old: any) => {
+      const previousData = queryClient.getQueryData(['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage])
+      queryClient.setQueryData(['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage], (old: any) => {
         const items = old || []
         return items.map((item: any) =>
           item.id === id ? { ...item, status: 'paid', _isOptimistic: true } : item
@@ -479,7 +486,7 @@ export default function Expenses() {
     },
     onError: (err, _, context) => {
       if (context?.previousData) {
-        queryClient.setQueryData(['expenses', statusFilter, typeFilter, debouncedSearch, currentPage], context.previousData)
+        queryClient.setQueryData(['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage], context.previousData)
       }
       showToast.error(parseApiError(err))
     }
@@ -501,11 +508,19 @@ export default function Expenses() {
 
   const handleBatchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!expenseForm.bank_account) { showToast.error('Pick a bank account first.'); return }
+    if (expenseKind === 'cash' && !expenseForm.bank_account) {
+      showToast.error('Pick a bank account first.'); return
+    }
     if (batchValidLines.length === 0) { showToast.error('Add at least one complete expense line.'); return }
     bulkCreateMutation.mutate({
       date: expenseForm.date,
-      bank_account: Number(expenseForm.bank_account),
+      // Backend treats bank_account as required for cash and optional for
+      // non-cash. We always send the user's choice for cash; null otherwise.
+      bank_account: expenseKind === 'cash' && expenseForm.bank_account
+        ? Number(expenseForm.bank_account)
+        : null,
+      currency: expenseForm.currency,
+      expense_kind: expenseKind,
       lines: batchValidLines.map(l => ({
         expense_category: Number(l.expense_category),
         landlord: l.landlord ? Number(l.landlord) : null,
@@ -542,7 +557,10 @@ export default function Expenses() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
 
-    if (!expenseForm.bank_account) { showToast.error('Pick a bank account first.'); return }
+    // Cash needs a bank account to source funds from. Non-cash doesn't.
+    if (expenseKind === 'cash' && !expenseForm.bank_account) {
+      showToast.error('Pick a bank account first.'); return
+    }
     if (!expenseForm.expense_category) { showToast.error('Pick an expense category.'); return }
     if (!expenseForm.amount) { showToast.error('Enter an amount.'); return }
 
@@ -554,6 +572,7 @@ export default function Expenses() {
 
     const data: Record<string, unknown> = {
       expense_type: expenseForm.expense_type,
+      expense_kind: expenseKind,
       payee_name: payeeName,
       payee_type: expenseForm.landlord ? 'landlord' : (expenseForm.payee_type || 'vendor'),
       payee_id: expenseForm.landlord ? Number(expenseForm.landlord) : null,
@@ -562,7 +581,11 @@ export default function Expenses() {
       currency: expenseForm.currency,
       description: expenseForm.description,
       reference: expenseForm.reference,
-      bank_account: Number(expenseForm.bank_account),
+      // Bank account only sent for cash expenses — non-cash routes through
+      // the accruals GL on the backend.
+      bank_account: expenseKind === 'cash' && expenseForm.bank_account
+        ? Number(expenseForm.bank_account)
+        : null,
       expense_category: Number(expenseForm.expense_category),
       landlord: expenseForm.landlord ? Number(expenseForm.landlord) : null,
     }
@@ -799,6 +822,16 @@ export default function Expenses() {
             ...expenseTypes,
           ]}
         />
+        <Select
+          value={kindFilter}
+          onChange={(e) => setKindFilter(e.target.value)}
+          placeholder="Cash & Non-Cash"
+          options={[
+            { value: '', label: 'Cash & Non-Cash' },
+            { value: 'cash', label: 'Cash only' },
+            { value: 'non_cash', label: 'Non-Cash only' },
+          ]}
+        />
         <div className="flex items-center gap-3 ml-auto">
           {selectableItems.length > 0 && (
             <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-500">
@@ -863,13 +896,29 @@ export default function Expenses() {
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-semibold text-gray-900">{expense.expense_number}</h3>
                         <Tooltip content={{ pending: 'Awaiting approval', approved: 'Approved, ready for payment', paid: 'Payment completed', cancelled: 'Expense cancelled' }[expense.status]}>
                           <span>
                             <Badge variant={expense.status === 'paid' ? 'success' : expense.status === 'pending' ? 'warning' : 'default'}>
                               {config.label}
                             </Badge>
+                          </span>
+                        </Tooltip>
+                        {/* Cash / Non-Cash pill — clearly distinguishes which
+                            entries actually moved money vs accruals. */}
+                        <Tooltip content={
+                          expense.expense_kind === 'non_cash'
+                            ? 'Accrual / depreciation — no cash movement; appears on P&L'
+                            : 'Cash leaves the bank account; reduces landlord trust balance'
+                        }>
+                          <span className={cn(
+                            'inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ring-1',
+                            expense.expense_kind === 'non_cash'
+                              ? 'bg-indigo-50 text-indigo-700 ring-indigo-200'
+                              : 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                          )}>
+                            {expense.expense_kind === 'non_cash' ? 'Non-Cash' : 'Cash'}
                           </span>
                         </Tooltip>
                       </div>
@@ -971,33 +1020,62 @@ export default function Expenses() {
         onClose={() => setShowModal(false)}
         title={expenseMode === 'batch' ? 'Record Expense Batch' : 'Record Expense'}
       >
-        {/* Mode toggle — Single vs Batch (multiple lines, one bank account). */}
-        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 mb-4 w-fit">
-          <button
-            type="button"
-            onClick={() => setExpenseMode('single')}
-            className={cn(
-              'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
-              expenseMode === 'single' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            )}
-          >
-            Single
-          </button>
-          <button
-            type="button"
-            onClick={() => setExpenseMode('batch')}
-            className={cn(
-              'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
-              expenseMode === 'batch' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            )}
-          >
-            Batch
-          </button>
+        {/* Two toggles side-by-side: Single vs Batch and Cash vs Non-Cash. */}
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 w-fit">
+            <button
+              type="button"
+              onClick={() => setExpenseMode('single')}
+              className={cn(
+                'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+                expenseMode === 'single' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              )}
+            >
+              Single
+            </button>
+            <button
+              type="button"
+              onClick={() => setExpenseMode('batch')}
+              className={cn(
+                'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+                expenseMode === 'batch' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              )}
+            >
+              Batch
+            </button>
+          </div>
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 w-fit">
+            <button
+              type="button"
+              onClick={() => setExpenseKind('cash')}
+              className={cn(
+                'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+                expenseKind === 'cash' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              )}
+            >
+              Cash
+            </button>
+            <button
+              type="button"
+              onClick={() => setExpenseKind('non_cash')}
+              className={cn(
+                'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+                expenseKind === 'non_cash' ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              )}
+            >
+              Non-Cash
+            </button>
+          </div>
+          {expenseKind === 'non_cash' && (
+            <span className="text-[11px] text-indigo-700 bg-indigo-50 ring-1 ring-indigo-200 px-2 py-0.5 rounded-md">
+              Accrual / depreciation — credits Accrued Liabilities, no cash movement
+            </span>
+          )}
         </div>
 
         {expenseMode === 'batch' ? (
           <form onSubmit={handleBatchSubmit} className="space-y-4">
-            {/* Shared header — date + bank account apply to every line */}
+            {/* Shared header — date + bank account (cash) or currency (non-cash) */}
             <div className="grid grid-cols-2 gap-4">
               <Input
                 label="Date"
@@ -1006,25 +1084,42 @@ export default function Expenses() {
                 onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
                 required
               />
-              <AsyncSelect
-                label="Bank Account"
-                placeholder="Source of funds for the whole batch"
-                value={expenseForm.bank_account}
-                onChange={(val) => setExpenseForm({ ...expenseForm, bank_account: String(val) })}
-                options={bankAccounts.map((b: any) => ({
-                  value: b.id,
-                  label: `${b.name}${b.currency ? ` (${b.currency})` : ''}`,
-                  description: b.bank_name || b.account_number || '',
-                }))}
-                required
-                searchable
-                onCreateNew={() => { setQuickBankFor('batch'); setShowQuickBank(true) }}
-                createNewLabel="+ Create new bank account"
-              />
+              {expenseKind === 'cash' ? (
+                <AsyncSelect
+                  label="Bank Account"
+                  placeholder="Source of funds for the whole batch"
+                  value={expenseForm.bank_account}
+                  onChange={(val) => setExpenseForm({ ...expenseForm, bank_account: String(val) })}
+                  options={bankAccounts.map((b: any) => ({
+                    value: b.id,
+                    label: `${b.name}${b.currency ? ` (${b.currency})` : ''}`,
+                    description: b.bank_name || b.account_number || '',
+                  }))}
+                  required
+                  searchable
+                  onCreateNew={() => { setQuickBankFor('batch'); setShowQuickBank(true) }}
+                  createNewLabel="+ Create new bank account"
+                />
+              ) : (
+                <Select
+                  label="Currency"
+                  value={expenseForm.currency}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, currency: e.target.value })}
+                  options={[
+                    { value: 'USD', label: 'USD' },
+                    { value: 'ZWG', label: 'ZWG' },
+                  ]}
+                />
+              )}
             </div>
-            {selectedBank && (
+            {expenseKind === 'cash' && selectedBank && (
               <p className="-mt-2 text-xs text-gray-500">
                 Currency for all lines: <span className="font-medium text-gray-700">{selectedBank.currency}</span>
+              </p>
+            )}
+            {expenseKind === 'non_cash' && (
+              <p className="-mt-2 text-xs text-indigo-700">
+                Non-cash batch — every line credits Accrued Liabilities (2400). No bank involvement.
               </p>
             )}
 
@@ -1154,24 +1249,37 @@ export default function Expenses() {
             required
           />
 
-          {/* Step 2 — Bank account (drives currency for the rest of the form) */}
-          <AsyncSelect
-            label="Bank Account (source of funds)"
-            placeholder="Pick the bank account funds will come from"
-            value={expenseForm.bank_account}
-            onChange={(val) => setExpenseForm({ ...expenseForm, bank_account: String(val) })}
-            options={bankAccounts.map((b: any) => ({
-              value: b.id,
-              label: `${b.name}${b.currency ? ` (${b.currency})` : ''}`,
-              description: b.bank_name || b.account_number || '',
-            }))}
-            required
-            searchable
-            onCreateNew={() => { setQuickBankFor('single'); setShowQuickBank(true) }}
-            createNewLabel="+ Create new bank account"
-            emptyMessage="No active bank accounts. Click + Create new bank account above."
-          />
-          {selectedBank && (
+          {/* Step 2 — Bank account (cash) or Currency (non-cash) */}
+          {expenseKind === 'cash' ? (
+            <AsyncSelect
+              label="Bank Account (source of funds)"
+              placeholder="Pick the bank account funds will come from"
+              value={expenseForm.bank_account}
+              onChange={(val) => setExpenseForm({ ...expenseForm, bank_account: String(val) })}
+              options={bankAccounts.map((b: any) => ({
+                value: b.id,
+                label: `${b.name}${b.currency ? ` (${b.currency})` : ''}`,
+                description: b.bank_name || b.account_number || '',
+              }))}
+              required
+              searchable
+              onCreateNew={() => { setQuickBankFor('single'); setShowQuickBank(true) }}
+              createNewLabel="+ Create new bank account"
+              emptyMessage="No active bank accounts. Click + Create new bank account above."
+            />
+          ) : (
+            <Select
+              label="Currency"
+              value={expenseForm.currency}
+              onChange={(e) => setExpenseForm({ ...expenseForm, currency: e.target.value })}
+              options={[
+                { value: 'USD', label: 'USD' },
+                { value: 'ZWG', label: 'ZWG' },
+              ]}
+              hint="Non-cash expenses don't pull from a bank account"
+            />
+          )}
+          {expenseKind === 'cash' && selectedBank && (
             <p className="-mt-2 text-xs text-gray-500">
               Currency locked to <span className="font-medium text-gray-700">{selectedBank.currency}</span> by the chosen bank account.
             </p>
@@ -1245,8 +1353,10 @@ export default function Expenses() {
             />
           </div>
 
-          {/* Posting preview — shows what the GL entries will look like */}
-          {selectedBank && selectedCategory && (
+          {/* Posting preview — shows what the GL entries will look like.
+              Cash: Cr the bank's GL + Dr the landlord trust sub-account.
+              Non-cash: Cr Accrued Liabilities (2400) + no trust entry. */}
+          {selectedCategory && (expenseKind === 'non_cash' || selectedBank) && (
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs space-y-1.5">
               <p className="font-semibold text-gray-700 text-[11px] uppercase tracking-wider">Posting preview</p>
               <div className="flex items-center justify-between text-gray-700">
@@ -1254,15 +1364,28 @@ export default function Expenses() {
                 <span className="font-mono text-[11px]">{expenseGlCode}</span>
                 <span className="text-gray-500 truncate ml-2 max-w-[160px]" title={selectedCategory.name}>{selectedCategory.name}</span>
               </div>
-              <div className="flex items-center justify-between text-gray-700">
-                <span>Cr</span>
-                <span className="font-mono text-[11px]">{selectedBank.gl_account_code || '—'}</span>
-                <span className="text-gray-500 truncate ml-2 max-w-[160px]" title={selectedBank.name}>{selectedBank.name}</span>
-              </div>
-              {selectedLandlord && (
+              {expenseKind === 'cash' ? (
+                <div className="flex items-center justify-between text-gray-700">
+                  <span>Cr</span>
+                  <span className="font-mono text-[11px]">{selectedBank?.gl_account_code || '—'}</span>
+                  <span className="text-gray-500 truncate ml-2 max-w-[160px]" title={selectedBank?.name}>{selectedBank?.name}</span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between text-indigo-700">
+                  <span>Cr</span>
+                  <span className="font-mono text-[11px]">2400</span>
+                  <span className="text-indigo-500 truncate ml-2 max-w-[160px]">Accrued Liabilities</span>
+                </div>
+              )}
+              {selectedLandlord && expenseKind === 'cash' && (
                 <div className="pt-1.5 border-t border-gray-200 text-[11px] text-violet-700">
                   <span className="font-semibold">Trust ledger:</span>{' '}
                   Dr {selectedLandlord.name}'s {fundingCategoryLabel[selectedCategory.funding_category] || selectedCategory.funding_category} sub-account
+                </div>
+              )}
+              {expenseKind === 'non_cash' && (
+                <div className="pt-1.5 border-t border-gray-200 text-[11px] text-gray-500 italic">
+                  Trust ledger untouched — non-cash entries don't move funds out of the landlord's sub-accounts.
                 </div>
               )}
             </div>

@@ -401,13 +401,16 @@ export const expenseApi = {
   pay: (id: number) => api.post(`/billing/expenses/${id}/pay/`),
   bulkCreate: (data: {
     date: string
-    bank_account: number
+    bank_account: number | null
+    currency?: string
+    expense_kind?: 'cash' | 'non_cash'
     lines: Array<{
       expense_category: number
       landlord?: number | null
       amount: number | string
       description: string
       reference?: string
+      expense_kind?: 'cash' | 'non_cash'
     }>
   }) => api.post('/billing/expenses/bulk_create/', data),
 }
