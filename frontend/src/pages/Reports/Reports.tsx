@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, createContext, useContext } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -67,6 +67,35 @@ type ReportType =
   | 'commission-property' | 'commission-income' | 'bank-to-income'
   | 'receipts-listing' | 'deposits-listing' | 'lease-charges'
   | 'income-expenditure'
+
+// Reports that consume the global Landlord/Property filter bar. Other
+// reports either have intrinsic scoping (Tenant/Landlord Account) or
+// don't decompose by landlord (Vacancy, Rent Roll, etc.).
+const FINANCIAL_REPORTS: ReadonlySet<ReportType> = new Set<ReportType>([
+  'trial-balance', 'income-statement', 'balance-sheet', 'cash-flow',
+  'income-expenditure',
+])
+
+// Cash Flow shows only cash transactions (non-cash accruals/depreciation
+// are stripped) — surface that to the user via a hint when scope is set.
+const CASH_ONLY_REPORTS: ReadonlySet<ReportType> = new Set<ReportType>([
+  'cash-flow',
+])
+
+interface ReportFilterContextValue {
+  landlordId: string
+  propertyId: string
+  setLandlordId: (v: string) => void
+  setPropertyId: (v: string) => void
+}
+const ReportFilterContext = createContext<ReportFilterContextValue | null>(null)
+function useReportFilters() {
+  // Returns inert defaults outside the provider so legacy report components
+  // that haven't been migrated still render without crashing.
+  const ctx = useContext(ReportFilterContext)
+  if (!ctx) return { landlordId: '', propertyId: '', setLandlordId: () => {}, setPropertyId: () => {} }
+  return ctx
+}
 
 // Store for current report data (for export)
 let currentReportData: any = null
@@ -564,6 +593,97 @@ function MobileReportSelector({
   )
 }
 
+/* ─── Global Landlord + Property filter bar ─── */
+function ReportFilterBar() {
+  const { landlordId, propertyId, setLandlordId, setPropertyId } = useReportFilters()
+
+  // Always load landlords; Properties depend on the chosen landlord so they
+  // re-fetch (cached per id) when the landlord changes.
+  const { data: landlordsData } = useQuery({
+    queryKey: ['reports-filter-landlords'],
+    queryFn: () => landlordApi.list({ page_size: 500 }).then((r: any) => r.data.results || r.data),
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
+  })
+  const { data: propertiesData } = useQuery({
+    queryKey: ['reports-filter-properties', landlordId],
+    queryFn: () => propertyApi.list({ landlord: Number(landlordId), page_size: 500 } as any).then((r: any) => r.data.results || r.data),
+    enabled: !!landlordId,
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
+  })
+
+  const landlords: any[] = Array.isArray(landlordsData) ? landlordsData : (landlordsData?.results || [])
+  const properties: any[] = Array.isArray(propertiesData) ? propertiesData : (propertiesData?.results || [])
+  const selectedLandlord = landlords.find(l => String(l.id) === String(landlordId))
+  const selectedProperty = properties.find(p => String(p.id) === String(propertyId))
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <Filter className="w-4 h-4 text-gray-400 mb-3" />
+        <AsyncSelect
+          label="Landlord"
+          placeholder="All landlords (agency-wide)"
+          value={landlordId}
+          onChange={(val) => {
+            setLandlordId(String(val))
+            // Picking a different landlord invalidates the prior property pick.
+            if (String(val) !== landlordId) setPropertyId('')
+          }}
+          options={landlords.map((l: any) => ({
+            value: l.id,
+            label: l.name,
+            description: l.code || '',
+          }))}
+          searchable
+          clearable
+          className="min-w-[260px]"
+        />
+        <AsyncSelect
+          label="Property"
+          placeholder={landlordId ? 'All properties under this landlord' : 'Pick a landlord first'}
+          value={propertyId}
+          onChange={(val) => setPropertyId(String(val))}
+          options={properties.map((p: any) => ({
+            value: p.id,
+            label: p.name,
+            description: p.address || '',
+          }))}
+          searchable
+          clearable
+          disabled={!landlordId}
+          className="min-w-[260px]"
+        />
+        {(landlordId || propertyId) && (
+          <button
+            type="button"
+            onClick={() => { setLandlordId(''); setPropertyId('') }}
+            className="mb-1 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            title="Clear filters"
+          >
+            <X className="w-3.5 h-3.5" />
+            Clear
+          </button>
+        )}
+        {(selectedLandlord || selectedProperty) && (
+          <div className="ml-auto text-xs text-gray-500 flex items-center gap-1.5 mb-2">
+            <span>Scope:</span>
+            {selectedLandlord && (
+              <Badge variant="default">{selectedLandlord.name}</Badge>
+            )}
+            {selectedProperty ? (
+              <Badge variant="default">{selectedProperty.name}</Badge>
+            ) : selectedLandlord && (
+              <Badge variant="default">All properties</Badge>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /* ─── Main Reports Page ─── */
 export default function Reports() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -573,6 +693,12 @@ export default function Reports() {
     startDate: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
   })
+
+  // Global Landlord/Property filter — applies to financial reports only.
+  // Seeded from URL (?landlord_id=… &property_id=…) so deep-links from
+  // LandlordDetail/PropertyDetail still work.
+  const [landlordId, setLandlordId] = useState<string>(() => searchParams.get('landlord_id') || '')
+  const [propertyId, setPropertyId] = useState<string>(() => searchParams.get('property_id') || '')
 
   // Sidebar collapse state from localStorage
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -690,6 +816,22 @@ export default function Reports() {
             }
           />
 
+          <ReportFilterContext.Provider value={{ landlordId, propertyId, setLandlordId, setPropertyId }}>
+            {/* Filter bar shown only on the financial reports the filter applies to. */}
+            {FINANCIAL_REPORTS.has(activeReport) && <ReportFilterBar />}
+
+            {/* Cash Flow excludes non-cash expense entries by definition —
+                surface that so users don't compare cash-flow expense totals
+                to the income-statement expense total and find them lower. */}
+            {CASH_ONLY_REPORTS.has(activeReport) && (
+              <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-2.5 flex items-start gap-2.5 text-xs text-cyan-900">
+                <Banknote className="w-3.5 h-3.5 text-cyan-600 mt-0.5 flex-shrink-0" />
+                <span>
+                  <span className="font-medium">Cash transactions only.</span> Non-cash entries (accruals, depreciation) are excluded — see <button onClick={() => handleSelectReport('income-statement')} className="underline font-medium">Income Statement</button> for the full P&amp;L.
+                </span>
+              </div>
+            )}
+
           {/* Report Content */}
           <AnimatePresence mode="wait">
             <motion.div
@@ -719,6 +861,7 @@ export default function Reports() {
               {activeReport === 'income-expenditure' && <IncomeExpenditureReport />}
             </motion.div>
           </AnimatePresence>
+          </ReportFilterContext.Provider>
         </div>
       </div>
     </div>
@@ -726,9 +869,13 @@ export default function Reports() {
 }
 
 function TrialBalanceReport() {
+  const { landlordId, propertyId } = useReportFilters()
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['trial-balance'],
-    queryFn: () => reportsApi.trialBalance().then(r => r.data),
+    queryKey: ['trial-balance', landlordId, propertyId],
+    queryFn: () => reportsApi.trialBalance({
+      ...(landlordId ? { landlord_id: Number(landlordId) } : {}),
+      ...(propertyId ? { property_id: Number(propertyId) } : {}),
+    }).then(r => r.data),
     placeholderData: keepPreviousData,
   })
 
@@ -911,9 +1058,13 @@ function TrialBalanceReport() {
 }
 
 function IncomeStatementReport() {
+  const { landlordId, propertyId } = useReportFilters()
   const { data, isLoading } = useQuery({
-    queryKey: ['income-statement'],
-    queryFn: () => reportsApi.incomeStatement().then(r => r.data),
+    queryKey: ['income-statement', landlordId, propertyId],
+    queryFn: () => reportsApi.incomeStatement({
+      ...(landlordId ? { landlord_id: Number(landlordId) } : {}),
+      ...(propertyId ? { property_id: Number(propertyId) } : {}),
+    }).then(r => r.data),
     placeholderData: keepPreviousData,
   })
 
@@ -1089,9 +1240,13 @@ function IncomeStatementReport() {
 }
 
 function BalanceSheetReport() {
+  const { landlordId, propertyId } = useReportFilters()
   const { data, isLoading } = useQuery({
-    queryKey: ['balance-sheet'],
-    queryFn: () => reportsApi.balanceSheet().then(r => r.data),
+    queryKey: ['balance-sheet', landlordId, propertyId],
+    queryFn: () => reportsApi.balanceSheet({
+      ...(landlordId ? { landlord_id: Number(landlordId) } : {}),
+      ...(propertyId ? { property_id: Number(propertyId) } : {}),
+    }).then(r => r.data),
     placeholderData: keepPreviousData,
   })
 
@@ -1280,9 +1435,13 @@ function BalanceSheetReport() {
 }
 
 function CashFlowReport() {
+  const { landlordId, propertyId } = useReportFilters()
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['cash-flow'],
-    queryFn: () => reportsApi.cashFlow().then(r => r.data),
+    queryKey: ['cash-flow', landlordId, propertyId],
+    queryFn: () => reportsApi.cashFlow({
+      ...(landlordId ? { landlord_id: Number(landlordId) } : {}),
+      ...(propertyId ? { property_id: Number(propertyId) } : {}),
+    }).then(r => r.data),
     placeholderData: keepPreviousData,
   })
 
@@ -3875,28 +4034,33 @@ function LeaseChargeSummaryReport() {
 
 function IncomeExpenditureReport() {
   const navigate = useNavigate()
+  // Landlord + property come from the global Reports filter bar so picks
+  // persist across financial reports. Currency and the date window are
+  // local because they're only meaningful here.
+  const { landlordId: selectedLandlord, propertyId: selectedProperty, setLandlordId } = useReportFilters()
   const [searchParams] = useSearchParams()
-  // Pre-select the landlord when navigating in via ?landlord_id=… (e.g.
-  // from the Reports cards on the LandlordDetail page) so the user doesn't
-  // have to re-pick what they were already viewing.
-  const [selectedLandlord, setSelectedLandlord] = useState<string>(
-    () => searchParams.get('landlord_id') || ''
-  )
   const [currency, setCurrency] = useState<string>('USD')
   const [startDate, setStartDate] = useState(() => {
     const d = new Date(); return `${d.getFullYear()}-01-01`
   })
   const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10))
 
-  const { data: landlordsData } = useQuery({
-    queryKey: ['landlords-list'],
-    queryFn: () => landlordApi.list().then(r => r.data.results || r.data),
-    placeholderData: keepPreviousData,
-  })
+  // Seed the global filter from ?landlord_id=… on first mount (deep-link
+  // from LandlordDetail). Won't override if the global filter already has
+  // a value.
+  useEffect(() => {
+    const fromUrl = searchParams.get('landlord_id')
+    if (fromUrl && !selectedLandlord) setLandlordId(fromUrl)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['income-expenditure', selectedLandlord, startDate, endDate, currency],
-    queryFn: () => reportsApi.incomeExpenditure({ landlord_id: Number(selectedLandlord), start_date: startDate, end_date: endDate, currency }).then(r => r.data),
+    queryKey: ['income-expenditure', selectedLandlord, selectedProperty, startDate, endDate, currency],
+    queryFn: () => reportsApi.incomeExpenditure({
+      landlord_id: Number(selectedLandlord),
+      ...(selectedProperty ? { property_id: Number(selectedProperty) } : {}),
+      start_date: startDate, end_date: endDate, currency,
+    }).then(r => r.data),
     enabled: !!selectedLandlord,
     retry: 1,
     placeholderData: keepPreviousData,
@@ -3904,7 +4068,6 @@ function IncomeExpenditureReport() {
 
   if (data) { currentReportData = data; currentReportType = 'income-expenditure' }
 
-  const landlordsList: any[] = Array.isArray(landlordsData) ? landlordsData : []
   const months: any[] = data?.months || []
   const consolidated: any = data?.consolidated || {}
   const managementType: string = data?.management_type || 'rental'
@@ -3941,17 +4104,17 @@ function IncomeExpenditureReport() {
 
   return (
     <div className="space-y-4">
-      {/* ── Controls ── */}
+      {/* ── Controls (date + currency only — Landlord/Property come from the global filter bar) ── */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <div className="flex flex-wrap items-center gap-4">
-          <AsyncSelect label="Landlord" placeholder="Select a landlord..." value={selectedLandlord} onChange={(val) => setSelectedLandlord(String(val))} options={landlordsList.map((l: any) => ({ value: l.id, label: `${l.code ? l.code + ' - ' : ''}${l.name}` }))} searchable className="min-w-[280px]" />
-          <div className="flex items-center gap-2 mt-4">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-gray-400" />
             <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
             <span className="text-gray-400 text-sm">to</span>
             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
           </div>
           {/* Currency toggle */}
-          <div className="flex items-center gap-1 mt-4 bg-gray-100 rounded-lg p-0.5">
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
             <button
               onClick={() => setCurrency('USD')}
               className={cn(
@@ -3972,7 +4135,7 @@ function IncomeExpenditureReport() {
             </button>
           </div>
           {selectedLandlord && (
-            <button onClick={() => refetch()} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors mt-4">
+            <button onClick={() => refetch()} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
               <RefreshCw className="w-5 h-5" />
             </button>
           )}
@@ -3982,7 +4145,7 @@ function IncomeExpenditureReport() {
       {!selectedLandlord ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-500">
           <BarChart3 className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-          <p className="font-medium">Select a landlord to view Income & Expenditure</p>
+          <p className="font-medium">Pick a landlord in the filter bar above to view Income &amp; Expenditure.</p>
         </div>
       ) : isLoading ? (
         <SkeletonIncomeExpenditure />

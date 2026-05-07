@@ -20,6 +20,123 @@ from apps.masterfile.models import Property, Unit, Landlord, RentalTenant, Lease
 logger = logging.getLogger(__name__)
 
 
+def _gl_filter_for_landlord(landlord_id=None, property_id=None):
+    """Build a Q clause for GeneralLedger restricting to entries that trace
+    back to a landlord (and optionally a single property under that landlord).
+
+    A receipt is "for" a landlord when any of these is true:
+      - the tenant has a unit on one of the landlord's properties
+      - the tenant has a lease on one of the landlord's properties (covers
+        tenants without a direct unit assignment — e.g. levy account holders)
+      - the linked invoice points at one of the landlord's properties or
+        units (covers ad-hoc receipts and property-level levy invoices)
+
+    Returns None when no scoping is requested so callers can short-circuit
+    onto the fast unscoped paths.
+
+    Note: ``RentalTenant`` has no direct ``property`` FK — only ``unit`` —
+    so we DO NOT use ``tenant__property__…`` (raises FieldError). We bridge
+    via leases instead.
+
+    Builds Subquery-backed filters rather than materialising id lists, so
+    the database does the join work and the cost stays sub-linear in tenant
+    count. Big difference in production where there can be thousands of
+    receipts/invoices/expenses.
+    """
+    if not landlord_id and not property_id:
+        return None
+
+    from django.db.models import Subquery
+
+    # Tenants linked to the landlord via either a direct unit or a lease.
+    tenant_filter = Q()
+    if landlord_id:
+        tenant_filter &= (
+            Q(unit__property__landlord_id=landlord_id) |
+            Q(leases__property__landlord_id=landlord_id) |
+            Q(leases__unit__property__landlord_id=landlord_id)
+        )
+    if property_id:
+        tenant_filter &= (
+            Q(unit__property_id=property_id) |
+            Q(leases__property_id=property_id) |
+            Q(leases__unit__property_id=property_id)
+        )
+    tenant_subq = RentalTenant.objects.filter(tenant_filter).values('id').distinct()
+
+    receipt_qs = Receipt.objects.all()
+    expense_qs = Expense.objects.all()
+    invoice_qs = Invoice.objects.all()
+
+    if landlord_id:
+        receipt_qs = receipt_qs.filter(
+            Q(tenant_id__in=Subquery(tenant_subq)) |
+            Q(invoice__property__landlord_id=landlord_id) |
+            Q(invoice__unit__property__landlord_id=landlord_id)
+        )
+        expense_qs = expense_qs.filter(landlord_id=landlord_id)
+        invoice_qs = invoice_qs.filter(
+            Q(unit__property__landlord_id=landlord_id) |
+            Q(property__landlord_id=landlord_id)
+        )
+
+    if property_id:
+        receipt_qs = receipt_qs.filter(
+            Q(tenant_id__in=Subquery(tenant_subq)) |
+            Q(invoice__property_id=property_id) |
+            Q(invoice__unit__property_id=property_id)
+        )
+        invoice_qs = invoice_qs.filter(
+            Q(unit__property_id=property_id) | Q(property_id=property_id)
+        )
+
+    return (
+        Q(journal_entry__source_type='receipt', journal_entry__source_id__in=Subquery(receipt_qs.values('id'))) |
+        Q(journal_entry__source_type='expense', journal_entry__source_id__in=Subquery(expense_qs.values('id'))) |
+        Q(journal_entry__source_type='invoice', journal_entry__source_id__in=Subquery(invoice_qs.values('id')))
+    )
+
+
+def _exclude_non_cash_expenses_q():
+    """Q that, when passed to GeneralLedger.exclude(...), drops every entry
+    sourced from a non-cash Expense (accruals / depreciation). Used by the
+    Cash Flow Statement so its outflows reflect actual cash movements.
+    Other reports (Income Statement, Trial Balance, Balance Sheet) include
+    these because they belong on the P&L / accrued-liability side.
+    """
+    non_cash_ids = list(
+        Expense.objects.filter(expense_kind='non_cash').values_list('id', flat=True)
+    )
+    if not non_cash_ids:
+        return None
+    return Q(journal_entry__source_type='expense', journal_entry__source_id__in=non_cash_ids)
+
+
+def _aggregate_balances_from_gl(scope_filter, account_types, end_date=None, start_date=None):
+    """Aggregate per-account debit/credit totals from GL entries matching
+    the scope filter. Returns a list of dicts with code/name/account_type/
+    account_subtype/total_debit/total_credit, ordered by account code.
+    Only used for the scoped paths of Trial Balance / Balance Sheet /
+    Income Statement.
+    """
+    qs = GeneralLedger.objects.filter(scope_filter).filter(
+        account__account_type__in=account_types,
+        account__is_active=True,
+    )
+    if start_date:
+        qs = qs.filter(date__gte=start_date)
+    if end_date:
+        qs = qs.filter(date__lte=end_date)
+    return list(
+        qs.values('account__code', 'account__name', 'account__account_type', 'account__account_subtype')
+        .annotate(
+            total_debit=Coalesce(Sum('debit_amount'), Value(Decimal('0'))),
+            total_credit=Coalesce(Sum('credit_amount'), Value(Decimal('0'))),
+        )
+        .order_by('account__code')
+    )
+
+
 def _cache_report(cache_key, ttl=60):
     """
     Decorator for caching report responses.
@@ -186,60 +303,96 @@ class TrialBalanceReportView(APIView):
     @_cache_report('trial_balance', ttl=300)
     def get(self, request):
         as_of_date = request.query_params.get('as_of_date', timezone.now().date())
-
-        # Use values() to avoid loading full model instances; annotate debit/credit
-        # columns in the DB to reduce Python-side work.
-        accounts = ChartOfAccount.objects.filter(
-            is_active=True
-        ).exclude(
-            current_balance=Decimal('0')
-        ).annotate(
-            _debit=Case(
-                # Debit-normal accounts: positive balance -> debit, negative -> credit
-                When(
-                    Q(account_type__in=['asset', 'expense']) & Q(current_balance__gte=0),
-                    then=F('current_balance'),
-                ),
-                When(
-                    Q(account_type__in=['asset', 'expense']) & Q(current_balance__lt=0),
-                    then=Value(Decimal('0')),
-                ),
-                # Credit-normal accounts: negative balance -> debit (abs), positive -> 0
-                When(
-                    ~Q(account_type__in=['asset', 'expense']) & Q(current_balance__lt=0),
-                    then=-F('current_balance'),
-                ),
-                default=Value(Decimal('0')),
-                output_field=DecimalField(max_digits=18, decimal_places=2),
-            ),
-            _credit=Case(
-                # Debit-normal accounts: negative balance -> credit (abs), positive -> 0
-                When(
-                    Q(account_type__in=['asset', 'expense']) & Q(current_balance__lt=0),
-                    then=-F('current_balance'),
-                ),
-                # Credit-normal accounts: positive balance -> credit
-                When(
-                    ~Q(account_type__in=['asset', 'expense']) & Q(current_balance__gte=0),
-                    then=F('current_balance'),
-                ),
-                default=Value(Decimal('0')),
-                output_field=DecimalField(max_digits=18, decimal_places=2),
-            ),
-        ).order_by('code').values('code', 'name', 'account_type', '_debit', '_credit')
+        landlord_id = request.query_params.get('landlord_id')
+        property_id = request.query_params.get('property_id')
+        scope_filter = _gl_filter_for_landlord(landlord_id, property_id)
 
         report_data = []
         total_debits = Decimal('0')
         total_credits = Decimal('0')
 
-        for row in accounts:
-            debit = row['_debit'] or Decimal('0')
-            credit = row['_credit'] or Decimal('0')
-            if debit or credit:
+        if scope_filter is None:
+            # Agency-wide: use the rolled-up balances on ChartOfAccount.
+            accounts = ChartOfAccount.objects.filter(
+                is_active=True
+            ).exclude(
+                current_balance=Decimal('0')
+            ).annotate(
+                _debit=Case(
+                    When(
+                        Q(account_type__in=['asset', 'expense']) & Q(current_balance__gte=0),
+                        then=F('current_balance'),
+                    ),
+                    When(
+                        Q(account_type__in=['asset', 'expense']) & Q(current_balance__lt=0),
+                        then=Value(Decimal('0')),
+                    ),
+                    When(
+                        ~Q(account_type__in=['asset', 'expense']) & Q(current_balance__lt=0),
+                        then=-F('current_balance'),
+                    ),
+                    default=Value(Decimal('0')),
+                    output_field=DecimalField(max_digits=18, decimal_places=2),
+                ),
+                _credit=Case(
+                    When(
+                        Q(account_type__in=['asset', 'expense']) & Q(current_balance__lt=0),
+                        then=-F('current_balance'),
+                    ),
+                    When(
+                        ~Q(account_type__in=['asset', 'expense']) & Q(current_balance__gte=0),
+                        then=F('current_balance'),
+                    ),
+                    default=Value(Decimal('0')),
+                    output_field=DecimalField(max_digits=18, decimal_places=2),
+                ),
+            ).order_by('code').values('code', 'name', 'account_type', '_debit', '_credit')
+
+            for row in accounts:
+                debit = row['_debit'] or Decimal('0')
+                credit = row['_credit'] or Decimal('0')
+                if debit or credit:
+                    report_data.append({
+                        'code': row['code'],
+                        'name': row['name'],
+                        'type': row['account_type'],
+                        'debit': float(debit),
+                        'credit': float(credit),
+                    })
+                    total_debits += debit
+                    total_credits += credit
+        else:
+            # Scoped: re-aggregate from GL entries traceable to the landlord/
+            # property. We sum debit_amount / credit_amount per account and
+            # compute the natural-side balance based on account_type — debit-
+            # normal accounts (asset/expense) collapse to net debit; credit-
+            # normal accounts (liability/equity/revenue) collapse to net credit.
+            agg = _aggregate_balances_from_gl(
+                scope_filter,
+                account_types=['asset', 'liability', 'equity', 'revenue', 'expense'],
+                end_date=as_of_date,
+            )
+            for row in agg:
+                debit_total = row['total_debit']
+                credit_total = row['total_credit']
+                acct_type = row['account__account_type']
+                # Net per the account's natural side — keeps the trial
+                # balance two-column shape (debit | credit) consistent with
+                # the unscoped report.
+                if acct_type in ('asset', 'expense'):
+                    net = debit_total - credit_total
+                    debit = net if net >= 0 else Decimal('0')
+                    credit = -net if net < 0 else Decimal('0')
+                else:
+                    net = credit_total - debit_total
+                    credit = net if net >= 0 else Decimal('0')
+                    debit = -net if net < 0 else Decimal('0')
+                if debit == 0 and credit == 0:
+                    continue
                 report_data.append({
-                    'code': row['code'],
-                    'name': row['name'],
-                    'type': row['account_type'],
+                    'code': row['account__code'],
+                    'name': row['account__name'],
+                    'type': acct_type,
                     'debit': float(debit),
                     'credit': float(credit),
                 })
@@ -250,6 +403,11 @@ class TrialBalanceReportView(APIView):
             'report_name': 'Trial Balance',
             'as_of_date': str(as_of_date),
             'accounts': report_data,
+            'scope': {
+                'landlord_id': int(landlord_id) if landlord_id else None,
+                'property_id': int(property_id) if property_id else None,
+                'is_scoped': scope_filter is not None,
+            },
             'totals': {
                 'debits': float(total_debits),
                 'credits': float(total_credits),
@@ -267,28 +425,159 @@ class IncomeStatementView(APIView):
     def get(self, request):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date', timezone.now().date())
+        landlord_id = request.query_params.get('landlord_id')
+        property_id = request.query_params.get('property_id')
 
-        # Fetch revenue and expense accounts with non-zero balances in a single query
-        accounts = ChartOfAccount.objects.filter(
-            account_type__in=['revenue', 'expense'],
-            is_active=True,
-        ).exclude(current_balance=Decimal('0')).values(
-            'code', 'name', 'account_type', 'current_balance'
-        ).order_by('code')
+        scope_filter = _gl_filter_for_landlord(landlord_id, property_id)
 
-        revenue_list = []
-        expense_list = []
-        total_revenue = Decimal('0')
-        total_expenses = Decimal('0')
+        if scope_filter is None:
+            # Unscoped — use the agency-wide rolled-up balances on
+            # ChartOfAccount.current_balance (fastest path).
+            accounts = ChartOfAccount.objects.filter(
+                account_type__in=['revenue', 'expense'],
+                is_active=True,
+            ).exclude(current_balance=Decimal('0')).values(
+                'code', 'name', 'account_type', 'current_balance'
+            ).order_by('code')
 
-        for row in accounts:
-            entry = {'code': row['code'], 'name': row['name'], 'balance': float(row['current_balance'])}
-            if row['account_type'] == 'revenue':
-                revenue_list.append(entry)
-                total_revenue += row['current_balance']
+            revenue_list, expense_list = [], []
+            total_revenue, total_expenses = Decimal('0'), Decimal('0')
+            for row in accounts:
+                entry = {'code': row['code'], 'name': row['name'], 'balance': float(row['current_balance'])}
+                if row['account_type'] == 'revenue':
+                    revenue_list.append(entry)
+                    total_revenue += row['current_balance']
+                else:
+                    expense_list.append(entry)
+                    total_expenses += row['current_balance']
+        else:
+            # Scoped — frame the P&L from the LANDLORD's perspective, not
+            # the agency's. The agency GL records the agency's view: gross
+            # rent received goes to a landlord-trust liability, only the
+            # commission slice hits agency revenue. That's not what the
+            # landlord wants to see on their own P&L.
+            #
+            # Landlord-perspective P&L (accrual basis):
+            #   Revenue   = invoices issued on the landlord's properties,
+            #               grouped by invoice_type (rent / levy / parking…)
+            #   Expenses  = management commission charged + every expense
+            #               (cash and non-cash) attributable to the landlord
+            #
+            # Cash vs. non-cash distinction lives on Income & Expenditure /
+            # Cash Flow — the P&L includes both per accounting convention.
+            try:
+                landlord_obj = Landlord.objects.get(id=landlord_id) if landlord_id else None
+            except Landlord.DoesNotExist:
+                landlord_obj = None
+
+            # Resolve the landlord's properties + units once.
+            if landlord_obj:
+                properties = landlord_obj.properties.all()
+            elif property_id:
+                properties = Property.objects.filter(id=property_id)
+                landlord_obj = properties.first().landlord if properties.exists() else None
             else:
-                expense_list.append(entry)
-                total_expenses += row['current_balance']
+                properties = Property.objects.none()
+            if property_id:
+                properties = properties.filter(id=property_id)
+            property_id_list = list(properties.values_list('id', flat=True))
+            unit_id_list = list(
+                Unit.objects.filter(property_id__in=property_id_list).values_list('id', flat=True)
+            )
+
+            # Income (accrual): invoiced amounts on landlord's units/properties.
+            invoice_qs = Invoice.objects.filter(
+                Q(unit_id__in=unit_id_list) | Q(property_id__in=property_id_list)
+            )
+            if start_date:
+                invoice_qs = invoice_qs.filter(date__gte=start_date)
+            invoice_qs = invoice_qs.filter(date__lte=end_date)
+
+            # Group income by invoice_type so the Rental Income / Levy /
+            # Parking lines mirror the chart users already know from the
+            # Income & Expenditure report.
+            INCOME_LABELS = {
+                'rent': 'Rental Income', 'levy': 'Levy Income',
+                'special_levy': 'Special Levy', 'maintenance': 'Maintenance Income',
+                'parking': 'Parking Income', 'rates': 'Rates Income',
+                'deposit': 'Deposit', 'penalty': 'Late Payment Penalty',
+                'utility': 'Utility Income', 'vat': 'VAT', 'other': 'Other Income',
+            }
+            revenue_list = []
+            total_revenue = Decimal('0')
+            for row in invoice_qs.values('invoice_type').annotate(t=Sum('amount')).order_by('invoice_type'):
+                amt = row['t'] or Decimal('0')
+                if amt == 0:
+                    continue
+                key = row['invoice_type'] or 'other'
+                revenue_list.append({
+                    'code': '',
+                    'name': INCOME_LABELS.get(key, key.replace('_', ' ').title()),
+                    'balance': float(amt),
+                })
+                total_revenue += amt
+
+            # Expenses: every expense booked against the landlord (cash
+            # AND non-cash). Group by expense_category so each line shows
+            # up cleanly. Status='paid' for cash, 'approved'/'paid' for
+            # non-cash — accruals belong on the P&L the moment they're
+            # approved, not when settled.
+            expense_qs = Expense.objects.filter(
+                Q(landlord_id=landlord_obj.id) | Q(payee_type='landlord', payee_id=landlord_obj.id)
+            ) if landlord_obj else Expense.objects.none()
+            expense_qs = expense_qs.filter(status__in=['approved', 'paid'])
+            if start_date:
+                expense_qs = expense_qs.filter(date__gte=start_date)
+            expense_qs = expense_qs.filter(date__lte=end_date)
+
+            expense_list = []
+            total_expenses = Decimal('0')
+
+            # Management commission — a real cost to the landlord; charged
+            # on each receipt at the income-type-or-landlord-default rate.
+            if landlord_obj and unit_id_list or property_id_list:
+                receipt_qs = Receipt.objects.filter(
+                    Q(invoice__unit_id__in=unit_id_list) |
+                    Q(invoice__property_id__in=property_id_list)
+                )
+                if start_date:
+                    receipt_qs = receipt_qs.filter(date__gte=start_date)
+                receipt_qs = receipt_qs.filter(date__lte=end_date)
+                commission_expr = Case(
+                    When(
+                        income_type__isnull=False, income_type__is_commissionable=True,
+                        then=F('amount') * F('income_type__default_commission_rate') / Value(Decimal('100')),
+                    ),
+                    default=F('amount') * Value(landlord_obj.commission_rate) / Value(Decimal('100')),
+                    output_field=DecimalField(max_digits=18, decimal_places=2),
+                )
+                commission_total = receipt_qs.aggregate(t=Sum(commission_expr))['t'] or Decimal('0')
+                if commission_total > 0:
+                    expense_list.append({
+                        'code': '',
+                        'name': 'Management Commission',
+                        'balance': float(commission_total),
+                    })
+                    total_expenses += commission_total
+
+            # Group landlord-attributed expenses by expense_category, with
+            # the kind shown so users can see at a glance which lines are
+            # accruals.
+            grouped = expense_qs.values(
+                'expense_category__name', 'expense_category__gl_account__code', 'expense_kind',
+            ).annotate(t=Sum('amount')).order_by('expense_category__name', 'expense_kind')
+            for row in grouped:
+                amt = row['t'] or Decimal('0')
+                if amt == 0:
+                    continue
+                base_name = row['expense_category__name'] or 'Other Expense'
+                suffix = ' (accrued)' if row['expense_kind'] == 'non_cash' else ''
+                expense_list.append({
+                    'code': row['expense_category__gl_account__code'] or '',
+                    'name': f'{base_name}{suffix}',
+                    'balance': float(amt),
+                })
+                total_expenses += amt
 
         net_income = total_revenue - total_expenses
 
@@ -297,6 +586,11 @@ class IncomeStatementView(APIView):
             'period': {
                 'start': start_date,
                 'end': str(end_date)
+            },
+            'scope': {
+                'landlord_id': int(landlord_id) if landlord_id else None,
+                'property_id': int(property_id) if property_id else None,
+                'is_scoped': scope_filter is not None,
             },
             'revenue': {
                 'accounts': revenue_list,
@@ -318,33 +612,172 @@ class BalanceSheetView(APIView):
     @_cache_report('balance_sheet', ttl=300)
     def get(self, request):
         as_of_date = request.query_params.get('as_of_date', timezone.now().date())
+        landlord_id = request.query_params.get('landlord_id')
+        property_id = request.query_params.get('property_id')
+        scope_filter = _gl_filter_for_landlord(landlord_id, property_id)
 
-        # Fetch all three account types in a single query
-        accounts = ChartOfAccount.objects.filter(
-            account_type__in=['asset', 'liability', 'equity'],
-            is_active=True,
-        ).exclude(current_balance=Decimal('0')).values(
-            'code', 'name', 'account_type', 'current_balance'
-        ).order_by('code')
-
-        asset_list = []
-        liability_list = []
-        equity_list = []
+        asset_list, liability_list, equity_list = [], [], []
         total_assets = Decimal('0')
         total_liabilities = Decimal('0')
         total_equity = Decimal('0')
 
-        for row in accounts:
-            entry = {'code': row['code'], 'name': row['name'], 'balance': float(row['current_balance'])}
-            if row['account_type'] == 'asset':
-                asset_list.append(entry)
-                total_assets += row['current_balance']
-            elif row['account_type'] == 'liability':
-                liability_list.append(entry)
-                total_liabilities += row['current_balance']
-            else:
-                equity_list.append(entry)
-                total_equity += row['current_balance']
+        if scope_filter is None:
+            accounts = ChartOfAccount.objects.filter(
+                account_type__in=['asset', 'liability', 'equity'],
+                is_active=True,
+            ).exclude(current_balance=Decimal('0')).values(
+                'code', 'name', 'account_type', 'current_balance'
+            ).order_by('code')
+            for row in accounts:
+                entry = {'code': row['code'], 'name': row['name'], 'balance': float(row['current_balance'])}
+                if row['account_type'] == 'asset':
+                    asset_list.append(entry)
+                    total_assets += row['current_balance']
+                elif row['account_type'] == 'liability':
+                    liability_list.append(entry)
+                    total_liabilities += row['current_balance']
+                else:
+                    equity_list.append(entry)
+                    total_equity += row['current_balance']
+        else:
+            # Landlord-scoped Balance Sheet — framed from the landlord's
+            # perspective, not the agency's:
+            #   * Bank/cash accounts collapse into a single "Funds Held in
+            #     Trust" asset line equal to net_payable (receipts - commissions
+            #     - expenses paid). Users don't care which agency bank holds
+            #     the cash, just how much is theirs.
+            #   * The agency's own "Landlord Trust Payable" liability is the
+            #     mirror of those funds — skipped to avoid double-counting.
+            #   * Equity is forced to balance (assets - liabilities) so the
+            #     statement is self-consistent regardless of partial GL
+            #     coverage. Without this, scoped sheets often look unbalanced
+            #     because the equity slice we'd compute from the GL doesn't
+            #     correspond to a real per-landlord equity account.
+            agg = _aggregate_balances_from_gl(
+                scope_filter,
+                account_types=['asset', 'liability', 'equity'],
+                end_date=as_of_date,
+            )
+
+            from apps.accounting.models import ChartOfAccount as _CoA
+            bank_account_codes = set(
+                _CoA.objects.filter(account_subtype='bank').values_list('code', flat=True)
+            )
+
+            funds_held_in_trust = Decimal('0')
+            for row in agg:
+                acct_type = row['account__account_type']
+                code = row['account__code']
+                name = row['account__name']
+                subtype = row.get('account__account_subtype') or ''
+                debit_total = row['total_debit']
+                credit_total = row['total_credit']
+
+                if acct_type == 'asset':
+                    bal = debit_total - credit_total
+                    if bal == 0:
+                        continue
+                    if code in bank_account_codes:
+                        # Aggregate bank balances into the single trust line.
+                        funds_held_in_trust += bal
+                    else:
+                        asset_list.append({'code': code, 'name': name, 'balance': float(bal)})
+                        total_assets += bal
+                elif acct_type == 'liability':
+                    bal = credit_total - debit_total
+                    if bal == 0:
+                        continue
+                    # Filter agency-side liabilities that don't belong on a
+                    # landlord-scoped sheet:
+                    #   * Landlord Trust Payable (2300) — agency's mirror of
+                    #     the trust funds shown above on the asset side.
+                    #   * VAT Payable on commission — VAT the agency owes the
+                    #     tax authority for ITS commission revenue. The
+                    #     landlord doesn't owe this; it's an agency tax
+                    #     liability that happened to trace through this
+                    #     landlord's receipts.
+                    if name.lower().startswith('landlord trust') or code.startswith('2300'):
+                        continue
+                    if subtype == 'vat_payable' or 'vat payable' in name.lower():
+                        continue
+                    liability_list.append({'code': code, 'name': name, 'balance': float(bal)})
+                    total_liabilities += bal
+                # We deliberately ignore equity rows from the GL under scope —
+                # any landlord-level equity is derived below.
+
+            # Compute Funds Held in Trust as the simple definition the user
+            # described: net payable to landlord = receipts - commissions -
+            # expenses. Falls back to the GL-derived bank net when the
+            # receipts/expenses path can't be computed.
+            funds_held = funds_held_in_trust
+            if landlord_id:
+                try:
+                    landlord_obj = Landlord.objects.get(id=landlord_id)
+                except Landlord.DoesNotExist:
+                    landlord_obj = None
+                if landlord_obj:
+                    properties = landlord_obj.properties.all()
+                    property_id_list = list(properties.values_list('id', flat=True))
+                    units = Unit.objects.filter(property__in=properties)
+                    unit_id_list = list(units.values_list('id', flat=True))
+                    receipt_qs = Receipt.objects.filter(
+                        Q(invoice__unit_id__in=unit_id_list) |
+                        Q(invoice__property_id__in=property_id_list),
+                        date__lte=as_of_date,
+                    )
+                    if property_id:
+                        receipt_qs = receipt_qs.filter(
+                            Q(invoice__unit__property_id=property_id) |
+                            Q(invoice__property_id=property_id)
+                        )
+                    commission_expr = Case(
+                        When(
+                            income_type__isnull=False,
+                            income_type__is_commissionable=True,
+                            then=F('amount') * F('income_type__default_commission_rate') / Value(Decimal('100')),
+                        ),
+                        default=F('amount') * Value(landlord_obj.commission_rate) / Value(Decimal('100')),
+                        output_field=DecimalField(max_digits=18, decimal_places=2),
+                    )
+                    rcpt_agg = receipt_qs.aggregate(
+                        receipts=Sum('amount'),
+                        commissions=Sum(commission_expr),
+                    )
+                    # Funds Held in Trust is a cash position — non-cash
+                    # expenses (accruals) never left the bank, so excluding
+                    # them keeps the trust balance honest.
+                    expense_total = Expense.objects.filter(
+                        landlord_id=landlord_obj.id,
+                        status='paid',
+                        date__lte=as_of_date,
+                    ).exclude(expense_kind='non_cash').aggregate(t=Sum('amount'))['t'] or Decimal('0')
+                    funds_held = (
+                        (rcpt_agg['receipts'] or Decimal('0'))
+                        - (rcpt_agg['commissions'] or Decimal('0'))
+                        - expense_total
+                    )
+
+            if funds_held != 0:
+                # Insert at top of assets — matches the "cash first" convention.
+                asset_list.insert(0, {
+                    'code': '',
+                    'name': 'Funds Held in Trust',
+                    'balance': float(funds_held),
+                })
+                total_assets += funds_held
+
+            # Force the sheet to balance — equity = assets - liabilities.
+            # Single line because there's no per-landlord equity account in
+            # the agency's chart; the residual represents the landlord's
+            # net worth held with the agency.
+            derived_equity = total_assets - total_liabilities
+            if derived_equity != 0:
+                equity_list = [{
+                    'code': '',
+                    'name': "Owner's Equity (Net Worth)",
+                    'balance': float(derived_equity),
+                }]
+                total_equity = derived_equity
 
         total_liab_equity = total_liabilities + total_equity
 
@@ -362,6 +795,11 @@ class BalanceSheetView(APIView):
             'equity': {
                 'accounts': equity_list,
                 'total': float(total_equity)
+            },
+            'scope': {
+                'landlord_id': int(landlord_id) if landlord_id else None,
+                'property_id': int(property_id) if property_id else None,
+                'is_scoped': scope_filter is not None,
             },
             'totals': {
                 'assets': float(total_assets),
@@ -697,10 +1135,14 @@ class LandlordStatementView(APIView):
         prior_receipts_total = prior_agg['receipts_total'] or Decimal('0')
         prior_commissions_total = prior_agg['commissions_total'] or Decimal('0')
 
+        # The Landlord Account is a cash-basis trust statement — non-cash
+        # expenses (accruals/depreciation) never moved funds out of the
+        # landlord's trust pocket, so they don't belong on this ledger.
+        # Accruals show on the P&L (Income Statement) instead.
         prior_expense_qs = Expense.objects.filter(
             payee_type='landlord', payee_id=landlord.id,
             status='paid', date__lt=start_date,
-        )
+        ).exclude(expense_kind='non_cash')
         if currency:
             prior_expense_qs = prior_expense_qs.filter(currency=currency)
         prior_expenses_total = prior_expense_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
@@ -719,7 +1161,7 @@ class LandlordStatementView(APIView):
             payee_type='landlord', payee_id=landlord.id,
             status='paid',
             date__gte=start_date, date__lte=end_date,
-        )
+        ).exclude(expense_kind='non_cash')
         if currency:
             expense_qs = expense_qs.filter(currency=currency)
         expenses = expense_qs.order_by('date')
@@ -788,6 +1230,22 @@ class LandlordStatementView(APIView):
         total_debits = total_commissions + total_expenses
         total_credits = total_receipts
 
+        # Total invoiced for the period — covers what was billed to the
+        # landlord's tenants regardless of whether anything was collected.
+        # Drives the "Total Invoiced" KPI on LandlordDetail.
+        invoice_qs = Invoice.objects.filter(
+            Q(unit__property__landlord_id=landlord.id) |
+            Q(property__landlord_id=landlord.id),
+            date__gte=start_date,
+            date__lte=end_date,
+        )
+        if currency:
+            invoice_qs = invoice_qs.filter(currency=currency)
+        total_invoiced = invoice_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
+        # Net payable = receipts - commissions - expenses (i.e. what the
+        # agency still owes the landlord at the end of the period).
+        net_payable = total_receipts - total_commissions - total_expenses
+
         return Response({
             'report_name': 'Landlord Account Summary',
             'landlord': {
@@ -800,13 +1258,22 @@ class LandlordStatementView(APIView):
                 'end': str(end_date),
             },
             'currency': currency or 'USD',
+            # Top-level convenience fields for the LandlordDetail KPI cards.
+            # Mirror the values inside `summary` so legacy frontends that
+            # read either shape keep working.
+            'total_invoiced': float(total_invoiced),
+            'total_collected': float(total_receipts),
+            'net_payable': float(net_payable),
             'summary': {
                 'opening_balance': float(opening_balance),
+                'total_invoiced': float(total_invoiced),
                 'total_receipts': float(total_receipts),
+                'total_collected': float(total_receipts),
                 'total_commissions': float(total_commissions),
                 'total_expenses': float(total_expenses),
                 'total_debits': float(total_debits),
                 'total_credits': float(total_credits),
+                'net_payable': float(net_payable),
                 'closing_balance': float(running_balance),
                 'commission_rate': float(landlord.commission_rate),
             },
@@ -830,17 +1297,57 @@ class CashFlowStatementView(APIView):
     def get(self, request):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date', timezone.now().date())
+        landlord_id = request.query_params.get('landlord_id')
+        property_id = request.query_params.get('property_id')
 
         # Build date filter
         date_filter = Q(date__lte=end_date)
         if start_date:
             date_filter &= Q(date__gte=start_date)
 
+        # Landlord/property scoping. None when both are blank — the report
+        # then runs agency-wide.
+        scope_filter = _gl_filter_for_landlord(landlord_id, property_id)
+        # Cash Flow is, by definition, only cash transactions — strip every
+        # GL entry that came from a non-cash Expense (accruals/depreciation)
+        # so outflows reflect actual movements out of the bank. Receipts and
+        # invoice GL rows are unaffected.
+        non_cash_exclusion = _exclude_non_cash_expenses_q()
+
         # Operating Activities - Cash Inflows
-        # Receipts from tenants
-        tenant_receipts = Receipt.objects.filter(date_filter).aggregate(
-            total=Sum('amount')
-        )['total'] or Decimal('0')
+        # Receipts from tenants. Scoping uses tenant via lease/unit OR
+        # invoice's denormalized property — same lineage as the GL helper.
+        receipt_qs = Receipt.objects.filter(date_filter)
+        if landlord_id or property_id:
+            tenant_filter = Q()
+            if landlord_id:
+                tenant_filter &= (
+                    Q(unit__property__landlord_id=landlord_id) |
+                    Q(leases__property__landlord_id=landlord_id) |
+                    Q(leases__unit__property__landlord_id=landlord_id)
+                )
+            if property_id:
+                tenant_filter &= (
+                    Q(unit__property_id=property_id) |
+                    Q(leases__property_id=property_id) |
+                    Q(leases__unit__property_id=property_id)
+                )
+            tenant_ids_cf = list(
+                RentalTenant.objects.filter(tenant_filter).values_list('id', flat=True).distinct()
+            )
+            if landlord_id:
+                receipt_qs = receipt_qs.filter(
+                    Q(tenant_id__in=tenant_ids_cf) |
+                    Q(invoice__property__landlord_id=landlord_id) |
+                    Q(invoice__unit__property__landlord_id=landlord_id)
+                )
+            if property_id:
+                receipt_qs = receipt_qs.filter(
+                    Q(tenant_id__in=tenant_ids_cf) |
+                    Q(invoice__property_id=property_id) |
+                    Q(invoice__unit__property_id=property_id)
+                )
+        tenant_receipts = receipt_qs.aggregate(total=Sum('amount'))['total'] or Decimal('0')
 
         # Operating Activities - Cash Outflows
         # Get expense-related journal entries (payments)
@@ -848,20 +1355,53 @@ class CashFlowStatementView(APIView):
             account_type='expense', is_active=True
         )
 
-        expense_payments = GeneralLedger.objects.filter(
+        gl_expenses = GeneralLedger.objects.filter(
             date_filter,
             account__in=expense_accounts
-        ).aggregate(
-            total=Sum('debit_amount')
-        )['total'] or Decimal('0')
+        )
+        if scope_filter is not None:
+            gl_expenses = gl_expenses.filter(scope_filter)
+        if non_cash_exclusion is not None:
+            gl_expenses = gl_expenses.exclude(non_cash_exclusion)
+        expense_payments = gl_expenses.aggregate(total=Sum('debit_amount'))['total'] or Decimal('0')
 
-        # Landlord payments (commission settlements)
-        landlord_payments = GeneralLedger.objects.filter(
-            date_filter,
-            account__code__startswith='2'  # Liability accounts
-        ).aggregate(
-            total=Sum('credit_amount')
-        )['total'] or Decimal('0')
+        # Landlord payments / commission. The shape depends on scope:
+        #   * Scoped (landlord-perspective) — outflows = the management
+        #     commission charged on this landlord's receipts. That's the
+        #     real cash leaving the landlord's pocket alongside expense
+        #     payouts. We compute it from receipts × commission_rate
+        #     because the agency GL doesn't record per-landlord commission
+        #     as a discrete cash event we can sum directly.
+        #   * Unscoped (agency-perspective) — outflows = sum of credits to
+        #     liability accounts (2xxx), the historical proxy for landlord
+        #     remittance settlements. Kept as-is for backwards compat.
+        if scope_filter is not None and landlord_id:
+            try:
+                landlord_obj = Landlord.objects.get(id=landlord_id)
+            except Landlord.DoesNotExist:
+                landlord_obj = None
+            if landlord_obj:
+                commission_expr = Case(
+                    When(
+                        income_type__isnull=False, income_type__is_commissionable=True,
+                        then=F('amount') * F('income_type__default_commission_rate') / Value(Decimal('100')),
+                    ),
+                    default=F('amount') * Value(landlord_obj.commission_rate) / Value(Decimal('100')),
+                    output_field=DecimalField(max_digits=18, decimal_places=2),
+                )
+                landlord_payments = receipt_qs.aggregate(t=Sum(commission_expr))['t'] or Decimal('0')
+            else:
+                landlord_payments = Decimal('0')
+        else:
+            gl_landlord = GeneralLedger.objects.filter(
+                date_filter,
+                account__code__startswith='2'  # Liability accounts
+            )
+            if scope_filter is not None:
+                gl_landlord = gl_landlord.filter(scope_filter)
+            if non_cash_exclusion is not None:
+                gl_landlord = gl_landlord.exclude(non_cash_exclusion)
+            landlord_payments = gl_landlord.aggregate(total=Sum('credit_amount'))['total'] or Decimal('0')
 
         # Calculate Operating Cash Flow
         operating_inflows = tenant_receipts
@@ -876,31 +1416,35 @@ class CashFlowStatementView(APIView):
             code__startswith='15'  # Fixed assets typically 15xx
         )
 
-        asset_purchases = GeneralLedger.objects.filter(
-            date_filter,
-            account__in=asset_accounts
-        ).aggregate(
-            purchases=Sum('debit_amount'),
-            sales=Sum('credit_amount')
-        )
+        # Investing & financing activities — when scoped to a landlord we
+        # zero them out (asset purchases & equity contributions don't
+        # decompose per landlord at the agency level).
+        if scope_filter is not None:
+            asset_purchases = {'purchases': Decimal('0'), 'sales': Decimal('0')}
+            equity_transactions = {'contributions': Decimal('0'), 'withdrawals': Decimal('0')}
+        else:
+            asset_purchases = GeneralLedger.objects.filter(
+                date_filter,
+                account__in=asset_accounts
+            ).aggregate(
+                purchases=Sum('debit_amount'),
+                sales=Sum('credit_amount')
+            )
+            equity_accounts = ChartOfAccount.objects.filter(
+                account_type='equity', is_active=True
+            )
+            equity_transactions = GeneralLedger.objects.filter(
+                date_filter,
+                account__in=equity_accounts
+            ).aggregate(
+                contributions=Sum('credit_amount'),
+                withdrawals=Sum('debit_amount')
+            )
 
         investing_outflows = asset_purchases['purchases'] or Decimal('0')
         investing_inflows = asset_purchases['sales'] or Decimal('0')
         net_investing = investing_inflows - investing_outflows
 
-        # Financing Activities
-        # Owner contributions/withdrawals, loan proceeds/payments
-        equity_accounts = ChartOfAccount.objects.filter(
-            account_type='equity', is_active=True
-        )
-
-        equity_transactions = GeneralLedger.objects.filter(
-            date_filter,
-            account__in=equity_accounts
-        ).aggregate(
-            contributions=Sum('credit_amount'),
-            withdrawals=Sum('debit_amount')
-        )
 
         financing_inflows = equity_transactions['contributions'] or Decimal('0')
         financing_outflows = equity_transactions['withdrawals'] or Decimal('0')
@@ -909,14 +1453,47 @@ class CashFlowStatementView(APIView):
         # Net Change in Cash
         net_change = net_operating + net_investing + net_financing
 
-        # Get beginning and ending cash balances
-        cash_accounts = ChartOfAccount.objects.filter(
-            code__startswith='1000',  # Cash accounts
-            is_active=True
-        )
-
-        ending_cash = sum(acc.current_balance for acc in cash_accounts)
-        beginning_cash = ending_cash - net_change
+        # Beginning / ending cash. Under scope these reflect the landlord's
+        # funds held in trust at each boundary (receipts collected to date
+        # minus commissions and cash expenses paid out). Unscoped, they
+        # roll up all cash account balances at the agency level.
+        if scope_filter is not None and landlord_id:
+            try:
+                _ll = Landlord.objects.get(id=landlord_id)
+            except Landlord.DoesNotExist:
+                _ll = None
+            if _ll:
+                _commission_expr = Case(
+                    When(
+                        income_type__isnull=False, income_type__is_commissionable=True,
+                        then=F('amount') * F('income_type__default_commission_rate') / Value(Decimal('100')),
+                    ),
+                    default=F('amount') * Value(_ll.commission_rate) / Value(Decimal('100')),
+                    output_field=DecimalField(max_digits=18, decimal_places=2),
+                )
+                # ending_cash = funds held in trust as of end_date
+                end_receipts = receipt_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
+                end_commission = receipt_qs.aggregate(t=Sum(_commission_expr))['t'] or Decimal('0')
+                _gl_exp_to_end = GeneralLedger.objects.filter(
+                    Q(date__lte=end_date),
+                    account__in=expense_accounts,
+                    journal_entry__source_type='expense',
+                ).filter(scope_filter)
+                if non_cash_exclusion is not None:
+                    _gl_exp_to_end = _gl_exp_to_end.exclude(non_cash_exclusion)
+                end_cash_exp = _gl_exp_to_end.aggregate(t=Sum('debit_amount'))['t'] or Decimal('0')
+                ending_cash = end_receipts - end_commission - end_cash_exp
+                beginning_cash = ending_cash - net_change
+            else:
+                ending_cash = Decimal('0')
+                beginning_cash = Decimal('0') - net_change
+        else:
+            cash_accounts = ChartOfAccount.objects.filter(
+                code__startswith='1000',  # Cash accounts
+                is_active=True
+            )
+            ending_cash = sum(acc.current_balance for acc in cash_accounts)
+            beginning_cash = ending_cash - net_change
 
         return Response({
             'report_name': 'Cash Flow Statement',
@@ -931,7 +1508,12 @@ class CashFlowStatementView(APIView):
                 },
                 'outflows': {
                     'expense_payments': float(expense_payments),
+                    # Under landlord scope this is management commission;
+                    # unscoped it's the agency's liability-side settlements.
+                    # Both keys carry the same number so legacy clients
+                    # reading `landlord_payments` still get the right value.
                     'landlord_payments': float(landlord_payments),
+                    'commission_paid': float(landlord_payments) if (scope_filter is not None and landlord_id) else 0,
                     'total': float(operating_outflows)
                 },
                 'net_cash': float(net_operating)
@@ -962,7 +1544,12 @@ class CashFlowStatementView(APIView):
                 'net_change_in_cash': float(net_change),
                 'beginning_cash': float(beginning_cash),
                 'ending_cash': float(ending_cash)
-            }
+            },
+            'scope': {
+                'landlord_id': int(landlord_id) if landlord_id else None,
+                'property_id': int(property_id) if property_id else None,
+                'is_scoped': scope_filter is not None,
+            },
         })
 
 
@@ -1561,6 +2148,20 @@ class LeaseChargeSummaryView(APIView):
         ).values('id', 'income_commission'):
             commission_map[row['id']] = row['income_commission']
 
+        # Per-lease invoiced & collected totals so the table can show real
+        # numbers (Total Charged / Paid / Balance) instead of zeros. Done
+        # in two grouped queries to avoid N+1.
+        invoiced_map = {
+            row['lease_id']: row['total']
+            for row in Invoice.objects.filter(lease_id__in=lease_ids)
+            .values('lease_id').annotate(total=Sum('amount'))
+        }
+        collected_map = {
+            row['invoice__lease_id']: row['total']
+            for row in Receipt.objects.filter(invoice__lease_id__in=lease_ids)
+            .values('invoice__lease_id').annotate(total=Sum('amount'))
+        }
+
         lease_type_labels = dict(LeaseAgreement.LeaseType.choices)
         charges = []
         total_amount = Decimal('0')
@@ -1594,20 +2195,34 @@ class LeaseChargeSummaryView(APIView):
             elif lease.lease_type == 'rental':
                 charge_type = 'Rent'
 
+            invoiced = invoiced_map.get(lease.id) or Decimal('0')
+            collected = collected_map.get(lease.id) or Decimal('0')
+            balance = invoiced - collected
+
             charges.append({
                 'lease_id': lease.id,
                 'lease_number': lease.lease_number,
                 'property_id': prop.id,
                 'property': property_display,
+                'property_name': prop.name,
                 'tenant_id': lease.tenant_id,
                 'tenant': tenant_display,
+                'tenant_name': lease.tenant.name,
                 'charge_type': charge_type,
                 'charge_currency': lease.currency,
+                'currency': lease.currency,
                 'charge_amount': float(lease.monthly_rent),
+                'monthly_rent': float(lease.monthly_rent),
                 'charge_commission': comm_rate,
+                # Per-lease running totals — what the LandlordDetail and
+                # Reports UI show in the Total Charged / Paid / Balance cols.
+                'total_charged': float(invoiced),
+                'total_paid': float(collected),
+                'balance': float(balance),
                 # Extra fields for navigation/filtering
                 'unit_id': lease.unit_id,
                 'unit': lease.unit.unit_number,
+                'unit_name': lease.unit.unit_number,
                 'landlord_id': landlord.id,
                 'landlord_name': landlord.name,
             })
@@ -2324,10 +2939,14 @@ class IncomeExpenditureReportView(APIView):
         prior_receipts_total = prior_agg['receipts_total'] or Decimal('0')
         prior_commissions_total = prior_agg['commissions_total'] or Decimal('0')
 
+        # Income & Expenditure is a cash-basis report — accruals (non-cash
+        # expenses) belong on the P&L, not here. Exclude them from both the
+        # opening-balance and period totals so reported expenditure reflects
+        # actual cash movements out of the landlord's funds.
         prior_expense_qs = Expense.objects.filter(
             payee_type='landlord', payee_id=landlord.id,
             status='paid', date__lt=start_date,
-        )
+        ).exclude(expense_kind='non_cash')
         if currency:
             prior_expense_qs = prior_expense_qs.filter(currency=currency)
         prior_expenses_total = prior_expense_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
@@ -2348,7 +2967,7 @@ class IncomeExpenditureReportView(APIView):
             payee_type='landlord', payee_id=landlord.id,
             status='paid',
             date__gte=start_date, date__lte=end_date,
-        )
+        ).exclude(expense_kind='non_cash')
         if currency:
             period_expense_qs = period_expense_qs.filter(currency=currency)
         period_expenses = list(

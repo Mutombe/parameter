@@ -196,13 +196,13 @@ export const authApi = {
 // Dashboard/Reports API
 export const reportsApi = {
   dashboard: () => api.get('/reports/dashboard/'),
-  trialBalance: (params?: { as_of_date?: string }) =>
+  trialBalance: (params?: { as_of_date?: string; landlord_id?: number; property_id?: number }) =>
     api.get('/reports/trial-balance/', { params }),
-  incomeStatement: (params?: { start_date?: string; end_date?: string }) =>
+  incomeStatement: (params?: { start_date?: string; end_date?: string; landlord_id?: number; property_id?: number }) =>
     api.get('/reports/income-statement/', { params }),
-  balanceSheet: (params?: { as_of_date?: string }) =>
+  balanceSheet: (params?: { as_of_date?: string; landlord_id?: number; property_id?: number }) =>
     api.get('/reports/balance-sheet/', { params }),
-  cashFlow: (params?: { start_date?: string; end_date?: string }) =>
+  cashFlow: (params?: { start_date?: string; end_date?: string; landlord_id?: number; property_id?: number }) =>
     api.get('/reports/cash-flow/', { params }),
   vacancy: () => api.get('/reports/vacancy/'),
   rentRoll: () => api.get('/reports/rent-roll/'),
