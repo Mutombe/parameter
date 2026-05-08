@@ -369,6 +369,14 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
               <ChevronRight className="w-5 h-5" />
             )}
           </button>
+          {/* Build stamp — temporary diagnostic. If you don't see this
+              line on the deployed site, the deploy hasn't published the
+              latest bundle. Bump the string each push during diagnosis. */}
+          {isExpanded && (
+            <div className="mt-2 px-2 py-1 text-[10px] text-gray-400 text-center font-mono tracking-tight">
+              build · jit-grid-2026-05-08
+            </div>
+          )}
         </div>
       )}
     </motion.aside>
