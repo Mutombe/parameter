@@ -678,6 +678,23 @@ function buildStatementStyles(): string {
     .balance-box .row.final { margin-top: 5pt; padding-top: 6pt;
                               border-top: 0.75pt solid #111827; font-weight: 700; font-size: 10.5pt; }
 
+    /* Accrued-expenses table — category sub-headers + detail rows */
+    .accrued-tbl .cat-row td { background: #f9fafb;
+                               padding-top: 6pt; padding-bottom: 5pt;
+                               border-top: 0.5pt solid #d1d5db !important;
+                               border-bottom: 0.25pt solid #d1d5db !important; }
+    .accrued-tbl .cat-row .cat-label { font-size: 8pt; font-weight: 700;
+                                       letter-spacing: 0.1em; text-transform: uppercase;
+                                       color: #374151; }
+    .accrued-tbl .cat-row .cat-amt { font-weight: 700; color: #111827; }
+    .accrued-tbl .acc-date { font-size: 9pt; color: #6b7280;
+                             font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .accrued-tbl .acc-supplier { font-weight: 500; color: #1f2937; }
+    .accrued-tbl .acc-supplier-code { display: inline-block; margin-left: 6pt;
+                                      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+                                      font-size: 8pt; color: #9ca3af; letter-spacing: -0.01em; }
+    .accrued-tbl .acc-desc { color: #4b5563; font-size: 9.5pt; }
+
     /* Notes — supporting schedules under the main statement */
     .notes-section { margin-top: 24pt; }
     .notes-h { display: flex; align-items: baseline; justify-content: space-between;
@@ -1005,28 +1022,72 @@ function buildBalanceSheetBody(data: any, currency: string): string {
   }
 
   const accruedCats = breakdowns.accrued_expenses_by_category
+  const accruedDetail: any[] = breakdowns.accrued_expenses_detail || []
   if (Array.isArray(accruedCats) && accruedCats.length) {
     noteNo += 1
     const totalAcc = accruedCats.reduce((s: number, r: any) => s + (r.amount || 0), 0)
+    // Group detail entries by category so each category subtotal heads a
+    // block of line items showing the supplier (City of Harare, ZESA, …),
+    // date, and description — landlords need to see WHO they owe.
+    const detailByCategory = new Map<string, any[]>()
+    for (const e of accruedDetail) {
+      const key = e.category || 'Uncategorised'
+      const arr = detailByCategory.get(key) || []
+      arr.push(e)
+      detailByCategory.set(key, arr)
+    }
+    const meta = accruedDetail.length
+      ? `${accruedDetail.length} ${accruedDetail.length === 1 ? 'entry' : 'entries'} · ${accruedCats.length} categor${accruedCats.length === 1 ? 'y' : 'ies'}`
+      : `${accruedCats.length} categor${accruedCats.length === 1 ? 'y' : 'ies'}`
+
+    const escapeHtml = (s: string) =>
+      String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
+
+    const rowsHtml = accruedCats.map((cat: any) => {
+      const entries = detailByCategory.get(cat.category) || []
+      const headerRow = `
+        <tr class="cat-row">
+          <td colspan="3" class="cat-label">${escapeHtml(cat.category || 'Uncategorised')}</td>
+          <td class="num cat-amt">${fmtMoney(cat.amount || 0, currency, false)}</td>
+        </tr>`
+      const detailRows = entries.map((e: any) => `
+        <tr>
+          <td class="acc-date">${fmtDate(e.date)}</td>
+          <td class="acc-supplier">
+            ${escapeHtml(e.supplier_name || '—')}
+            ${e.supplier_code ? `<span class="acc-supplier-code">${escapeHtml(e.supplier_code)}</span>` : ''}
+          </td>
+          <td class="acc-desc">${escapeHtml(e.description || (e.reference ? `Ref ${e.reference}` : '—'))}</td>
+          <td class="num">${fmtMoney(e.amount || 0, currency, false)}</td>
+        </tr>`).join('')
+      return headerRow + detailRows
+    }).join('')
+
     notes.push(`
       <div class="note">
         <div class="note-head">
           <div class="note-num">Note ${noteNo}</div>
-          <div class="note-title">Accrued Expenses by Category</div>
-          <div class="note-meta">${accruedCats.length} categor${accruedCats.length === 1 ? 'y' : 'ies'}</div>
+          <div class="note-title">Accrued Expenses</div>
+          <div class="note-meta">${meta}</div>
         </div>
         <div class="note-body">
-          <table class="ftbl"><tbody>
-            ${accruedCats.map((r: any) => `
+          <table class="ftbl accrued-tbl">
+            <thead>
               <tr>
-                <td class="grow">${r.category || 'Uncategorised'}</td>
-                <td class="num">${fmtMoney(r.amount || 0, currency, false)}</td>
-              </tr>`).join('')}
-            <tr class="total">
-              <td>Total Accrued Expenses</td>
-              <td class="num">${fmtMoney(totalAcc, currency, false)}</td>
-            </tr>
-          </tbody></table>
+                <th style="width:60pt">Date</th>
+                <th>Supplier / Payee</th>
+                <th>Description</th>
+                <th class="num" style="width:90pt">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+              <tr class="grand">
+                <td colspan="3">Total Accrued Expenses</td>
+                <td class="num">${fmtMoney(totalAcc, currency, false)}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     `)

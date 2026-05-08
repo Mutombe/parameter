@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, createContext, useContext, type ReactNode } from 'react'
+import { useState, useEffect, useMemo, useCallback, createContext, useContext, Fragment, type ReactNode } from 'react'
 import { useQuery, useIsFetching, keepPreviousData } from '@tanstack/react-query'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -1575,13 +1575,25 @@ function BalanceSheetNotes({ data }: { data: any }) {
   const perProp: any[] = breakdowns.per_property || []
   const eq = breakdowns.equity_reconciliation
   const accruedCats: any[] = breakdowns.accrued_expenses_by_category || []
+  const accruedDetail: any[] = breakdowns.accrued_expenses_detail || []
 
   const hasTrust = trust && (trust.receipts_collected || trust.commission_charged ||
     trust.operating_expenses_paid || trust.landlord_remittances || trust.funds_held_in_trust)
   const hasPerProp = Array.isArray(perProp) && perProp.length > 0
   const hasEq = eq && (eq.opening_equity || eq.period_net_income || eq.drawings || eq.closing_equity)
   const hasAccrued = Array.isArray(accruedCats) && accruedCats.length > 0
+  const hasAccruedDetail = Array.isArray(accruedDetail) && accruedDetail.length > 0
   if (!hasTrust && !hasPerProp && !hasEq && !hasAccrued) return null
+
+  // Group detail entries by category so each category subtotal is followed
+  // by the line items it contains — supplier visible on every row.
+  const detailByCategory = new Map<string, any[]>()
+  for (const entry of accruedDetail) {
+    const key = entry.category || 'Uncategorised'
+    const arr = detailByCategory.get(key) || []
+    arr.push(entry)
+    detailByCategory.set(key, arr)
+  }
 
   let n = 0
   return (
@@ -1696,19 +1708,57 @@ function BalanceSheetNotes({ data }: { data: any }) {
       {hasAccrued && (
         <BalanceSheetNote
           number={++n}
-          title="Accrued Expenses by Category"
-          meta={`${accruedCats.length} ${accruedCats.length === 1 ? 'category' : 'categories'}`}
+          title="Accrued Expenses"
+          meta={
+            hasAccruedDetail
+              ? `${accruedDetail.length} ${accruedDetail.length === 1 ? 'entry' : 'entries'} · ${accruedCats.length} ${accruedCats.length === 1 ? 'category' : 'categories'}`
+              : `${accruedCats.length} ${accruedCats.length === 1 ? 'category' : 'categories'}`
+          }
         >
           <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[10px] tracking-[0.1em] uppercase text-gray-500 border-b border-gray-300">
+                <th className="py-2 pr-3 text-left font-semibold w-24">Date</th>
+                <th className="py-2 pr-3 text-left font-semibold">Supplier / Payee</th>
+                <th className="py-2 pr-3 text-left font-semibold">Description</th>
+                <th className="py-2 text-right font-semibold w-28">Amount</th>
+              </tr>
+            </thead>
             <tbody>
-              {accruedCats.map((r: any, idx: number) => (
-                <tr key={idx} className="border-b border-gray-100">
-                  <td className="py-1.5 text-gray-700">{r.category || 'Uncategorised'}</td>
-                  <td className="py-1.5 text-right tabular-nums font-medium">{formatCurrency(r.amount || 0)}</td>
-                </tr>
-              ))}
-              <tr className="border-t border-gray-900 font-bold">
-                <td className="pt-2">Total Accrued Expenses</td>
+              {accruedCats.map((cat: any, catIdx: number) => {
+                const entries = detailByCategory.get(cat.category) || []
+                return (
+                  <Fragment key={`cat-${catIdx}`}>
+                    <tr className="bg-gray-50 border-y border-gray-200">
+                      <td colSpan={3} className="py-1.5 px-1 text-[11px] tracking-[0.1em] uppercase font-bold text-gray-700">
+                        {cat.category || 'Uncategorised'}
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums font-bold text-gray-900">
+                        {formatCurrency(cat.amount || 0)}
+                      </td>
+                    </tr>
+                    {entries.length > 0 ? (
+                      entries.map((e: any) => (
+                        <tr key={e.id} className="border-b border-gray-100">
+                          <td className="py-1.5 pr-3 text-xs text-gray-500 tabular-nums">{e.date}</td>
+                          <td className="py-1.5 pr-3 text-gray-800">
+                            <span className="font-medium">{e.supplier_name || '—'}</span>
+                            {e.supplier_code && (
+                              <span className="ml-1.5 text-[10px] font-mono text-gray-400">{e.supplier_code}</span>
+                            )}
+                          </td>
+                          <td className="py-1.5 pr-3 text-gray-600 truncate max-w-[280px]">
+                            {e.description || (e.reference ? `Ref ${e.reference}` : '—')}
+                          </td>
+                          <td className="py-1.5 text-right tabular-nums">{formatCurrency(e.amount || 0)}</td>
+                        </tr>
+                      ))
+                    ) : null}
+                  </Fragment>
+                )
+              })}
+              <tr className="border-t-2 border-gray-900 font-bold">
+                <td colSpan={3} className="pt-2 text-gray-900">Total Accrued Expenses</td>
                 <td className="pt-2 text-right tabular-nums">{formatCurrency(accruedCats.reduce((s: number, r: any) => s + (r.amount || 0), 0))}</td>
               </tr>
             </tbody>

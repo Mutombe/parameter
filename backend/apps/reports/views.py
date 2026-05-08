@@ -958,14 +958,22 @@ class BalanceSheetView(APIView):
                         })
                     breakdowns['per_property'] = pp_rows
 
-                # ---- Accrued expenses by category ----
+                # ---- Accrued expenses ----
+                # Two views on the same data so the frontend can render
+                # category subtotals AND the underlying line items with
+                # their suppliers (City of Harare, ZESA, etc.) — landlords
+                # want to see WHO they owe, not just the totals.
+                _accrued_qs = Expense.objects.filter(
+                    landlord_id=landlord_obj.id,
+                    expense_kind='non_cash',
+                    status__in=['approved', 'paid'],
+                    date__lte=as_of_date,
+                ).select_related(
+                    'expense_category', 'supplier',
+                ).order_by('expense_category__name', 'date')
+
                 _accrued_by_cat = list(
-                    Expense.objects.filter(
-                        landlord_id=landlord_obj.id,
-                        expense_kind='non_cash',
-                        status__in=['approved', 'paid'],
-                        date__lte=as_of_date,
-                    ).values('expense_category__name').annotate(
+                    _accrued_qs.values('expense_category__name').annotate(
                         amount=Sum('amount')
                     ).order_by('expense_category__name')
                 )
@@ -977,6 +985,36 @@ class BalanceSheetView(APIView):
                         }
                         for r in _accrued_by_cat if (r['amount'] or 0) != 0
                     ]
+
+                _accrued_entries = []
+                for exp in _accrued_qs:
+                    if exp.amount in (None, 0):
+                        continue
+                    # Supplier-style payee preference order:
+                    #   structured Supplier FK → legacy payee_name string →
+                    #   Expense.description / supplier_name fallbacks → '—'
+                    supplier_name = ''
+                    supplier_code = ''
+                    if exp.supplier_id and exp.supplier:
+                        supplier_name = exp.supplier.name
+                        supplier_code = exp.supplier.code
+                    elif getattr(exp, 'payee_name', None):
+                        supplier_name = exp.payee_name
+                    _accrued_entries.append({
+                        'id': exp.id,
+                        'date': str(exp.date),
+                        'category': (
+                            exp.expense_category.name if exp.expense_category_id else 'Uncategorised'
+                        ),
+                        'supplier_name': supplier_name or '—',
+                        'supplier_code': supplier_code,
+                        'description': exp.description or '',
+                        'reference': exp.reference or '',
+                        'currency': exp.currency,
+                        'amount': float(exp.amount),
+                    })
+                if _accrued_entries:
+                    breakdowns['accrued_expenses_detail'] = _accrued_entries
 
                 # ---- Equity reconciliation (year-to-date) ----
                 # "Period" defined as 1 Jan of as_of_date.year → as_of_date.
