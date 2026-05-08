@@ -1,6 +1,21 @@
 """Serializers for masterfile module."""
 from rest_framework import serializers
-from .models import Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager
+from .models import Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager, Supplier
+
+
+class SupplierSerializer(serializers.ModelSerializer):
+    default_expense_category_name = serializers.CharField(
+        source='default_expense_category.name', read_only=True, default=None
+    )
+
+    class Meta:
+        model = Supplier
+        fields = [
+            'id', 'code', 'name', 'email', 'phone', 'address',
+            'tax_id', 'default_expense_category', 'default_expense_category_name',
+            'is_active', 'notes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['code', 'created_at', 'updated_at']
 
 
 class LandlordSerializer(serializers.ModelSerializer):

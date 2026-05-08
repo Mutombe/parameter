@@ -254,6 +254,14 @@ export const landlordApi = {
   statement: (id: number) => api.get(`/masterfile/landlords/${id}/statement/`),
 }
 
+export const supplierApi = {
+  list: (params?: object) => api.get('/masterfile/suppliers/', { params }),
+  get: (id: number) => api.get(`/masterfile/suppliers/${id}/`),
+  create: (data: object) => api.post('/masterfile/suppliers/', data),
+  update: (id: number, data: object) => api.patch(`/masterfile/suppliers/${id}/`, data),
+  delete: (id: number) => api.delete(`/masterfile/suppliers/${id}/`),
+}
+
 export const propertyApi = {
   list: (params?: object) => api.get('/masterfile/properties/', { params }),
   get: (id: number) => api.get(`/masterfile/properties/${id}/`),

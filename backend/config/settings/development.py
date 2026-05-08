@@ -5,12 +5,13 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['*', 'localhost', '127.0.0.1', '.localhost']
 
-# Force a fresh DB connection on every request locally. With CONN_MAX_AGE
-# > 0, django-tenants occasionally reuses a connection whose search_path
-# was set to a different schema (or to public), producing intermittent
-# `relation X does not exist` errors that look random. CONN_MAX_AGE=0
-# kills the reuse and the tenant schema is set fresh on every request.
-DATABASES['default']['CONN_MAX_AGE'] = 0
+# Reuse DB connections for 60s in dev. Connection reuse is safe now that
+# SafeTenantMiddleware → TenantMainMiddleware calls connection.set_tenant()
+# on every request, which resets search_path before any query runs.
+# Previously this was 0 because of an intermittent stale-search_path bug,
+# but that fault path has since been closed. Each fresh Postgres connection
+# costs ~300ms locally, so reuse cuts login + every page load by seconds.
+DATABASES['default']['CONN_MAX_AGE'] = 60
 
 # Allow all origins in development - override base.py settings
 CORS_ALLOW_ALL_ORIGINS = True

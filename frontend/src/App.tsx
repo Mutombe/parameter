@@ -55,7 +55,6 @@ const LatePenalties = lazy(() => import('./pages/Billing/LatePenalties'))
 const Trash = lazy(() => import('./pages/Trash'))
 
 // Accounting
-const AccruedExpenses = lazy(() => import('./pages/Accounting/AccruedExpenses'))
 const BalanceSheetMovements = lazy(() => import('./pages/Accounting/BalanceSheetMovements'))
 const OpeningBalances = lazy(() => import('./pages/Accounting/OpeningBalances'))
 
@@ -211,7 +210,6 @@ export default function App() {
         <Route path="expense-categories" element={<LazyPage><ExpenseCategories /></LazyPage>} />
         <Route path="bank-reconciliation" element={<LazyPage><BankReconciliation /></LazyPage>} />
         <Route path="subsidiary-ledger" element={<LazyPage><SubsidiaryLedger /></LazyPage>} />
-        <Route path="accrued-expenses" element={<LazyPage><AccruedExpenses /></LazyPage>} />
         <Route path="bs-movements" element={<LazyPage><BalanceSheetMovements /></LazyPage>} />
         <Route path="opening-balances" element={<LazyPage><OpeningBalances /></LazyPage>} />
         <Route path="reports" element={<LazyPage><Reports /></LazyPage>} />

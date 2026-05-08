@@ -25,7 +25,7 @@ import {
   Download,
   Trash2,
 } from 'lucide-react'
-import { expenseApi, landlordApi, incomeTypeApi, expenseCategoryApi, bankAccountApi, accountApi } from '../../services/api'
+import { expenseApi, landlordApi, supplierApi, incomeTypeApi, expenseCategoryApi, bankAccountApi, accountApi } from '../../services/api'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { SubAccountBadge } from '../../components/SubAccountBadge'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
@@ -67,6 +67,9 @@ interface Expense {
   landlord?: number
   landlord_name?: string
   landlord_code?: string
+  supplier?: number
+  supplier_name?: string
+  supplier_code?: string
   sub_account_category?: string
   sub_account_category_display?: string
   journal?: number
@@ -197,6 +200,9 @@ export default function Expenses() {
     // falls back to the category's funding_category. Auto-populates from
     // category when the user picks one, but can be changed.
     sub_account_category: '',
+    // Step 5c: supplier — third-party payee like City of Harare or ZESA.
+    // When set, auto-fills payee_name / category from the supplier record.
+    supplier: '',
     // Step 6: description (auto-prefilled from category, editable)
     description: '',
     // Step 7: amount
@@ -303,6 +309,43 @@ export default function Expenses() {
     placeholderData: keepPreviousData,
   })
 
+  // Fetch suppliers (active only). Used by the inline picker on the
+  // Expense modal so users can pick a structured payee instead of typing
+  // payee_name freeform.
+  const { data: suppliersData } = useQuery({
+    queryKey: ['suppliers-for-expenses'],
+    queryFn: () => supplierApi.list({ is_active: true, page_size: 200 }).then((r: any) => r.data.results || r.data),
+    staleTime: 60000,
+    placeholderData: keepPreviousData,
+  })
+  const suppliers: any[] = Array.isArray(suppliersData) ? suppliersData : (suppliersData?.results || [])
+
+  // Just-in-time supplier creation. Same pattern as the bank-account JIT
+  // below — pop a small modal, save, refresh the list, auto-pick the new
+  // record so the user doesn't lose their place mid-flow.
+  const [showQuickSupplier, setShowQuickSupplier] = useState(false)
+  const [quickSupplier, setQuickSupplier] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    tax_id: '',
+    address: '',
+    default_expense_category: '',
+  })
+  const createSupplierMutation = useMutation({
+    mutationFn: (data: Record<string, unknown>) => supplierApi.create(data),
+    onSuccess: (resp) => {
+      const created = resp.data
+      queryClient.invalidateQueries({ queryKey: ['suppliers-for-expenses'] })
+      setShowQuickSupplier(false)
+      setQuickSupplier({ name: '', email: '', phone: '', tax_id: '', address: '', default_expense_category: '' })
+      // Auto-pick the new supplier so the parent expense form reflects it.
+      setExpenseForm(f => ({ ...f, supplier: String(created.id) }))
+      showToast.success(`Supplier ${created.code || ''} created`)
+    },
+    onError: (err: any) => showToast.error(parseApiError(err)),
+  })
+
   // Fetch active bank accounts for the source-of-funds picker.
   const { data: bankAccountsData } = useQuery({
     queryKey: ['bank-accounts-for-expenses'],
@@ -368,6 +411,7 @@ export default function Expenses() {
   const selectedBank = bankAccounts.find((b: any) => String(b.id) === String(expenseForm.bank_account))
   const selectedCategory = expenseCategories.find((c: any) => String(c.id) === String(expenseForm.expense_category))
   const selectedLandlord = landlords.find((l: any) => String(l.id) === String(expenseForm.landlord))
+  const selectedSupplier = suppliers.find((s: any) => String(s.id) === String(expenseForm.supplier))
   // Whichever GL code matches the chosen currency.
   const expenseGlCode = selectedCategory
     ? (expenseForm.currency === 'ZWG' && selectedCategory.gl_account_zwg_code
@@ -437,6 +481,22 @@ export default function Expenses() {
       setExpenseForm(f => ({ ...f, sub_account_category: defaultSub }))
     }
   }, [selectedCategory?.id])
+
+  // Supplier → category effect. Each supplier can carry a default
+  // expense_category (e.g. City of Harare → Rates) so picking the supplier
+  // pre-fills the category and saves a click. Only fires when category
+  // is empty or was previously auto-set, so a user override sticks.
+  const lastAutoCategoryRef = useRef('')
+  useEffect(() => {
+    if (!selectedSupplier) return
+    const cat = selectedSupplier.default_expense_category
+    if (!cat) return
+    const catStr = String(cat)
+    if (expenseForm.expense_category === '' || expenseForm.expense_category === lastAutoCategoryRef.current) {
+      lastAutoCategoryRef.current = catStr
+      setExpenseForm(f => ({ ...f, expense_category: catStr }))
+    }
+  }, [selectedSupplier?.id])
 
   // Create mutation - optimistic
   const createMutation = useMutation({
@@ -657,15 +717,32 @@ export default function Expenses() {
     recentExpenseType.add(expenseForm.expense_type)
     recentPayeeType.add(expenseForm.payee_type)
 
-    // Default the payee name to the landlord's name if no custom one was given.
-    const payeeName = expenseForm.payee_name || selectedLandlord?.name || 'Vendor'
+    // Default the payee name to the supplier (preferred), then the
+    // landlord, then a generic Vendor placeholder.
+    const payeeName = expenseForm.payee_name
+      || selectedSupplier?.name
+      || selectedLandlord?.name
+      || 'Vendor'
+    // Pick the right payee_type: supplier picks set 'vendor'; otherwise
+    // fall back to landlord, then the existing recent value.
+    const payeeType = expenseForm.supplier
+      ? 'vendor'
+      : expenseForm.landlord
+        ? 'landlord'
+        : (expenseForm.payee_type || 'vendor')
+    const payeeId = expenseForm.supplier
+      ? Number(expenseForm.supplier)
+      : expenseForm.landlord
+        ? Number(expenseForm.landlord)
+        : null
 
     const data: Record<string, unknown> = {
       expense_type: expenseForm.expense_type,
       expense_kind: expenseKind,
       payee_name: payeeName,
-      payee_type: expenseForm.landlord ? 'landlord' : (expenseForm.payee_type || 'vendor'),
-      payee_id: expenseForm.landlord ? Number(expenseForm.landlord) : null,
+      payee_type: payeeType,
+      payee_id: payeeId,
+      supplier: expenseForm.supplier ? Number(expenseForm.supplier) : null,
       date: expenseForm.date,
       amount: expenseForm.amount,
       currency: expenseForm.currency,
@@ -695,6 +772,7 @@ export default function Expenses() {
       expense_category: '',
       landlord: '',
       sub_account_category: '',
+      supplier: '',
       description: '',
       amount: '',
       reference: '',
@@ -705,6 +783,7 @@ export default function Expenses() {
     })
     lastAutoDescriptionRef.current = ''
     lastAutoSubAccountRef.current = ''
+    lastAutoCategoryRef.current = ''
   }
 
   // Get description suggestions based on expense type
@@ -1408,6 +1487,39 @@ export default function Expenses() {
             emptyMessage="No landlords found."
           />
 
+          {/* Step 5a — Supplier (third-party payee). Optional. When set,
+              auto-fills the expense category from the supplier's default
+              and stamps the payee_name on submit. The "+ New" button opens
+              a small JIT modal so users can add e.g. "City of Harare"
+              without leaving the expense flow. */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm font-medium text-gray-700">Supplier (optional)</label>
+              <button
+                type="button"
+                onClick={() => setShowQuickSupplier(true)}
+                className="text-xs font-medium text-primary-600 hover:text-primary-700 inline-flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                New supplier
+              </button>
+            </div>
+            <AsyncSelect
+              label=""
+              placeholder="e.g. City of Harare, ZESA — leave blank if N/A"
+              value={expenseForm.supplier}
+              onChange={(val) => setExpenseForm({ ...expenseForm, supplier: String(val) })}
+              options={suppliers.map((s: any) => ({
+                value: s.id,
+                label: s.name,
+                description: s.code || '',
+              }))}
+              searchable
+              clearable
+              emptyMessage="No suppliers yet — click 'New supplier' to add one."
+            />
+          </div>
+
           {/* Step 5b — Trust pocket the expense is deducted from. Always visible
               (even before a landlord is picked) so users discover the override.
               Disabled until a landlord exists, since there's nothing to deduct
@@ -1709,6 +1821,86 @@ export default function Expenses() {
             </Button>
             <Button type="submit" disabled={createBankMutation.isPending}>
               {createBankMutation.isPending ? 'Creating…' : 'Create & Use'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Just-in-time Create Supplier modal — opens from the Supplier
+          dropdown so users can add e.g. City of Harare without leaving
+          the expense flow. Saves, refreshes the list, auto-picks. */}
+      <Modal
+        isOpen={showQuickSupplier}
+        onClose={() => setShowQuickSupplier(false)}
+        title="New Supplier"
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (!quickSupplier.name.trim()) { showToast.error('Supplier name is required.'); return }
+            createSupplierMutation.mutate({
+              ...quickSupplier,
+              default_expense_category: quickSupplier.default_expense_category
+                ? Number(quickSupplier.default_expense_category)
+                : null,
+            })
+          }}
+          className="space-y-4"
+        >
+          <Input
+            label="Supplier Name"
+            placeholder="e.g. City of Harare"
+            value={quickSupplier.name}
+            onChange={(e) => setQuickSupplier({ ...quickSupplier, name: e.target.value })}
+            required
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Email (optional)"
+              type="email"
+              placeholder="billing@example.com"
+              value={quickSupplier.email}
+              onChange={(e) => setQuickSupplier({ ...quickSupplier, email: e.target.value })}
+            />
+            <Input
+              label="Phone (optional)"
+              placeholder="+263 …"
+              value={quickSupplier.phone}
+              onChange={(e) => setQuickSupplier({ ...quickSupplier, phone: e.target.value })}
+            />
+          </div>
+          <Input
+            label="Tax ID / VAT # (optional)"
+            placeholder="VAT registration or business tax number"
+            value={quickSupplier.tax_id}
+            onChange={(e) => setQuickSupplier({ ...quickSupplier, tax_id: e.target.value })}
+          />
+          <Textarea
+            label="Address (optional)"
+            placeholder="Postal or physical address"
+            value={quickSupplier.address}
+            onChange={(e) => setQuickSupplier({ ...quickSupplier, address: e.target.value })}
+            rows={2}
+          />
+          <AsyncSelect
+            label="Default Expense Category (optional)"
+            placeholder="Auto-fills the category when this supplier is picked"
+            value={quickSupplier.default_expense_category}
+            onChange={(val) => setQuickSupplier({ ...quickSupplier, default_expense_category: String(val) })}
+            options={expenseCategories.map((c: any) => ({
+              value: c.id,
+              label: c.name,
+              description: c.gl_account_code || '',
+            }))}
+            searchable
+            clearable
+          />
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={() => setShowQuickSupplier(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={createSupplierMutation.isPending}>
+              {createSupplierMutation.isPending ? 'Creating…' : 'Create & Use'}
             </Button>
           </div>
         </form>

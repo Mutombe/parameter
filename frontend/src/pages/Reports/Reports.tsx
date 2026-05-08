@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useCallback, createContext, useContext } from 'react'
-import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { useState, useEffect, useMemo, useCallback, createContext, useContext, type ReactNode } from 'react'
+import { useQuery, useIsFetching, keepPreviousData } from '@tanstack/react-query'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -50,10 +50,12 @@ import {
   Pie,
   Cell,
   Legend,
+  ComposedChart,
+  Line,
 } from 'recharts'
 import { reportsApi, tenantApi, landlordApi, propertyApi } from '../../services/api'
 import { formatCurrency, formatPercent, formatDate, cn } from '../../lib/utils'
-import { printElement } from '../../lib/printTemplate'
+import { printElement, printFinancialReport, type FinancialReportType } from '../../lib/printTemplate'
 import { exportReport } from '../../lib/export'
 import { PageHeader, Button, Badge, Skeleton, EmptyState, TableFilter, Pagination, Tooltip as UITooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
@@ -593,9 +595,49 @@ function MobileReportSelector({
   )
 }
 
+/* ─── Indeterminate top-of-content progress strip ─── */
+function FinancialReportProgressStrip() {
+  const fetching = useIsFetching({
+    predicate: (q) => {
+      const k = q.queryKey?.[0]
+      return typeof k === 'string' && (
+        k === 'trial-balance' || k === 'income-statement' ||
+        k === 'balance-sheet' || k === 'cash-flow' ||
+        k === 'income-expenditure'
+      )
+    },
+  })
+  if (!fetching) return null
+  return (
+    <div className="h-0.5 bg-gray-100 overflow-hidden -mt-3 mb-3">
+      <div
+        className="h-full bg-primary-500"
+        style={{
+          width: '40%',
+          animation: 'reports-progress 1.1s ease-in-out infinite',
+        }}
+      />
+      <style>{`@keyframes reports-progress { 0% { transform: translateX(-100%) } 100% { transform: translateX(350%) } }`}</style>
+    </div>
+  )
+}
+
 /* ─── Global Landlord + Property filter bar ─── */
 function ReportFilterBar() {
   const { landlordId, propertyId, setLandlordId, setPropertyId } = useReportFilters()
+  // Surface "Updating…" while any of the financial-report queries is in
+  // flight. Picking a landlord no longer feels frozen — the chip ticks on
+  // immediately, then off when data lands.
+  const fetching = useIsFetching({
+    predicate: (q) => {
+      const k = q.queryKey?.[0]
+      return typeof k === 'string' && (
+        k === 'trial-balance' || k === 'income-statement' ||
+        k === 'balance-sheet' || k === 'cash-flow' ||
+        k === 'income-expenditure'
+      )
+    },
+  })
 
   // Always load landlords; Properties depend on the chosen landlord so they
   // re-fetch (cached per id) when the landlord changes.
@@ -666,19 +708,27 @@ function ReportFilterBar() {
             Clear
           </button>
         )}
-        {(selectedLandlord || selectedProperty) && (
-          <div className="ml-auto text-xs text-gray-500 flex items-center gap-1.5 mb-2">
-            <span>Scope:</span>
-            {selectedLandlord && (
-              <Badge variant="default">{selectedLandlord.name}</Badge>
-            )}
-            {selectedProperty ? (
-              <Badge variant="default">{selectedProperty.name}</Badge>
-            ) : selectedLandlord && (
-              <Badge variant="default">All properties</Badge>
-            )}
-          </div>
-        )}
+        <div className="ml-auto flex items-center gap-3 mb-2">
+          {fetching > 0 && (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-gray-500">
+              <RefreshCw className="w-3 h-3 animate-spin text-primary-500" />
+              Updating reports…
+            </span>
+          )}
+          {(selectedLandlord || selectedProperty) && (
+            <div className="text-[11px] text-gray-500 flex items-center gap-1.5">
+              <span className="uppercase tracking-wider">Scope</span>
+              {selectedLandlord && (
+                <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">{selectedLandlord.name}</span>
+              )}
+              {selectedProperty ? (
+                <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">{selectedProperty.name}</span>
+              ) : selectedLandlord && (
+                <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">All properties</span>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -699,6 +749,24 @@ export default function Reports() {
   // LandlordDetail/PropertyDetail still work.
   const [landlordId, setLandlordId] = useState<string>(() => searchParams.get('landlord_id') || '')
   const [propertyId, setPropertyId] = useState<string>(() => searchParams.get('property_id') || '')
+
+  // Resolve landlord/property names so the bank-statement export can
+  // print "Account Holder: Acme Holdings" instead of just an ID. Cached
+  // alongside the ones the filter bar uses so we don't double-fetch.
+  const { data: landlordsForExport } = useQuery({
+    queryKey: ['reports-filter-landlords'],
+    queryFn: () => landlordApi.list({ page_size: 500 }).then((r: any) => r.data.results || r.data),
+    staleTime: 60_000,
+    enabled: FINANCIAL_REPORTS.has(activeReport),
+  })
+  const { data: propertiesForExport } = useQuery({
+    queryKey: ['reports-filter-properties', landlordId],
+    queryFn: () => propertyApi.list({ landlord: Number(landlordId), page_size: 500 } as any).then((r: any) => r.data.results || r.data),
+    enabled: !!landlordId && FINANCIAL_REPORTS.has(activeReport),
+    staleTime: 60_000,
+  })
+  const exportLandlords: any[] = Array.isArray(landlordsForExport) ? landlordsForExport : (landlordsForExport?.results || [])
+  const exportProperties: any[] = Array.isArray(propertiesForExport) ? propertiesForExport : (propertiesForExport?.results || [])
 
   // Sidebar collapse state from localStorage
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -740,12 +808,64 @@ export default function Reports() {
     })
   }, [])
 
+  // Build the scope block the bank-statement template prints across the
+  // top of every financial report (Account Holder, Property, Period, etc.).
+  const buildExportScope = () => {
+    const ll = exportLandlords.find(l => String(l.id) === landlordId)
+    const pr = exportProperties.find(p => String(p.id) === propertyId)
+    const d = currentReportData || {}
+    return {
+      landlordName: ll?.name,
+      propertyName: pr?.name,
+      currency: d?.currency || d?.scope?.currency || 'USD',
+      periodStart: d?.period?.start,
+      periodEnd: d?.period?.end,
+      asOfDate: d?.as_of_date,
+    }
+  }
+
   const handlePrint = () => {
+    if (FINANCIAL_REPORTS.has(activeReport) && currentReportData) {
+      printFinancialReport({
+        reportType: activeReport as FinancialReportType,
+        reportName: reportNames[activeReport],
+        data: currentReportData,
+        scope: buildExportScope(),
+      })
+      return
+    }
     printElement('report-content', {
       title: reportNames[activeReport],
       subtitle: `Generated on ${formatDate(new Date())}`,
       orientation: ['rent-roll', 'rent-rollover', 'receipts-listing', 'bank-to-income', 'income-expenditure'].includes(activeReport) ? 'landscape' : 'portrait',
     })
+  }
+
+  // PDF for financial reports uses a dedicated bank-statement template —
+  // letterhead + statement particulars + accountant-style tables — instead
+  // of dumping the on-screen DOM into the generic print template. The
+  // user picks "Save as PDF" as the destination in the print dialog.
+  const handleExportPDF = () => {
+    if (!currentReportData) {
+      toast.error('No report data to export')
+      return
+    }
+    if (FINANCIAL_REPORTS.has(activeReport)) {
+      printFinancialReport({
+        reportType: activeReport as FinancialReportType,
+        reportName: reportNames[activeReport],
+        data: currentReportData,
+        scope: buildExportScope(),
+      })
+      toast.success('Pick "Save as PDF" in the print dialog')
+      return
+    }
+    printElement('report-content', {
+      title: reportNames[activeReport],
+      subtitle: `Generated on ${formatDate(new Date())}`,
+      orientation: ['rent-roll', 'rent-rollover', 'receipts-listing', 'bank-to-income', 'income-expenditure'].includes(activeReport) ? 'landscape' : 'portrait',
+    })
+    toast.success('Pick "Save as PDF" in the print dialog')
   }
 
   const handleExportCSV = () => {
@@ -804,10 +924,19 @@ export default function Reports() {
                   <Printer className="w-4 h-4" />
                   <span className="hidden sm:inline">Print</span>
                 </Button>
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportCSV}>
-                  <Download className="w-4 h-4" />
-                  <span className="hidden sm:inline">CSV</span>
-                </Button>
+                {/* Financial reports get PDF; everything else still gets
+                    CSV since spreadsheet data is more useful there. */}
+                {FINANCIAL_REPORTS.has(activeReport) ? (
+                  <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportPDF}>
+                    <FileText className="w-4 h-4" />
+                    <span className="hidden sm:inline">PDF</span>
+                  </Button>
+                ) : (
+                  <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportCSV}>
+                    <Download className="w-4 h-4" />
+                    <span className="hidden sm:inline">CSV</span>
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportExcel}>
                   <Download className="w-4 h-4" />
                   <span className="hidden sm:inline">Excel</span>
@@ -819,6 +948,10 @@ export default function Reports() {
           <ReportFilterContext.Provider value={{ landlordId, propertyId, setLandlordId, setPropertyId }}>
             {/* Filter bar shown only on the financial reports the filter applies to. */}
             {FINANCIAL_REPORTS.has(activeReport) && <ReportFilterBar />}
+            {/* Indeterminate progress strip — top-of-content tell that data
+                is being recomputed (slow first-hit) without re-rendering
+                the whole report skeleton. */}
+            {FINANCIAL_REPORTS.has(activeReport) && <FinancialReportProgressStrip />}
 
             {/* Cash Flow excludes non-cash expense entries by definition —
                 surface that so users don't compare cash-flow expense totals
@@ -892,10 +1025,11 @@ function TrialBalanceReport() {
   const filteredAccounts = useMemo(() => {
     if (!searchQuery) return allAccounts
     const q = searchQuery.toLowerCase()
-    return allAccounts.filter((acc: any) =>
-      acc.account_code?.toLowerCase().includes(q) ||
-      acc.account_name?.toLowerCase().includes(q)
-    )
+    return allAccounts.filter((acc: any) => {
+      const code = (acc.code ?? acc.account_code ?? '').toString().toLowerCase()
+      const name = (acc.name ?? acc.account_name ?? '').toString().toLowerCase()
+      return code.includes(q) || name.includes(q)
+    })
   }, [allAccounts, searchQuery])
 
   const totalPages = Math.ceil(filteredAccounts.length / pageSize)
@@ -1015,9 +1149,9 @@ function TrialBalanceReport() {
                   className="hover:bg-gray-50 transition-colors"
                 >
                   <td className="px-6 py-4">
-                    <span className="font-mono text-sm font-semibold text-primary-600">{acc.account_code}</span>
+                    <span className="font-mono text-sm font-semibold text-primary-600">{acc.code ?? acc.account_code ?? '—'}</span>
                   </td>
-                  <td className="px-6 py-4 font-medium text-gray-900">{acc.account_name}</td>
+                  <td className="px-6 py-4 font-medium text-gray-900">{acc.name ?? acc.account_name ?? '—'}</td>
                   <td className="px-6 py-4 text-right">
                     {acc.debit > 0 ? (
                       <span className="font-semibold text-blue-600 tabular-nums">{formatCurrency(acc.debit)}</span>
@@ -1075,163 +1209,157 @@ function IncomeStatementReport() {
   const netIncome = Math.abs(data?.net_income || 0)
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-      <div className="p-6 border-b border-gray-100">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center">
-            <DollarSign className="w-5 h-5 text-emerald-600" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Income Statement (Profit & Loss)</h2>
-            <p className="text-sm text-gray-500">For the current period</p>
-          </div>
+    <div className="bg-white border-y md:border md:rounded-md border-gray-200">
+      <div className="px-6 py-4 border-b border-gray-200 flex items-baseline justify-between">
+        <div>
+          <h2 className="text-[15px] font-semibold text-gray-900 tracking-tight">Income Statement</h2>
+          <p className="text-[11px] uppercase tracking-[0.08em] text-gray-500 mt-0.5">Profit &amp; Loss</p>
         </div>
+        <span className="text-[11px] uppercase tracking-wider text-gray-400">
+          {data?.period?.start ? `${formatDate(data.period.start)} – ${formatDate(data.period.end)}` : 'Current period'}
+        </span>
       </div>
 
       {isLoading ? (
-        <div className="p-6 space-y-6 animate-pulse">
-          {/* Chart skeleton */}
-          <div className="h-64 bg-gray-100 rounded-xl flex items-end justify-around gap-2 px-8 pb-6 pt-4">
-            {[40, 65, 30, 80, 50, 70, 25, 55].map((h, i) => (
-              <div key={i} className={`rounded-t ${i < 4 ? 'bg-emerald-200' : 'bg-rose-200'}`} style={{ height: `${h}%`, width: '8%' }} />
+        <div className="p-6 space-y-5 animate-pulse">
+          <div className="h-[280px] bg-gray-50 border border-gray-200" />
+          <div className="grid grid-cols-3 gap-px bg-gray-200">
+            {[0,1,2].map(i => (
+              <div key={i} className="bg-white p-4 space-y-2">
+                <div className="h-3 w-20 bg-gray-200 rounded" />
+                <div className="h-6 w-28 bg-gray-200 rounded" />
+              </div>
             ))}
           </div>
-          {/* Revenue section skeleton */}
-          <div className="rounded-xl border border-emerald-200 overflow-hidden">
-            <div className="px-5 py-4 bg-emerald-50 border-b border-emerald-200">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-emerald-600" />
-                <h3 className="font-semibold text-emerald-800">Revenue</h3>
-              </div>
-            </div>
-            <div className="divide-y divide-emerald-100">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="px-5 py-3 flex justify-between">
-                  <div className="h-4 bg-gray-200 rounded" style={{ width: `${100 + i * 30}px` }} />
-                  <div className="h-4 w-20 bg-emerald-100 rounded" />
+          {[...Array(2)].map((_, i) => (
+            <div key={i} className="border-y border-gray-200">
+              <div className="px-5 py-2 border-b border-gray-200"><div className="h-3 w-24 bg-gray-200 rounded" /></div>
+              {[...Array(3)].map((_, j) => (
+                <div key={j} className="px-5 py-2.5 flex justify-between border-b border-gray-100 last:border-0">
+                  <div className="h-3 w-32 bg-gray-200 rounded" />
+                  <div className="h-3 w-20 bg-gray-200 rounded" />
                 </div>
               ))}
             </div>
-            <div className="px-5 py-4 bg-emerald-100 flex justify-between font-bold text-emerald-800">
-              <span>Total Revenue</span>
-              <div className="h-5 w-24 bg-emerald-200 rounded" />
-            </div>
-          </div>
-          {/* Expenses section skeleton */}
-          <div className="rounded-xl border border-rose-200 overflow-hidden">
-            <div className="px-5 py-4 bg-rose-50 border-b border-rose-200">
-              <div className="flex items-center gap-2">
-                <TrendingDown className="w-5 h-5 text-rose-600" />
-                <h3 className="font-semibold text-rose-800">Expenses</h3>
-              </div>
-            </div>
-            <div className="divide-y divide-rose-100">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="px-5 py-3 flex justify-between">
-                  <div className="h-4 bg-gray-200 rounded" style={{ width: `${80 + i * 25}px` }} />
-                  <div className="h-4 w-20 bg-rose-100 rounded" />
-                </div>
-              ))}
-            </div>
-            <div className="px-5 py-4 bg-rose-100 flex justify-between font-bold text-rose-800">
-              <span>Total Expenses</span>
-              <div className="h-5 w-24 bg-rose-200 rounded" />
-            </div>
-          </div>
-          {/* Net Income skeleton */}
-          <div className="rounded-xl p-6 bg-gradient-to-r from-gray-400 to-gray-500">
-            <div className="flex items-center justify-between text-white">
-              <div className="flex items-center gap-3">
-                <TrendingUp className="w-8 h-8" />
-                <span className="text-xl font-semibold">Net Income</span>
-              </div>
-              <div className="h-9 w-32 bg-white/30 rounded" />
-            </div>
-          </div>
+          ))}
         </div>
       ) : (
-        <div className="p-6 space-y-6">
-          {/* Income vs Expense Chart */}
+        <div className="p-6 space-y-5">
+          {/* ── Net-by-account composite (executive summary chart) ──
+              Drops the green/red candy palette for slate-blue revenue and
+              deep-crimson expenses with a near-black net-income line.
+              Compact 280px height, thin bars, no shadows or rounded chart
+              wrappers — sits flat on the page so the data is the figure. */}
           {data && (data?.revenue?.total > 0 || data?.expenses?.total > 0) && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="h-64 mb-2">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="h-[280px] -mx-2">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={[
-                  ...(data?.revenue?.accounts || []).map((a: any) => ({ name: a.name, Revenue: a.balance, Expense: 0 })),
-                  ...(data?.expenses?.accounts || []).map((a: any) => ({ name: a.name, Revenue: 0, Expense: a.balance })),
-                ].slice(0, 10)}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} angle={-20} textAnchor="end" height={60} />
-                  <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v/1000}k`} />
-                  <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
-                  <Bar dataKey="Revenue" fill="#10b981" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="Expense" fill="#f43f5e" radius={[4, 4, 0, 0]} />
-                </BarChart>
+                <ComposedChart
+                  data={(() => {
+                    const rev = (data?.revenue?.accounts || []).map((a: any) => ({ name: a.name, Revenue: a.balance, Expenses: 0 }))
+                    const exp = (data?.expenses?.accounts || []).map((a: any) => ({ name: a.name, Revenue: 0, Expenses: a.balance }))
+                    const rows = [...rev, ...exp].slice(0, 10)
+                    let running = 0
+                    return rows.map(r => {
+                      running += (r.Revenue || 0) - (r.Expenses || 0)
+                      return { ...r, Net: running }
+                    })
+                  })()}
+                  margin={{ top: 10, right: 16, left: 8, bottom: 32 }}
+                  barCategoryGap="35%"
+                >
+                  <CartesianGrid stroke="#F3F4F6" vertical={false} />
+                  <XAxis dataKey="name" stroke="#9CA3AF" fontSize={11} tickLine={false} axisLine={false} angle={-15} textAnchor="end" height={48} interval={0} />
+                  <YAxis stroke="#9CA3AF" fontSize={11} tickLine={false} axisLine={false}
+                    tickFormatter={(v: number) => v >= 1_000_000 ? `$${(v/1_000_000).toFixed(1)}M` : v >= 1_000 ? `$${(v/1_000).toFixed(0)}K` : `$${v}`} />
+                  <Tooltip
+                    formatter={(v: number) => formatCurrency(v)}
+                    contentStyle={{
+                      borderRadius: 6, border: '1px solid #E5E7EB',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                      fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 12,
+                    }}
+                    cursor={{ fill: 'rgba(0,0,0,0.02)' }}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: 11, paddingTop: 6, color: '#6B7280' }}
+                    iconType="circle" iconSize={7}
+                  />
+                  <Bar dataKey="Revenue" fill="#1E40AF" barSize={18} />
+                  <Bar dataKey="Expenses" fill="#9F1239" barSize={18} />
+                  <Line type="monotone" dataKey="Net" stroke="#111827" strokeWidth={1.5} dot={{ r: 2.5, fill: '#111827' }} />
+                </ComposedChart>
               </ResponsiveContainer>
             </motion.div>
           )}
 
-          {/* Revenue Section */}
-          <div className="rounded-xl border border-emerald-200 overflow-hidden">
-            <div className="px-5 py-4 bg-emerald-50 border-b border-emerald-200">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-emerald-600" />
-                <h3 className="font-semibold text-emerald-800">Revenue</h3>
-              </div>
+          {/* ── KPI strip — borderless cells separated by hairlines ── */}
+          <div className="grid grid-cols-3 border-y border-gray-200 divide-x divide-gray-200">
+            <div className="px-5 py-4">
+              <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Revenue</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{formatCurrency(data?.revenue?.total || 0)}</p>
             </div>
-            <div className="divide-y divide-emerald-100">
-              {data?.revenue?.accounts?.map((acc: any, idx: number) => (
-                <div key={idx} className="px-5 py-3 flex justify-between hover:bg-emerald-50/50 transition-colors">
-                  <span className="text-gray-700">{acc.name}</span>
-                  <span className="font-semibold text-emerald-700 tabular-nums">{formatCurrency(acc.balance)}</span>
+            <div className="px-5 py-4">
+              <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Expenses</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{formatCurrency(data?.expenses?.total || 0)}</p>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Net {isProfit ? 'Income' : 'Loss'}</p>
+              <p className={cn('mt-1 text-2xl font-semibold tabular-nums tracking-tight', isProfit ? 'text-emerald-700' : 'text-rose-700')}>
+                {isProfit ? formatCurrency(netIncome) : `(${formatCurrency(netIncome).replace('$','$')})`}
+              </p>
+            </div>
+          </div>
+
+          {/* ── Revenue section — hairline borders, no colored fills ── */}
+          <div>
+            <div className="flex items-baseline justify-between pb-2 border-b border-gray-200">
+              <h3 className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Revenue</h3>
+              <span className="text-[11px] uppercase tracking-wider text-gray-400">USD</span>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {data?.revenue?.accounts?.length ? data.revenue.accounts.map((acc: any, idx: number) => (
+                <div key={idx} className="px-2 py-2 flex justify-between text-[13px]">
+                  <span className="text-gray-700 truncate">{acc.name}</span>
+                  <span className="tabular-nums text-gray-900 ml-4">{formatCurrency(acc.balance)}</span>
                 </div>
-              ))}
-              {(!data?.revenue?.accounts || data?.revenue?.accounts?.length === 0) && (
-                <div className="px-5 py-4 text-center text-gray-400 text-sm">No revenue accounts</div>
+              )) : (
+                <div className="px-2 py-3 text-center text-gray-400 text-[13px]">No revenue accounts</div>
               )}
             </div>
-            <div className="px-5 py-4 bg-emerald-100 flex justify-between font-bold text-emerald-800">
+            <div className="px-2 py-2.5 flex justify-between text-[13px] font-semibold border-t border-gray-300 text-gray-900">
               <span>Total Revenue</span>
               <span className="tabular-nums">{formatCurrency(data?.revenue?.total || 0)}</span>
             </div>
           </div>
 
-          {/* Expenses Section */}
-          <div className="rounded-xl border border-rose-200 overflow-hidden">
-            <div className="px-5 py-4 bg-rose-50 border-b border-rose-200">
-              <div className="flex items-center gap-2">
-                <TrendingDown className="w-5 h-5 text-rose-600" />
-                <h3 className="font-semibold text-rose-800">Expenses</h3>
-              </div>
+          {/* ── Expenses section ── */}
+          <div>
+            <div className="flex items-baseline justify-between pb-2 border-b border-gray-200">
+              <h3 className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Expenses</h3>
+              <span className="text-[11px] uppercase tracking-wider text-gray-400">USD</span>
             </div>
-            <div className="divide-y divide-rose-100">
-              {data?.expenses?.accounts?.map((acc: any, idx: number) => (
-                <div key={idx} className="px-5 py-3 flex justify-between hover:bg-rose-50/50 transition-colors">
-                  <span className="text-gray-700">{acc.name}</span>
-                  <span className="font-semibold text-rose-700 tabular-nums">{formatCurrency(acc.balance)}</span>
+            <div className="divide-y divide-gray-100">
+              {data?.expenses?.accounts?.length ? data.expenses.accounts.map((acc: any, idx: number) => (
+                <div key={idx} className="px-2 py-2 flex justify-between text-[13px]">
+                  <span className="text-gray-700 truncate">{acc.name}</span>
+                  <span className="tabular-nums text-gray-900 ml-4">({formatCurrency(acc.balance).replace(/^\$/, '$')})</span>
                 </div>
-              ))}
-              {(!data?.expenses?.accounts || data?.expenses?.accounts?.length === 0) && (
-                <div className="px-5 py-4 text-center text-gray-400 text-sm">No expense accounts</div>
+              )) : (
+                <div className="px-2 py-3 text-center text-gray-400 text-[13px]">No expense accounts</div>
               )}
             </div>
-            <div className="px-5 py-4 bg-rose-100 flex justify-between font-bold text-rose-800">
+            <div className="px-2 py-2.5 flex justify-between text-[13px] font-semibold border-t border-gray-300 text-gray-900">
               <span>Total Expenses</span>
-              <span className="tabular-nums">{formatCurrency(data?.expenses?.total || 0)}</span>
+              <span className="tabular-nums">({formatCurrency(data?.expenses?.total || 0).replace(/^\$/, '$')})</span>
             </div>
           </div>
 
-          {/* Net Income */}
-          <div className={cn(
-            'rounded-xl p-6',
-            isProfit ? 'bg-gradient-to-r from-emerald-500 to-emerald-600' : 'bg-gradient-to-r from-rose-500 to-rose-600'
-          )}>
-            <div className="flex items-center justify-between text-white">
-              <div className="flex items-center gap-3">
-                {isProfit ? <TrendingUp className="w-8 h-8" /> : <TrendingDown className="w-8 h-8" />}
-                <span className="text-xl font-semibold">Net {isProfit ? 'Profit' : 'Loss'}</span>
-              </div>
-              <span className="text-3xl font-bold tabular-nums">{formatCurrency(netIncome)}</span>
-            </div>
+          {/* ── Grand-total row, accountant-double-rule ── */}
+          <div className="px-2 py-3 flex justify-between text-[14px] font-semibold border-t-2 border-double border-gray-400">
+            <span className="text-gray-900">Net {isProfit ? 'Income' : 'Loss'}</span>
+            <span className={cn('tabular-nums', isProfit ? 'text-emerald-700' : 'text-rose-700')}>
+              {isProfit ? formatCurrency(netIncome) : `(${formatCurrency(netIncome)})`}
+            </span>
           </div>
         </div>
       )}
@@ -1428,8 +1556,182 @@ function BalanceSheetReport() {
             <span>Total Liabilities + Equity</span>
             <span className="tabular-nums">{formatCurrency((data?.liabilities?.total || 0) + (data?.equity?.total || 0))}</span>
           </div>
+
+          {/* Notes / breakdowns — only rendered when scoped to a landlord */}
+          <BalanceSheetNotes data={data} />
         </div>
       )}
+    </div>
+  )
+}
+
+/** Numbered notes section that renders Trust Composition, Per-Property,
+ *  Equity Reconciliation and Accrued-by-Category breakdowns sent by the
+ *  backend under `data.breakdowns`. Designed to mirror published financial
+ *  statements' note disclosures. */
+function BalanceSheetNotes({ data }: { data: any }) {
+  const breakdowns = data?.breakdowns || {}
+  const trust = breakdowns.trust_composition
+  const perProp: any[] = breakdowns.per_property || []
+  const eq = breakdowns.equity_reconciliation
+  const accruedCats: any[] = breakdowns.accrued_expenses_by_category || []
+
+  const hasTrust = trust && (trust.receipts_collected || trust.commission_charged ||
+    trust.operating_expenses_paid || trust.landlord_remittances || trust.funds_held_in_trust)
+  const hasPerProp = Array.isArray(perProp) && perProp.length > 0
+  const hasEq = eq && (eq.opening_equity || eq.period_net_income || eq.drawings || eq.closing_equity)
+  const hasAccrued = Array.isArray(accruedCats) && accruedCats.length > 0
+  if (!hasTrust && !hasPerProp && !hasEq && !hasAccrued) return null
+
+  let n = 0
+  return (
+    <div className="mt-10">
+      <div className="flex items-baseline justify-between pb-2 border-b border-gray-900">
+        <h3 className="text-xs font-bold tracking-[0.16em] uppercase text-gray-900">
+          Notes to the Balance Sheet
+        </h3>
+        <span className="text-[10px] tracking-[0.1em] uppercase text-gray-500">Supporting detail</span>
+      </div>
+
+      {hasTrust && (
+        <BalanceSheetNote
+          number={++n}
+          title="Composition of Funds Held in Trust"
+          meta="Cash basis · since inception"
+        >
+          <table className="w-full text-sm">
+            <tbody>
+              <tr className="border-b border-gray-100">
+                <td className="py-1.5 text-gray-700">Tenant receipts collected</td>
+                <td className="py-1.5 text-right tabular-nums font-medium">{formatCurrency(trust.receipts_collected || 0)}</td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="py-1.5 text-gray-700">Less: Management commission charged</td>
+                <td className="py-1.5 text-right tabular-nums font-medium text-rose-700">({formatCurrency(trust.commission_charged || 0)})</td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="py-1.5 text-gray-700">Less: Operating expenses paid from trust</td>
+                <td className="py-1.5 text-right tabular-nums font-medium text-rose-700">({formatCurrency(trust.operating_expenses_paid || 0)})</td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="py-1.5 text-gray-700">Less: Remittances paid to landlord</td>
+                <td className="py-1.5 text-right tabular-nums font-medium text-rose-700">({formatCurrency(trust.landlord_remittances || 0)})</td>
+              </tr>
+              <tr style={{ borderTop: '1pt solid #111827', borderBottom: '3pt double #111827' }}>
+                <td className="pt-2 pb-1 font-bold text-gray-900">Funds Held in Trust</td>
+                <td className="pt-2 pb-1 text-right tabular-nums font-bold">{formatCurrency(trust.funds_held_in_trust || 0)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </BalanceSheetNote>
+      )}
+
+      {hasPerProp && (
+        <BalanceSheetNote
+          number={++n}
+          title="Per-Property Breakdown"
+          meta={`${perProp.length} ${perProp.length === 1 ? 'property' : 'properties'}`}
+        >
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[10px] tracking-[0.1em] uppercase text-gray-500 border-b border-gray-300">
+                <th className="py-2 text-left font-semibold">Property</th>
+                <th className="py-2 text-right font-semibold">Funds Held in Trust</th>
+                <th className="py-2 text-right font-semibold">Tenant Receivables</th>
+                <th className="py-2 text-right font-semibold">Accrued Expenses</th>
+              </tr>
+            </thead>
+            <tbody>
+              {perProp.map((r: any, idx: number) => (
+                <tr key={idx} className="border-b border-gray-100">
+                  <td className="py-1.5 text-gray-700">{r.property_name || '—'}</td>
+                  <td className="py-1.5 text-right tabular-nums">{formatCurrency(r.funds_held_in_trust || 0)}</td>
+                  <td className="py-1.5 text-right tabular-nums">{formatCurrency(r.tenant_receivables || 0)}</td>
+                  <td className="py-1.5 text-right tabular-nums">{formatCurrency(r.accrued_expenses || 0)}</td>
+                </tr>
+              ))}
+              <tr className="border-t border-gray-900 font-bold">
+                <td className="pt-2">Total</td>
+                <td className="pt-2 text-right tabular-nums">{formatCurrency(perProp.reduce((s: number, r: any) => s + (r.funds_held_in_trust || 0), 0))}</td>
+                <td className="pt-2 text-right tabular-nums">{formatCurrency(perProp.reduce((s: number, r: any) => s + (r.tenant_receivables || 0), 0))}</td>
+                <td className="pt-2 text-right tabular-nums">{formatCurrency(perProp.reduce((s: number, r: any) => s + (r.accrued_expenses || 0), 0))}</td>
+              </tr>
+            </tbody>
+          </table>
+        </BalanceSheetNote>
+      )}
+
+      {hasEq && (
+        <BalanceSheetNote
+          number={++n}
+          title="Reconciliation of Owner's Equity"
+          meta={eq.period_start && eq.period_end ? `${eq.period_start} – ${eq.period_end}` : 'Year-to-date'}
+        >
+          <table className="w-full text-sm">
+            <tbody>
+              <tr className="border-b border-gray-100">
+                <td className="py-1.5 text-gray-700">Opening equity</td>
+                <td className="py-1.5 text-right tabular-nums font-medium">{formatCurrency(eq.opening_equity || 0)}</td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="py-1.5 text-gray-700">Add: Period net income</td>
+                <td className={cn(
+                  'py-1.5 text-right tabular-nums font-medium',
+                  (eq.period_net_income || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                )}>{formatCurrency(eq.period_net_income || 0)}</td>
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="py-1.5 text-gray-700">Less: Drawings (remittances to owner)</td>
+                <td className="py-1.5 text-right tabular-nums font-medium text-rose-700">({formatCurrency(eq.drawings || 0)})</td>
+              </tr>
+              <tr style={{ borderTop: '1pt solid #111827', borderBottom: '3pt double #111827' }}>
+                <td className="pt-2 pb-1 font-bold text-gray-900">Closing equity</td>
+                <td className="pt-2 pb-1 text-right tabular-nums font-bold">{formatCurrency(eq.closing_equity || 0)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </BalanceSheetNote>
+      )}
+
+      {hasAccrued && (
+        <BalanceSheetNote
+          number={++n}
+          title="Accrued Expenses by Category"
+          meta={`${accruedCats.length} ${accruedCats.length === 1 ? 'category' : 'categories'}`}
+        >
+          <table className="w-full text-sm">
+            <tbody>
+              {accruedCats.map((r: any, idx: number) => (
+                <tr key={idx} className="border-b border-gray-100">
+                  <td className="py-1.5 text-gray-700">{r.category || 'Uncategorised'}</td>
+                  <td className="py-1.5 text-right tabular-nums font-medium">{formatCurrency(r.amount || 0)}</td>
+                </tr>
+              ))}
+              <tr className="border-t border-gray-900 font-bold">
+                <td className="pt-2">Total Accrued Expenses</td>
+                <td className="pt-2 text-right tabular-nums">{formatCurrency(accruedCats.reduce((s: number, r: any) => s + (r.amount || 0), 0))}</td>
+              </tr>
+            </tbody>
+          </table>
+        </BalanceSheetNote>
+      )}
+    </div>
+  )
+}
+
+function BalanceSheetNote({ number, title, meta, children }: {
+  number: number; title: string; meta?: string; children: ReactNode
+}) {
+  return (
+    <div className="mt-6 break-inside-avoid">
+      <div className="flex items-baseline gap-3 pb-1.5 border-b border-gray-200">
+        <span className="text-[10px] tracking-[0.12em] uppercase font-bold text-gray-500 min-w-[3.5rem]">
+          Note {number}
+        </span>
+        <h4 className="text-sm font-semibold text-gray-900 flex-1">{title}</h4>
+        {meta && <span className="text-xs text-gray-500">{meta}</span>}
+      </div>
+      <div className="mt-3">{children}</div>
     </div>
   )
 }
@@ -1509,7 +1811,20 @@ function CashFlowReport() {
             <div className="px-5 py-3 flex justify-between hover:bg-emerald-50/50">
               <span className="text-gray-700 flex items-center gap-2">
                 <ArrowDownLeft className="w-4 h-4 text-rose-500" />
-                Cash paid to landlords
+                Cash paid to managing agent
+              </span>
+              {isLoading ? (
+                <div className="h-5 w-24 bg-rose-100 rounded animate-pulse" />
+              ) : (
+                <span className="font-semibold text-rose-700 tabular-nums">
+                  ({formatCurrency(data?.operating_activities?.outflows?.agent_commission || 0)})
+                </span>
+              )}
+            </div>
+            <div className="px-5 py-3 flex justify-between hover:bg-emerald-50/50">
+              <span className="text-gray-700 flex items-center gap-2">
+                <ArrowDownLeft className="w-4 h-4 text-rose-500" />
+                Cash paid to landlord
               </span>
               {isLoading ? (
                 <div className="h-5 w-24 bg-rose-100 rounded animate-pulse" />

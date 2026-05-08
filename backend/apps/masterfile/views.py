@@ -22,12 +22,13 @@ class IgnoreFormatNegotiation(DefaultContentNegotiation):
 
     def filter_renderers(self, renderers, format):
         return renderers
-from .models import Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager
+from .models import Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager, Supplier
 from .serializers import (
     LandlordSerializer, PropertySerializer, PropertyListSerializer,
     UnitSerializer, RentalTenantSerializer, RentalTenantListSerializer,
     LeaseAgreementSerializer,
-    LeaseActivateSerializer, LeaseTerminateSerializer, PropertyManagerSerializer
+    LeaseActivateSerializer, LeaseTerminateSerializer, PropertyManagerSerializer,
+    SupplierSerializer,
 )
 from .services import (
     send_lease_activation_emails, send_lease_termination_emails,
@@ -58,6 +59,17 @@ class LandlordViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mod
             'landlord': LandlordSerializer(landlord).data,
             'summary': summary,
         })
+
+
+class SupplierViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
+    """CRUD for Suppliers — third-party vendors paid via expenses."""
+    queryset = Supplier.objects.select_related('default_expense_category').all()
+    serializer_class = SupplierSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['is_active', 'default_expense_category']
+    search_fields = ['code', 'name', 'email', 'phone', 'tax_id']
+    ordering_fields = ['name', 'code', 'created_at']
+    ordering = ['name']
 
 
 class PropertyViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):

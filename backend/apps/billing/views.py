@@ -956,8 +956,13 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
 
 class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Expenses."""
+    # Eager-load every FK the serializer dereferences. Without this each
+    # row becomes 5+ extra queries (journal/bank/landlord/supplier/etc.)
+    # and a list of 25 expenses balloons into 100+ round-trips.
     queryset = Expense.objects.select_related(
-        'expense_category', 'income_type'
+        'expense_category', 'expense_category__gl_account',
+        'income_type', 'bank_account', 'landlord', 'supplier', 'journal',
+        'approved_by', 'created_by',
     ).all()
     serializer_class = ExpenseSerializer
     permission_classes = [IsAuthenticated]
@@ -974,9 +979,21 @@ class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
         passed `auto_post=true`. Auto-posting takes the expense straight
         from `pending` → `paid` (via approval) so users don't have to
         click through a two-step dance for routine entries.
+
+        When a `supplier` was picked, auto-mirror its name/id into the
+        legacy payee_* fields so existing reports + filters still work
+        without needing every reader to learn about the supplier FK.
         """
         import logging
-        expense = serializer.save(created_by=self.request.user)
+        save_kwargs = {'created_by': self.request.user}
+        supplier = serializer.validated_data.get('supplier')
+        if supplier is not None:
+            # Only override payee_name when the user hasn't typed one.
+            if not serializer.validated_data.get('payee_name'):
+                save_kwargs['payee_name'] = supplier.name
+            save_kwargs['payee_type'] = 'vendor'
+            save_kwargs['payee_id'] = supplier.id
+        expense = serializer.save(**save_kwargs)
         # Read the flag from the raw initial_data (it isn't a model field).
         raw = self.request.data
         auto_post = False

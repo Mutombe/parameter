@@ -107,7 +107,6 @@ const navigation: NavSection[] = [
       { name: 'Income Types', href: '/dashboard/income-types', icon: DollarSign },
       { name: 'Expense Categories', href: '/dashboard/expense-categories', icon: GitCompare },
       { name: 'Opening Balances', href: '/dashboard/opening-balances', icon: BookOpen },
-      { name: 'Accrued Expenses', href: '/dashboard/accrued-expenses', icon: FileSpreadsheet },
       { name: 'Account Transfers', href: '/dashboard/bs-movements', icon: GitCompare },
     ],
   },

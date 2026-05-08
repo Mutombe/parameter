@@ -901,6 +901,15 @@ class Expense(SoftDeleteModel):
         help_text='Landlord whose trust sub-account funds this expense'
     )
 
+    # Structured payee — third-party vendor/service provider. When set,
+    # payee_type/payee_id/payee_name still get populated from this for
+    # backwards compatibility with existing reports.
+    supplier = models.ForeignKey(
+        'masterfile.Supplier', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='expenses',
+        help_text='Vendor / service provider paid (e.g. City of Harare)'
+    )
+
     # Explicit sub-account override. When set, post_to_ledger debits this
     # pocket on the landlord's trust ledger; otherwise it falls back to the
     # expense_category's funding_category. Only used for cash expenses.

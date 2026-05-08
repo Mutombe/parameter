@@ -697,3 +697,65 @@ class PropertyManager(models.Model):
                 property=self.property, is_primary=True
             ).exclude(pk=self.pk).update(is_primary=False)
         super().save(*args, **kwargs)
+
+
+class Supplier(SoftDeleteModel):
+    """Third-party vendor or service provider paid via expenses on a
+    landlord's behalf — e.g. City of Harare for rates, ZESA for electricity.
+
+    Lets users pick a structured payee in the expense modal instead of
+    typing a freeform name each time, and surface a default expense category
+    so the GL routing is consistent across recurring suppliers.
+    """
+
+    code = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=255)
+
+    # Contact
+    email = models.EmailField(blank=True)
+    phone = models.CharField(max_length=20, blank=True)
+    address = models.TextField(blank=True)
+
+    # Tax info — VAT / TIN / etc., free-form so users can put whatever
+    # identifier their jurisdiction requires.
+    tax_id = models.CharField(max_length=50, blank=True)
+
+    # When set, picking this supplier in the expense modal pre-fills the
+    # category. e.g. City of Harare → 'Rates'.
+    default_expense_category = models.ForeignKey(
+        'accounting.ExpenseCategory', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='default_for_suppliers',
+        help_text='Auto-fills the expense category when this supplier is picked'
+    )
+
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Supplier'
+        verbose_name_plural = 'Suppliers'
+        ordering = ['name']
+        indexes = [
+            models.Index(fields=['name']),
+            models.Index(fields=['is_active']),
+        ]
+
+    def __str__(self):
+        return f'{self.code} - {self.name}'
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            with transaction.atomic():
+                self.code = self.generate_code()
+                super().save(*args, **kwargs)
+                return
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def generate_code(cls):
+        last = cls.all_objects.select_for_update().order_by('-id').first()
+        num = (last.id + 1) if last else 1
+        return f'SUP{num:04d}'

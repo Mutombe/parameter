@@ -96,8 +96,6 @@ class SubdomainHeaderMiddleware(MiddlewareMixin):
         """Set tenant from X-Tenant-Subdomain header if present. Uses in-process cache."""
         subdomain = request.META.get('HTTP_X_TENANT_SUBDOMAIN')
         original_host = request.META.get('HTTP_HOST', '')
-        path = request.path
-        print(f"[MIDDLEWARE] SubdomainHeader: path={path} host={original_host} X-Tenant-Subdomain={subdomain}")
 
         if subdomain:
             subdomain = subdomain.lower().strip()
@@ -111,19 +109,15 @@ class SubdomainHeaderMiddleware(MiddlewareMixin):
                     TenantModel = get_tenant_model()
                     tenant = TenantModel.objects.get(schema_name=schema_name)
                     _tenant_cache[schema_name] = tenant
-                    print(f"[MIDDLEWARE] Resolved tenant from DB: {schema_name} -> {tenant.name}")
                 except TenantModel.DoesNotExist:
-                    print(f"[MIDDLEWARE] TENANT NOT FOUND for schema: {schema_name}")
+                    logger.warning("Tenant not found for schema %s", schema_name)
                     _tenant_cache[schema_name] = False
                     return
                 except Exception as e:
-                    print(f"[MIDDLEWARE] ERROR resolving tenant: {e}")
+                    logger.error("Error resolving tenant for schema %s: %s", schema_name, e)
                     return
             elif tenant is False:
-                print(f"[MIDDLEWARE] Cached negative for schema: {schema_name}")
                 return
-            else:
-                print(f"[MIDDLEWARE] Tenant from cache: {schema_name} -> {tenant.name}")
 
             # Set the tenant on the request
             request.tenant = tenant
@@ -132,19 +126,16 @@ class SubdomainHeaderMiddleware(MiddlewareMixin):
             domain_suffix = getattr(settings, 'TENANT_DOMAIN_SUFFIX', 'localhost')
             expected_host = f"{subdomain}.{domain_suffix}"
             request.META['HTTP_HOST'] = expected_host
-            print(f"[MIDDLEWARE] Set request.tenant={tenant.schema_name}, Host -> {expected_host}")
         else:
             # No subdomain header — check if the Host already matches a known tenant domain.
             host_without_port = original_host.split(':')[0]
             try:
                 from apps.tenants.models import Domain
                 if Domain.objects.filter(domain=host_without_port).exists():
-                    print(f"[MIDDLEWARE] Host {host_without_port} matches a domain record, letting TenantMainMiddleware handle it")
                     return
             except Exception:
                 pass
 
-            print(f"[MIDDLEWARE] No subdomain header and no domain match for {host_without_port}, falling back to public")
             public_tenant = self._get_public_tenant()
             if public_tenant:
                 request.tenant = public_tenant
@@ -152,13 +143,12 @@ class SubdomainHeaderMiddleware(MiddlewareMixin):
                     primary_domain = public_tenant.domains.filter(is_primary=True).first()
                     if primary_domain:
                         request.META['HTTP_HOST'] = primary_domain.domain
-                        print(f"[MIDDLEWARE] Set public tenant, Host -> {primary_domain.domain}")
                     else:
-                        print(f"[MIDDLEWARE] WARNING: public tenant has no primary domain")
+                        logger.warning("Public tenant has no primary domain")
                 except Exception as e:
-                    print(f"[MIDDLEWARE] WARNING: error finding primary domain: {e}")
+                    logger.warning("Error finding primary public domain: %s", e)
             else:
-                print(f"[MIDDLEWARE] WARNING: no public tenant found!")
+                logger.warning("No public tenant found!")
 
 
 class SafeTenantMiddleware(MiddlewareMixin):
@@ -176,20 +166,21 @@ class SafeTenantMiddleware(MiddlewareMixin):
         try:
             mw = TenantMainMiddleware(lambda r: None)
             mw.process_request(request)
-            print(f"[MIDDLEWARE] SafeTenant: TenantMainMiddleware OK -> schema={db_connection.schema_name}, request.tenant={getattr(request, 'tenant', None)}")
         except Exception as e:
             # If SubdomainHeaderMiddleware already resolved a tenant, use it directly.
             existing_tenant = getattr(request, 'tenant', None)
             if existing_tenant and existing_tenant.schema_name != 'public':
-                print(f"[MIDDLEWARE] SafeTenant: TenantMainMiddleware FAILED ({e}), but tenant already resolved to {existing_tenant.schema_name} — calling set_tenant()")
+                logger.warning(
+                    "TenantMainMiddleware failed (%s); falling back to set_tenant(%s)",
+                    e, existing_tenant.schema_name,
+                )
                 try:
                     db_connection.set_tenant(existing_tenant)
-                    print(f"[MIDDLEWARE] SafeTenant: set_tenant OK -> schema={db_connection.schema_name}")
                     return
                 except Exception as e2:
-                    print(f"[MIDDLEWARE] SafeTenant: set_tenant FAILED: {e2}")
+                    logger.error("set_tenant fallback failed: %s", e2)
 
-            print(f"[MIDDLEWARE] SafeTenant: TenantMainMiddleware FAILED ({e}) — falling back to public schema")
+            logger.warning("TenantMainMiddleware failed (%s); falling back to public schema", e)
             try:
                 db_connection.set_schema_to_public()
             except Exception:
@@ -197,7 +188,7 @@ class SafeTenantMiddleware(MiddlewareMixin):
                     with db_connection.cursor() as cursor:
                         cursor.execute("SET search_path TO public")
                 except Exception as e2:
-                    print(f"[MIDDLEWARE] SafeTenant: Failed to set public schema: {e2}")
+                    logger.error("Failed to set public schema: %s", e2)
 
             if not getattr(request, 'tenant', None):
                 try:
@@ -210,7 +201,6 @@ class SafeTenantMiddleware(MiddlewareMixin):
                     pass
 
             request.urlconf = getattr(settings, 'PUBLIC_SCHEMA_URLCONF', settings.ROOT_URLCONF)
-            print(f"[MIDDLEWARE] SafeTenant: final state -> schema={db_connection.schema_name}, tenant={getattr(request, 'tenant', None)}, urlconf={getattr(request, 'urlconf', 'default')}")
 
 
 class TenantContextMiddleware(MiddlewareMixin):
@@ -232,9 +222,6 @@ class TenantContextMiddleware(MiddlewareMixin):
 
     def process_response(self, request, response):
         """Clean up thread local storage."""
-        # Log the final schema for every response
-        tenant = getattr(request, 'tenant', None)
-        print(f"[MIDDLEWARE] Response: {request.method} {request.path} -> {response.status_code} | schema={db_connection.schema_name} | tenant={tenant.schema_name if tenant else 'NONE'}")
         for attr in ('tenant', 'user', 'ip_address', 'user_agent'):
             if hasattr(_thread_locals, attr):
                 delattr(_thread_locals, attr)
