@@ -120,6 +120,10 @@ export default function Properties() {
   // showing the commission grid for that property (per-income-type rates).
   // null means we're on step 1 (PropertyForm); a value means step 2.
   const [commissionStep, setCommissionStep] = useState<{ id: number; name: string } | null>(null)
+  // JIT commission modal — invoked from the "Add Commissions" button on
+  // the edit modal, or as a sub-modal when the user explicitly asks to
+  // configure rates without leaving the property modal.
+  const [jitCommissions, setJitCommissions] = useState<{ id: number; name: string } | null>(null)
   const [form, setForm] = useState({
     landlord: '',
     name: '',
@@ -1089,12 +1093,67 @@ export default function Properties() {
             </div>
           </div>
         ) : (
-          <PropertyForm
-            initialValues={form}
-            onSubmit={(data) => createMutation.mutate({ ...data, _editingId: editingId })}
-            isSubmitting={createMutation.isPending}
-            onCancel={resetForm}
-          />
+          <div className="space-y-4">
+            <PropertyForm
+              initialValues={form}
+              onSubmit={(data) => createMutation.mutate({ ...data, _editingId: editingId })}
+              isSubmitting={createMutation.isPending}
+              onCancel={resetForm}
+            />
+
+            {/* JIT entry point — only meaningful for existing properties
+                (need a propertyId to attach overrides to). For new ones,
+                the post-save wizard step 2 already covers it. */}
+            {editingId && (
+              <div className="pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setJitCommissions({ id: editingId, name: form.name })}
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg border border-gray-200 hover:border-amber-300 hover:bg-amber-50/40 transition-colors text-left group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center group-hover:bg-amber-100 transition-colors">
+                      <Percent className="w-4 h-4 text-amber-600" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-gray-900">Add Commissions</div>
+                      <div className="text-xs text-gray-500">
+                        Set per-income-type rates — e.g. 10% rent, 15% maintenance
+                      </div>
+                    </div>
+                  </div>
+                  <Plus className="w-4 h-4 text-gray-400 group-hover:text-amber-600 transition-colors" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* JIT Commissions Modal — opened from the "Add Commissions" button
+          on the property edit modal. Lives independently so the parent
+          modal stays mounted underneath. */}
+      <Modal
+        open={!!jitCommissions}
+        onClose={() => setJitCommissions(null)}
+        title={
+          jitCommissions
+            ? `Commission Rates · ${jitCommissions.name}`
+            : 'Commission Rates'
+        }
+        icon={Percent}
+        size="lg"
+      >
+        {jitCommissions && (
+          <div className="space-y-4">
+            <CommissionGrid
+              propertyId={jitCommissions.id}
+              propertyName={jitCommissions.name}
+            />
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+              <Button onClick={() => setJitCommissions(null)}>Done</Button>
+            </div>
+          </div>
         )}
       </Modal>
 
