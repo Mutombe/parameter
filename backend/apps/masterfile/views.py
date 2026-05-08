@@ -22,13 +22,16 @@ class IgnoreFormatNegotiation(DefaultContentNegotiation):
 
     def filter_renderers(self, renderers, format):
         return renderers
-from .models import Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager, Supplier
+from .models import (
+    Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager,
+    Supplier, PropertyIncomeCommission,
+)
 from .serializers import (
     LandlordSerializer, PropertySerializer, PropertyListSerializer,
     UnitSerializer, RentalTenantSerializer, RentalTenantListSerializer,
     LeaseAgreementSerializer,
     LeaseActivateSerializer, LeaseTerminateSerializer, PropertyManagerSerializer,
-    SupplierSerializer,
+    SupplierSerializer, PropertyIncomeCommissionSerializer,
 )
 from .services import (
     send_lease_activation_emails, send_lease_termination_emails,
@@ -704,3 +707,105 @@ class PropertyManagerViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(assigned_by=self.request.user)
+
+
+class PropertyIncomeCommissionViewSet(viewsets.ModelViewSet):
+    """CRUD for per-(property, income_type) commission rate overrides.
+
+    Plus a `grid` action that returns one row per IncomeType for a given
+    property — overrides where they exist, defaults where they don't —
+    so the frontend can render a single editable matrix.
+    """
+    queryset = PropertyIncomeCommission.objects.select_related(
+        'property', 'income_type'
+    ).all()
+    serializer_class = PropertyIncomeCommissionSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['property', 'income_type']
+    ordering_fields = ['property__name', 'income_type__name', 'rate']
+    ordering = ['property__name', 'income_type__name']
+
+    @action(detail=False, methods=['get'], url_path='grid')
+    def grid(self, request):
+        """Return the full commission matrix for a single property.
+
+        Each row is one IncomeType with:
+          - default_rate: IncomeType.default_commission_rate
+          - override_rate: PropertyIncomeCommission.rate or null
+          - effective_rate: override_rate if set, else default
+          - is_commissionable: from IncomeType
+          - override_id: the row id when overridden, else null
+        """
+        from apps.accounting.models import IncomeType
+        property_id = request.query_params.get('property')
+        if not property_id:
+            return Response(
+                {'error': 'property is required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            prop = Property.objects.get(pk=property_id)
+        except Property.DoesNotExist:
+            return Response({'error': 'Property not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        overrides = {
+            r.income_type_id: r
+            for r in PropertyIncomeCommission.objects.filter(property_id=prop.id)
+        }
+
+        rows = []
+        for it in IncomeType.objects.filter(is_active=True).order_by('name'):
+            ovr = overrides.get(it.id)
+            rows.append({
+                'income_type_id': it.id,
+                'income_type_code': it.code,
+                'income_type_name': it.name,
+                'is_commissionable': it.is_commissionable,
+                'default_rate': float(it.default_commission_rate),
+                'override_rate': float(ovr.rate) if ovr else None,
+                'effective_rate': float(ovr.rate) if ovr else float(it.default_commission_rate),
+                'override_id': ovr.id if ovr else None,
+            })
+
+        return Response({
+            'property_id': prop.id,
+            'property_name': prop.name,
+            'rows': rows,
+        })
+
+    @action(detail=False, methods=['post'], url_path='upsert')
+    def upsert(self, request):
+        """Create-or-update an override row by (property, income_type).
+
+        Body: {property: <id>, income_type: <id>, rate: <decimal>, notes?: ""}
+        Sending rate=null/blank deletes the override and reverts to default.
+        """
+        from decimal import Decimal, InvalidOperation
+        property_id = request.data.get('property')
+        income_type_id = request.data.get('income_type')
+        rate = request.data.get('rate')
+        notes = request.data.get('notes', '') or ''
+
+        if not property_id or not income_type_id:
+            return Response(
+                {'error': 'property and income_type are required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # null/empty rate -> delete the override (revert to default)
+        if rate is None or rate == '':
+            PropertyIncomeCommission.objects.filter(
+                property_id=property_id, income_type_id=income_type_id,
+            ).delete()
+            return Response({'deleted': True})
+
+        try:
+            rate_dec = Decimal(str(rate))
+        except (InvalidOperation, TypeError):
+            return Response({'error': 'rate must be a number'}, status=status.HTTP_400_BAD_REQUEST)
+
+        obj, _ = PropertyIncomeCommission.objects.update_or_create(
+            property_id=property_id, income_type_id=income_type_id,
+            defaults={'rate': rate_dec, 'notes': notes},
+        )
+        return Response(PropertyIncomeCommissionSerializer(obj).data)

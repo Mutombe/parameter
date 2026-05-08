@@ -1,6 +1,6 @@
 import { useState, useImperativeHandle, forwardRef, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Input, Select, Textarea } from '../ui'
+import { Select, Textarea } from '../ui'
 import { AutocompleteInput } from '../ui/AutocompleteInput'
 import { landlordApi } from '../../services/api'
 
@@ -25,7 +25,6 @@ const LandlordForm = forwardRef<LandlordFormRef, LandlordFormProps>(
       email: '',
       phone: '',
       address: '',
-      commission_rate: '10.00',
     })
 
     // Fetch existing landlords for name duplicate detection
@@ -72,29 +71,20 @@ const LandlordForm = forwardRef<LandlordFormRef, LandlordFormProps>(
           required
         />
 
-        <div className="grid grid-cols-2 gap-4">
-          <Select
-            label="Type"
-            value={form.landlord_type}
-            onChange={(e) => setForm({ ...form, landlord_type: e.target.value })}
-          >
-            <option value="individual">Individual</option>
-            <option value="company">Company</option>
-            <option value="trust">Trust</option>
-          </Select>
+        <Select
+          label="Type"
+          value={form.landlord_type}
+          onChange={(e) => setForm({ ...form, landlord_type: e.target.value })}
+        >
+          <option value="individual">Individual</option>
+          <option value="company">Company</option>
+          <option value="trust">Trust</option>
+        </Select>
 
-          <Input
-            type="number"
-            label="Commission Rate (%)"
-            placeholder="10.00"
-            step="0.01"
-            min="0"
-            max="100"
-            value={form.commission_rate}
-            onChange={(e) => setForm({ ...form, commission_rate: e.target.value })}
-            hint="Standard commission is 10%"
-          />
-        </div>
+        <p className="text-xs text-gray-500 -mt-3">
+          Commission rates are now configured per income type on each property
+          (e.g. 10% rent, 15% maintenance) in Property → Commission Settings.
+        </p>
 
         <div className="grid grid-cols-2 gap-4">
           <AutocompleteInput

@@ -498,21 +498,53 @@ class Receipt(SoftDeleteModel):
         return None
 
     def _get_commission_settings(self):
-        """Get commission rate and VAT rate, respecting landlord override."""
-        commission_rate = Decimal('0.10')
+        """Resolve commission rate and VAT rate for this receipt.
+
+        Resolution order for the commission rate (descending priority):
+          1. PropertyIncomeCommission(property, income_type) override —
+             per-(property, income_type) rate the agency negotiated with
+             the landlord (e.g. 10% on rent, 15% on maintenance).
+          2. IncomeType.default_commission_rate — when the income type is
+             commissionable and no per-property override exists.
+          3. 0% — when the income type is non-commissionable, or when no
+             income type is set on the receipt at all (defensive default).
+
+        Landlord.commission_rate is no longer consulted; that value lives
+        in the DB during the transition but is dead-weight from the
+        resolver's POV.
+        """
         vat_rate = Decimal('0.15')
 
-        landlord = self._resolve_landlord_for_receipt()
-        if landlord and landlord.commission_rate:
-            commission_rate = landlord.commission_rate / Decimal('100')
+        # No commissionable income type → no commission, full stop.
+        if not self.income_type or not self.income_type.is_commissionable:
+            commission_rate = Decimal('0')
+        else:
+            # Look up the property the receipt is tied to via its invoice.
+            prop_id = None
+            if self.invoice_id:
+                inv = self.invoice
+                if inv:
+                    if inv.unit_id and inv.unit and inv.unit.property_id:
+                        prop_id = inv.unit.property_id
+                    elif inv.property_id:
+                        prop_id = inv.property_id
 
-        if self.income_type:
-            if not self.income_type.is_commissionable:
-                commission_rate = Decimal('0')
+            override_rate = None
+            if prop_id:
+                from apps.masterfile.models import PropertyIncomeCommission
+                override_rate = PropertyIncomeCommission.objects.filter(
+                    property_id=prop_id, income_type_id=self.income_type_id,
+                ).values_list('rate', flat=True).first()
+
+            if override_rate is not None:
+                commission_rate = Decimal(str(override_rate)) / Decimal('100')
             elif self.income_type.default_commission_rate:
                 commission_rate = self.income_type.default_commission_rate / Decimal('100')
-            if self.income_type.is_vatable:
-                vat_rate = self.income_type.vat_rate / Decimal('100')
+            else:
+                commission_rate = Decimal('0')
+
+        if self.income_type and self.income_type.is_vatable:
+            vat_rate = self.income_type.vat_rate / Decimal('100')
 
         return commission_rate, vat_rate
 

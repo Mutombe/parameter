@@ -1241,7 +1241,7 @@ def _generate_commission_report_data(start_date, end_date):
         date__lte=end_date,
     ).select_related(
         'invoice', 'invoice__unit', 'invoice__unit__property',
-        'invoice__unit__property__landlord'
+        'invoice__unit__property__landlord', 'income_type',
     )
 
     property_commissions = {}
@@ -1249,13 +1249,17 @@ def _generate_commission_report_data(start_date, end_date):
     total_collected = Decimal('0')
     total_commission = Decimal('0')
 
+    # Commission resolves per (property, income_type) — same chain as the
+    # Receipt._get_commission_settings resolver.
+    from apps.reports.views import _resolve_commission_rate_pct
+
     for receipt in receipts:
         if not receipt.invoice or not receipt.invoice.unit:
             continue
 
         prop = receipt.invoice.unit.property
         landlord = prop.landlord
-        commission_rate = landlord.commission_rate / 100
+        commission_rate = _resolve_commission_rate_pct(receipt.income_type, prop.id) / 100
         commission = receipt.amount * commission_rate
 
         # By property
@@ -1263,7 +1267,9 @@ def _generate_commission_report_data(start_date, end_date):
             property_commissions[prop.id] = {
                 'property_name': prop.name,
                 'landlord_name': landlord.name,
-                'commission_rate': float(landlord.commission_rate),
+                # Per-property blended rate is computed below from
+                # commission ÷ collected once both are summed.
+                'commission_rate': 0.0,
                 'collected': Decimal('0'),
                 'commission': Decimal('0'),
             }
@@ -1289,7 +1295,15 @@ def _generate_commission_report_data(start_date, end_date):
 
     property_list = sorted(
         [
-            {**pc, 'collected': float(pc['collected']), 'commission': float(pc['commission'])}
+            {
+                **pc,
+                'collected': float(pc['collected']),
+                'commission': float(pc['commission']),
+                # Blended rate: weighted by income_type mix on this property.
+                'commission_rate': round(
+                    float(pc['commission']) / float(pc['collected']) * 100, 2
+                ) if pc['collected'] else 0.0,
+            }
             for pc in property_commissions.values()
         ],
         key=lambda x: x['commission'],

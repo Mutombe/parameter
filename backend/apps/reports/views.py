@@ -97,6 +97,71 @@ def _gl_filter_for_landlord(landlord_id=None, property_id=None):
     )
 
 
+def _commission_expr():
+    """Build a Case/When expression that returns the commission amount
+    for each Receipt row (intended for `.aggregate(Sum(_commission_expr()))`).
+
+    Resolution chain (descending priority), all expressed in pure SQL:
+      1. PropertyIncomeCommission(property=invoice.unit.property,
+         income_type=receipt.income_type) — per-(property, income_type)
+         override negotiated with the landlord (e.g. 10% rent, 15% maintenance).
+      2. PropertyIncomeCommission(property=invoice.property, …) — same
+         override but resolved through invoice.property (used for property-
+         level levy invoices that have no unit).
+      3. IncomeType.default_commission_rate — fallback per income type.
+      4. 0 — when income_type is null or non-commissionable.
+
+    Returns a `DecimalField` expression in money units (amount * rate / 100).
+    Landlord.commission_rate is no longer consulted here.
+    """
+    from django.db.models import Subquery, OuterRef
+    from apps.masterfile.models import PropertyIncomeCommission
+
+    rate_via_unit = PropertyIncomeCommission.objects.filter(
+        property_id=OuterRef('invoice__unit__property_id'),
+        income_type_id=OuterRef('income_type_id'),
+    ).values('rate')[:1]
+    rate_via_property = PropertyIncomeCommission.objects.filter(
+        property_id=OuterRef('invoice__property_id'),
+        income_type_id=OuterRef('income_type_id'),
+    ).values('rate')[:1]
+
+    effective_rate = Coalesce(
+        Subquery(rate_via_unit, output_field=DecimalField(max_digits=5, decimal_places=2)),
+        Subquery(rate_via_property, output_field=DecimalField(max_digits=5, decimal_places=2)),
+        F('income_type__default_commission_rate'),
+        Value(Decimal('0')),
+        output_field=DecimalField(max_digits=5, decimal_places=2),
+    )
+
+    return Case(
+        When(
+            income_type__isnull=False, income_type__is_commissionable=True,
+            then=F('amount') * effective_rate / Value(Decimal('100')),
+        ),
+        default=Value(Decimal('0')),
+        output_field=DecimalField(max_digits=18, decimal_places=2),
+    )
+
+
+def _resolve_commission_rate_pct(income_type, property_id=None):
+    """Resolve the commission rate as a Decimal percent (10.00 == 10%) for a
+    single (income_type, property) pair. Mirrors `_commission_expr()` but
+    runs in Python — used by report views that compute commission row by row
+    (e.g. CommissionReportView, IncomeExpenditureReportView).
+    """
+    if not income_type or not getattr(income_type, 'is_commissionable', False):
+        return Decimal('0')
+    if property_id:
+        from apps.masterfile.models import PropertyIncomeCommission
+        override = PropertyIncomeCommission.objects.filter(
+            property_id=property_id, income_type_id=income_type.id,
+        ).values_list('rate', flat=True).first()
+        if override is not None:
+            return Decimal(str(override))
+    return Decimal(str(income_type.default_commission_rate or 0))
+
+
 def _exclude_non_cash_expenses_q():
     """Q that, when passed to GeneralLedger.exclude(...), drops every entry
     sourced from a non-cash Expense (accruals / depreciation). Used by the
@@ -510,15 +575,7 @@ class IncomeStatementView(APIView):
                 if start_date:
                     receipt_qs = receipt_qs.filter(date__gte=start_date)
                 receipt_qs = receipt_qs.filter(date__lte=end_date)
-                commission_expr = Case(
-                    When(
-                        income_type__isnull=False, income_type__is_commissionable=True,
-                        then=F('amount') * F('income_type__default_commission_rate') / Value(Decimal('100')),
-                    ),
-                    default=F('amount') * Value(landlord_obj.commission_rate) / Value(Decimal('100')),
-                    output_field=DecimalField(max_digits=18, decimal_places=2),
-                )
-                commission_total = receipt_qs.aggregate(t=Sum(commission_expr))['t'] or Decimal('0')
+                commission_total = receipt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
                 if commission_total > 0:
                     expense_list.append({
                         'code': '',
@@ -739,18 +796,9 @@ class BalanceSheetView(APIView):
                             Q(invoice__unit__property_id=property_id) |
                             Q(invoice__property_id=property_id)
                         )
-                    commission_expr = Case(
-                        When(
-                            income_type__isnull=False,
-                            income_type__is_commissionable=True,
-                            then=F('amount') * F('income_type__default_commission_rate') / Value(Decimal('100')),
-                        ),
-                        default=F('amount') * Value(landlord_obj.commission_rate) / Value(Decimal('100')),
-                        output_field=DecimalField(max_digits=18, decimal_places=2),
-                    )
                     rcpt_agg = receipt_qs.aggregate(
                         receipts=Sum('amount'),
-                        commissions=Sum(commission_expr),
+                        commissions=Sum(_commission_expr()),
                     )
                     # Funds Held in Trust is a cash position — non-cash
                     # expenses (accruals) never left the bank, so excluding
@@ -821,16 +869,6 @@ class BalanceSheetView(APIView):
                 _units_qs = Unit.objects.filter(property_id__in=_property_id_list)
                 _unit_id_list = list(_units_qs.values_list('id', flat=True))
 
-                _commission_expr = Case(
-                    When(
-                        income_type__isnull=False,
-                        income_type__is_commissionable=True,
-                        then=F('amount') * F('income_type__default_commission_rate') / Value(Decimal('100')),
-                    ),
-                    default=F('amount') * Value(landlord_obj.commission_rate) / Value(Decimal('100')),
-                    output_field=DecimalField(max_digits=18, decimal_places=2),
-                )
-
                 # ---- Trust composition (inception → as_of_date) ----
                 _all_receipts_qs = Receipt.objects.filter(
                     Q(invoice__unit_id__in=_unit_id_list) |
@@ -838,7 +876,7 @@ class BalanceSheetView(APIView):
                     date__lte=as_of_date,
                 )
                 _rcpt_total = _all_receipts_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
-                _comm_total = _all_receipts_qs.aggregate(t=Sum(_commission_expr))['t'] or Decimal('0')
+                _comm_total = _all_receipts_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
 
                 _operating_exp_total = Expense.objects.filter(
                     landlord_id=landlord_obj.id,
@@ -877,7 +915,7 @@ class BalanceSheetView(APIView):
                             date__lte=as_of_date,
                         )
                         _prop_rcpt = _prop_rcpt_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
-                        _prop_comm = _prop_rcpt_qs.aggregate(t=Sum(_commission_expr))['t'] or Decimal('0')
+                        _prop_comm = _prop_rcpt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
                         _prop_op_exp = Expense.objects.filter(
                             landlord_id=landlord_obj.id,
                             status='paid',
@@ -953,7 +991,7 @@ class BalanceSheetView(APIView):
                     date__lte=_opening_cutoff,
                 )
                 _open_rcpt = _open_rcpt_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
-                _open_comm = _open_rcpt_qs.aggregate(t=Sum(_commission_expr))['t'] or Decimal('0')
+                _open_comm = _open_rcpt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
                 _open_exp = Expense.objects.filter(
                     landlord_id=landlord_obj.id,
                     status='paid',
@@ -975,7 +1013,7 @@ class BalanceSheetView(APIView):
                     Q(invoice__property_id__in=_property_id_list),
                     date__gte=_period_start, date__lte=as_of_date,
                 )
-                _period_comm = _period_rcpt_qs.aggregate(t=Sum(_commission_expr))['t'] or Decimal('0')
+                _period_comm = _period_rcpt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
 
                 _period_expenses = Expense.objects.filter(
                     landlord_id=landlord_obj.id,
@@ -1286,10 +1324,16 @@ class LandlordStatementView(APIView):
 
     def _compute_commission(self, receipt, landlord):
         """Compute commission for a single receipt."""
-        if receipt.income_type and receipt.income_type.is_commissionable:
-            rate = receipt.income_type.default_commission_rate / 100
-        else:
-            rate = landlord.commission_rate / 100
+        # Resolve per-(property, income_type) override, fall back to
+        # IncomeType default, otherwise 0%. landlord arg kept for the
+        # signature stability — not consulted any more.
+        prop_id = None
+        if receipt.invoice_id and receipt.invoice:
+            if receipt.invoice.unit_id and receipt.invoice.unit and receipt.invoice.unit.property_id:
+                prop_id = receipt.invoice.unit.property_id
+            elif receipt.invoice.property_id:
+                prop_id = receipt.invoice.property_id
+        rate = _resolve_commission_rate_pct(receipt.income_type, prop_id) / 100
         return receipt.amount * rate
 
     @staticmethod
@@ -1335,16 +1379,9 @@ class LandlordStatementView(APIView):
         units = Unit.objects.filter(property__in=properties)
         unit_id_list = list(units.values_list('id', flat=True))
 
-        # Commission SQL expression for DB-level aggregation
-        commission_expr = Case(
-            When(
-                income_type__isnull=False,
-                income_type__is_commissionable=True,
-                then=F('amount') * F('income_type__default_commission_rate') / Value(Decimal('100')),
-            ),
-            default=F('amount') * Value(landlord.commission_rate) / Value(Decimal('100')),
-            output_field=DecimalField(max_digits=18, decimal_places=2),
-        )
+        # Commission SQL expression — resolves per (property, income_type)
+        # via PropertyIncomeCommission, falling back to IncomeType default.
+        commission_expr = _commission_expr()
 
         # ── Opening balance (all transactions before start_date) ──
         # Use DB aggregation instead of Python loops to avoid OOM for large histories
@@ -1498,7 +1535,11 @@ class LandlordStatementView(APIView):
                 'total_credits': float(total_credits),
                 'net_payable': float(net_payable),
                 'closing_balance': float(running_balance),
-                'commission_rate': float(landlord.commission_rate),
+                # Legacy single-rate metadata. Now that commissions resolve
+                # per (property, income_type), there's no single rate to
+                # surface here — set to 0 so existing clients don't crash
+                # but no longer trust this field.
+                'commission_rate': 0,
             },
             'properties': [
                 {
@@ -1629,15 +1670,7 @@ class CashFlowStatementView(APIView):
             except Landlord.DoesNotExist:
                 landlord_obj = None
             if landlord_obj:
-                commission_expr = Case(
-                    When(
-                        income_type__isnull=False, income_type__is_commissionable=True,
-                        then=F('amount') * F('income_type__default_commission_rate') / Value(Decimal('100')),
-                    ),
-                    default=F('amount') * Value(landlord_obj.commission_rate) / Value(Decimal('100')),
-                    output_field=DecimalField(max_digits=18, decimal_places=2),
-                )
-                agent_commission = receipt_qs.aggregate(t=Sum(commission_expr))['t'] or Decimal('0')
+                agent_commission = receipt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
 
         # Calculate Operating Cash Flow
         operating_inflows = tenant_receipts
@@ -1699,17 +1732,9 @@ class CashFlowStatementView(APIView):
             except Landlord.DoesNotExist:
                 _ll = None
             if _ll:
-                _commission_expr = Case(
-                    When(
-                        income_type__isnull=False, income_type__is_commissionable=True,
-                        then=F('amount') * F('income_type__default_commission_rate') / Value(Decimal('100')),
-                    ),
-                    default=F('amount') * Value(_ll.commission_rate) / Value(Decimal('100')),
-                    output_field=DecimalField(max_digits=18, decimal_places=2),
-                )
                 # ending_cash = funds held in trust as of end_date
                 end_receipts = receipt_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
-                end_commission = receipt_qs.aggregate(t=Sum(_commission_expr))['t'] or Decimal('0')
+                end_commission = receipt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
                 _gl_exp_to_end = GeneralLedger.objects.filter(
                     Q(date__lte=end_date),
                     account__in=expense_accounts,
@@ -2178,54 +2203,59 @@ class CommissionReportView(APIView):
         if landlord_id:
             base_filter &= Q(invoice__unit__property__landlord_id=landlord_id)
 
-        # Use DB-level aggregation instead of Python iteration
-        # By landlord - aggregate at DB level
+        # Per-receipt commission via the unified resolver (per-(property,
+        # income_type) override → IncomeType default → 0). We sum that
+        # expression per group instead of multiplying a flat landlord rate.
+        comm_expr = _commission_expr()
+
+        # By landlord
         landlord_qs = Receipt.objects.filter(base_filter).values(
             'invoice__unit__property__landlord__id',
             'invoice__unit__property__landlord__name',
             'invoice__unit__property__landlord__code',
-            'invoice__unit__property__landlord__commission_rate',
         ).annotate(
             collected=Sum('amount'),
+            commission=Sum(comm_expr),
         ).order_by('-collected')
 
         landlord_list = []
         for row in landlord_qs:
-            rate = row['invoice__unit__property__landlord__commission_rate'] or Decimal('0')
             collected = row['collected'] or Decimal('0')
-            commission = collected * rate / 100
+            commission = row['commission'] or Decimal('0')
+            # Effective blended rate for display (commission / collected)
+            blended = (commission / collected * 100) if collected else Decimal('0')
             landlord_list.append({
                 'landlord_id': row['invoice__unit__property__landlord__id'],
                 'landlord_name': row['invoice__unit__property__landlord__name'],
                 'landlord_code': row['invoice__unit__property__landlord__code'],
-                'commission_rate': float(rate),
+                'commission_rate': float(blended),
                 'collected': float(collected),
                 'commission': float(commission),
             })
         landlord_list.sort(key=lambda x: x['commission'], reverse=True)
 
-        # By property - aggregate at DB level
+        # By property
         property_qs = Receipt.objects.filter(base_filter).values(
             'invoice__unit__property__id',
             'invoice__unit__property__name',
             'invoice__unit__property__landlord__id',
             'invoice__unit__property__landlord__name',
-            'invoice__unit__property__landlord__commission_rate',
         ).annotate(
             collected=Sum('amount'),
+            commission=Sum(comm_expr),
         ).order_by('-collected')
 
         property_list = []
         for row in property_qs:
-            rate = row['invoice__unit__property__landlord__commission_rate'] or Decimal('0')
             collected = row['collected'] or Decimal('0')
-            commission = collected * rate / 100
+            commission = row['commission'] or Decimal('0')
+            blended = (commission / collected * 100) if collected else Decimal('0')
             property_list.append({
                 'property_id': row['invoice__unit__property__id'],
                 'property_name': row['invoice__unit__property__name'],
                 'landlord_id': row['invoice__unit__property__landlord__id'],
                 'landlord_name': row['invoice__unit__property__landlord__name'],
-                'commission_rate': float(rate),
+                'commission_rate': float(blended),
                 'collected': float(collected),
                 'commission': float(commission),
             })
@@ -2316,8 +2346,6 @@ class CommissionPropertyDrilldownView(APIView):
         except Property.DoesNotExist:
             return Response({'error': 'Property not found'}, status=404)
 
-        commission_rate = float(prop.landlord.commission_rate) if prop.landlord and prop.landlord.commission_rate else 0
-
         # Group receipts by invoice_type for this property
         rcpt_filter = {
             'invoice__unit__property_id': property_id,
@@ -2332,25 +2360,30 @@ class CommissionPropertyDrilldownView(APIView):
         type_qs = Receipt.objects.filter(**rcpt_filter).values(
             'invoice__invoice_type'
         ).annotate(
-            collected=Coalesce(Sum('amount'), Decimal('0'))
+            collected=Coalesce(Sum('amount'), Decimal('0')),
+            commission=Coalesce(Sum(_commission_expr()), Decimal('0')),
         ).order_by('-collected')
 
         total_revenue = Decimal('0')
+        total_commission = Decimal('0')
         revenue_types = []
         for row in type_qs:
-            collected = float(row['collected'])
-            commission = round(collected * commission_rate / 100, 2)
-            total_revenue += Decimal(str(collected))
+            collected = Decimal(str(row['collected']))
+            commission = Decimal(str(row['commission']))
+            blended = (commission / collected * 100) if collected else Decimal('0')
+            total_revenue += collected
+            total_commission += commission
             revenue_types.append({
                 'revenue_type': row['invoice__invoice_type'],
                 'revenue_type_display': invoice_type_choices.get(row['invoice__invoice_type'], row['invoice__invoice_type']),
-                'revenue': collected,
-                'commission_rate': commission_rate,
-                'commission': commission,
+                'revenue': float(collected),
+                'commission_rate': float(blended),
+                'commission': float(commission),
             })
 
         total_revenue_f = float(total_revenue)
-        total_commission = round(total_revenue_f * commission_rate / 100, 2)
+        total_commission_f = float(total_commission)
+        overall_blended = float(total_commission / total_revenue * 100) if total_revenue else 0.0
 
         # Calculate percentage of total for each type
         for item in revenue_types:
@@ -2361,12 +2394,14 @@ class CommissionPropertyDrilldownView(APIView):
             'property_id': int(property_id),
             'property_name': prop.name,
             'landlord_name': prop.landlord.name if prop.landlord else '',
-            'commission_rate': commission_rate,
+            # Blended commission rate across this property (commission ÷ revenue × 100).
+            # The actual rate now varies per income_type, which is shown per row.
+            'commission_rate': overall_blended,
             'period': {'start': start_date or '', 'end': end_date},
             'revenue_types': revenue_types,
             'summary': {
                 'total_revenue': total_revenue_f,
-                'total_commission': total_commission,
+                'total_commission': total_commission_f,
             },
         })
 
@@ -2432,12 +2467,27 @@ class LeaseChargeSummaryView(APIView):
             prop = lease.unit.property
             landlord = prop.landlord
 
-            # Commission rate: prefer income_type rate, fallback to landlord rate
+            # Commission rate: per-(property, income_type) override → IncomeType
+            # default → 0%. Falls back to the income-type default surfaced by
+            # the lease's most recent invoice when no explicit override exists.
             income_commission = commission_map.get(lease.id)
             if income_commission is not None:
-                comm_rate = float(income_commission)
+                # When the lease's invoices map to an income_type, prefer the
+                # per-property override on that pair if one's been set.
+                from apps.masterfile.models import PropertyIncomeCommission
+                latest_inv = Invoice.objects.filter(
+                    lease_id=lease.id, income_type__isnull=False,
+                ).order_by('-date').values('income_type_id').first()
+                override = None
+                if latest_inv:
+                    override = PropertyIncomeCommission.objects.filter(
+                        property_id=prop.id, income_type_id=latest_inv['income_type_id'],
+                    ).values_list('rate', flat=True).first()
+                comm_rate = float(override) if override is not None else float(income_commission)
             else:
-                comm_rate = float(landlord.commission_rate)
+                # No commissionable income type linked — show 0% rather than the
+                # legacy landlord-flat fallback.
+                comm_rate = 0.0
 
             # Build property display: "Name, Suburb, City" (matching spreadsheet)
             parts = [prop.name]
@@ -2679,15 +2729,18 @@ class CommissionAnalysisView(APIView):
         total_income = Decimal('0')
         total_commission = Decimal('0')
 
+        # Pre-fetch the income_type relation so the per-receipt resolver
+        # doesn't trigger N+1 queries below.
+        receipts = receipts.select_related('income_type')
+
         for rcpt in receipts:
             if not rcpt.invoice or not rcpt.invoice.unit:
                 continue
 
-            landlord = rcpt.invoice.unit.property.landlord
-            commission_rate = landlord.commission_rate / 100
+            prop = rcpt.invoice.unit.property
+            commission_rate = _resolve_commission_rate_pct(rcpt.income_type, prop.id) / 100
             commission = rcpt.amount * commission_rate
             income_type = rcpt.invoice.invoice_type
-            prop = rcpt.invoice.unit.property
             month_key = rcpt.date.strftime('%Y-%m')
 
             # By income type
@@ -3070,10 +3123,16 @@ class IncomeExpenditureReportView(APIView):
 
     @staticmethod
     def _compute_commission_amount(receipt, landlord):
-        if receipt.income_type and receipt.income_type.is_commissionable:
-            rate = receipt.income_type.default_commission_rate / 100
-        else:
-            rate = landlord.commission_rate / 100
+        # `landlord` arg kept for signature stability; not consulted any
+        # more. Rate now resolves per (property, income_type) via the
+        # PropertyIncomeCommission table.
+        prop_id = None
+        if receipt.invoice_id and receipt.invoice:
+            if receipt.invoice.unit_id and receipt.invoice.unit and receipt.invoice.unit.property_id:
+                prop_id = receipt.invoice.unit.property_id
+            elif receipt.invoice.property_id:
+                prop_id = receipt.invoice.property_id
+        rate = _resolve_commission_rate_pct(receipt.income_type, prop_id) / 100
         return receipt.amount * rate
 
     # ── expense label map ────────────────────────────────────────────
@@ -3171,22 +3230,17 @@ class IncomeExpenditureReportView(APIView):
         # Currency filter – default to USD
         currency = request.query_params.get('currency', '').upper() or None
 
-        commission_rate = float(landlord.commission_rate)
+        # Legacy single-rate metadata. Now resolves per (property, income_type)
+        # so there's no single rate to surface — kept at 0 for clients that
+        # still read this field. Real commission appears in `commission_total`.
+        commission_rate = 0.0
 
         # ── 1. Opening balance (all transactions BEFORE start_date) ──
         # Pre-evaluate unit IDs to avoid repeated subquery evaluation
         unit_id_list = list(units.values_list('id', flat=True))
 
-        # Commission SQL expression (reused in multiple aggregations)
-        commission_expr = Case(
-            When(
-                income_type__isnull=False,
-                income_type__is_commissionable=True,
-                then=F('amount') * F('income_type__default_commission_rate') / Value(Decimal('100')),
-            ),
-            default=F('amount') * Value(landlord.commission_rate) / Value(Decimal('100')),
-            output_field=DecimalField(max_digits=18, decimal_places=2),
-        )
+        # Commission SQL expression — per-(property, income_type) override → IncomeType default → 0
+        commission_expr = _commission_expr()
 
         # Aggregate prior receipts total and commission in SQL (avoids loading
         # every historical receipt into Python memory — the old per-receipt loop
@@ -4171,7 +4225,7 @@ class CommissionAnalysisReportView(APIView):
             date__lte=period_end
         ).select_related(
             'invoice', 'invoice__unit', 'invoice__unit__property',
-            'invoice__unit__property__landlord',
+            'invoice__unit__property__landlord', 'income_type',
         )
 
         if period_start:
@@ -4192,11 +4246,10 @@ class CommissionAnalysisReportView(APIView):
             if not rcpt.invoice or not rcpt.invoice.unit:
                 continue
 
-            landlord = rcpt.invoice.unit.property.landlord
-            commission_rate = landlord.commission_rate / 100
+            prop = rcpt.invoice.unit.property
+            commission_rate = _resolve_commission_rate_pct(rcpt.income_type, prop.id) / 100
             commission = rcpt.amount * commission_rate
             inv_type = rcpt.invoice.get_invoice_type_display()
-            prop = rcpt.invoice.unit.property
 
             # By income type
             if inv_type not in by_income_type:

@@ -20,6 +20,7 @@ import {
   Eye,
   Calendar as CalendarIcon,
   BarChart3,
+  Percent,
 } from 'lucide-react'
 import {
   BarChart,
@@ -34,6 +35,7 @@ import {
   Cell,
 } from 'recharts'
 import api, { propertyApi, landlordApi, unitApi, reportsApi, leaseApi, invoiceApi, receiptApi, subsidiaryApi } from '../../services/api'
+import { CommissionGrid } from '../../components/property/CommissionGrid'
 import { formatCurrency, formatPercent, formatDate, cn } from '../../lib/utils'
 import { Modal, Button, Input, Select, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
@@ -806,6 +808,7 @@ export default function PropertyDetail() {
           <TabsTrigger value="leases" icon={FileText}>Leases</TabsTrigger>
           <TabsTrigger value="financials" icon={DollarSign}>Financials</TabsTrigger>
           <TabsTrigger value="sub-accounts" icon={Layers}>Sub Accounts</TabsTrigger>
+          <TabsTrigger value="commissions" icon={Percent}>Commissions</TabsTrigger>
           <TabsTrigger value="reports" icon={BarChart3}>Reports</TabsTrigger>
         </TabsList>
 
@@ -1972,6 +1975,11 @@ export default function PropertyDetail() {
           </div>
         )}
       </motion.div>
+        </TabsContent>
+
+        {/* ===== COMMISSIONS TAB ===== */}
+        <TabsContent value="commissions" className="space-y-6">
+          <CommissionGrid propertyId={Number(propertyId)} propertyName={property?.name || ''} />
         </TabsContent>
 
         {/* ===== REPORTS TAB ===== */}

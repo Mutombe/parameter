@@ -262,6 +262,18 @@ export const supplierApi = {
   delete: (id: number) => api.delete(`/masterfile/suppliers/${id}/`),
 }
 
+export const propertyCommissionApi = {
+  // Returns the commission grid for a property: one row per IncomeType,
+  // with default_rate / override_rate / effective_rate.
+  grid: (propertyId: number) =>
+    api.get('/masterfile/property-commissions/grid/', { params: { property: propertyId } }),
+  // Create-or-update an override row by (property, income_type).
+  // Pass `rate: null` to delete the override and revert to default.
+  upsert: (data: { property: number; income_type: number; rate: number | null; notes?: string }) =>
+    api.post('/masterfile/property-commissions/upsert/', data),
+  delete: (id: number) => api.delete(`/masterfile/property-commissions/${id}/`),
+}
+
 export const propertyApi = {
   list: (params?: object) => api.get('/masterfile/properties/', { params }),
   get: (id: number) => api.get(`/masterfile/properties/${id}/`),

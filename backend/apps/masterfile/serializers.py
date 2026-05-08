@@ -1,6 +1,33 @@
 """Serializers for masterfile module."""
 from rest_framework import serializers
-from .models import Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager, Supplier
+from .models import (
+    Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager,
+    Supplier, PropertyIncomeCommission,
+)
+
+
+class PropertyIncomeCommissionSerializer(serializers.ModelSerializer):
+    """Per-(property, income_type) commission rate override."""
+    income_type_name = serializers.CharField(source='income_type.name', read_only=True)
+    income_type_code = serializers.CharField(source='income_type.code', read_only=True)
+    income_type_default_rate = serializers.DecimalField(
+        source='income_type.default_commission_rate', max_digits=5, decimal_places=2,
+        read_only=True,
+    )
+    income_type_is_commissionable = serializers.BooleanField(
+        source='income_type.is_commissionable', read_only=True,
+    )
+    property_name = serializers.CharField(source='property.name', read_only=True)
+
+    class Meta:
+        model = PropertyIncomeCommission
+        fields = [
+            'id', 'property', 'property_name',
+            'income_type', 'income_type_name', 'income_type_code',
+            'income_type_default_rate', 'income_type_is_commissionable',
+            'rate', 'notes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
 
 
 class SupplierSerializer(serializers.ModelSerializer):

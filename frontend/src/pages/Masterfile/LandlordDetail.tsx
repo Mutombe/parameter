@@ -1803,16 +1803,11 @@ export default function LandlordDetail() {
               <option value="trust">Trust</option>
             </Select>
 
-            <Input
-              type="number"
-              label="Commission Rate (%)"
-              placeholder="10.00"
-              step="0.01"
-              min="0"
-              max="100"
-              value={editForm.commission_rate}
-              onChange={(e) => setEditForm({ ...editForm, commission_rate: e.target.value })}
-            />
+            <div className="text-xs text-gray-500 self-end pb-2 leading-relaxed">
+              Commission rates are now configured per income type on each
+              property. Open a property → Commission Settings to set them
+              (e.g. 10% rent, 15% maintenance, 9% parking).
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

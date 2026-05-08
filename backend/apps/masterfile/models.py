@@ -759,3 +759,50 @@ class Supplier(SoftDeleteModel):
         last = cls.all_objects.select_for_update().order_by('-id').first()
         num = (last.id + 1) if last else 1
         return f'SUP{num:04d}'
+
+
+
+class PropertyIncomeCommission(models.Model):
+    """Per-(property, income_type) commission rate override.
+
+    The agency commission a landlord pays varies by income source — e.g.
+    10% on rent, 15% on maintenance, 9% on parking. Different properties
+    can negotiate different rates. This table holds those overrides
+    sparsely: only rows that diverge from the IncomeType default need to
+    exist.
+
+    Resolution chain at receipt time:
+      1. PropertyIncomeCommission(property, income_type) → use this rate
+      2. IncomeType.default_commission_rate (if is_commissionable)
+      3. 0%
+
+    Landlord.commission_rate is no longer consulted; the field stays in
+    the DB during transition but is dead-weight from the resolver's POV.
+    """
+    property = models.ForeignKey(
+        Property, on_delete=models.CASCADE, related_name='income_commissions'
+    )
+    income_type = models.ForeignKey(
+        'accounting.IncomeType', on_delete=models.CASCADE,
+        related_name='property_commission_overrides'
+    )
+    rate = models.DecimalField(
+        max_digits=5, decimal_places=2,
+        help_text='Commission percentage (e.g. 10.00 = 10%)'
+    )
+
+    notes = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Property income commission'
+        verbose_name_plural = 'Property income commissions'
+        unique_together = [('property', 'income_type')]
+        ordering = ['property__name', 'income_type__name']
+        indexes = [
+            models.Index(fields=['property', 'income_type']),
+        ]
+
+    def __str__(self):
+        return f'{self.property.name} · {self.income_type.name}: {self.rate}%'

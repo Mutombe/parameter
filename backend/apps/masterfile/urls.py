@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     LandlordViewSet, PropertyViewSet, UnitViewSet,
     RentalTenantViewSet, AccountHolderViewSet, LeaseAgreementViewSet,
-    PropertyManagerViewSet, SupplierViewSet,
+    PropertyManagerViewSet, SupplierViewSet, PropertyIncomeCommissionViewSet,
 )
 from .landlord_views import LandlordPortalViewSet
 
@@ -17,6 +17,7 @@ router.register('account-holders', AccountHolderViewSet, basename='account-holde
 router.register('leases', LeaseAgreementViewSet, basename='lease')
 router.register('property-managers', PropertyManagerViewSet, basename='property-manager')
 router.register('suppliers', SupplierViewSet, basename='supplier')
+router.register('property-commissions', PropertyIncomeCommissionViewSet, basename='property-commission')
 
 landlord_portal_router = DefaultRouter()
 landlord_portal_router.register('', LandlordPortalViewSet, basename='landlord-portal')
