@@ -1621,6 +1621,18 @@ function BalanceSheetNotes({ data }: { data: any }) {
                 <td className="py-1.5 text-gray-700">Less: Management commission charged</td>
                 <td className="py-1.5 text-right tabular-nums font-medium text-rose-700">({formatCurrency(trust.commission_charged || 0)})</td>
               </tr>
+              {Array.isArray(trust.commission_charged_by_type) && trust.commission_charged_by_type.length > 0 &&
+                trust.commission_charged_by_type.map((row: any) => (
+                  <tr key={`trust-comm-${row.income_type_id ?? row.income_type_name}`} className="border-b border-gray-100">
+                    <td className="py-1 pl-6 text-gray-500 text-xs">
+                      <span className="text-gray-400 mr-2">·</span>
+                      {row.income_type_name}
+                    </td>
+                    <td className="py-1 text-right tabular-nums text-rose-600 text-xs">
+                      ({formatCurrency(row.amount || 0)})
+                    </td>
+                  </tr>
+                ))}
               <tr className="border-b border-gray-100">
                 <td className="py-1.5 text-gray-700">Less: Operating expenses paid from trust</td>
                 <td className="py-1.5 text-right tabular-nums font-medium text-rose-700">({formatCurrency(trust.operating_expenses_paid || 0)})</td>
@@ -1871,6 +1883,23 @@ function CashFlowReport() {
                 </span>
               )}
             </div>
+            {/* Per-income-type breakdown of agent commission, indented under
+                the parent line so users can see which sub-account contributed
+                what (e.g. Rent commission, Maintenance commission). */}
+            {Array.isArray(data?.operating_activities?.outflows?.agent_commission_by_type) &&
+              data.operating_activities.outflows.agent_commission_by_type.length > 0 &&
+              data.operating_activities.outflows.agent_commission_by_type.map((row: any) => (
+                <div key={`agent-comm-${row.income_type_id ?? row.income_type_name}`}
+                     className="px-5 py-1.5 flex justify-between bg-gray-50/30">
+                  <span className="text-gray-500 text-xs pl-6 flex items-center gap-1.5">
+                    <span className="text-gray-300">·</span>
+                    {row.income_type_name}
+                  </span>
+                  <span className="text-rose-600 text-xs tabular-nums">
+                    ({formatCurrency(row.amount || 0)})
+                  </span>
+                </div>
+              ))}
             <div className="px-5 py-3 flex justify-between hover:bg-emerald-50/50">
               <span className="text-gray-700 flex items-center gap-2">
                 <ArrowDownLeft className="w-4 h-4 text-rose-500" />
@@ -4626,14 +4655,36 @@ function IncomeExpenditureReport() {
                       <td className="px-4 py-2.5 text-right tabular-nums bg-gray-50 font-bold text-gray-900">{fmtNum(consolidated.expenditure_categories?.[cat.key])}</td>
                     </tr>
                   ))}
-                  {/* Management Commission */}
+                  {/* Management Commission — aggregate row */}
                   <tr className="hover:bg-gray-50">
-                    <td className="px-4 py-2.5 text-gray-700 sticky left-0 bg-white pl-8">Management Commission {data.commission_rate}% (inc VAT)</td>
+                    <td className="px-4 py-2.5 text-gray-700 sticky left-0 bg-white pl-8">Management Commission (inc VAT)</td>
                     {months.map(m => (
                       <td key={m.month} className="px-4 py-2.5 text-right tabular-nums text-gray-900">{fmtNum(m.management_commission)}</td>
                     ))}
                     <td className="px-4 py-2.5 text-right tabular-nums bg-gray-50 font-bold text-gray-900">{fmtNum(consolidated.management_commission)}</td>
                   </tr>
+                  {/* Per-income-type commission rows — one row per
+                      sub-account (Rent, Maintenance, Parking, …) so the
+                      landlord sees exactly which income source each
+                      commission slice came from. */}
+                  {Object.keys(consolidated.management_commission_by_type || {})
+                    .sort()
+                    .map((ctype) => (
+                      <tr key={`comm-${ctype}`} className="hover:bg-gray-50">
+                        <td className="px-4 py-1.5 text-gray-500 text-xs sticky left-0 bg-white pl-12">
+                          <span className="text-gray-300 mr-2">·</span>
+                          Commission — {ctype}
+                        </td>
+                        {months.map(m => (
+                          <td key={m.month} className="px-4 py-1.5 text-right tabular-nums text-gray-600 text-xs">
+                            {fmtNum((m.management_commission_by_type || {})[ctype])}
+                          </td>
+                        ))}
+                        <td className="px-4 py-1.5 text-right tabular-nums bg-gray-50/60 text-gray-700 text-xs font-medium">
+                          {fmtNum((consolidated.management_commission_by_type || {})[ctype])}
+                        </td>
+                      </tr>
+                    ))}
                   {/* Total Expenditure */}
                   <tr className="bg-red-50/30 border-t border-red-200">
                     <td className="px-4 py-2.5 font-semibold text-red-800 sticky left-0 bg-red-50/30">Total Expenditure</td>

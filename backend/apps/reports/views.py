@@ -575,14 +575,33 @@ class IncomeStatementView(APIView):
                 if start_date:
                     receipt_qs = receipt_qs.filter(date__gte=start_date)
                 receipt_qs = receipt_qs.filter(date__lte=end_date)
-                commission_total = receipt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
-                if commission_total > 0:
+                # Split commission per income type so the P&L shows
+                # "Management Commission — Rent", "Management Commission —
+                # Maintenance", etc. — one line per sub-account, since
+                # rates can differ (10% rent / 15% maintenance / 9% parking).
+                commission_breakdown = list(
+                    receipt_qs.values(
+                        'income_type__id', 'income_type__name', 'income_type__code',
+                    ).annotate(
+                        commission=Sum(_commission_expr())
+                    ).order_by('income_type__name')
+                )
+                commission_total_check = Decimal('0')
+                for row in commission_breakdown:
+                    amt = row['commission'] or Decimal('0')
+                    if amt == 0:
+                        continue
+                    label = row['income_type__name'] or 'Other'
                     expense_list.append({
-                        'code': '',
-                        'name': 'Management Commission',
-                        'balance': float(commission_total),
+                        'code': row['income_type__code'] or '',
+                        'name': f'Management Commission — {label}',
+                        'balance': float(amt),
+                        # Tag so the frontend can group these under a single
+                        # parent header without needing to string-match.
+                        'group': 'management_commission',
                     })
-                    total_expenses += commission_total
+                    total_expenses += amt
+                    commission_total_check += amt
 
             # Group landlord-attributed expenses by expense_category, with
             # the kind shown so users can see at a glance which lines are
@@ -877,6 +896,25 @@ class BalanceSheetView(APIView):
                 )
                 _rcpt_total = _all_receipts_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
                 _comm_total = _all_receipts_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
+                # Per-income-type split of trust commission so the note
+                # can show "Rent commission $X · Maintenance commission $Y
+                # · Parking commission $Z" beneath the rolled-up total.
+                _comm_by_type_qs = list(
+                    _all_receipts_qs.values(
+                        'income_type__id', 'income_type__name', 'income_type__code',
+                    ).annotate(commission=Sum(_commission_expr()))
+                    .order_by('income_type__name')
+                )
+                _comm_by_type = [
+                    {
+                        'income_type_id': r['income_type__id'],
+                        'income_type_name': r['income_type__name'] or 'Other',
+                        'income_type_code': r['income_type__code'] or '',
+                        'amount': float(r['commission'] or Decimal('0')),
+                    }
+                    for r in _comm_by_type_qs
+                    if (r['commission'] or Decimal('0')) != 0
+                ]
 
                 _operating_exp_total = Expense.objects.filter(
                     landlord_id=landlord_obj.id,
@@ -896,6 +934,7 @@ class BalanceSheetView(APIView):
                 breakdowns['trust_composition'] = {
                     'receipts_collected': float(_rcpt_total),
                     'commission_charged': float(_comm_total),
+                    'commission_charged_by_type': _comm_by_type,
                     'operating_expenses_paid': float(_operating_exp_total),
                     'landlord_remittances': float(_remittance_total),
                     'funds_held_in_trust': float(
@@ -1702,13 +1741,35 @@ class CashFlowStatementView(APIView):
         # agency-wide view doesn't decompose per landlord, and the agent
         # IS the agency anyway). Zero out otherwise.
         agent_commission = Decimal('0')
+        agent_commission_by_type: list = []
         if scope_filter is not None and landlord_id:
             try:
                 landlord_obj = Landlord.objects.get(id=landlord_id)
             except Landlord.DoesNotExist:
                 landlord_obj = None
             if landlord_obj:
-                agent_commission = receipt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
+                # Group commission per income type so the Cash Flow line
+                # "Cash paid to managing agent" can split into per-sub-account
+                # rows: rent commission, maintenance commission, parking
+                # commission, etc. Different income types can carry
+                # different rates per (property, income_type).
+                by_type = list(
+                    receipt_qs.values(
+                        'income_type__id', 'income_type__name', 'income_type__code',
+                    ).annotate(commission=Sum(_commission_expr()))
+                    .order_by('income_type__name')
+                )
+                for row in by_type:
+                    amt = row['commission'] or Decimal('0')
+                    if amt == 0:
+                        continue
+                    agent_commission += amt
+                    agent_commission_by_type.append({
+                        'income_type_id': row['income_type__id'],
+                        'income_type_name': row['income_type__name'] or 'Other',
+                        'income_type_code': row['income_type__code'] or '',
+                        'amount': float(amt),
+                    })
 
         # Calculate Operating Cash Flow
         operating_inflows = tenant_receipts
@@ -1832,6 +1893,11 @@ class CashFlowStatementView(APIView):
                 'outflows': {
                     'expense_payments': float(expense_payments),
                     'agent_commission': float(agent_commission),
+                    # Per-income-type breakdown of the agent commission
+                    # so the cash-flow line can split into rent / parking
+                    # / maintenance commissions etc. — same SQL groupby
+                    # used by Income Statement and Income & Expenditure.
+                    'agent_commission_by_type': agent_commission_by_type,
                     # Cash actually paid to the landlord (Expense.expense_type
                     # = 'landlord_payment'). Will be 0 until you record a
                     # remittance — distinct from agent commission, which
@@ -3334,6 +3400,7 @@ class IncomeExpenditureReportView(APIView):
         # Collect all unique income and expense category keys seen
         all_income_types = set()
         all_expense_types = set()
+        all_commission_types: set = set()
 
         def _get_expense_key(e):
             """Return a stable category key for an expense, preferring
@@ -3370,11 +3437,23 @@ class IncomeExpenditureReportView(APIView):
                 exp_by_type[ekey] = exp_by_type.get(ekey, Decimal('0')) + e.amount
             all_expense_types.update(exp_by_type.keys())
 
-            # Management commission (from receipts)
-            mgmt_commission = sum(
-                (self._compute_commission_amount(r, landlord) for r in m_receipts),
-                Decimal('0'),
-            )
+            # Management commission — computed per receipt and grouped by
+            # income type (rent, maintenance, parking, …). Different income
+            # types can carry different rates per (property, income_type)
+            # via PropertyIncomeCommission, so we surface each separately.
+            mgmt_commission = Decimal('0')
+            mgmt_by_type: dict = {}
+            for r in m_receipts:
+                amt = self._compute_commission_amount(r, landlord)
+                if amt == 0:
+                    continue
+                mgmt_commission += amt
+                key = (
+                    r.income_type.name if r.income_type and getattr(r.income_type, 'name', None)
+                    else 'Other'
+                )
+                mgmt_by_type[key] = mgmt_by_type.get(key, Decimal('0')) + amt
+            all_commission_types.update(mgmt_by_type.keys())
 
             total_exp = sum(exp_by_type.values(), Decimal('0')) + mgmt_commission
             balance_cf = amount_before - total_exp
@@ -3396,6 +3475,12 @@ class IncomeExpenditureReportView(APIView):
                     etype: float(amt) for etype, amt in exp_by_type.items()
                 },
                 'management_commission': float(mgmt_commission),
+                # Per-income-type commission rows so the columnar view can
+                # render "Commission - Rent", "Commission - Parking", etc.
+                # as separate lines under Expenditure.
+                'management_commission_by_type': {
+                    k: float(v) for k, v in mgmt_by_type.items()
+                },
                 'total_expenditure': float(total_exp),
                 'balance_cf': float(balance_cf),
             })
@@ -3406,6 +3491,8 @@ class IncomeExpenditureReportView(APIView):
                 m['income_categories'].setdefault(itype, 0.0)
             for etype in all_expense_types:
                 m['expenditure_categories'].setdefault(etype, 0.0)
+            for ctype in all_commission_types:
+                m['management_commission_by_type'].setdefault(ctype, 0.0)
 
         # ── 4. Consolidated totals ───────────────────────────────────
         con_levies = sum(m['levies'] for m in months)
@@ -3418,6 +3505,10 @@ class IncomeExpenditureReportView(APIView):
             for etype, amt in m['expenditure_categories'].items():
                 con_exp_by_type[etype] = con_exp_by_type.get(etype, 0.0) + amt
         con_commission = sum(m['management_commission'] for m in months)
+        con_commission_by_type: dict = {}
+        for m in months:
+            for ctype, amt in m['management_commission_by_type'].items():
+                con_commission_by_type[ctype] = con_commission_by_type.get(ctype, 0.0) + amt
         con_total_exp = sum(m['total_expenditure'] for m in months)
 
         consolidated = {
@@ -3427,6 +3518,7 @@ class IncomeExpenditureReportView(APIView):
             'income_categories': con_income_by_cat,
             'expenditure_categories': con_exp_by_type,
             'management_commission': con_commission,
+            'management_commission_by_type': con_commission_by_type,
             'total_expenditure': con_total_exp,
             'balance_cf': float(running_balance),
         }

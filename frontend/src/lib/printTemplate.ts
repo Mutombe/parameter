@@ -678,6 +678,15 @@ function buildStatementStyles(): string {
     .balance-box .row.final { margin-top: 5pt; padding-top: 6pt;
                               border-top: 0.75pt solid #111827; font-weight: 700; font-size: 10.5pt; }
 
+    /* Per-income-type commission sub-rows — indented under the parent
+       commission line in Trust composition / Cash Flow / I&E so the
+       landlord can see which sub-account contributed each slice. */
+    .comm-sub td { padding-top: 2pt; padding-bottom: 2pt;
+                   font-size: 9pt; color: #6b7280;
+                   border-bottom: 0.25pt solid #f3f4f6 !important; }
+    .comm-sub td.grow { padding-left: 18pt; }
+    .comm-sub .comm-sub-bullet { color: #d1d5db; margin-right: 6pt; }
+
     /* Accrued-expenses table — category sub-headers + detail rows */
     .accrued-tbl .cat-row td { background: #f9fafb;
                                padding-top: 6pt; padding-bottom: 5pt;
@@ -934,6 +943,13 @@ function buildBalanceSheetBody(data: any, currency: string): string {
                 <td class="num">${fmtMoney(trust.receipts_collected || 0, currency, false)}</td></tr>
             <tr><td class="grow">Less: Management commission charged</td>
                 <td class="num neg">(${fmtMoney(trust.commission_charged || 0, currency, false)})</td></tr>
+            ${Array.isArray(trust.commission_charged_by_type) && trust.commission_charged_by_type.length
+              ? trust.commission_charged_by_type.map((row: any) => `
+                <tr class="comm-sub">
+                  <td class="grow"><span class="comm-sub-bullet">·</span> ${row.income_type_name || 'Other'}</td>
+                  <td class="num neg">(${fmtMoney(row.amount || 0, currency, false)})</td>
+                </tr>`).join('')
+              : ''}
             <tr><td class="grow">Less: Operating expenses paid from trust</td>
                 <td class="num neg">(${fmtMoney(trust.operating_expenses_paid || 0, currency, false)})</td></tr>
             <tr><td class="grow">Less: Remittances paid to landlord</td>
@@ -1158,6 +1174,13 @@ function buildCashFlowBody(data: any, currency: string): string {
         <tr><td class="grow">Cash receipts from tenants</td><td class="num">${fmtMoney(opIn.tenant_receipts || 0, currency, false)}</td></tr>
         <tr><td class="grow">Cash paid for expenses</td><td class="num neg">(${fmtMoney(opOut.expense_payments || 0, currency, false)})</td></tr>
         <tr><td class="grow">Cash paid to managing agent</td><td class="num neg">(${fmtMoney(opOut.agent_commission || 0, currency, false)})</td></tr>
+        ${Array.isArray(opOut.agent_commission_by_type) && opOut.agent_commission_by_type.length
+          ? opOut.agent_commission_by_type.map((row: any) => `
+            <tr class="comm-sub">
+              <td class="grow"><span class="comm-sub-bullet">·</span> ${row.income_type_name || 'Other'}</td>
+              <td class="num neg">(${fmtMoney(row.amount || 0, currency, false)})</td>
+            </tr>`).join('')
+          : ''}
         <tr><td class="grow">Cash paid to landlord</td><td class="num neg">(${fmtMoney(opOut.landlord_payments || 0, currency, false)})</td></tr>
         <tr class="total"><td>Net cash from operating</td><td class="num">${fmtMoney(op.net_cash || 0, currency, false)}</td></tr>
       </tbody></table>
@@ -1245,6 +1268,19 @@ function buildIncomeExpenditureBody(data: any, currency: string): string {
             ${months.map(m => `<td class="num neg">(${fmtMoney(m.management_commission || 0, currency, false)})</td>`).join('')}
             <td class="num neg">(${fmtMoney(cons.management_commission || 0, currency, false)})</td>
           </tr>
+          ${(() => {
+            // Per-income-type commission sub-rows. Use union of keys
+            // across consolidated + months so we don't miss any.
+            const consBT = cons.management_commission_by_type || {}
+            const ctypes = Object.keys(consBT).sort()
+            if (!ctypes.length) return ''
+            return ctypes.map((ct: string) => `
+              <tr class="comm-sub">
+                <td><span class="comm-sub-bullet">·</span> Commission — ${ct}</td>
+                ${months.map(m => `<td class="num neg">(${fmtMoney((m.management_commission_by_type || {})[ct] || 0, currency, false)})</td>`).join('')}
+                <td class="num neg">(${fmtMoney(consBT[ct] || 0, currency, false)})</td>
+              </tr>`).join('')
+          })()}
           <tr class="subtotal">
             <td>Total Expenditure</td>
             ${months.map(m => `<td class="num neg">(${fmtMoney(m.total_expenditure || 0, currency, false)})</td>`).join('')}
