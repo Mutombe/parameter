@@ -25,6 +25,7 @@ import {
   Shield,
   Users,
   Download,
+  Percent,
 } from 'lucide-react'
 import { Upload, FileSpreadsheet } from 'lucide-react'
 import { propertyApi, landlordApi, propertyManagerApi, usersApi, importsApi } from '../../services/api'
@@ -35,6 +36,7 @@ import { showToast, parseApiError } from '../../lib/toast'
 import { undoToast } from '../../lib/undoToast'
 import { useChainStore } from '../../stores/chainStore'
 import PropertyForm from '../../components/forms/PropertyForm'
+import { CommissionGrid } from '../../components/property/CommissionGrid'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
@@ -114,6 +116,10 @@ export default function Properties() {
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
+  // After creating a new property, transition the modal to a step-2 view
+  // showing the commission grid for that property (per-income-type rates).
+  // null means we're on step 1 (PropertyForm); a value means step 2.
+  const [commissionStep, setCommissionStep] = useState<{ id: number; name: string } | null>(null)
   const [form, setForm] = useState({
     landlord: '',
     name: '',
@@ -218,9 +224,11 @@ export default function Properties() {
         const key = q.queryKey[0] as string
         return key === 'properties' || key.startsWith('propert')
       }})
-      // Navigate to detail page after creation (not update)
+      // For NEW properties, hold the modal open and switch to the
+      // commission grid step so the user can set per-income-type rates
+      // before leaving the create flow. For edits, keep behavior unchanged.
       if (!context?.isUpdating && response?.data?.id) {
-        navigate(`/dashboard/properties/${response.data.id}`)
+        setCommissionStep({ id: response.data.id, name: response.data.name || '' })
       }
     },
     onError: (error, _, context) => {
@@ -346,6 +354,7 @@ export default function Properties() {
   const resetForm = () => {
     setShowForm(false)
     setEditingId(null)
+    setCommissionStep(null)
     setForm({
       landlord: '',
       name: '',
@@ -1023,19 +1032,70 @@ export default function Properties() {
         )}
       </AnimatePresence>
 
-      {/* Create/Edit Modal */}
+      {/* Create/Edit Modal — wizard for new properties:
+            Step 1: PropertyForm (basic info)
+            Step 2: CommissionGrid for the just-created property */}
       <Modal
         open={showForm}
         onClose={resetForm}
-        title={editingId ? 'Edit Property' : 'Add New Property'}
-        icon={editingId ? Edit2 : Plus}
+        title={
+          commissionStep
+            ? `Set Commission Rates · ${commissionStep.name}`
+            : editingId ? 'Edit Property' : 'Add New Property'
+        }
+        icon={commissionStep ? Percent : (editingId ? Edit2 : Plus)}
+        size={commissionStep ? 'lg' : undefined}
       >
-        <PropertyForm
-          initialValues={form}
-          onSubmit={(data) => createMutation.mutate({ ...data, _editingId: editingId })}
-          isSubmitting={createMutation.isPending}
-          onCancel={resetForm}
-        />
+        {commissionStep ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 font-semibold">✓</span>
+              <span>Property created</span>
+              <span className="text-gray-300">›</span>
+              <span className="font-semibold text-gray-700">Set commission rates</span>
+            </div>
+
+            <p className="text-sm text-gray-600 leading-relaxed">
+              Each income type starts at its default rate. Override below to set a per-property
+              rate (e.g. <span className="font-medium text-gray-900">10% on rent</span>,
+              <span className="font-medium text-gray-900"> 15% on maintenance</span>,
+              <span className="font-medium text-gray-900"> 9% on parking</span>).
+              You can always change these later from the property's Commissions tab.
+            </p>
+
+            <CommissionGrid
+              propertyId={commissionStep.id}
+              propertyName={commissionStep.name}
+            />
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  resetForm()
+                  navigate(`/dashboard/properties/${commissionStep.id}`)
+                }}
+              >
+                Skip — open property
+              </Button>
+              <Button
+                onClick={() => {
+                  resetForm()
+                  navigate(`/dashboard/properties/${commissionStep.id}`)
+                }}
+              >
+                Done
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <PropertyForm
+            initialValues={form}
+            onSubmit={(data) => createMutation.mutate({ ...data, _editingId: editingId })}
+            isSubmitting={createMutation.isPending}
+            onCancel={resetForm}
+          />
+        )}
       </Modal>
 
       {/* Delete Confirmation */}
