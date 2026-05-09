@@ -730,10 +730,14 @@ class PropertyIncomeCommissionViewSet(viewsets.ModelViewSet):
         """Return the full commission matrix for a single property.
 
         Each row is one IncomeType with:
-          - default_rate: IncomeType.default_commission_rate
+          - default_rate: IncomeType.default_commission_rate (raw)
           - override_rate: PropertyIncomeCommission.rate or null
-          - effective_rate: override_rate if set, else default
-          - is_commissionable: from IncomeType
+          - effective_rate: what the resolver actually returns —
+              override_rate if set; else default_rate when commissionable;
+              else 0. Mirrors the backend resolver chain so the UI shows
+              the true rate that will hit the GL.
+          - is_commissionable: from IncomeType (informational; override
+              still applies even when False)
           - override_id: the row id when overridden, else null
         """
         from apps.accounting.models import IncomeType
@@ -756,6 +760,12 @@ class PropertyIncomeCommissionViewSet(viewsets.ModelViewSet):
         rows = []
         for it in IncomeType.objects.filter(is_active=True).order_by('name'):
             ovr = overrides.get(it.id)
+            if ovr is not None:
+                effective = float(ovr.rate)
+            elif it.is_commissionable:
+                effective = float(it.default_commission_rate)
+            else:
+                effective = 0.0
             rows.append({
                 'income_type_id': it.id,
                 'income_type_code': it.code,
@@ -763,13 +773,40 @@ class PropertyIncomeCommissionViewSet(viewsets.ModelViewSet):
                 'is_commissionable': it.is_commissionable,
                 'default_rate': float(it.default_commission_rate),
                 'override_rate': float(ovr.rate) if ovr else None,
-                'effective_rate': float(ovr.rate) if ovr else float(it.default_commission_rate),
+                'effective_rate': effective,
                 'override_id': ovr.id if ovr else None,
             })
 
         return Response({
             'property_id': prop.id,
             'property_name': prop.name,
+            'rows': rows,
+        })
+
+    @action(detail=False, methods=['get'], url_path='draft-grid', permission_classes=[IsAuthenticated])
+    def draft_grid(self, request):
+        """Return the same row shape as `grid` but without a property —
+        used by the new-property modal where rates are configured BEFORE
+        the property is saved. Every row has override_rate=null,
+        effective_rate=default_rate (when commissionable) else 0.
+        """
+        from apps.accounting.models import IncomeType
+        rows = []
+        for it in IncomeType.objects.filter(is_active=True).order_by('name'):
+            effective = float(it.default_commission_rate) if it.is_commissionable else 0.0
+            rows.append({
+                'income_type_id': it.id,
+                'income_type_code': it.code,
+                'income_type_name': it.name,
+                'is_commissionable': it.is_commissionable,
+                'default_rate': float(it.default_commission_rate),
+                'override_rate': None,
+                'effective_rate': effective,
+                'override_id': None,
+            })
+        return Response({
+            'property_id': None,
+            'property_name': '',
             'rows': rows,
         })
 

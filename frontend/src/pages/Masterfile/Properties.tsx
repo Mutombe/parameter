@@ -36,7 +36,8 @@ import { showToast, parseApiError } from '../../lib/toast'
 import { undoToast } from '../../lib/undoToast'
 import { useChainStore } from '../../stores/chainStore'
 import PropertyForm from '../../components/forms/PropertyForm'
-import { CommissionGrid } from '../../components/property/CommissionGrid'
+import { CommissionGrid, type CommissionDraft } from '../../components/property/CommissionGrid'
+import { propertyCommissionApi } from '../../services/api'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
 import { useHotkeys } from '../../hooks/useHotkeys'
@@ -122,8 +123,13 @@ export default function Properties() {
   const [commissionStep, setCommissionStep] = useState<{ id: number; name: string } | null>(null)
   // JIT commission modal — invoked from the "Add Commissions" button on
   // the edit modal, or as a sub-modal when the user explicitly asks to
-  // configure rates without leaving the property modal.
-  const [jitCommissions, setJitCommissions] = useState<{ id: number; name: string } | null>(null)
+  // configure rates without leaving the property modal. `id: null` means
+  // it's open in DRAFT mode (no propertyId yet — pre-save).
+  const [jitCommissions, setJitCommissions] = useState<{ id: number | null; name: string } | null>(null)
+  // Pre-save commission drafts: { income_type_id: rate }. Set in the JIT
+  // modal during property creation; submitted via upsert calls after
+  // the property is saved.
+  const [pendingCommissions, setPendingCommissions] = useState<CommissionDraft>({})
   const [form, setForm] = useState({
     landlord: '',
     name: '',
@@ -222,17 +228,38 @@ export default function Properties() {
       }
       return { previousData, isUpdating }
     },
-    onSuccess: (response, __, context) => {
-      showToast.success(context?.isUpdating ? 'Property updated successfully' : 'Property created successfully')
+    onSuccess: async (response, __, context) => {
+      const newId = response?.data?.id
+      const newName = response?.data?.name || ''
+      // Apply any pre-save commission drafts now that we have a propertyId.
+      // Done sequentially to keep error toasts coherent if one fails.
+      const drafts = Object.entries(pendingCommissions)
+      if (!context?.isUpdating && newId && drafts.length > 0) {
+        for (const [incomeTypeId, rate] of drafts) {
+          try {
+            await propertyCommissionApi.upsert({
+              property: newId,
+              income_type: Number(incomeTypeId),
+              rate,
+            })
+          } catch (err) {
+            showToast.error(`Could not save commission for income type ${incomeTypeId}`)
+          }
+        }
+        showToast.success(`Property created · ${drafts.length} commission override${drafts.length === 1 ? '' : 's'} applied`)
+        setPendingCommissions({})
+      } else {
+        showToast.success(context?.isUpdating ? 'Property updated successfully' : 'Property created successfully')
+      }
       queryClient.invalidateQueries({ predicate: (q) => {
         const key = q.queryKey[0] as string
         return key === 'properties' || key.startsWith('propert')
       }})
       // For NEW properties, hold the modal open and switch to the
-      // commission grid step so the user can set per-income-type rates
-      // before leaving the create flow. For edits, keep behavior unchanged.
-      if (!context?.isUpdating && response?.data?.id) {
-        setCommissionStep({ id: response.data.id, name: response.data.name || '' })
+      // commission grid step so the user can fine-tune rates with the
+      // server-confirmed grid. For edits, keep behavior unchanged.
+      if (!context?.isUpdating && newId) {
+        setCommissionStep({ id: newId, name: newName })
       }
     },
     onError: (error, _, context) => {
@@ -359,6 +386,7 @@ export default function Properties() {
     setShowForm(false)
     setEditingId(null)
     setCommissionStep(null)
+    setPendingCommissions({})
     setForm({
       landlord: '',
       name: '',
@@ -1101,68 +1129,64 @@ export default function Properties() {
               onCancel={resetForm}
             />
 
-            {/* Always-visible JIT commissions entry — the button below the
-                PropertyForm. For existing properties it opens the modal
-                immediately; for new ones it shows a hint that the property
-                must be saved first (after which the wizard step 2 fires). */}
+            {/* Always-visible JIT commissions entry. Works in two modes:
+                - Existing property (editingId): opens the live grid bound
+                  to that propertyId — edits save immediately.
+                - New property (no editingId): opens the grid in DRAFT mode.
+                  Edits go to pendingCommissions; they're applied via
+                  upsert calls right after the property is created. */}
             <div className="pt-4 mt-2 border-t-2 border-amber-200">
               <button
                 type="button"
                 onClick={() => {
-                  if (editingId) {
-                    setJitCommissions({ id: editingId, name: form.name })
-                  }
+                  setJitCommissions({
+                    id: editingId,
+                    name: form.name || (editingId ? '' : 'New property'),
+                  })
                 }}
-                disabled={!editingId}
-                className={cn(
-                  "w-full flex items-center justify-between gap-3 px-4 py-3.5 rounded-lg border-2 text-left group transition-all",
-                  editingId
-                    ? "border-amber-300 bg-amber-50/60 hover:bg-amber-100/60 hover:border-amber-400 cursor-pointer"
-                    : "border-dashed border-gray-300 bg-gray-50/40 cursor-not-allowed opacity-75",
-                )}
+                className="w-full flex items-center justify-between gap-3 px-4 py-3.5 rounded-lg border-2 border-amber-300 bg-amber-50/60 hover:bg-amber-100/60 hover:border-amber-400 text-left group transition-all cursor-pointer"
               >
                 <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0",
-                    editingId ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-400",
-                  )}>
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-amber-100 text-amber-700">
                     <Percent className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className={cn(
-                      "text-sm font-bold",
-                      editingId ? "text-amber-900" : "text-gray-500",
-                    )}>
-                      {editingId ? 'Configure Commissions' : 'Configure Commissions (after save)'}
+                    <div className="text-sm font-bold text-amber-900">
+                      Configure Commissions
+                      {!editingId && Object.keys(pendingCommissions).length > 0 && (
+                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-bold">
+                          {Object.keys(pendingCommissions).length} pending
+                        </span>
+                      )}
                     </div>
-                    <div className={cn(
-                      "text-xs mt-0.5",
-                      editingId ? "text-amber-700" : "text-gray-400",
-                    )}>
+                    <div className="text-xs mt-0.5 text-amber-700">
                       {editingId
                         ? 'Set per-income-type rates — 10% rent, 15% maintenance, 9% parking…'
-                        : 'Save the property first to set per-income-type commission rates.'}
+                        : 'Set rates now — they apply automatically when the property is saved.'}
                     </div>
                   </div>
                 </div>
-                {editingId && (
-                  <Plus className="w-5 h-5 text-amber-600 group-hover:rotate-90 transition-transform" />
-                )}
+                <Plus className="w-5 h-5 text-amber-600 group-hover:rotate-90 transition-transform" />
               </button>
             </div>
           </div>
         )}
       </Modal>
 
-      {/* JIT Commissions Modal — opened from the "Add Commissions" button
-          on the property edit modal. Lives independently so the parent
-          modal stays mounted underneath. */}
+      {/* JIT Commissions Modal — opened from the "Configure Commissions"
+          button. Two modes:
+            - jitCommissions.id is a number → bound to existing property,
+              auto-saves edits via the upsert API
+            - jitCommissions.id is null → DRAFT mode (no propertyId yet);
+              edits go into pendingCommissions and apply on property save */}
       <Modal
         open={!!jitCommissions}
         onClose={() => setJitCommissions(null)}
         title={
           jitCommissions
-            ? `Commission Rates · ${jitCommissions.name}`
+            ? jitCommissions.id
+              ? `Commission Rates · ${jitCommissions.name}`
+              : 'Commission Rates · Draft'
             : 'Commission Rates'
         }
         icon={Percent}
@@ -1170,10 +1194,20 @@ export default function Properties() {
       >
         {jitCommissions && (
           <div className="space-y-4">
-            <CommissionGrid
-              propertyId={jitCommissions.id}
-              propertyName={jitCommissions.name}
-            />
+            {jitCommissions.id ? (
+              <CommissionGrid
+                propertyId={jitCommissions.id}
+                propertyName={jitCommissions.name}
+                mode="live"
+              />
+            ) : (
+              <CommissionGrid
+                propertyName={jitCommissions.name}
+                mode="draft"
+                draft={pendingCommissions}
+                onDraftChange={setPendingCommissions}
+              />
+            )}
             <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
               <Button onClick={() => setJitCommissions(null)}>Done</Button>
             </div>

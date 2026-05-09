@@ -104,12 +104,18 @@ def _commission_expr():
     Resolution chain (descending priority), all expressed in pure SQL:
       1. PropertyIncomeCommission(property=invoice.unit.property,
          income_type=receipt.income_type) — per-(property, income_type)
-         override negotiated with the landlord (e.g. 10% rent, 15% maintenance).
+         override. APPLIES regardless of IncomeType.is_commissionable —
+         agencies negotiate commission on income types that are globally
+         non-commissionable for specific landlords (e.g. levy fees on a
+         particular block of flats).
       2. PropertyIncomeCommission(property=invoice.property, …) — same
          override but resolved through invoice.property (used for property-
          level levy invoices that have no unit).
-      3. IncomeType.default_commission_rate — fallback per income type.
-      4. 0 — when income_type is null or non-commissionable.
+      3. IncomeType.default_commission_rate — fallback per income type,
+         applied only when the type is globally commissionable AND no
+         override exists.
+      4. 0 — when no override, no income type, or non-commissionable
+         and no override.
 
     Returns a `DecimalField` expression in money units (amount * rate / 100).
     Landlord.commission_rate is no longer consulted here.
@@ -126,17 +132,29 @@ def _commission_expr():
         income_type_id=OuterRef('income_type_id'),
     ).values('rate')[:1]
 
+    # Default rate ONLY applies when the income type is globally
+    # commissionable. Override always applies (even on non-commissionable
+    # types) — see docstring. Coalesce picks the first non-null.
+    fallback_default = Case(
+        When(income_type__is_commissionable=True,
+             then=F('income_type__default_commission_rate')),
+        default=Value(Decimal('0')),
+        output_field=DecimalField(max_digits=5, decimal_places=2),
+    )
+
     effective_rate = Coalesce(
         Subquery(rate_via_unit, output_field=DecimalField(max_digits=5, decimal_places=2)),
         Subquery(rate_via_property, output_field=DecimalField(max_digits=5, decimal_places=2)),
-        F('income_type__default_commission_rate'),
+        fallback_default,
         Value(Decimal('0')),
         output_field=DecimalField(max_digits=5, decimal_places=2),
     )
 
+    # Outer Case ensures we only multiply when there's an income_type at
+    # all. Override applies even on non-commissionable types now.
     return Case(
         When(
-            income_type__isnull=False, income_type__is_commissionable=True,
+            income_type__isnull=False,
             then=F('amount') * effective_rate / Value(Decimal('100')),
         ),
         default=Value(Decimal('0')),
@@ -149,9 +167,12 @@ def _resolve_commission_rate_pct(income_type, property_id=None):
     single (income_type, property) pair. Mirrors `_commission_expr()` but
     runs in Python — used by report views that compute commission row by row
     (e.g. CommissionReportView, IncomeExpenditureReportView).
+
+    Override beats is_commissionable (see _commission_expr docstring).
     """
-    if not income_type or not getattr(income_type, 'is_commissionable', False):
+    if not income_type:
         return Decimal('0')
+    # Per-property override applies regardless of is_commissionable.
     if property_id:
         from apps.masterfile.models import PropertyIncomeCommission
         override = PropertyIncomeCommission.objects.filter(
@@ -159,6 +180,9 @@ def _resolve_commission_rate_pct(income_type, property_id=None):
         ).values_list('rate', flat=True).first()
         if override is not None:
             return Decimal(str(override))
+    # No override — fall back to default ONLY if globally commissionable.
+    if not getattr(income_type, 'is_commissionable', False):
+        return Decimal('0')
     return Decimal(str(income_type.default_commission_rate or 0))
 
 

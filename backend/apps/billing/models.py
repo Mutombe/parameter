@@ -504,10 +504,15 @@ class Receipt(SoftDeleteModel):
           1. PropertyIncomeCommission(property, income_type) override —
              per-(property, income_type) rate the agency negotiated with
              the landlord (e.g. 10% on rent, 15% on maintenance).
-          2. IncomeType.default_commission_rate — when the income type is
-             commissionable and no per-property override exists.
-          3. 0% — when the income type is non-commissionable, or when no
-             income type is set on the receipt at all (defensive default).
+             APPLIES regardless of IncomeType.is_commissionable —
+             agencies sometimes negotiate commission on income types
+             that are globally non-commissionable for specific properties
+             (e.g. levy fees on a particular block of flats).
+          2. IncomeType.default_commission_rate — fallback when no
+             override exists, applied only when the income type is
+             globally commissionable.
+          3. 0% — when no override AND non-commissionable, or when no
+             income type at all.
 
         Landlord.commission_rate is no longer consulted; that value lives
         in the DB during the transition but is dead-weight from the
@@ -515,8 +520,7 @@ class Receipt(SoftDeleteModel):
         """
         vat_rate = Decimal('0.15')
 
-        # No commissionable income type → no commission, full stop.
-        if not self.income_type or not self.income_type.is_commissionable:
+        if not self.income_type:
             commission_rate = Decimal('0')
         else:
             # Look up the property the receipt is tied to via its invoice.
@@ -537,8 +541,10 @@ class Receipt(SoftDeleteModel):
                 ).values_list('rate', flat=True).first()
 
             if override_rate is not None:
+                # Override beats is_commissionable.
                 commission_rate = Decimal(str(override_rate)) / Decimal('100')
-            elif self.income_type.default_commission_rate:
+            elif self.income_type.is_commissionable and self.income_type.default_commission_rate:
+                # No override — use IncomeType default only if globally commissionable.
                 commission_rate = self.income_type.default_commission_rate / Decimal('100')
             else:
                 commission_rate = Decimal('0')

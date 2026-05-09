@@ -267,6 +267,10 @@ export const propertyCommissionApi = {
   // with default_rate / override_rate / effective_rate.
   grid: (propertyId: number) =>
     api.get('/masterfile/property-commissions/grid/', { params: { property: propertyId } }),
+  // Same row shape as `grid` but property-less — used by the new-property
+  // modal where rates are configured BEFORE the property is saved.
+  draftGrid: () =>
+    api.get('/masterfile/property-commissions/draft-grid/'),
   // Create-or-update an override row by (property, income_type).
   // Pass `rate: null` to delete the override and revert to default.
   upsert: (data: { property: number; income_type: number; rate: number | null; notes?: string }) =>
