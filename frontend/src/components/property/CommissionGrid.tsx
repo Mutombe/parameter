@@ -1,26 +1,21 @@
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
-import { Percent, RotateCcw, Check } from 'lucide-react'
+import { Percent, RotateCcw, Check, Loader2 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { propertyCommissionApi } from '../../services/api'
 import { showToast } from '../../lib/toast'
 
 /* CommissionGrid — per-(property, income_type) commission rate editor.
  *
- * The agency commission varies by income source — e.g. 10% rent, 15%
- * maintenance, 9% parking. Each landlord can negotiate different rates per
- * property. This grid surfaces every commissionable IncomeType for a single
- * property as one editable row.
+ * Each row carries its OWN input state — no parent-managed drafts dict
+ * (which had a closure trap where blur could read a stale value).
+ * Edits commit on blur or Enter, reset to default via the inline
+ * Reset button, abandon via Escape.
  *
- * Resolution chain (backend mirrors this):
- *   1. PropertyIncomeCommission(property, income_type)  — override
- *   2. IncomeType.default_commission_rate               — fallback
- *   3. 0%                                                — never reached if (1) or (2) is set
- *
- * Edits are optimistic: on blur (or Enter / Reset) the cached grid is
- * patched immediately and the row's effective rate updates in real time.
- * If the server rejects the change, the row reverts to its pre-edit value
- * and an error toast surfaces.
+ * Mutations are optimistic: the cached grid is patched in onMutate so
+ * the row's "Effective" column updates instantly, with a green check
+ * to acknowledge. On error, the snapshot is restored and a toast
+ * surfaces.
  */
 export function CommissionGrid({
   propertyId,
@@ -31,13 +26,9 @@ export function CommissionGrid({
 }) {
   const queryClient = useQueryClient()
   const queryKey = ['property-commissions', propertyId]
-  const [drafts, setDrafts] = useState<Record<number, string>>({})
-  // After a successful save, briefly flash a green check next to the row
-  // to acknowledge — fades after 1.2s.
-  const [recentlySaved, setRecentlySaved] = useState<Record<number, number>>({})
-  // Tracks which rows have an in-flight mutation so we can show a subtle
-  // saving cue without locking out further edits.
+  // Per-row "saving" + "recently saved" cues, keyed by income_type_id.
   const [savingIds, setSavingIds] = useState<Set<number>>(new Set())
+  const [savedIds, setSavedIds] = useState<Set<number>>(new Set())
 
   const { data, isLoading, error } = useQuery({
     queryKey,
@@ -46,102 +37,76 @@ export function CommissionGrid({
     placeholderData: keepPreviousData,
   })
 
-  // --- Optimistic upsert ---------------------------------------------------
-  // onMutate patches the cached grid so the user sees the new override and
-  // recomputed effective rate the moment they commit the edit. The mutation
-  // returns the snapshot via context so onError can roll it back.
   const upsertMutation = useMutation({
     mutationFn: (vars: { income_type: number; rate: number | null }) =>
       propertyCommissionApi.upsert({ property: propertyId, ...vars }),
+
     onMutate: async (vars) => {
       await queryClient.cancelQueries({ queryKey })
       const snapshot = queryClient.getQueryData<any>(queryKey)
       setSavingIds(prev => new Set(prev).add(vars.income_type))
 
+      // Optimistic patch — the row's override + effective rate update
+      // immediately so the user sees the change without waiting for
+      // the round trip.
       queryClient.setQueryData(queryKey, (old: any) => {
         if (!old?.rows) return old
         return {
           ...old,
-          rows: old.rows.map((row: any) => {
-            if (row.income_type_id !== vars.income_type) return row
-            const override = vars.rate
-            return {
-              ...row,
-              override_rate: override,
-              effective_rate: override !== null ? override : row.default_rate,
-              // override_id stays as-is; the actual id comes back on refetch.
-            }
-          }),
+          rows: old.rows.map((r: any) =>
+            r.income_type_id === vars.income_type
+              ? {
+                  ...r,
+                  override_rate: vars.rate,
+                  effective_rate: vars.rate !== null ? vars.rate : r.default_rate,
+                }
+              : r
+          ),
         }
       })
-      return { snapshot, income_type: vars.income_type }
+      return { snapshot }
     },
-    onError: (_err, _vars, ctx) => {
+
+    onError: (_err, _vars, ctx: any) => {
       if (ctx?.snapshot) queryClient.setQueryData(queryKey, ctx.snapshot)
       showToast.error('Could not save commission rate. Reverted.')
     },
-    onSuccess: (_data, vars) => {
-      setRecentlySaved(prev => ({ ...prev, [vars.income_type]: Date.now() }))
+
+    onSuccess: (_resp, vars) => {
+      // Brief green-check flash on the row.
+      setSavedIds(prev => new Set(prev).add(vars.income_type))
+      window.setTimeout(() => {
+        setSavedIds(prev => {
+          const next = new Set(prev)
+          next.delete(vars.income_type)
+          return next
+        })
+      }, 1500)
     },
-    onSettled: (_data, _err, vars) => {
+
+    onSettled: (_resp, _err, vars) => {
       setSavingIds(prev => {
         const next = new Set(prev)
         next.delete(vars.income_type)
         return next
       })
-      // Refetch so override_id and any server-derived fields stay accurate.
+      // Refetch to pull authoritative override_id and any server-side fields.
       queryClient.invalidateQueries({ queryKey })
     },
   })
 
-  // Auto-clear the green-check flash after 1.2s.
-  useEffect(() => {
-    if (Object.keys(recentlySaved).length === 0) return
-    const t = setTimeout(() => {
-      const cutoff = Date.now() - 1200
-      setRecentlySaved(prev => {
-        const next: Record<number, number> = {}
-        for (const [k, v] of Object.entries(prev)) {
-          if (v >= cutoff) next[Number(k)] = v
-        }
-        return next
-      })
-    }, 250)
-    return () => clearTimeout(t)
-  }, [recentlySaved])
-
-  // --- Edit commit logic ---------------------------------------------------
-  const commit = (incomeTypeId: number, raw: string, currentOverrideStr: string) => {
+  const handleSave = (incomeTypeId: number, raw: string) => {
     const trimmed = raw.trim()
-    // Nothing changed → no-op.
-    if (trimmed === currentOverrideStr) {
-      setDrafts(prev => {
-        const next = { ...prev }
-        delete next[incomeTypeId]
-        return next
-      })
-      return
-    }
     const rate = trimmed === '' ? null : Number(trimmed)
     if (rate !== null && (Number.isNaN(rate) || rate < 0 || rate > 100)) {
-      showToast.error('Rate must be a number between 0 and 100.')
+      showToast.error('Commission must be between 0 and 100.')
       return
     }
     upsertMutation.mutate({ income_type: incomeTypeId, rate })
-    setDrafts(prev => {
-      const next = { ...prev }
-      delete next[incomeTypeId]
-      return next
-    })
   }
 
   const handleReset = (incomeTypeId: number) => {
     upsertMutation.mutate({ income_type: incomeTypeId, rate: null })
-    setDrafts(prev => {
-      const next = { ...prev }
-      delete next[incomeTypeId]
-      return next
-    })
   }
 
   const rows: any[] = data?.rows || []
@@ -157,7 +122,7 @@ export function CommissionGrid({
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Commission Settings</h3>
             <p className="text-sm text-gray-500">
-              Per-income-type commission rates for {propertyName || 'this property'}
+              Per-income-type rates for {propertyName || 'this property'}
               {overrideCount > 0 && (
                 <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium">
                   {overrideCount} override{overrideCount === 1 ? '' : 's'}
@@ -171,10 +136,7 @@ export function CommissionGrid({
       <div className="p-6">
         <p className="text-sm text-gray-600 mb-5 leading-relaxed">
           Edit any rate and click away (or press Enter) — saves automatically.
-          E.g. <span className="font-medium text-gray-900">10% on rent</span>,
-          <span className="font-medium text-gray-900"> 15% on maintenance</span>,
-          <span className="font-medium text-gray-900"> 9% on parking</span>.
-          Leave blank to use the income type default.
+          Leave blank to revert to the income type's default rate.
         </p>
 
         {error ? (
@@ -206,20 +168,12 @@ export function CommissionGrid({
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.map((row: any) => (
-                  <CommissionGridRow
+                  <CommissionRow
                     key={row.income_type_id}
                     row={row}
-                    draft={drafts[row.income_type_id]}
                     saving={savingIds.has(row.income_type_id)}
-                    flashing={!!recentlySaved[row.income_type_id]}
-                    onChange={(v) =>
-                      setDrafts(prev => ({ ...prev, [row.income_type_id]: v }))
-                    }
-                    onCommit={(currentOverrideStr) => {
-                      const draftVal = drafts[row.income_type_id]
-                      if (draftVal === undefined) return
-                      commit(row.income_type_id, draftVal, currentOverrideStr)
-                    }}
+                    saved={savedIds.has(row.income_type_id)}
+                    onSave={(value) => handleSave(row.income_type_id, value)}
                     onReset={() => handleReset(row.income_type_id)}
                   />
                 ))}
@@ -232,36 +186,31 @@ export function CommissionGrid({
   )
 }
 
-interface CommissionGridRowProps {
+interface CommissionRowProps {
   row: any
-  draft: string | undefined
   saving: boolean
-  flashing: boolean
-  onChange: (v: string) => void
-  onCommit: (currentOverrideStr: string) => void
+  saved: boolean
+  onSave: (value: string) => void
   onReset: () => void
 }
 
-function CommissionGridRow({
-  row,
-  draft,
-  saving,
-  flashing,
-  onChange,
-  onCommit,
-  onReset,
-}: CommissionGridRowProps) {
+function CommissionRow({ row, saving, saved, onSave, onReset }: CommissionRowProps) {
   const overrideStr = row.override_rate !== null ? String(row.override_rate) : ''
-  const value = draft !== undefined ? draft : overrideStr
+  // Each row owns its own input state — no parent-level drafts dict, no
+  // closure traps. Re-sync when the row's data changes from the server.
+  const [value, setValue] = useState(overrideStr)
+  useEffect(() => { setValue(overrideStr) }, [overrideStr])
+
+  const isDirty = value !== overrideStr
   const hasOverride = row.override_rate !== null
-  // Avoid double-firing commit when blur and Enter both fire.
-  const committedRef = useRef(false)
+
+  const commit = () => {
+    if (!isDirty) return
+    onSave(value)
+  }
 
   return (
-    <tr className={cn(
-      'transition-colors',
-      flashing ? 'bg-emerald-50/60' : 'hover:bg-gray-50/50',
-    )}>
+    <tr className={cn('transition-colors', saved ? 'bg-emerald-50/60' : 'hover:bg-gray-50/50')}>
       <td className="py-3 px-2">
         <div className="font-medium text-gray-900">{row.income_type_name}</div>
         {!row.is_commissionable && (
@@ -276,30 +225,22 @@ function CommissionGridRow({
       </td>
       <td className="py-3 px-2 text-right">
         <div className="flex items-center justify-end gap-1.5">
+          {saving && <Loader2 className="w-3 h-3 text-amber-500 animate-spin" />}
           <input
             type="number"
             step="0.01"
             min="0"
             max="100"
             value={value}
-            onChange={(e) => {
-              committedRef.current = false
-              onChange(e.target.value)
-            }}
-            onBlur={() => {
-              if (committedRef.current) return
-              committedRef.current = true
-              onCommit(overrideStr)
-            }}
+            onChange={(e) => setValue(e.target.value)}
+            onBlur={commit}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault()
-                committedRef.current = true
-                onCommit(overrideStr)
+                commit()
                 ;(e.target as HTMLInputElement).blur()
               } else if (e.key === 'Escape') {
-                committedRef.current = true
-                onChange(overrideStr)
+                setValue(overrideStr)
                 ;(e.target as HTMLInputElement).blur()
               }
             }}
@@ -309,7 +250,7 @@ function CommissionGridRow({
               'w-20 px-2 py-1 text-right tabular-nums border rounded-lg text-sm',
               'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent',
               'disabled:bg-gray-50 disabled:text-gray-400',
-              saving ? 'border-amber-300 bg-amber-50/40' : 'border-gray-300',
+              isDirty ? 'border-amber-400 bg-amber-50/40' : 'border-gray-300',
             )}
           />
           <span className="text-gray-400 text-xs">%</span>
@@ -317,7 +258,7 @@ function CommissionGridRow({
       </td>
       <td className="py-3 px-2 text-right">
         <div className="inline-flex items-center justify-end gap-1.5">
-          {flashing && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+          {saved && <Check className="w-3.5 h-3.5 text-emerald-600" />}
           <span
             className={cn(
               'tabular-nums font-semibold transition-colors',
@@ -329,7 +270,7 @@ function CommissionGridRow({
         </div>
       </td>
       <td className="py-3 px-2 text-right">
-        {hasOverride && (
+        {hasOverride && !isDirty && (
           <button
             type="button"
             onClick={onReset}

@@ -1101,31 +1101,55 @@ export default function Properties() {
               onCancel={resetForm}
             />
 
-            {/* JIT entry point — only meaningful for existing properties
-                (need a propertyId to attach overrides to). For new ones,
-                the post-save wizard step 2 already covers it. */}
-            {editingId && (
-              <div className="pt-4 border-t border-gray-200">
-                <button
-                  type="button"
-                  onClick={() => setJitCommissions({ id: editingId, name: form.name })}
-                  className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg border border-gray-200 hover:border-amber-300 hover:bg-amber-50/40 transition-colors text-left group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center group-hover:bg-amber-100 transition-colors">
-                      <Percent className="w-4 h-4 text-amber-600" />
+            {/* Always-visible JIT commissions entry — the button below the
+                PropertyForm. For existing properties it opens the modal
+                immediately; for new ones it shows a hint that the property
+                must be saved first (after which the wizard step 2 fires). */}
+            <div className="pt-4 mt-2 border-t-2 border-amber-200">
+              <button
+                type="button"
+                onClick={() => {
+                  if (editingId) {
+                    setJitCommissions({ id: editingId, name: form.name })
+                  }
+                }}
+                disabled={!editingId}
+                className={cn(
+                  "w-full flex items-center justify-between gap-3 px-4 py-3.5 rounded-lg border-2 text-left group transition-all",
+                  editingId
+                    ? "border-amber-300 bg-amber-50/60 hover:bg-amber-100/60 hover:border-amber-400 cursor-pointer"
+                    : "border-dashed border-gray-300 bg-gray-50/40 cursor-not-allowed opacity-75",
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0",
+                    editingId ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-400",
+                  )}>
+                    <Percent className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className={cn(
+                      "text-sm font-bold",
+                      editingId ? "text-amber-900" : "text-gray-500",
+                    )}>
+                      {editingId ? 'Configure Commissions' : 'Configure Commissions (after save)'}
                     </div>
-                    <div>
-                      <div className="text-sm font-semibold text-gray-900">Add Commissions</div>
-                      <div className="text-xs text-gray-500">
-                        Set per-income-type rates — e.g. 10% rent, 15% maintenance
-                      </div>
+                    <div className={cn(
+                      "text-xs mt-0.5",
+                      editingId ? "text-amber-700" : "text-gray-400",
+                    )}>
+                      {editingId
+                        ? 'Set per-income-type rates — 10% rent, 15% maintenance, 9% parking…'
+                        : 'Save the property first to set per-income-type commission rates.'}
                     </div>
                   </div>
-                  <Plus className="w-4 h-4 text-gray-400 group-hover:text-amber-600 transition-colors" />
-                </button>
-              </div>
-            )}
+                </div>
+                {editingId && (
+                  <Plus className="w-5 h-5 text-amber-600 group-hover:rotate-90 transition-transform" />
+                )}
+              </button>
+            </div>
           </div>
         )}
       </Modal>
