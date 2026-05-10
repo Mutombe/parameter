@@ -1087,31 +1087,15 @@ class BalanceSheetView(APIView):
                         )
                         _prop_rcpt = _prop_rcpt_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
                         _prop_comm = _prop_rcpt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
-                        _prop_op_exp = Expense.objects.filter(
-                            landlord_id=landlord_obj.id,
-                            status='paid',
-                            date__lte=as_of_date,
-                        ).filter(
-                            Q(unit__property_id=prop.id) | Q(property_id=prop.id)
-                        ).exclude(expense_kind='non_cash').exclude(
-                            expense_type='landlord_payment'
-                        ).aggregate(t=Sum('amount'))['t'] or Decimal('0')
-                        _prop_remit = Expense.objects.filter(
-                            landlord_id=landlord_obj.id,
-                            expense_type='landlord_payment',
-                            status='paid',
-                            date__lte=as_of_date,
-                        ).filter(
-                            Q(unit__property_id=prop.id) | Q(property_id=prop.id)
-                        ).exclude(expense_kind='non_cash').aggregate(t=Sum('amount'))['t'] or Decimal('0')
-                        _prop_accrued = Expense.objects.filter(
-                            landlord_id=landlord_obj.id,
-                            expense_kind='non_cash',
-                            status__in=['approved', 'paid'],
-                            date__lte=as_of_date,
-                        ).filter(
-                            Q(unit__property_id=prop.id) | Q(property_id=prop.id)
-                        ).aggregate(t=Sum('amount'))['t'] or Decimal('0')
+                        # Expense is landlord-LEVEL — has no unit / property
+                        # FK on the model itself. Per-property expense split
+                        # isn't possible from the DB; we leave these at 0
+                        # rather than crash on a FieldError. (If you need
+                        # per-property expense attribution add a property
+                        # FK to Expense and backfill.)
+                        _prop_op_exp = Decimal('0')
+                        _prop_remit = Decimal('0')
+                        _prop_accrued = Decimal('0')
                         _prop_receivables = Invoice.objects.filter(
                             Q(unit__property_id=prop.id) | Q(property_id=prop.id),
                             date__lte=as_of_date,
