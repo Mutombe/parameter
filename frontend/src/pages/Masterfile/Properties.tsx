@@ -1121,55 +1121,22 @@ export default function Properties() {
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            <PropertyForm
-              initialValues={form}
-              onSubmit={(data) => createMutation.mutate({ ...data, _editingId: editingId })}
-              isSubmitting={createMutation.isPending}
-              onCancel={resetForm}
-            />
-
-            {/* Always-visible JIT commissions entry. Works in two modes:
-                - Existing property (editingId): opens the live grid bound
-                  to that propertyId — edits save immediately.
-                - New property (no editingId): opens the grid in DRAFT mode.
-                  Edits go to pendingCommissions; they're applied via
-                  upsert calls right after the property is created. */}
-            <div className="pt-4 mt-2 border-t-2 border-amber-200">
-              <button
-                type="button"
-                onClick={() => {
-                  setJitCommissions({
-                    id: editingId,
-                    name: form.name || (editingId ? '' : 'New property'),
-                  })
-                }}
-                className="w-full flex items-center justify-between gap-3 px-4 py-3.5 rounded-lg border-2 border-amber-300 bg-amber-50/60 hover:bg-amber-100/60 hover:border-amber-400 text-left group transition-all cursor-pointer"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-amber-100 text-amber-700">
-                    <Percent className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-bold text-amber-900">
-                      Configure Commissions
-                      {!editingId && Object.keys(pendingCommissions).length > 0 && (
-                        <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-bold">
-                          {Object.keys(pendingCommissions).length} pending
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs mt-0.5 text-amber-700">
-                      {editingId
-                        ? 'Set per-income-type rates — 10% rent, 15% maintenance, 9% parking…'
-                        : 'Set rates now — they apply automatically when the property is saved.'}
-                    </div>
-                  </div>
-                </div>
-                <Plus className="w-5 h-5 text-amber-600 group-hover:rotate-90 transition-transform" />
-              </button>
-            </div>
-          </div>
+          <PropertyForm
+            initialValues={form}
+            onSubmit={(data) => createMutation.mutate({ ...data, _editingId: editingId })}
+            isSubmitting={createMutation.isPending}
+            onCancel={resetForm}
+            // Compact "Commissions" button beside Total Units. Always
+            // clickable — opens in draft mode for new properties so the
+            // user can stage rates BEFORE saving.
+            onConfigureCommissions={() => {
+              setJitCommissions({
+                id: editingId,
+                name: form.name || (editingId ? '' : 'New property'),
+              })
+            }}
+            pendingCommissionsCount={!editingId ? Object.keys(pendingCommissions).length : 0}
+          />
         )}
       </Modal>
 

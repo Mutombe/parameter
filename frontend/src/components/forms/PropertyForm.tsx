@@ -1,10 +1,12 @@
 import { useState, useImperativeHandle, forwardRef, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Percent } from 'lucide-react'
 import { Input, Select } from '../ui'
 import { AutocompleteInput } from '../ui/AutocompleteInput'
 import { AsyncSelect } from '../ui/AsyncSelect'
 import { landlordApi, propertyApi } from '../../services/api'
 import { useChainStore } from '../../stores/chainStore'
+import { cn } from '../../lib/utils'
 
 export interface PropertyFormRef {
   submit: () => void
@@ -17,10 +19,15 @@ interface PropertyFormProps {
   isSubmitting?: boolean
   showButtons?: boolean
   onCancel?: () => void
+  // Compact JIT entry point — when provided, a "Commissions" button
+  // sits beside the Total Units field. Click opens the parent's
+  // commission modal (in draft mode pre-save, live mode for edits).
+  onConfigureCommissions?: () => void
+  pendingCommissionsCount?: number
 }
 
 const PropertyForm = forwardRef<PropertyFormRef, PropertyFormProps>(
-  ({ initialValues, onSubmit, isSubmitting, showButtons = true, onCancel }, ref) => {
+  ({ initialValues, onSubmit, isSubmitting, showButtons = true, onCancel, onConfigureCommissions, pendingCommissionsCount = 0 }, ref) => {
     const [form, setForm] = useState({
       landlord: '',
       name: '',
@@ -141,14 +148,40 @@ const PropertyForm = forwardRef<PropertyFormRef, PropertyFormProps>(
           </Select>
         </div>
 
-        <Input
-          type="number"
-          label="Total Units"
-          placeholder="0"
-          min="0"
-          value={form.total_units}
-          onChange={(e) => setForm({ ...form, total_units: e.target.value })}
-        />
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            type="number"
+            label="Total Units"
+            placeholder="0"
+            min="0"
+            value={form.total_units}
+            onChange={(e) => setForm({ ...form, total_units: e.target.value })}
+          />
+          {onConfigureCommissions && (
+            <div className="flex flex-col">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Commissions
+              </label>
+              <button
+                type="button"
+                onClick={onConfigureCommissions}
+                className={cn(
+                  'flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg',
+                  'border border-amber-300 bg-amber-50/60 hover:bg-amber-100/60 hover:border-amber-400',
+                  'text-sm font-medium text-amber-900 transition-colors',
+                )}
+              >
+                <Percent className="w-4 h-4 text-amber-600" />
+                <span>Configure</span>
+                {pendingCommissionsCount > 0 && (
+                  <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-bold">
+                    {pendingCommissionsCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
 
         <AutocompleteInput
           label="Address"
