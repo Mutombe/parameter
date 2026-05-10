@@ -1164,12 +1164,21 @@ class BalanceSheetView(APIView):
                 # the breakdown here so the reader can see exactly which
                 # pre-existing balances were brought in via the Opening
                 # Layer for this landlord.
+                # Defensive: this block can fail mid-deploy if the
+                # supplier FK column hasn't been migrated yet on this
+                # tenant schema (race between code rollout and tenant
+                # migrations). Wrap so the rest of the Balance Sheet
+                # still renders; we just skip the OB note in that case.
                 from apps.accounting.models import OpeningBalance
-                _ob_qs = OpeningBalance.objects.filter(
-                    landlord_id=landlord_obj.id,
-                    status=OpeningBalance.Status.POSTED,
-                    date__lte=as_of_date,
-                ).select_related('target_account', 'supplier')
+                from django.db import ProgrammingError, OperationalError
+                try:
+                    _ob_qs = list(OpeningBalance.objects.filter(
+                        landlord_id=landlord_obj.id,
+                        status=OpeningBalance.Status.POSTED,
+                        date__lte=as_of_date,
+                    ).select_related('target_account', 'supplier'))
+                except (ProgrammingError, OperationalError) as _:
+                    _ob_qs = []
                 _ob_entries = []
                 _ob_assets_in = Decimal('0')
                 _ob_liabilities_in = Decimal('0')

@@ -254,21 +254,29 @@ export default function OpeningBalances() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.direction, form.target_account, accounts])
 
-  // Sub-accounts filtered by the selected category (the spec calls this
-  // "category lock" — Landlord Rent sub-account must match a Rent
-  // Lessor's Accrual Account category, etc.). If category is blank we
-  // show all so the user isn't blocked.
+  // Sub-accounts filtered by the selected category AND currency.
+  // The spec calls this "category lock" — Landlord Rent sub-account
+  // must match a Rent Lessor's Accrual Account. Currency lock applies
+  // because each landlord has separate sub-accounts per currency
+  // (e.g. Rent USD, Rent ZWG): selecting USD must hide ZWG ones.
   const filteredLandlordSubAccounts = (subsidiaryAccounts as any[]).filter((s: any) => {
-    if (s.account_kind && s.account_kind !== 'landlord') return false
-    if (!form.category) return true
-    return s.category === form.category
+    // Skip non-landlord sub-accounts (tenants, account holders).
+    const kind = s.account_kind || s.entity_type
+    if (kind && kind !== 'landlord') return false
+    if (form.category && s.category !== form.category) return false
+    if (form.currency && s.currency && s.currency !== form.currency) return false
+    return true
   })
 
-  // Tenant sub-accounts — for arrears / prepayment cases. No category
-  // filter; tenants are looked up by landlord context.
-  const filteredTenantSubAccounts = (subsidiaryAccounts as any[]).filter(
-    (s: any) => !s.account_kind || s.account_kind === 'tenant',
-  )
+  // Tenant sub-accounts — for arrears / prepayment cases. Filter by
+  // currency too so a USD opening balance doesn't show a ZWG tenant
+  // account by accident.
+  const filteredTenantSubAccounts = (subsidiaryAccounts as any[]).filter((s: any) => {
+    const kind = s.account_kind || s.entity_type
+    if (kind && kind !== 'tenant' && kind !== 'account_holder') return false
+    if (form.currency && s.currency && s.currency !== form.currency) return false
+    return true
+  })
 
   // Create mutation
   const createMutation = useMutation({
@@ -711,7 +719,14 @@ export default function OpeningBalances() {
             <Select
               label="Currency"
               value={form.currency}
-              onChange={(e) => setForm({ ...form, currency: e.target.value })}
+              onChange={(e) => setForm({
+                ...form,
+                currency: e.target.value,
+                // Reset sub-account picks because they're currency-specific
+                // (each landlord has separate sub-accounts per currency).
+                landlord_sub_account: '',
+                tenant_sub_account: '',
+              })}
               options={[
                 { value: 'USD', label: 'USD' },
                 { value: 'ZWG', label: 'ZWG' },
