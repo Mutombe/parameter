@@ -374,7 +374,7 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
               latest bundle. Bump the string each push during diagnosis. */}
           {isExpanded && (
             <div className="mt-2 px-2 py-1 text-[10px] text-gray-400 text-center font-mono tracking-tight">
-              build · bs-debug-trace-v16
+              build · bs-trace-schema-v18
             </div>
           )}
         </div>

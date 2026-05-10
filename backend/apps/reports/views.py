@@ -704,28 +704,59 @@ class BalanceSheetView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Diagnostic wrapper: append `?debug=1` to the URL to bypass
-        # the generic exception handler and get the full traceback in
-        # the JSON response. Only authenticated users can hit it; this
-        # is a temporary diagnostic to track down a 500 we can't catch
-        # from Render logs in real time. Remove once the issue is
-        # resolved.
-        if request.query_params.get('debug') == '1':
+        # TEMPORARY DIAGNOSTIC: surface the full traceback + tenant
+        # context on every 500 from this view so we can pin down the
+        # production-only exception that the generic handler masks.
+        try:
+            return self._get_impl(request)
+        except Exception as exc:
+            import traceback
+            from django.db import connection as _conn
+            tb = traceback.format_exc()
+            logger.exception('BalanceSheetView crashed')
+            tenant = getattr(request, 'tenant', None)
+            # Sample tenant-required tables on the CURRENT schema so
+            # we can tell whether we routed to public (no tenant
+            # tables) or to a tenant schema with stale migrations.
+            table_check: dict = {}
             try:
-                return self._get_impl(request)
-            except Exception as exc:
-                import traceback
-                tb = traceback.format_exc()
-                return Response(
-                    {
-                        'error': str(exc),
-                        'type': exc.__class__.__name__,
-                        'traceback': tb.splitlines()[-30:],
-                        'query_params': dict(request.query_params),
-                    },
-                    status=500,
-                )
-        return self._get_impl(request)
+                with _conn.cursor() as _cur:
+                    for tbl in (
+                        'accounting_generalledger',
+                        'accounting_chartofaccount',
+                        'accounting_openingbalance',
+                        'masterfile_landlord',
+                    ):
+                        _cur.execute(
+                            "SELECT EXISTS (SELECT FROM information_schema.tables "
+                            "WHERE table_schema = current_schema() AND table_name = %s)",
+                            [tbl],
+                        )
+                        row = _cur.fetchone()
+                        table_check[tbl] = bool(row[0]) if row else False
+            except Exception as _ce:
+                table_check['_error'] = str(_ce)
+            return Response(
+                {
+                    'error': str(exc),
+                    'type': exc.__class__.__name__,
+                    'traceback': tb.splitlines()[-40:],
+                    'query_params': dict(request.query_params),
+                    'connection_schema_name': getattr(_conn, 'schema_name', None),
+                    'request_tenant_schema': (
+                        getattr(tenant, 'schema_name', None) if tenant else None
+                    ),
+                    'request_tenant_name': (
+                        getattr(tenant, 'name', None) if tenant else None
+                    ),
+                    'http_host': request.META.get('HTTP_HOST', ''),
+                    'x_tenant_subdomain_header': request.META.get(
+                        'HTTP_X_TENANT_SUBDOMAIN', ''
+                    ),
+                    'tables_present_on_current_schema': table_check,
+                },
+                status=500,
+            )
 
     @_cache_report('balance_sheet', ttl=300)
     def _get_impl(self, request):
