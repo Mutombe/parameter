@@ -158,23 +158,26 @@ const PropertyForm = forwardRef<PropertyFormRef, PropertyFormProps>(
             onChange={(e) => setForm({ ...form, total_units: e.target.value })}
           />
           {onConfigureCommissions && (
-            <div className="flex flex-col">
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            // Mirror Input's wrapper so the labels + fields line up
+            // exactly with Total Units on the left.
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-gray-700">
                 Commissions
               </label>
               <button
                 type="button"
                 onClick={onConfigureCommissions}
                 className={cn(
-                  'flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg',
-                  'border border-amber-300 bg-amber-50/60 hover:bg-amber-100/60 hover:border-amber-400',
-                  'text-sm font-medium text-amber-900 transition-colors',
+                  // Match Input height (px-4 py-2.5 → ~42px) + rounded-xl
+                  'w-full h-[42px] px-4 inline-flex items-center justify-center gap-2 rounded-xl',
+                  'border-2 border-amber-300 bg-amber-50 hover:bg-amber-100 hover:border-amber-400',
+                  'text-sm font-semibold text-amber-900 transition-colors',
                 )}
               >
                 <Percent className="w-4 h-4 text-amber-600" />
                 <span>Configure</span>
                 {pendingCommissionsCount > 0 && (
-                  <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-bold">
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-bold">
                     {pendingCommissionsCount}
                   </span>
                 )}

@@ -1076,7 +1076,9 @@ export default function Properties() {
             : editingId ? 'Edit Property' : 'Add New Property'
         }
         icon={commissionStep ? Percent : (editingId ? Edit2 : Plus)}
-        size={commissionStep ? 'lg' : undefined}
+        // 'lg' = max-w-lg gives the 2-col rows (Property/Mgmt Type, and
+        // Total Units / Commissions) enough horizontal breathing room.
+        size="lg"
       >
         {commissionStep ? (
           <div className="space-y-4">
