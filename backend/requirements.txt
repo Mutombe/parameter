@@ -74,3 +74,5 @@ wcwidth==0.2.14
 
 # For testing
 requests==2.32.3
+pytest==8.3.4
+pytest-django==4.9.0
