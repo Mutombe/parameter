@@ -1576,6 +1576,8 @@ function BalanceSheetNotes({ data }: { data: any }) {
   const eq = breakdowns.equity_reconciliation
   const accruedCats: any[] = breakdowns.accrued_expenses_by_category || []
   const accruedDetail: any[] = breakdowns.accrued_expenses_detail || []
+  const ob = breakdowns.opening_balances
+  const obEntries: any[] = ob?.entries || []
 
   const hasTrust = trust && (trust.receipts_collected || trust.commission_charged ||
     trust.operating_expenses_paid || trust.landlord_remittances || trust.funds_held_in_trust)
@@ -1583,7 +1585,8 @@ function BalanceSheetNotes({ data }: { data: any }) {
   const hasEq = eq && (eq.opening_equity || eq.period_net_income || eq.drawings || eq.closing_equity)
   const hasAccrued = Array.isArray(accruedCats) && accruedCats.length > 0
   const hasAccruedDetail = Array.isArray(accruedDetail) && accruedDetail.length > 0
-  if (!hasTrust && !hasPerProp && !hasEq && !hasAccrued) return null
+  const hasOB = obEntries.length > 0
+  if (!hasTrust && !hasPerProp && !hasEq && !hasAccrued && !hasOB) return null
 
   // Group detail entries by category so each category subtotal is followed
   // by the line items it contains — supplier visible on every row.
@@ -1772,6 +1775,70 @@ function BalanceSheetNotes({ data }: { data: any }) {
               <tr className="border-t-2 border-gray-900 font-bold">
                 <td colSpan={3} className="pt-2 text-gray-900">Total Accrued Expenses</td>
                 <td className="pt-2 text-right tabular-nums">{formatCurrency(accruedCats.reduce((s: number, r: any) => s + (r.amount || 0), 0))}</td>
+              </tr>
+            </tbody>
+          </table>
+        </BalanceSheetNote>
+      )}
+
+      {hasOB && (
+        <BalanceSheetNote
+          number={++n}
+          title="Opening Layer Adjustments"
+          meta={`${obEntries.length} ${obEntries.length === 1 ? 'entry' : 'entries'}`}
+        >
+          <p className="text-xs text-gray-500 leading-relaxed mb-3">
+            {ob.note ||
+              'Pre-takeover balances brought in via the Opening Layer. ' +
+              'Reflected in the Balance Sheet totals above; do not move cash.'}
+          </p>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[10px] tracking-[0.1em] uppercase text-gray-500 border-b border-gray-300">
+                <th className="py-2 pr-3 text-left font-semibold w-24">Date</th>
+                <th className="py-2 pr-3 text-left font-semibold">Account</th>
+                <th className="py-2 pr-3 text-left font-semibold">Description</th>
+                <th className="py-2 pr-3 text-center font-semibold w-16">Dir</th>
+                <th className="py-2 text-right font-semibold w-28">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {obEntries.map((e: any) => (
+                <tr key={e.id} className="border-b border-gray-100">
+                  <td className="py-1.5 pr-3 text-xs text-gray-500 tabular-nums">{e.date}</td>
+                  <td className="py-1.5 pr-3 text-gray-800">
+                    <span className="font-mono text-[11px] text-gray-400 mr-1.5">{e.account_code}</span>
+                    {e.account_name}
+                  </td>
+                  <td className="py-1.5 pr-3 text-gray-600 truncate max-w-[280px]">{e.description}</td>
+                  <td className="py-1.5 pr-3 text-center">
+                    <span className={cn(
+                      'inline-block px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase',
+                      e.direction === 'debit' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
+                    )}>
+                      {e.direction === 'debit' ? 'Dr' : 'Cr'}
+                    </span>
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums">{formatCurrency(e.amount)}</td>
+                </tr>
+              ))}
+              <tr className="border-t border-gray-300 text-xs">
+                <td colSpan={4} className="pt-2 text-right text-gray-500">Assets introduced</td>
+                <td className="pt-2 text-right tabular-nums text-gray-800 font-semibold">
+                  {formatCurrency(ob.total_assets_introduced || 0)}
+                </td>
+              </tr>
+              <tr className="text-xs">
+                <td colSpan={4} className="pt-1 text-right text-gray-500">Liabilities introduced</td>
+                <td className="pt-1 text-right tabular-nums text-gray-800 font-semibold">
+                  ({formatCurrency(ob.total_liabilities_introduced || 0)})
+                </td>
+              </tr>
+              <tr className="border-t-2 border-gray-900 font-bold">
+                <td colSpan={4} className="pt-2 text-right text-gray-900">Net equity impact</td>
+                <td className="pt-2 text-right tabular-nums">
+                  {formatCurrency(ob.net_equity_impact || 0)}
+                </td>
               </tr>
             </tbody>
           </table>

@@ -90,11 +90,26 @@ def _gl_filter_for_landlord(landlord_id=None, property_id=None):
             Q(unit__property_id=property_id) | Q(property_id=property_id)
         )
 
-    return (
+    # Opening balances are landlord-LEVEL (the Opening Layer entries
+    # carry no property FK — a loan, a fixed asset, etc. applies to the
+    # landlord's whole portfolio, not a specific property). When the
+    # report is scoped to a specific property we exclude them; when
+    # scoped to a landlord without property they're included so the
+    # landlord's Balance Sheet, Trial Balance, and trust composition all
+    # reflect their pre-existing assets/liabilities.
+    from apps.accounting.models import OpeningBalance
+    base_q = (
         Q(journal_entry__source_type='receipt', journal_entry__source_id__in=Subquery(receipt_qs.values('id'))) |
         Q(journal_entry__source_type='expense', journal_entry__source_id__in=Subquery(expense_qs.values('id'))) |
         Q(journal_entry__source_type='invoice', journal_entry__source_id__in=Subquery(invoice_qs.values('id')))
     )
+    if landlord_id and not property_id:
+        ob_qs = OpeningBalance.objects.filter(landlord_id=landlord_id)
+        base_q = base_q | Q(
+            journal_entry__source_type='opening_balance',
+            journal_entry__source_id__in=Subquery(ob_qs.values('id')),
+        )
+    return base_q
 
 
 def _commission_expr():
@@ -1139,6 +1154,59 @@ class BalanceSheetView(APIView):
                     'drawings': float(_period_drawings),
                     'closing_equity': float(_opening_equity + _period_net_income - _period_drawings),
                 }
+
+                # ---- Opening balances adjustments ----
+                # Opening Layer entries don't move cash, so they don't
+                # affect trust composition or the cash-basis equity
+                # reconciliation above. They DO show up on the Balance
+                # Sheet itself (assets/liabilities) via the GL filter
+                # extension to source_type='opening_balance'. Surface
+                # the breakdown here so the reader can see exactly which
+                # pre-existing balances were brought in via the Opening
+                # Layer for this landlord.
+                from apps.accounting.models import OpeningBalance
+                _ob_qs = OpeningBalance.objects.filter(
+                    landlord_id=landlord_obj.id,
+                    status=OpeningBalance.Status.POSTED,
+                    date__lte=as_of_date,
+                ).select_related('target_account')
+                _ob_entries = []
+                _ob_assets_in = Decimal('0')
+                _ob_liabilities_in = Decimal('0')
+                for ob in _ob_qs:
+                    acct = ob.target_account
+                    is_asset_dir = (ob.direction == OpeningBalance.EntryDirection.DEBIT)
+                    impact = ob.amount if is_asset_dir else -ob.amount
+                    if acct.account_type == 'asset':
+                        _ob_assets_in += ob.amount if is_asset_dir else -ob.amount
+                    elif acct.account_type == 'liability':
+                        _ob_liabilities_in += ob.amount if not is_asset_dir else -ob.amount
+                    _ob_entries.append({
+                        'id': ob.id,
+                        'entry_number': ob.entry_number,
+                        'date': str(ob.date),
+                        'account_code': acct.code,
+                        'account_name': acct.name,
+                        'account_type': acct.account_type,
+                        'direction': ob.direction,
+                        'description': ob.custom_description or ob.description,
+                        'amount': float(ob.amount),
+                        'impact': float(impact),
+                    })
+                if _ob_entries:
+                    breakdowns['opening_balances'] = {
+                        'entries': _ob_entries,
+                        'total_assets_introduced': float(_ob_assets_in),
+                        'total_liabilities_introduced': float(_ob_liabilities_in),
+                        'net_equity_impact': float(_ob_assets_in - _ob_liabilities_in),
+                        'note': (
+                            'Opening Layer entries (pre-takeover balances). These '
+                            'are reflected in the Balance Sheet totals above but '
+                            'do not move cash, so they are NOT included in the '
+                            'Funds Held in Trust composition or the cash-basis '
+                            'equity reconciliation.'
+                        ),
+                    }
 
         total_liab_equity = total_liabilities + total_equity
 

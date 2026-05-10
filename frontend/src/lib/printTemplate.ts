@@ -1109,6 +1109,65 @@ function buildBalanceSheetBody(data: any, currency: string): string {
     `)
   }
 
+  // Opening Layer adjustments — pre-takeover balances brought in via
+  // the Opening Layer module. They show on the Balance Sheet totals
+  // above; this note breaks them out for transparency.
+  const ob = breakdowns.opening_balances
+  const obEntries: any[] = ob?.entries || []
+  if (obEntries.length) {
+    noteNo += 1
+    notes.push(`
+      <div class="note">
+        <div class="note-head">
+          <div class="note-num">Note ${noteNo}</div>
+          <div class="note-title">Opening Layer Adjustments</div>
+          <div class="note-meta">${obEntries.length} ${obEntries.length === 1 ? 'entry' : 'entries'}</div>
+        </div>
+        <div class="note-body">
+          <p style="font-size:8.5pt; color:#6b7280; margin-bottom:8pt; line-height:1.5;">
+            ${ob.note || 'Pre-takeover balances. Reflected in the Balance Sheet totals above; do not move cash.'}
+          </p>
+          <table class="ftbl">
+            <thead>
+              <tr>
+                <th style="width:60pt">Date</th>
+                <th>Account</th>
+                <th>Description</th>
+                <th class="num" style="width:40pt">Dir</th>
+                <th class="num" style="width:90pt">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${obEntries.map((e: any) => `
+                <tr>
+                  <td class="acc-date">${fmtDate(e.date)}</td>
+                  <td>
+                    <span class="code" style="margin-right:6pt">${e.account_code}</span>
+                    ${e.account_name}
+                  </td>
+                  <td class="acc-desc">${(e.description || '').replace(/[<>&]/g, (c: string) => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]!))}</td>
+                  <td class="num" style="font-size:8pt; font-weight:700">${e.direction === 'debit' ? 'Dr' : 'Cr'}</td>
+                  <td class="num">${fmtMoney(e.amount || 0, currency, false)}</td>
+                </tr>`).join('')}
+              <tr>
+                <td colspan="4" class="num" style="font-size:9pt; color:#6b7280;">Assets introduced</td>
+                <td class="num">${fmtMoney(ob.total_assets_introduced || 0, currency, false)}</td>
+              </tr>
+              <tr>
+                <td colspan="4" class="num" style="font-size:9pt; color:#6b7280;">Liabilities introduced</td>
+                <td class="num neg">(${fmtMoney(ob.total_liabilities_introduced || 0, currency, false)})</td>
+              </tr>
+              <tr class="grand">
+                <td colspan="4">Net equity impact</td>
+                <td class="num">${fmtMoney(ob.net_equity_impact || 0, currency, false)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `)
+  }
+
   const notesBlock = notes.length ? `
     <div class="notes-section">
       <div class="notes-h">
