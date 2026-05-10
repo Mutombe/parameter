@@ -9,8 +9,31 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Precache hashed assets only — never index.html. The hashed
+        // filenames (e.g. index-B49YaHaF.css) are content-addressed,
+        // so old hashes vanish from disk on every build. Caching
+        // index.html offline makes the SW serve stale HTML referencing
+        // dead asset hashes, which 404s and breaks the page until the
+        // user clears site data. Use NetworkFirst for HTML so we
+        // always pick up fresh asset hashes.
+        globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
+        navigateFallback: null,
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true,
         runtimeCaching: [
+          {
+            // HTML / navigations — always try the network first so
+            // the freshest index.html wins; fall back to cache only
+            // when offline.
+            urlPattern: ({ request }: any) =>
+              request.mode === 'navigate' || request.destination === 'document',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'html-cache',
+              networkTimeoutSeconds: 3,
+            },
+          },
           {
             urlPattern: /\/api\//,
             handler: 'NetworkFirst',
