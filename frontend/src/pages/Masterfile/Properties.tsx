@@ -188,7 +188,12 @@ export default function Properties() {
   const createMutation = useMutation({
     mutationFn: (data: any) => {
       const id = data._editingId
-      const { _editingId, ...payload } = data
+      // _drafts rides along on the variables so onSuccess can read it
+      // even after onMutate's resetForm() has cleared pendingCommissions
+      // from React state. Without this, draft-mode commission overrides
+      // staged in the JIT modal got wiped before they could be applied.
+      const { _editingId, _drafts, ...payload } = data
+      void _drafts
       return id ? propertyApi.update(id, payload) : propertyApi.create(payload)
     },
     onMutate: async (newData) => {
@@ -228,13 +233,17 @@ export default function Properties() {
       }
       return { previousData, isUpdating }
     },
-    onSuccess: async (response, __, context) => {
+    onSuccess: async (response, variables: any, context) => {
       const newId = response?.data?.id
       const newName = response?.data?.name || ''
-      // Apply any pre-save commission drafts now that we have a propertyId.
-      // Done sequentially to keep error toasts coherent if one fails.
-      const drafts = Object.entries(pendingCommissions)
+      // Read drafts from the mutation variables, NOT from the
+      // `pendingCommissions` state — that's already been cleared by
+      // onMutate's resetForm() by the time we get here.
+      const draftsObj = (variables?._drafts as CommissionDraft) || {}
+      const drafts = Object.entries(draftsObj)
       if (!context?.isUpdating && newId && drafts.length > 0) {
+        // Apply pre-save commission drafts now that we have a propertyId.
+        // Done sequentially so error toasts stay coherent if one fails.
         for (const [incomeTypeId, rate] of drafts) {
           try {
             await propertyCommissionApi.upsert({
@@ -247,7 +256,6 @@ export default function Properties() {
           }
         }
         showToast.success(`Property created · ${drafts.length} commission override${drafts.length === 1 ? '' : 's'} applied`)
-        setPendingCommissions({})
       } else {
         showToast.success(context?.isUpdating ? 'Property updated successfully' : 'Property created successfully')
       }
@@ -1126,7 +1134,17 @@ export default function Properties() {
         ) : (
           <PropertyForm
             initialValues={form}
-            onSubmit={(data) => createMutation.mutate({ ...data, _editingId: editingId })}
+            onSubmit={(data) =>
+              createMutation.mutate({
+                ...data,
+                _editingId: editingId,
+                // Carry pre-save commission drafts on the variables so
+                // they survive resetForm() in onMutate (which would
+                // otherwise wipe pendingCommissions before onSuccess
+                // could read them).
+                _drafts: editingId ? {} : pendingCommissions,
+              })
+            }
             isSubmitting={createMutation.isPending}
             onCancel={resetForm}
             // Compact "Commissions" button beside Total Units. Always
