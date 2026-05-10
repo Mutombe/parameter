@@ -97,18 +97,30 @@ def _gl_filter_for_landlord(landlord_id=None, property_id=None):
     # scoped to a landlord without property they're included so the
     # landlord's Balance Sheet, Trial Balance, and trust composition all
     # reflect their pre-existing assets/liabilities.
-    from apps.accounting.models import OpeningBalance
     base_q = (
         Q(journal_entry__source_type='receipt', journal_entry__source_id__in=Subquery(receipt_qs.values('id'))) |
         Q(journal_entry__source_type='expense', journal_entry__source_id__in=Subquery(expense_qs.values('id'))) |
         Q(journal_entry__source_type='invoice', journal_entry__source_id__in=Subquery(invoice_qs.values('id')))
     )
     if landlord_id and not property_id:
-        ob_qs = OpeningBalance.objects.filter(landlord_id=landlord_id)
-        base_q = base_q | Q(
-            journal_entry__source_type='opening_balance',
-            journal_entry__source_id__in=Subquery(ob_qs.values('id')),
-        )
+        # `.order_by()` strips the model's default ordering so the
+        # Subquery doesn't carry an ORDER BY clause inside the outer
+        # IN(...) — some backends fault on it.
+        try:
+            from apps.accounting.models import OpeningBalance
+            ob_id_qs = OpeningBalance.objects.filter(
+                landlord_id=landlord_id,
+            ).order_by().values('id')
+            base_q = base_q | Q(
+                journal_entry__source_type='opening_balance',
+                journal_entry__source_id__in=Subquery(ob_id_qs),
+            )
+        except Exception:
+            # Defensive: never let a failure here (import error, model
+            # missing on this tenant schema, etc.) break the entire
+            # scope filter. The Balance Sheet will just miss the OB
+            # contribution this one request and recover automatically.
+            logger.exception('Failed to extend GL scope filter with opening balances')
     return base_q
 
 
