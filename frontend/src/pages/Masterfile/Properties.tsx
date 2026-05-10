@@ -1076,9 +1076,10 @@ export default function Properties() {
             : editingId ? 'Edit Property' : 'Add New Property'
         }
         icon={commissionStep ? Percent : (editingId ? Edit2 : Plus)}
-        // 'lg' = max-w-lg gives the 2-col rows (Property/Mgmt Type, and
-        // Total Units / Commissions) enough horizontal breathing room.
-        size="lg"
+        // Form mode: 'lg' (max-w-lg = 512px) for the 2-col field rows.
+        // Wizard step 2 (commission grid post-save): '5xl' (max-w-5xl =
+        // 1024px) so the 6-column table doesn't scroll horizontally.
+        size={commissionStep ? '5xl' : 'lg'}
       >
         {commissionStep ? (
           <div className="space-y-4">
@@ -1147,7 +1148,10 @@ export default function Properties() {
             - jitCommissions.id is a number → bound to existing property,
               auto-saves edits via the upsert API
             - jitCommissions.id is null → DRAFT mode (no propertyId yet);
-              edits go into pendingCommissions and apply on property save */}
+              edits go into pendingCommissions and apply on property save
+          Width: 5xl (max-w-5xl = 1024px) so the 6-col commissions table
+          (Income Type · Code · Default · Override · Effective · Reset)
+          renders without horizontal scroll on big screens. */}
       <Modal
         open={!!jitCommissions}
         onClose={() => setJitCommissions(null)}
@@ -1159,7 +1163,7 @@ export default function Properties() {
             : 'Commission Rates'
         }
         icon={Percent}
-        size="lg"
+        size="5xl"
       >
         {jitCommissions && (
           <div className="space-y-4">

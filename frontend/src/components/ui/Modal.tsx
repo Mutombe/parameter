@@ -12,17 +12,26 @@ interface ModalProps {
   title: string
   description?: string
   children: ReactNode
-  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | '6xl' | 'full'
   showClose?: boolean
   icon?: IconComponent
 }
 
+// Tailwind max-width tokens. Larger sizes are useful for wide data
+// tables (commissions grid, etc.) where the cramped default would
+// force horizontal scrolling. The viewport p-4 wrapper still keeps
+// the modal off the edges on narrow screens.
 const sizeClasses = {
-  sm: 'max-w-sm',
-  md: 'max-w-md',
-  lg: 'max-w-lg',
-  xl: 'max-w-xl',
-  full: 'max-w-4xl',
+  sm: 'max-w-sm',     // 384px
+  md: 'max-w-md',     // 448px
+  lg: 'max-w-lg',     // 512px
+  xl: 'max-w-xl',     // 576px
+  '2xl': 'max-w-2xl', // 672px
+  '3xl': 'max-w-3xl', // 768px
+  '4xl': 'max-w-4xl', // 896px
+  '5xl': 'max-w-5xl', // 1024px — fits a 6-col commissions grid comfortably
+  '6xl': 'max-w-6xl', // 1152px
+  full: 'max-w-4xl',  // legacy alias — kept for backwards compat
 }
 
 export function Modal({
