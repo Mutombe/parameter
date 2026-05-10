@@ -703,8 +703,32 @@ class BalanceSheetView(APIView):
     """Balance Sheet Report."""
     permission_classes = [IsAuthenticated]
 
-    @_cache_report('balance_sheet', ttl=300)
     def get(self, request):
+        # Diagnostic wrapper: append `?debug=1` to the URL to bypass
+        # the generic exception handler and get the full traceback in
+        # the JSON response. Only authenticated users can hit it; this
+        # is a temporary diagnostic to track down a 500 we can't catch
+        # from Render logs in real time. Remove once the issue is
+        # resolved.
+        if request.query_params.get('debug') == '1':
+            try:
+                return self._get_impl(request)
+            except Exception as exc:
+                import traceback
+                tb = traceback.format_exc()
+                return Response(
+                    {
+                        'error': str(exc),
+                        'type': exc.__class__.__name__,
+                        'traceback': tb.splitlines()[-30:],
+                        'query_params': dict(request.query_params),
+                    },
+                    status=500,
+                )
+        return self._get_impl(request)
+
+    @_cache_report('balance_sheet', ttl=300)
+    def _get_impl(self, request):
         as_of_date = request.query_params.get('as_of_date', timezone.now().date())
         landlord_id = request.query_params.get('landlord_id')
         property_id = request.query_params.get('property_id')
