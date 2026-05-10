@@ -735,14 +735,31 @@ export default function OpeningBalances() {
             />
           </div>
 
-          {/* Step 2: Target Account */}
+          {/* Step 2: Target Account — filtered to Assets + Liabilities only.
+              Per spec, the only valid target sides are introducing an asset
+              (Dr Asset, Cr Opening) or a liability (Cr Liability, Dr Opening).
+              Suppliers are tagged via the Supplier picker below; the system
+              still records a liability account for the OB. */}
           <Select
             label="Target Account"
             value={form.target_account}
             onChange={(e) => setForm({ ...form, target_account: e.target.value })}
-            placeholder="Select target account..."
-            options={accounts.map((a: any) => ({ value: String(a.id), label: `${a.code} - ${a.name}` }))}
-            hint="The other side is always 'Opening Balances' (9000)"
+            placeholder="Select an Asset or Liability account..."
+            options={[
+              ...accounts
+                .filter((a: any) => a.account_type === 'asset')
+                .map((a: any) => ({
+                  value: String(a.id),
+                  label: `Asset · ${a.code} - ${a.name}`,
+                })),
+              ...accounts
+                .filter((a: any) => a.account_type === 'liability')
+                .map((a: any) => ({
+                  value: String(a.id),
+                  label: `Liability · ${a.code} - ${a.name}`,
+                })),
+            ]}
+            hint="The other side is always '9000 — Opening Balances'. Use the Supplier picker below to tag a creditor (Apex Finance etc.)."
             required
           />
 

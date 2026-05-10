@@ -444,6 +444,8 @@ export const accountApi = {
   list: (params?: object) => api.get('/accounting/accounts/', { params }),
   get: (id: number) => api.get(`/accounting/accounts/${id}/`),
   create: (data: object) => api.post('/accounting/accounts/', data),
+  update: (id: number, data: object) => api.patch(`/accounting/accounts/${id}/`, data),
+  delete: (id: number) => api.delete(`/accounting/accounts/${id}/`),
   byType: () => api.get('/accounting/accounts/by_type/'),
   seedDefaults: () => api.post('/accounting/accounts/seed_defaults/'),
 }

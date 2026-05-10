@@ -57,6 +57,7 @@ const Trash = lazy(() => import('./pages/Trash'))
 // Accounting
 const BalanceSheetMovements = lazy(() => import('./pages/Accounting/BalanceSheetMovements'))
 const OpeningBalances = lazy(() => import('./pages/Accounting/OpeningBalances'))
+const GlobalAccounts = lazy(() => import('./pages/Accounting/GlobalAccounts'))
 
 // Reports
 const PropertyPerformance = lazy(() => import('./pages/Reports/PropertyPerformance'))
@@ -212,6 +213,7 @@ export default function App() {
         <Route path="subsidiary-ledger" element={<LazyPage><SubsidiaryLedger /></LazyPage>} />
         <Route path="bs-movements" element={<LazyPage><BalanceSheetMovements /></LazyPage>} />
         <Route path="opening-balances" element={<LazyPage><OpeningBalances /></LazyPage>} />
+        <Route path="global-accounts" element={<LazyPage><GlobalAccounts /></LazyPage>} />
         <Route path="reports" element={<LazyPage><Reports /></LazyPage>} />
         <Route path="aged-analysis" element={<Navigate to="/dashboard/reports?report=aged-analysis" replace />} />
         <Route path="audit-trail" element={<LazyPage><AuditTrail /></LazyPage>} />

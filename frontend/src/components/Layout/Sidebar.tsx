@@ -107,6 +107,7 @@ const navigation: NavSection[] = [
       { name: 'Income Types', href: '/dashboard/income-types', icon: DollarSign },
       { name: 'Expense Categories', href: '/dashboard/expense-categories', icon: GitCompare },
       { name: 'Opening Balances', href: '/dashboard/opening-balances', icon: BookOpen },
+      { name: 'Global Accounts', href: '/dashboard/global-accounts', icon: Wallet },
       { name: 'Account Transfers', href: '/dashboard/bs-movements', icon: GitCompare },
     ],
   },
@@ -374,7 +375,7 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
               latest bundle. Bump the string each push during diagnosis. */}
           {isExpanded && (
             <div className="mt-2 px-2 py-1 text-[10px] text-gray-400 text-center font-mono tracking-tight">
-              build · bs-fielderror-fix-v20
+              build · global-accounts-v21
             </div>
           )}
         </div>
