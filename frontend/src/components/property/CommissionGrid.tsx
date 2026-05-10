@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Percent, RotateCcw, Check, Loader2 } from 'lucide-react'
 import { cn } from '../../lib/utils'
-import { propertyCommissionApi } from '../../services/api'
+import { propertyCommissionApi, incomeTypeApi } from '../../services/api'
 import { showToast } from '../../lib/toast'
 
 /* CommissionGrid — per-(property, income_type) commission rate editor.
@@ -48,12 +48,43 @@ export function CommissionGrid({
   const [savingIds, setSavingIds] = useState<Set<number>>(new Set())
   const [savedIds, setSavedIds] = useState<Set<number>>(new Set())
 
+  // In draft mode (no propertyId yet) we synthesize the grid client-side
+  // from the IncomeType list — every row starts with override_rate=null,
+  // effective_rate=default_rate (when commissionable) else 0. This avoids
+  // a backend dependency that may lag behind the frontend deploy.
+  // Local drafts (parent-owned) overlay the rendered rows.
   const { data, isLoading, error } = useQuery({
     queryKey,
-    queryFn: () =>
-      isDraft
-        ? propertyCommissionApi.draftGrid().then(r => r.data)
-        : propertyCommissionApi.grid(propertyId!).then(r => r.data),
+    queryFn: async () => {
+      if (isDraft) {
+        const r = await incomeTypeApi.list({ page_size: 500 })
+        const items: any[] = r.data?.results || r.data || []
+        const rows = items
+          .filter((it: any) => it.is_active !== false)
+          .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''))
+          .map((it: any) => {
+            const defaultRate = Number(it.default_commission_rate) || 0
+            const ovr = draft && draft[it.id] !== undefined ? draft[it.id] : null
+            return {
+              income_type_id: it.id,
+              income_type_code: it.code,
+              income_type_name: it.name,
+              is_commissionable: it.is_commissionable,
+              default_rate: defaultRate,
+              override_rate: ovr,
+              effective_rate:
+                ovr !== null
+                  ? ovr
+                  : it.is_commissionable
+                    ? defaultRate
+                    : 0,
+              override_id: null,
+            }
+          })
+        return { property_id: null, property_name: '', rows }
+      }
+      return propertyCommissionApi.grid(propertyId!).then(r => r.data)
+    },
     enabled: isDraft || !!propertyId,
     placeholderData: keepPreviousData,
   })
