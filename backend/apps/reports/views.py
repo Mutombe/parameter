@@ -763,6 +763,32 @@ class BalanceSheetView(APIView):
         as_of_date = request.query_params.get('as_of_date', timezone.now().date())
         landlord_id = request.query_params.get('landlord_id')
         property_id = request.query_params.get('property_id')
+
+        # Refuse tenant-scoped reports on the public schema. This used
+        # to throw a confusing "relation does not exist" 500 because
+        # tenant tables (accounting_generalledger, etc.) only exist on
+        # tenant schemas. Surface a clear 400 so the caller knows to
+        # send X-Tenant-Subdomain or use a tenant subdomain URL.
+        from django.db import connection as _conn
+        if (landlord_id or property_id) and _conn.schema_name == 'public':
+            return Response(
+                {
+                    'error': 'no_tenant_context',
+                    'message': (
+                        'Landlord/property-scoped reports require a tenant '
+                        'context. Hit this endpoint from a tenant subdomain '
+                        '(e.g. https://<tenant>.parameter.co.zw/api/...) or '
+                        'send the X-Tenant-Subdomain header.'
+                    ),
+                    'connection_schema': _conn.schema_name,
+                    'http_host': request.META.get('HTTP_HOST', ''),
+                    'x_tenant_subdomain_header': request.META.get(
+                        'HTTP_X_TENANT_SUBDOMAIN', ''
+                    ),
+                },
+                status=400,
+            )
+
         scope_filter = _gl_filter_for_landlord(landlord_id, property_id)
 
         asset_list, liability_list, equity_list = [], [], []
