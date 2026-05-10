@@ -265,6 +265,16 @@ def get_tenant_ledger(tenant, period_start=None, period_end=None):
     """
     Compute tenant ledger in bank-statement style with running balance.
     Supports optional date range filtering.
+
+    Sources:
+      - tenant.invoices    — debit (charges)
+      - tenant.receipts    — credit (payments)
+      - SubsidiaryTransaction rows on the tenant's subsidiary account
+        with source_type='opening_balance' — covers the Opening Layer
+        scenarios where pre-existing rent arrears (debit) or rent in
+        advance (credit) are introduced via the OpeningBalance form.
+        Without this, opening-balance entries posted to the tenant
+        sub-account never appear on the tenant's statement.
     """
     from apps.billing.serializers import InvoiceSerializer, ReceiptSerializer
     from decimal import Decimal
@@ -296,6 +306,27 @@ def get_tenant_ledger(tenant, period_start=None, period_end=None):
             'credit': float(rct.amount),
             'payment_method': rct.payment_method,
         })
+
+    # Opening balance entries posted to this tenant's sub-account
+    # (rent arrears, rent in advance, etc.). These come from the
+    # Opening Layer via OpeningBalance.tenant_sub_account.
+    sub_account = getattr(tenant, 'subsidiary_account', None)
+    if sub_account is not None:
+        from apps.accounting.models import SubsidiaryTransaction
+        ob_txns = SubsidiaryTransaction.objects.filter(
+            account=sub_account,
+            journal_entry__source_type='opening_balance',
+        ).select_related('journal_entry')
+        for tx in ob_txns:
+            entries.append({
+                'id': f'ob-{tx.id}',
+                'type': 'opening_balance',
+                'date': str(tx.date),
+                'reference': tx.reference,
+                'description': tx.description or 'Opening balance',
+                'debit': float(tx.debit_amount),
+                'credit': float(tx.credit_amount),
+            })
 
     # Sort by date then type (invoices before receipts on same day)
     entries.sort(key=lambda e: (e['date'], 0 if e['type'] == 'invoice' else 1, e['id']))

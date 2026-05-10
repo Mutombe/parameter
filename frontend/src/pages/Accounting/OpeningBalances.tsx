@@ -16,7 +16,7 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
 } from 'lucide-react'
-import { openingBalanceApi, accountApi, landlordApi, subsidiaryApi } from '../../services/api'
+import { openingBalanceApi, accountApi, landlordApi, subsidiaryApi, supplierApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import {
   PageHeader, Modal, Button, Input, Select, Badge, EmptyState,
@@ -165,6 +165,7 @@ export default function OpeningBalances() {
     landlord: '',
     landlord_sub_account: '',
     tenant_sub_account: '',
+    supplier: '',
     description: '',
     custom_description: '',
     amount: '',
@@ -222,6 +223,17 @@ export default function OpeningBalances() {
         .then((r: any) => r.data.results || r.data),
     enabled: !!form.landlord,
     staleTime: 30000,
+  })
+
+  // Suppliers — the list of creditor entities this landlord could owe
+  // (Apex Finance, ZESA, City of Harare, etc.). Used to attach a
+  // supplier dimension to liability-side opening balances so reports
+  // can show "this landlord owes Apex Finance $X total".
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['suppliers-list'],
+    queryFn: () => supplierApi.list({ page_size: 500 }).then((r: any) => r.data.results || r.data),
+    staleTime: 60000,
+    placeholderData: keepPreviousData,
   })
 
   // Resolve the picked target account so the default description can
@@ -299,6 +311,7 @@ export default function OpeningBalances() {
       landlord: '',
       landlord_sub_account: '',
       tenant_sub_account: '',
+      supplier: '',
       description: '',
       custom_description: '',
       amount: '',
@@ -332,6 +345,9 @@ export default function OpeningBalances() {
     }
     if (form.tenant_sub_account) {
       data.tenant_sub_account = parseInt(form.tenant_sub_account)
+    }
+    if (form.supplier) {
+      data.supplier = parseInt(form.supplier)
     }
     createMutation.mutate(data)
   }
@@ -785,6 +801,26 @@ export default function OpeningBalances() {
                 })),
               ]}
               hint="Only set when introducing tenant rent arrears or prepayment"
+            />
+          )}
+
+          {/* Step 7b: Supplier — optional. Tag the OB with the creditor
+              entity (Apex Finance loan, ZESA arrears, etc.) so the
+              landlord's reports can roll up "amount owed per supplier". */}
+          {form.landlord && (suppliers as any[]).length > 0 && (
+            <Select
+              label="Supplier / Creditor (optional)"
+              value={form.supplier}
+              onChange={(e) => setForm({ ...form, supplier: e.target.value })}
+              placeholder="None — skip"
+              options={[
+                { value: '', label: 'None — skip' },
+                ...(suppliers as any[]).map((s: any) => ({
+                  value: String(s.id),
+                  label: `${s.code || ''} ${s.name}`.trim(),
+                })),
+              ]}
+              hint="Set for liability-side OBs (e.g. Apex Finance loan) so the landlord's reports show who they owe."
             />
           )}
 

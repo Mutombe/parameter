@@ -1842,6 +1842,45 @@ function BalanceSheetNotes({ data }: { data: any }) {
               </tr>
             </tbody>
           </table>
+
+          {/* Per-supplier rollup — answers "who do I owe?" for the
+              landlord. Only renders when at least one OB has a supplier
+              tag (e.g. Apex Finance loan). */}
+          {Array.isArray(ob.by_supplier) && ob.by_supplier.length > 0 && (
+            <div className="mt-5 pt-4 border-t border-gray-200">
+              <div className="text-[10px] tracking-[0.12em] uppercase font-bold text-gray-500 mb-2">
+                Amount owed by supplier
+              </div>
+              <table className="w-full text-sm">
+                <tbody>
+                  {ob.by_supplier.map((row: any) => (
+                    <tr key={row.supplier_id} className="border-b border-gray-100">
+                      <td className="py-1.5 text-gray-800">
+                        <span className="font-mono text-[11px] text-gray-400 mr-1.5">
+                          {row.supplier_code}
+                        </span>
+                        {row.supplier_name}
+                        <span className="ml-2 text-[10px] text-gray-400">
+                          ({row.entry_count} {row.entry_count === 1 ? 'entry' : 'entries'})
+                        </span>
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums font-semibold text-rose-700">
+                        {formatCurrency(row.amount_owed)}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-t border-gray-300 font-bold">
+                    <td className="pt-2 text-gray-900">Total owed via Opening Layer</td>
+                    <td className="pt-2 text-right tabular-nums text-rose-800">
+                      {formatCurrency(
+                        ob.by_supplier.reduce((s: number, r: any) => s + (r.amount_owed || 0), 0),
+                      )}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
         </BalanceSheetNote>
       )}
     </div>

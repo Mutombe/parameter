@@ -1169,10 +1169,14 @@ class BalanceSheetView(APIView):
                     landlord_id=landlord_obj.id,
                     status=OpeningBalance.Status.POSTED,
                     date__lte=as_of_date,
-                ).select_related('target_account')
+                ).select_related('target_account', 'supplier')
                 _ob_entries = []
                 _ob_assets_in = Decimal('0')
                 _ob_liabilities_in = Decimal('0')
+                # Per-supplier rollup so the landlord can see "I owe
+                # Apex Finance $X total via OB". Only suppliers with
+                # at least one OB row land here.
+                _supplier_totals: dict = {}
                 for ob in _ob_qs:
                     acct = ob.target_account
                     is_asset_dir = (ob.direction == OpeningBalance.EntryDirection.DEBIT)
@@ -1181,6 +1185,20 @@ class BalanceSheetView(APIView):
                         _ob_assets_in += ob.amount if is_asset_dir else -ob.amount
                     elif acct.account_type == 'liability':
                         _ob_liabilities_in += ob.amount if not is_asset_dir else -ob.amount
+                    sup = ob.supplier
+                    if sup is not None:
+                        agg = _supplier_totals.setdefault(sup.id, {
+                            'supplier_id': sup.id,
+                            'supplier_code': sup.code,
+                            'supplier_name': sup.name,
+                            'amount_owed': Decimal('0'),
+                            'entry_count': 0,
+                        })
+                        # Liability-side (Cr) entries grow what we owe
+                        # the supplier; asset-side (Dr) entries reduce
+                        # the exposure (e.g. supplier overpayment).
+                        agg['amount_owed'] += ob.amount if not is_asset_dir else -ob.amount
+                        agg['entry_count'] += 1
                     _ob_entries.append({
                         'id': ob.id,
                         'entry_number': ob.entry_number,
@@ -1192,6 +1210,9 @@ class BalanceSheetView(APIView):
                         'description': ob.custom_description or ob.description,
                         'amount': float(ob.amount),
                         'impact': float(impact),
+                        'supplier_id': sup.id if sup else None,
+                        'supplier_name': sup.name if sup else '',
+                        'supplier_code': sup.code if sup else '',
                     })
                 if _ob_entries:
                     breakdowns['opening_balances'] = {
@@ -1199,6 +1220,11 @@ class BalanceSheetView(APIView):
                         'total_assets_introduced': float(_ob_assets_in),
                         'total_liabilities_introduced': float(_ob_liabilities_in),
                         'net_equity_impact': float(_ob_assets_in - _ob_liabilities_in),
+                        'by_supplier': [
+                            {**v, 'amount_owed': float(v['amount_owed'])}
+                            for v in _supplier_totals.values()
+                            if v['amount_owed'] != 0
+                        ],
                         'note': (
                             'Opening Layer entries (pre-takeover balances). These '
                             'are reflected in the Balance Sheet totals above but '

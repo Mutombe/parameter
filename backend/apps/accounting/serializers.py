@@ -638,6 +638,8 @@ class OpeningBalanceSerializer(serializers.ModelSerializer):
     landlord_name = serializers.CharField(source='landlord.name', read_only=True)
     landlord_sub_name = serializers.CharField(source='landlord_sub_account.name', read_only=True, default=None)
     tenant_sub_name = serializers.CharField(source='tenant_sub_account.name', read_only=True, default=None)
+    supplier_name = serializers.CharField(source='supplier.name', read_only=True, default=None)
+    supplier_code = serializers.CharField(source='supplier.code', read_only=True, default=None)
     journal_number = serializers.CharField(source='journal.journal_number', read_only=True, default=None)
 
     class Meta:
@@ -647,6 +649,7 @@ class OpeningBalanceSerializer(serializers.ModelSerializer):
             'target_account_code', 'direction', 'category',
             'landlord', 'landlord_name', 'landlord_sub_account', 'landlord_sub_name',
             'tenant_sub_account', 'tenant_sub_name',
+            'supplier', 'supplier_name', 'supplier_code',
             'description', 'custom_description', 'amount', 'currency',
             'status', 'journal', 'journal_number',
             'created_by', 'created_at', 'updated_at',
@@ -661,7 +664,7 @@ class OpeningBalanceCreateSerializer(serializers.ModelSerializer):
         model = OpeningBalance
         fields = [
             'date', 'target_account', 'direction', 'category',
-            'landlord', 'landlord_sub_account', 'tenant_sub_account',
+            'landlord', 'landlord_sub_account', 'tenant_sub_account', 'supplier',
             'description', 'custom_description', 'amount', 'currency',
         ]
 

@@ -1685,6 +1685,15 @@ class OpeningBalance(models.Model):
         SubsidiaryAccount, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='opening_balance_tenant'
     )
+    # Supplier (creditor) the opening balance is owed TO. Used for the
+    # Apex-Finance-loan / Vendor-payable scenarios from the Opening
+    # Layer spec — surfaces "who the landlord owes" as a dimension on
+    # reports, distinct from the generic target_account.
+    supplier = models.ForeignKey(
+        'masterfile.Supplier', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='opening_balances',
+        help_text='Optional creditor/supplier this OB is owed to'
+    )
 
     description = models.CharField(max_length=500, default='Opening balance')
     custom_description = models.CharField(max_length=500, blank=True)
