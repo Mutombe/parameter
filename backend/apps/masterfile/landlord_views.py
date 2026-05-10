@@ -29,8 +29,12 @@ class LandlordPortalViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['get'])
     def dashboard(self, request):
-        """Landlord dashboard summary."""
+        """Landlord dashboard summary — includes commission deductions
+        per income type so the landlord sees exactly how much the
+        agency took, broken down by sub-account.
+        """
         from apps.billing.models import Invoice, Receipt
+        from apps.reports.views import _commission_expr
 
         landlord = self._get_landlord(request)
         properties = Property.objects.filter(landlord=landlord, is_active=True)
@@ -49,6 +53,26 @@ class LandlordPortalViewSet(viewsets.ViewSet):
         )
         total_income = receipts.aggregate(total=Sum('amount'))['total'] or Decimal('0')
 
+        # Commission deductions — aggregate via the unified resolver so
+        # rates respect per-(property, income_type) overrides.
+        comm_expr = _commission_expr()
+        total_commission = receipts.aggregate(t=Sum(comm_expr))['t'] or Decimal('0')
+        commission_by_type = list(
+            receipts.values(
+                'income_type__id', 'income_type__name',
+            ).annotate(commission=Sum(comm_expr))
+            .order_by('income_type__name')
+        )
+        commission_breakdown = [
+            {
+                'income_type_id': r['income_type__id'],
+                'income_type_name': r['income_type__name'] or 'Other',
+                'amount': str(r['commission'] or Decimal('0')),
+            }
+            for r in commission_by_type
+            if (r['commission'] or Decimal('0')) != 0
+        ]
+
         # Outstanding
         invoices = Invoice.objects.filter(
             unit__property__landlord=landlord,
@@ -62,6 +86,17 @@ class LandlordPortalViewSet(viewsets.ViewSet):
             unit__property__landlord=landlord,
             status='active',
         ).count()
+
+        # Net payable to landlord (gross income − commission − operating
+        # expenses paid from trust). Captures what the agency actually
+        # owes the landlord.
+        from apps.billing.models import Expense
+        operating_expenses = Expense.objects.filter(
+            landlord=landlord, status='paid',
+        ).exclude(expense_kind='non_cash').exclude(
+            expense_type='landlord_payment',
+        ).aggregate(t=Sum('amount'))['t'] or Decimal('0')
+        net_payable = total_income - total_commission - operating_expenses
 
         return Response({
             'landlord': {
@@ -77,7 +112,11 @@ class LandlordPortalViewSet(viewsets.ViewSet):
                 'active_leases': active_leases,
                 'total_income': str(total_income),
                 'total_outstanding': str(total_outstanding),
+                'total_commission': str(total_commission),
+                'operating_expenses': str(operating_expenses),
+                'net_payable': str(net_payable),
             },
+            'commission_breakdown': commission_breakdown,
         })
 
     @action(detail=False, methods=['get'])
@@ -109,19 +148,25 @@ class LandlordPortalViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['get'])
     def statements(self, request):
-        """Monthly income statements for landlord."""
+        """Monthly income statements for landlord. Each row carries the
+        commission deducted by the agency for that month so the landlord
+        can see the gross-to-net flow at a glance.
+        """
         from apps.billing.models import Receipt
+        from apps.reports.views import _commission_expr
         from django.db.models.functions import TruncMonth
 
         landlord = self._get_landlord(request)
+        comm_expr = _commission_expr()
 
-        monthly_income = list(
+        monthly = list(
             Receipt.objects.filter(
                 invoice__unit__property__landlord=landlord
             ).annotate(
                 month=TruncMonth('date')
             ).values('month').annotate(
                 total=Sum('amount'),
+                commission=Sum(comm_expr),
                 count=Count('id'),
             ).order_by('-month')[:12]
         )
@@ -131,10 +176,15 @@ class LandlordPortalViewSet(viewsets.ViewSet):
             'statements': [
                 {
                     'month': item['month'].isoformat() if item['month'] else None,
-                    'total_income': str(item['total']),
+                    'total_income': str(item['total'] or Decimal('0')),
+                    'commission': str(item['commission'] or Decimal('0')),
+                    'net_income': str(
+                        (item['total'] or Decimal('0'))
+                        - (item['commission'] or Decimal('0'))
+                    ),
                     'receipt_count': item['count'],
                 }
-                for item in monthly_income
+                for item in monthly
             ],
         })
 

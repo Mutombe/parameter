@@ -1250,6 +1250,11 @@ export default function PropertyDetail() {
         {/* ===== FINANCIALS TAB ===== */}
         <TabsContent value="financials" className="space-y-6">
 
+      {/* Commission Deductions — sourced from incomeExpenditure.consolidated
+          which already aggregates per-(property, income_type) commission via
+          the unified resolver. Shows total + per-type breakdown. */}
+      <CommissionDeductionsCard incomeExpData={incomeExpData} />
+
       {/* Lease Charges Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="p-6 border-b border-gray-100 flex items-center justify-between">
@@ -2297,6 +2302,95 @@ function PropertyBillingStatus({ propertyId, propertyName, billingForm, setBilli
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+
+
+/* Commission Deductions card — surfaces what the agency actually
+ * charged on each income type for this property. Reads the existing
+ * incomeExpenditure consolidated payload (no extra fetch). */
+function CommissionDeductionsCard({ incomeExpData }: { incomeExpData: any }) {
+  const cons = incomeExpData?.consolidated || {}
+  const total = Number(cons.management_commission) || 0
+  const byType: Record<string, number> = cons.management_commission_by_type || {}
+  const types = Object.keys(byType).sort()
+
+  if (total === 0 && types.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="p-6 border-b border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-900">Commission Deductions</h3>
+          <p className="text-sm text-gray-500">What the agency charged on receipts for this property</p>
+        </div>
+        <div className="p-8 text-center text-sm text-gray-400">
+          No commission has been deducted in this period.
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
+            <Percent className="w-5 h-5 text-amber-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Commission Deductions</h3>
+            <p className="text-sm text-gray-500">
+              What the agency deducted on each income type for this property
+            </p>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs uppercase tracking-wider text-gray-500">Total Period</div>
+          <div className="text-2xl font-bold text-amber-700 tabular-nums">
+            {formatCurrency(total)}
+          </div>
+        </div>
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-gray-50/60 border-b border-gray-200">
+            <th className="text-left px-6 py-3 text-[11px] tracking-wider uppercase font-semibold text-gray-500">
+              Income Type
+            </th>
+            <th className="text-right px-6 py-3 text-[11px] tracking-wider uppercase font-semibold text-gray-500">
+              Commission
+            </th>
+            <th className="text-right px-6 py-3 text-[11px] tracking-wider uppercase font-semibold text-gray-500 w-32">
+              % of Total
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {types.map((t) => {
+            const amt = Number(byType[t]) || 0
+            const pct = total > 0 ? (amt / total) * 100 : 0
+            return (
+              <tr key={t} className="hover:bg-gray-50/40">
+                <td className="px-6 py-3 text-gray-800 font-medium">{t}</td>
+                <td className="px-6 py-3 text-right tabular-nums text-amber-700 font-semibold">
+                  {formatCurrency(amt)}
+                </td>
+                <td className="px-6 py-3 text-right tabular-nums text-gray-500 text-xs">
+                  {pct.toFixed(1)}%
+                </td>
+              </tr>
+            )
+          })}
+          <tr className="border-t-2 border-gray-900 bg-gray-50/40 font-bold">
+            <td className="px-6 py-3 text-gray-900">Total Commission</td>
+            <td className="px-6 py-3 text-right tabular-nums text-amber-800">
+              {formatCurrency(total)}
+            </td>
+            <td className="px-6 py-3 text-right tabular-nums text-gray-500 text-xs">100.0%</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   )
 }
