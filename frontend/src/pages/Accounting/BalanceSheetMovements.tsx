@@ -16,7 +16,7 @@ import {
   Download,
   XCircle,
 } from 'lucide-react'
-import { bsMovementApi, accountApi, landlordApi } from '../../services/api'
+import { bsMovementApi, accountApi, landlordApi, subsidiaryApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import {
   PageHeader, Modal, Button, Input, Select, Badge, EmptyState,
@@ -74,13 +74,44 @@ const statusConfig = {
   },
 }
 
+// Per the Operational Layer spec — category options match the
+// SubsidiaryAccount.AccountCategory choices on the backend. Picking
+// one locks the landlord-sub-account picker to entries of the same
+// category.
 const categoryOptions = [
   { value: 'rent', label: 'Rent' },
   { value: 'levy', label: 'Levy' },
   { value: 'special_levy', label: 'Special Levy' },
-  { value: 'deposit', label: 'Deposit' },
-  { value: 'other', label: 'Other' },
+  { value: 'maintenance', label: 'Maintenance' },
+  { value: 'parking', label: 'Parking' },
+  { value: 'rates', label: 'Rates' },
+  { value: 'vat', label: 'VAT' },
 ]
+
+/* Auto-default description from the chosen account pair, mirroring
+ * the spec examples in "OPERATIONAL LAYER … (1).xlsx":
+ *   - Dr Asset, Cr Asset (different)    → "Asset Swap"
+ *   - Dr Liability, Cr Asset            → "Creditor Settlement"
+ *   - Dr Asset, Cr Liability            → "Asset Acquisition via Liability"
+ *   - Dr Liability, Cr Liability        → "Debt Restructure"
+ *
+ * Locked field: user can ENHANCE via custom_description but can't
+ * delete the default — preserves the audit trail of why the value
+ * moved between accounts.
+ */
+function buildDefaultDescription(
+  debit: { account_type?: string; name?: string } | undefined,
+  credit: { account_type?: string; name?: string } | undefined,
+): string {
+  if (!debit || !credit) return ''
+  const d = debit.account_type
+  const c = credit.account_type
+  if (d === 'asset' && c === 'asset') return 'Asset Swap'
+  if (d === 'liability' && c === 'asset') return 'Creditor Settlement'
+  if (d === 'asset' && c === 'liability') return 'Asset Acquisition via Liability'
+  if (d === 'liability' && c === 'liability') return 'Debt Restructure'
+  return 'Balance Sheet Movement'
+}
 
 function SkeletonBSMovements() {
   return (
@@ -132,6 +163,8 @@ export default function BalanceSheetMovements() {
     amount: '',
     currency: 'USD',
   })
+  // Two-step wizard per the spec: Form → Confirm → Post.
+  const [showConfirm, setShowConfirm] = useState(false)
 
   // Fetch movements
   const { data: movementsData, isLoading, error } = useQuery({
@@ -168,6 +201,45 @@ export default function BalanceSheetMovements() {
     queryFn: () => landlordApi.list().then((r: any) => r.data.results || r.data),
     staleTime: 60000,
     placeholderData: keepPreviousData,
+  })
+
+  // Subsidiary accounts for the picked landlord — used for the
+  // landlord-sub-account picker. Filtered by category + currency
+  // ("category lock" + "currency lock") so the sub-account chosen
+  // is always consistent with the operation.
+  const { data: subsidiaryAccounts = [] } = useQuery({
+    queryKey: ['subsidiary-accounts', form.landlord],
+    queryFn: () =>
+      subsidiaryApi
+        .list({ landlord: form.landlord, page_size: 500 })
+        .then((r: any) => r.data.results || r.data),
+    enabled: !!form.landlord,
+    staleTime: 30000,
+  })
+
+  // Resolve picked accounts for the default-description generator.
+  const selectedDebit = (accounts as any[]).find(
+    (a: any) => String(a.id) === String(form.debit_account),
+  )
+  const selectedCredit = (accounts as any[]).find(
+    (a: any) => String(a.id) === String(form.credit_account),
+  )
+
+  // Auto-default description when account pair changes.
+  useEffect(() => {
+    if (!form.debit_account || !form.credit_account) return
+    const next = buildDefaultDescription(selectedDebit, selectedCredit)
+    setForm((prev) => (prev.description === next ? prev : { ...prev, description: next }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.debit_account, form.credit_account, accounts])
+
+  // Filter landlord sub-accounts by category + currency.
+  const filteredLandlordSubs = (subsidiaryAccounts as any[]).filter((s: any) => {
+    const kind = s.account_kind || s.entity_type
+    if (kind && kind !== 'landlord') return false
+    if (form.category && s.category !== form.category) return false
+    if (form.currency && s.currency && s.currency !== form.currency) return false
+    return true
   })
 
   // Create mutation
@@ -215,10 +287,22 @@ export default function BalanceSheetMovements() {
       amount: '',
       currency: 'USD',
     })
+    setShowConfirm(false)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Step 1 → Continue → confirmation dialog. Posting happens from the
+  // confirmation step so the user can review the implied journal
+  // entry (Dr X / Cr Y) before it hits the GL.
+  const handleContinue = (e: React.FormEvent) => {
     e.preventDefault()
+    if (form.debit_account && form.debit_account === form.credit_account) {
+      showToast.error('Debit and Credit accounts must be different.')
+      return
+    }
+    setShowConfirm(true)
+  }
+
+  const handleConfirmSubmit = () => {
     const data: Record<string, unknown> = {
       date: form.date,
       debit_account: parseInt(form.debit_account),
@@ -553,14 +637,28 @@ export default function BalanceSheetMovements() {
         </div>
       )}
 
-      {/* Create Modal */}
+      {/* Create Modal — two-step wizard per Operational Layer spec:
+            1. Form (Asset/Liability dropdowns, category lock, sub-account
+               filter, locked auto-default description)
+            2. Confirmation dialog (preview Dr X / Cr Y, post on confirm) */}
       <Modal
         isOpen={showCreateModal}
         onClose={() => { setShowCreateModal(false); resetForm() }}
-        title="New Account Transfer"
+        title={showConfirm ? 'Confirm Account Transfer' : 'New Account Transfer'}
         size="lg"
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {showConfirm ? (
+          <BSMovementConfirm
+            form={form}
+            selectedDebit={selectedDebit}
+            selectedCredit={selectedCredit}
+            landlordName={(landlords as any[]).find((l: any) => String(l.id) === form.landlord)?.name || ''}
+            isPending={createMutation.isPending}
+            onBack={() => setShowConfirm(false)}
+            onConfirm={handleConfirmSubmit}
+          />
+        ) : (
+        <form onSubmit={handleContinue} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
               label="Date"
@@ -572,7 +670,11 @@ export default function BalanceSheetMovements() {
             <Select
               label="Currency"
               value={form.currency}
-              onChange={(e) => setForm({ ...form, currency: e.target.value })}
+              onChange={(e) => setForm({
+                ...form,
+                currency: e.target.value,
+                landlord_sub_account: '',
+              })}
               options={[
                 { value: 'USD', label: 'USD' },
                 { value: 'ZWG', label: 'ZWG' },
@@ -581,48 +683,111 @@ export default function BalanceSheetMovements() {
             />
           </div>
 
+          {/* Debit account — asset or liability only, grouped */}
           <Select
             label="Debit Account"
             value={form.debit_account}
             onChange={(e) => setForm({ ...form, debit_account: e.target.value })}
-            placeholder="Select debit account..."
-            options={bsAccounts.map((a: any) => ({ value: String(a.id), label: `${a.code} - ${a.name}` }))}
+            placeholder="Select asset or liability to DEBIT..."
+            options={[
+              ...bsAccounts
+                .filter((a: any) => a.account_type === 'asset')
+                .map((a: any) => ({ value: String(a.id), label: `Asset · ${a.code} - ${a.name}` })),
+              ...bsAccounts
+                .filter((a: any) => a.account_type === 'liability')
+                .map((a: any) => ({ value: String(a.id), label: `Liability · ${a.code} - ${a.name}` })),
+            ]}
+            hint="The side gaining value (asset increased OR liability decreased)"
             required
           />
 
+          {/* Credit account — asset or liability only, grouped */}
           <Select
             label="Credit Account"
             value={form.credit_account}
             onChange={(e) => setForm({ ...form, credit_account: e.target.value })}
-            placeholder="Select credit account..."
-            options={bsAccounts.map((a: any) => ({ value: String(a.id), label: `${a.code} - ${a.name}` }))}
+            placeholder="Select asset or liability to CREDIT..."
+            options={[
+              ...bsAccounts
+                .filter((a: any) => a.account_type === 'asset')
+                .map((a: any) => ({ value: String(a.id), label: `Asset · ${a.code} - ${a.name}` })),
+              ...bsAccounts
+                .filter((a: any) => a.account_type === 'liability')
+                .map((a: any) => ({ value: String(a.id), label: `Liability · ${a.code} - ${a.name}` })),
+            ]}
+            hint="The side giving up value (asset decreased OR liability increased)"
             required
           />
 
+          {/* Category — locks the landlord sub-account picker below */}
           <Select
             label="Category"
             value={form.category}
-            onChange={(e) => setForm({ ...form, category: e.target.value })}
+            onChange={(e) => setForm({ ...form, category: e.target.value, landlord_sub_account: '' })}
             placeholder="Select category..."
-            options={categoryOptions.map(o => ({ value: o.value, label: o.label }))}
+            options={categoryOptions.map((o) => ({ value: o.value, label: o.label }))}
+            hint="Locks the landlord sub-account to entries of this category"
             required
           />
 
+          {/* Landlord — the dimension that scopes per-landlord reporting */}
           <Select
             label="Landlord"
             value={form.landlord}
-            onChange={(e) => setForm({ ...form, landlord: e.target.value })}
+            onChange={(e) => setForm({
+              ...form,
+              landlord: e.target.value,
+              landlord_sub_account: '',
+            })}
             placeholder="Select landlord..."
             options={landlords.map((l: any) => ({ value: String(l.id), label: l.name }))}
             required
           />
 
-          <Textarea
-            label="Description"
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            placeholder="Enter description..."
-            required
+          {/* Landlord Sub-Account — filtered by category + currency */}
+          {form.landlord && (
+            <Select
+              label="Landlord Sub-Account"
+              value={form.landlord_sub_account}
+              onChange={(e) => setForm({ ...form, landlord_sub_account: e.target.value })}
+              placeholder={
+                filteredLandlordSubs.length === 0
+                  ? form.category
+                    ? `No ${form.category} ${form.currency} sub-account for this landlord`
+                    : 'Pick a category to filter sub-accounts'
+                  : 'Select sub-account...'
+              }
+              options={filteredLandlordSubs.map((s: any) => ({
+                value: String(s.id),
+                label: `${s.code || s.account_number || ''} ${s.name}`.trim(),
+              }))}
+              hint="The landlord sub-account mirror for per-landlord reporting"
+            />
+          )}
+
+          {/* Default description — LOCKED, auto-generated from the pair */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Default Description
+              <span className="ml-2 text-[10px] uppercase tracking-wider text-gray-400 font-normal">
+                Locked — auto-generated
+              </span>
+            </label>
+            <div className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-700 font-medium">
+              {form.description || (
+                <span className="text-gray-400 italic">
+                  Pick the Debit and Credit accounts to generate the default description.
+                </span>
+              )}
+            </div>
+          </div>
+
+          <Input
+            label="Custom Description (optional)"
+            value={form.custom_description}
+            onChange={(e) => setForm({ ...form, custom_description: e.target.value })}
+            placeholder="e.g. Swapped UD Truck AGL2132 for Melting Furnaces"
+            hint="Enhances the default; both are kept on the journal entry"
           />
 
           <Input
@@ -644,16 +809,10 @@ export default function BalanceSheetMovements() {
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={createMutation.isPending}
-              className="gap-2"
-            >
-              {createMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-              Create Movement
-            </Button>
+            <Button type="submit" className="gap-2">Continue →</Button>
           </div>
         </form>
+        )}
       </Modal>
 
       {/* Detail Modal */}
@@ -730,6 +889,108 @@ export default function BalanceSheetMovements() {
           </div>
         )}
       </Modal>
+    </div>
+  )
+}
+
+
+
+/* Step 2 of the wizard — renders the implied journal entry (Dr/Cr)
+ * so the user can review the asset/liability movement before it
+ * posts to the GL. */
+function BSMovementConfirm({
+  form,
+  selectedDebit,
+  selectedCredit,
+  landlordName,
+  isPending,
+  onBack,
+  onConfirm,
+}: {
+  form: any
+  selectedDebit: any
+  selectedCredit: any
+  landlordName: string
+  isPending: boolean
+  onBack: () => void
+  onConfirm: () => void
+}) {
+  const dr = selectedDebit ? `${selectedDebit.code} - ${selectedDebit.name}` : ""
+  const cr = selectedCredit ? `${selectedCredit.code} - ${selectedCredit.name}` : ""
+  const drType = selectedDebit?.account_type || ""
+  const crType = selectedCredit?.account_type || ""
+  const amount = Number(form.amount || 0).toFixed(2)
+  const finalDescription = form.custom_description
+    ? `${form.description} — ${form.custom_description}`
+    : form.description
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-2 text-xs text-gray-500">
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 font-semibold">✓</span>
+        <span>Form complete</span>
+        <span className="text-gray-300">›</span>
+        <span className="font-semibold text-gray-700">Review &amp; confirm</span>
+      </div>
+
+      <p className="text-sm text-gray-600 leading-relaxed">
+        Review the asset/liability movement below. This is a non-cash
+        entry — no cash or expense accounts are affected.
+      </p>
+
+      <div className="bg-gray-50/60 rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-200 bg-white flex items-center justify-between">
+          <span className="text-[11px] uppercase tracking-wider font-bold text-gray-700">Journal Entry</span>
+          <span className="text-xs text-gray-500 tabular-nums">{form.date}</span>
+        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-200">
+              <th className="text-left px-5 py-2 text-[10px] tracking-wider uppercase font-semibold text-gray-500">Account</th>
+              <th className="text-left px-5 py-2 text-[10px] tracking-wider uppercase font-semibold text-gray-500">Type</th>
+              <th className="text-right px-5 py-2 text-[10px] tracking-wider uppercase font-semibold text-gray-500 w-32">Debit</th>
+              <th className="text-right px-5 py-2 text-[10px] tracking-wider uppercase font-semibold text-gray-500 w-32">Credit</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            <tr>
+              <td className="px-5 py-3 font-medium text-gray-900">{dr}</td>
+              <td className="px-5 py-3 text-xs text-gray-500 uppercase">{drType}</td>
+              <td className="px-5 py-3 text-right tabular-nums font-bold text-gray-900">{amount}</td>
+              <td className="px-5 py-3"></td>
+            </tr>
+            <tr>
+              <td className="px-5 py-3 pl-9 text-gray-700">{cr}</td>
+              <td className="px-5 py-3 text-xs text-gray-500 uppercase">{crType}</td>
+              <td className="px-5 py-3"></td>
+              <td className="px-5 py-3 text-right tabular-nums font-bold text-gray-900">{amount}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 text-sm">
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Landlord</div>
+          <div className="font-medium text-gray-900 mt-0.5">{landlordName || "—"}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Category</div>
+          <div className="font-medium text-gray-900 mt-0.5 capitalize">{(form.category || "").replace("_", " ") || "—"}</div>
+        </div>
+        <div className="col-span-2">
+          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Description</div>
+          <div className="font-medium text-gray-700 mt-0.5">{finalDescription || "—"}</div>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+        <Button type="button" variant="ghost" onClick={onBack} disabled={isPending}>← Back</Button>
+        <Button type="button" onClick={onConfirm} disabled={isPending} className="gap-2">
+          {isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+          Confirm &amp; Post to Ledger
+        </Button>
+      </div>
     </div>
   )
 }

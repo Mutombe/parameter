@@ -33,6 +33,26 @@ class TestGlFilterForLandlord:
             'when scoped by landlord without a property filter.'
         )
 
+    def test_landlord_scope_includes_bs_movement_source_type(self):
+        """Same as above for Operational Layer (BalanceSheetMovement) —
+        asset swaps and creditor settlements posted via the BS Movements
+        module must surface on landlord-scoped Balance Sheet."""
+        q = _gl_filter_for_landlord(landlord_id=1)
+        sources = _collect_source_types(q)
+        assert 'bs_movement' in sources, (
+            'Operational Layer entries (asset swaps, creditor '
+            'settlements) are landlord-level and must be included '
+            'on landlord-scoped reports.'
+        )
+
+    def test_property_scope_excludes_bs_movement(self):
+        """Like Opening Balances, BS Movements are landlord-portfolio-
+        wide (no property FK on the model). Single-property scope
+        must exclude them."""
+        q = _gl_filter_for_landlord(landlord_id=1, property_id=99)
+        sources = _collect_source_types(q)
+        assert 'bs_movement' not in sources
+
     def test_property_scope_excludes_opening_balance(self):
         """When scoped to a single property, opening balances are
         excluded (they are landlord-portfolio-wide, not property-

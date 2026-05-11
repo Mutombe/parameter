@@ -121,6 +121,23 @@ def _gl_filter_for_landlord(landlord_id=None, property_id=None):
             # scope filter. The Balance Sheet will just miss the OB
             # contribution this one request and recover automatically.
             logger.exception('Failed to extend GL scope filter with opening balances')
+
+        # Operational Layer (BalanceSheetMovement) — same landlord-only
+        # dimension as Opening Balances. Without this branch, asset
+        # swaps and creditor-settlement entries posted via the BS
+        # Movements module are invisible on the landlord's scoped
+        # Balance Sheet / Trial Balance.
+        try:
+            from apps.accounting.models import BalanceSheetMovement
+            bsm_id_qs = BalanceSheetMovement.objects.filter(
+                landlord_id=landlord_id,
+            ).order_by().values('id')
+            base_q = base_q | Q(
+                journal_entry__source_type='bs_movement',
+                journal_entry__source_id__in=Subquery(bsm_id_qs),
+            )
+        except Exception:
+            logger.exception('Failed to extend GL scope filter with bs_movement')
     return base_q
 
 

@@ -624,6 +624,26 @@ class BalanceSheetMovementCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Debit and credit accounts must be different.'
             )
+        # Per Operational Layer spec: only asset and liability accounts
+        # are permitted. Reject cash/expense/revenue/equity — those
+        # belong to other layers (Primary/Operational Cash, Accruals).
+        allowed = {'asset', 'liability'}
+        if data['debit_account'].account_type not in allowed:
+            raise serializers.ValidationError({
+                'debit_account': (
+                    'Operational Layer only accepts asset or liability '
+                    'accounts; this is a {type}. Cash/expense/revenue '
+                    'entries belong to other layers.'
+                ).format(type=data['debit_account'].account_type),
+            })
+        if data['credit_account'].account_type not in allowed:
+            raise serializers.ValidationError({
+                'credit_account': (
+                    'Operational Layer only accepts asset or liability '
+                    'accounts; this is a {type}. Cash/expense/revenue '
+                    'entries belong to other layers.'
+                ).format(type=data['credit_account'].account_type),
+            })
         return data
 
     def create(self, validated_data):
