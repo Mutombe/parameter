@@ -46,6 +46,7 @@ export { Button, IconButton } from './Button'
 export { SplitButton } from './SplitButton'
 export { Input, Textarea, Select, FormRow, FormSection } from './Input'
 export { DatePicker } from './DatePicker'
+export { Accordion } from './Accordion'
 
 // Selection & Bulk Actions
 export { SelectionCheckbox } from './SelectionCheckbox'

@@ -1,40 +1,38 @@
-"""Unit tests for `_bs_display_name` — the Balance Sheet label override.
+"""Unit tests for `_bs_display_name` — the report-wide label override.
 
-The only VAT the agency collects is on its commission revenue. The
-generic "VAT Payable" label was opaque, so the rename surfaces what
-the line actually represents: commission VAT owed to the revenue
-authority. The override fires on either the account subtype
-('vat_payable') OR the account name containing 'vat payable' so it
-survives chart-of-accounts inconsistencies (some tenants seeded the
-subtype, others left it blank and only named the row).
+Migration 0016 renames ChartOfAccount 2110 from
+"VAT Payable (Commission)" to "Commission Payable (Commission)" at the
+data layer. This helper is a display-time safety net for tenant
+schemas where that migration hasn't landed yet — it does the same
+rename on the way out of the report views.
+
+The plain "VAT Payable" account (code 2100, agency-level general VAT)
+must NOT be renamed — it represents a different liability and the
+override only applies to the commission-specific row.
 """
 from apps.reports.views import _bs_display_name
 
 
 class TestBsDisplayName:
-    def test_renames_when_subtype_is_vat_payable(self):
+    def test_renames_vat_payable_commission_exactly(self):
+        # Pre-migration tenants still see the old name on the COA row.
+        # The helper rewrites it at the report layer so financial reports
+        # are consistent across tenants regardless of migration state.
         assert (
-            _bs_display_name('VAT Payable', 'vat_payable')
+            _bs_display_name('VAT Payable (Commission)', 'vat_payable')
             == 'Commission Payable (Commission)'
         )
 
-    def test_renames_when_name_contains_vat_payable_case_insensitive(self):
-        # Catches charts where subtype was never set but the account
-        # name still reads "VAT Payable" or similar.
-        assert (
-            _bs_display_name('VAT Payable', '')
-            == 'Commission Payable (Commission)'
-        )
-        assert (
-            _bs_display_name('Vat Payable', None)
-            == 'Commission Payable (Commission)'
-        )
+    def test_does_not_rename_plain_vat_payable(self):
+        # Code 2100 — agency-level VAT Payable, separate liability from
+        # commission VAT. Must keep its own name.
+        assert _bs_display_name('VAT Payable', 'vat_payable') == 'VAT Payable'
 
-    def test_renames_when_subtype_matches_even_if_name_differs(self):
-        # Subtype is authoritative when set — even a renamed account
-        # still represents the commission VAT liability.
+    def test_does_not_rename_post_migration_label(self):
+        # After migration 0016 the row reads "Commission Payable
+        # (Commission)" directly. The helper passes it through unchanged.
         assert (
-            _bs_display_name('Output Tax Owed', 'vat_payable')
+            _bs_display_name('Commission Payable (Commission)', 'vat_payable')
             == 'Commission Payable (Commission)'
         )
 
@@ -44,10 +42,18 @@ class TestBsDisplayName:
         assert _bs_display_name('Loan Payable', 'loan_payable') == 'Loan Payable'
 
     def test_does_not_match_unrelated_vat_phrases(self):
-        # Substring match is on 'vat payable' specifically, so a name
-        # mentioning VAT in another context (e.g. 'VAT Receivable')
+        # Substring match is exact on the literal string — a name
+        # mentioning VAT in another context (e.g. "VAT Receivable")
         # must NOT be renamed.
         assert _bs_display_name('VAT Receivable', '') == 'VAT Receivable'
+
+    def test_trims_whitespace_before_matching(self):
+        # COA seeds occasionally carry trailing whitespace. The helper
+        # trims before matching so the rename still fires.
+        assert (
+            _bs_display_name('  VAT Payable (Commission)  ', 'vat_payable')
+            == 'Commission Payable (Commission)'
+        )
 
     def test_handles_empty_inputs(self):
         # No crash on missing/blank inputs — the loop that emits rows

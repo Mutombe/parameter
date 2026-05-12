@@ -235,9 +235,19 @@ class Command(BaseCommand):
                             VALUES
                                 ('2300', 'Landlord Trust Payable', 'liability', 'accounts_payable',
                                  true, true, 'USD', 0, '', now(), now()),
-                                ('2110', 'VAT Payable (Commission)', 'liability', 'vat_payable',
+                                ('2110', 'Commission Payable (Commission)', 'liability', 'vat_payable',
                                  true, true, 'USD', 0, '', now(), now())
                             ON CONFLICT (code) DO NOTHING
+                        """)
+                        # Rename pre-existing rows that still carry the old
+                        # "VAT Payable (Commission)" label. Without this the
+                        # seed-then-ON-CONFLICT path leaves the old name in
+                        # place on every tenant created before the rename.
+                        cursor.execute("""
+                            UPDATE accounting_chartofaccount
+                            SET name = 'Commission Payable (Commission)'
+                            WHERE code = '2110'
+                              AND name = 'VAT Payable (Commission)'
                         """)
                         self.stdout.write("  - Added/verified subsidiary ledger tables and trust GL accounts")
 

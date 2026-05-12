@@ -56,7 +56,12 @@ import { reportsApi, tenantApi, landlordApi, propertyApi } from '../../services/
 import { formatCurrency, formatPercent, formatDate, cn } from '../../lib/utils'
 import { printElement, printFinancialReport, type FinancialReportType } from '../../lib/printTemplate'
 import { exportReport } from '../../lib/export'
-import { PageHeader, Button, Badge, Skeleton, EmptyState, TableFilter, Pagination, Tooltip as UITooltip, DatePicker } from '../../components/ui'
+import { PageHeader, Button, Badge, Skeleton, EmptyState, TableFilter, Pagination, Tooltip as UITooltip, DatePicker, Accordion } from '../../components/ui'
+import {
+  groupAssets, groupLiabilities, groupRevenue, groupExpenses,
+  groupTrialBalance, sumRows,
+  type ReportRow,
+} from '../../lib/reportGroups'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import toast from 'react-hot-toast'
 import { PiBuildingApartmentLight } from "react-icons/pi";
@@ -1118,66 +1123,71 @@ function TrialBalanceReport() {
       ) : allAccounts.length > 0 ? (
         <>
         <TableFilter searchPlaceholder="Search by code or name..." searchValue={searchQuery} onSearchChange={setSearchQuery} resultCount={filteredAccounts.length} />
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Account Code</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Account Name</th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  <span className="inline-flex items-center gap-1">
-                    <ArrowUpRight className="w-3 h-3" />
-                    Debit
+        {/* Grouped accordions by account type — Assets / Liabilities /
+            Equity / Revenue / Expenses. Each group shows its own debit /
+            credit subtotal in the header so collapsed sections still
+            communicate the section weight. */}
+        <div className="p-6 space-y-3">
+          {groupTrialBalance(filteredAccounts).map(group => {
+            const groupDr = sumRows(group.rows, 'debit')
+            const groupCr = sumRows(group.rows, 'credit')
+            return (
+              <Accordion
+                key={group.key}
+                title={group.label}
+                right={
+                  <span className="flex items-center gap-4 text-xs tabular-nums">
+                    <span className="text-blue-600 font-semibold">Dr {formatCurrency(groupDr)}</span>
+                    <span className="text-rose-600 font-semibold">Cr {formatCurrency(groupCr)}</span>
                   </span>
-                </th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  <span className="inline-flex items-center gap-1">
-                    <ArrowDownLeft className="w-3 h-3" />
-                    Credit
-                  </span>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {paginatedAccounts.map((acc: any, idx: number) => (
-                <motion.tr
-                  key={idx}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: idx * 0.02 }}
-                  className="hover:bg-gray-50 transition-colors"
-                >
-                  <td className="px-6 py-4">
-                    <span className="font-mono text-sm font-semibold text-primary-600">{acc.code ?? acc.account_code ?? '—'}</span>
-                  </td>
-                  <td className="px-6 py-4 font-medium text-gray-900">{acc.name ?? acc.account_name ?? '—'}</td>
-                  <td className="px-6 py-4 text-right">
-                    {acc.debit > 0 ? (
-                      <span className="font-semibold text-blue-600 tabular-nums">{formatCurrency(acc.debit)}</span>
-                    ) : (
-                      <span className="text-gray-300">-</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    {acc.credit > 0 ? (
-                      <span className="font-semibold text-rose-600 tabular-nums">{formatCurrency(acc.credit)}</span>
-                    ) : (
-                      <span className="text-gray-300">-</span>
-                    )}
-                  </td>
-                </motion.tr>
-              ))}
-            </tbody>
-            <tfoot className="bg-gray-50 border-t-2 border-gray-300">
-              <tr className="font-bold">
-                <td colSpan={2} className="px-6 py-4 text-gray-700">Total</td>
-                <td className="px-6 py-4 text-right text-blue-700 tabular-nums">{formatCurrency(data?.totals?.debits || 0)}</td>
-                <td className="px-6 py-4 text-right text-rose-700 tabular-nums">{formatCurrency(data?.totals?.credits || 0)}</td>
-              </tr>
-            </tfoot>
-          </table>
+                }
+              >
+                <table className="w-full">
+                  <thead className="bg-gray-50/60">
+                    <tr>
+                      <th className="px-5 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-[0.1em] w-20">Code</th>
+                      <th className="px-5 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-[0.1em]">Account</th>
+                      <th className="px-5 py-2 text-right text-[10px] font-semibold text-blue-700 uppercase tracking-[0.1em]">Debit</th>
+                      <th className="px-5 py-2 text-right text-[10px] font-semibold text-rose-700 uppercase tracking-[0.1em]">Credit</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {group.rows.map((acc: any, idx: number) => (
+                      <tr key={`${acc.code}-${idx}`} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-5 py-2">
+                          <span className="font-mono text-xs text-gray-500">{acc.code ?? acc.account_code ?? '—'}</span>
+                        </td>
+                        <td className="px-5 py-2 text-sm text-gray-700 truncate" title={acc.name}>
+                          {acc.name ?? acc.account_name ?? '—'}
+                        </td>
+                        <td className="px-5 py-2 text-right tabular-nums">
+                          {acc.debit > 0
+                            ? <span className="text-sm font-semibold text-blue-600">{formatCurrency(acc.debit)}</span>
+                            : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-5 py-2 text-right tabular-nums">
+                          {acc.credit > 0
+                            ? <span className="text-sm font-semibold text-rose-600">{formatCurrency(acc.credit)}</span>
+                            : <span className="text-gray-300">—</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Accordion>
+            )
+          })}
+
+          {/* Grand total — always visible, sits outside accordions so the
+              balance check is one glance away. */}
+          <div className="mt-4 rounded-xl bg-gray-900 text-white px-5 py-3 flex justify-between font-bold">
+            <span>Total</span>
+            <span className="flex items-center gap-6 tabular-nums">
+              <span>Dr {formatCurrency(data?.totals?.debits || 0)}</span>
+              <span>Cr {formatCurrency(data?.totals?.credits || 0)}</span>
+            </span>
+          </div>
         </div>
-        <Pagination currentPage={currentPage} totalPages={totalPages} totalItems={filteredAccounts.length} pageSize={pageSize} onPageChange={setCurrentPage} showPageSize={false} />
         </>
       ) : (
         <div className="p-12 text-center text-gray-500">
@@ -1309,49 +1319,25 @@ function IncomeStatementReport() {
             </div>
           </div>
 
-          {/* ── Revenue section — hairline borders, no colored fills ── */}
-          <div>
-            <div className="flex items-baseline justify-between pb-2 border-b border-gray-200">
-              <h3 className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Revenue</h3>
-              <span className="text-[11px] uppercase tracking-wider text-gray-400">USD</span>
-            </div>
-            <div className="divide-y divide-gray-100">
-              {data?.revenue?.accounts?.length ? data.revenue.accounts.map((acc: any, idx: number) => (
-                <div key={idx} className="px-2 py-2 flex justify-between text-[13px]">
-                  <span className="text-gray-700 truncate">{acc.name}</span>
-                  <span className="tabular-nums text-gray-900 ml-4">{formatCurrency(acc.balance)}</span>
-                </div>
-              )) : (
-                <div className="px-2 py-3 text-center text-gray-400 text-[13px]">No revenue accounts</div>
-              )}
-            </div>
-            <div className="px-2 py-2.5 flex justify-between text-[13px] font-semibold border-t border-gray-300 text-gray-900">
-              <span>Total Revenue</span>
-              <span className="tabular-nums">{formatCurrency(data?.revenue?.total || 0)}</span>
-            </div>
-          </div>
+          {/* Revenue section — grouped accordions by income subtype.
+              Each accordion's header shows its subtotal so a collapsed
+              view still communicates structure. */}
+          <IncomeStatementSection
+            title="Revenue"
+            accent="emerald"
+            groups={groupRevenue(data?.revenue?.accounts || [])}
+            total={data?.revenue?.total || 0}
+            emptyLabel="No revenue accounts"
+          />
 
-          {/* ── Expenses section ── */}
-          <div>
-            <div className="flex items-baseline justify-between pb-2 border-b border-gray-200">
-              <h3 className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Expenses</h3>
-              <span className="text-[11px] uppercase tracking-wider text-gray-400">USD</span>
-            </div>
-            <div className="divide-y divide-gray-100">
-              {data?.expenses?.accounts?.length ? data.expenses.accounts.map((acc: any, idx: number) => (
-                <div key={idx} className="px-2 py-2 flex justify-between text-[13px]">
-                  <span className="text-gray-700 truncate">{acc.name}</span>
-                  <span className="tabular-nums text-gray-900 ml-4">({formatCurrency(acc.balance).replace(/^\$/, '$')})</span>
-                </div>
-              )) : (
-                <div className="px-2 py-3 text-center text-gray-400 text-[13px]">No expense accounts</div>
-              )}
-            </div>
-            <div className="px-2 py-2.5 flex justify-between text-[13px] font-semibold border-t border-gray-300 text-gray-900">
-              <span>Total Expenses</span>
-              <span className="tabular-nums">({formatCurrency(data?.expenses?.total || 0).replace(/^\$/, '$')})</span>
-            </div>
-          </div>
+          <IncomeStatementSection
+            title="Expenses"
+            accent="rose"
+            groups={groupExpenses(data?.expenses?.accounts || [])}
+            total={data?.expenses?.total || 0}
+            emptyLabel="No expense accounts"
+            parenthesize
+          />
 
           {/* ── Grand-total row, accountant-double-rule ── */}
           <div className="px-2 py-3 flex justify-between text-[14px] font-semibold border-t-2 border-double border-gray-400">
@@ -1478,91 +1464,201 @@ function BalanceSheetReport() {
           </div>
         </div>
       ) : (
-        <div className="p-6">
+        <div className="p-6 space-y-6">
+          {/* Two-column layout: Assets on the left, Liabilities + Equity
+              on the right. Each section is a stack of accordions grouped
+              by subtype (Current / Non-Current / Other). Headers carry
+              the section subtotal so users see numbers at a glance even
+              when individual groups are collapsed. */}
           <div className="grid md:grid-cols-2 gap-6">
-            {/* Assets */}
-            <div className="rounded-xl border border-blue-200 overflow-hidden">
-              <div className="px-5 py-4 bg-blue-50 border-b border-blue-200">
-                <h3 className="font-semibold text-blue-800">Assets</h3>
-              </div>
-              <div className="divide-y divide-blue-100">
-                {data?.assets?.accounts?.map((acc: any, idx: number) => (
-                  <div key={idx} className="px-5 py-3 flex justify-between hover:bg-blue-50/50 transition-colors">
-                    <span className="text-gray-700">{acc.name}</span>
-                    <span className="font-semibold text-blue-700 tabular-nums">{formatCurrency(acc.balance)}</span>
-                  </div>
-                ))}
-                {(!data?.assets?.accounts || data?.assets?.accounts?.length === 0) && (
-                  <div className="px-5 py-4 text-center text-gray-400 text-sm">No asset accounts</div>
-                )}
-              </div>
-              <div className="px-5 py-4 bg-blue-100 flex justify-between font-bold text-blue-800">
-                <span>Total Assets</span>
-                <span className="tabular-nums">{formatCurrency(data?.assets?.total || 0)}</span>
-              </div>
-            </div>
-
-            {/* Liabilities & Equity */}
+            <BalanceSheetSection
+              title="Assets"
+              accent="blue"
+              groups={groupAssets(data?.assets?.accounts || [])}
+              total={data?.assets?.total || 0}
+              emptyLabel="No asset accounts"
+            />
             <div className="space-y-6">
-              {/* Liabilities */}
-              <div className="rounded-xl border border-rose-200 overflow-hidden">
-                <div className="px-5 py-4 bg-rose-50 border-b border-rose-200">
-                  <h3 className="font-semibold text-rose-800">Liabilities</h3>
-                </div>
-                <div className="divide-y divide-rose-100">
-                  {data?.liabilities?.accounts?.map((acc: any, idx: number) => (
-                    <div key={idx} className="px-5 py-3 flex justify-between hover:bg-rose-50/50 transition-colors">
-                      <span className="text-gray-700">{acc.name}</span>
-                      <span className="font-semibold text-rose-700 tabular-nums">{formatCurrency(acc.balance)}</span>
-                    </div>
-                  ))}
-                  {(!data?.liabilities?.accounts || data?.liabilities?.accounts?.length === 0) && (
-                    <div className="px-5 py-4 text-center text-gray-400 text-sm">No liability accounts</div>
-                  )}
-                </div>
-                <div className="px-5 py-4 bg-rose-100 flex justify-between font-bold text-rose-800">
-                  <span>Total Liabilities</span>
-                  <span className="tabular-nums">{formatCurrency(data?.liabilities?.total || 0)}</span>
-                </div>
-              </div>
-
-              {/* Equity */}
-              <div className="rounded-xl border border-purple-200 overflow-hidden">
-                <div className="px-5 py-4 bg-purple-50 border-b border-purple-200">
-                  <h3 className="font-semibold text-purple-800">Equity</h3>
-                </div>
-                <div className="divide-y divide-purple-100">
-                  {data?.equity?.accounts?.map((acc: any, idx: number) => (
-                    <div key={idx} className="px-5 py-3 flex justify-between hover:bg-purple-50/50 transition-colors">
-                      <span className="text-gray-700">{acc.name}</span>
-                      <span className="font-semibold text-purple-700 tabular-nums">{formatCurrency(acc.balance)}</span>
-                    </div>
-                  ))}
-                  {(!data?.equity?.accounts || data?.equity?.accounts?.length === 0) && (
-                    <div className="px-5 py-4 text-center text-gray-400 text-sm">No equity accounts</div>
-                  )}
-                </div>
-                <div className="px-5 py-4 bg-purple-100 flex justify-between font-bold text-purple-800">
-                  <span>Total Equity</span>
-                  <span className="tabular-nums">{formatCurrency(data?.equity?.total || 0)}</span>
-                </div>
-              </div>
+              <BalanceSheetSection
+                title="Liabilities"
+                accent="rose"
+                groups={groupLiabilities(data?.liabilities?.accounts || [])}
+                total={data?.liabilities?.total || 0}
+                emptyLabel="No liability accounts"
+              />
+              <BalanceSheetSection
+                title="Equity"
+                accent="purple"
+                groups={[{ key: 'equity', label: 'Equity Accounts', rows: data?.equity?.accounts || [] }]}
+                total={data?.equity?.total || 0}
+                emptyLabel="No equity accounts"
+              />
             </div>
           </div>
 
-          {/* Total Liabilities + Equity */}
-          <div className="mt-6 p-4 bg-gray-100 rounded-xl flex justify-between font-bold text-lg">
+          <div className="p-4 bg-gray-100 rounded-xl flex justify-between font-bold text-lg">
             <span>Total Liabilities + Equity</span>
-            <span className="tabular-nums">{formatCurrency((data?.liabilities?.total || 0) + (data?.equity?.total || 0))}</span>
+            <span className="tabular-nums">
+              {formatCurrency((data?.liabilities?.total || 0) + (data?.equity?.total || 0))}
+            </span>
           </div>
 
-          {/* Notes / breakdowns — only rendered when scoped to a landlord */}
           <BalanceSheetNotes data={data} />
         </div>
       )}
     </div>
   )
 }
+
+/** One half of a Balance Sheet (Assets, Liabilities, or Equity).
+ *  Renders an accordion per subtype group with a coloured header bar
+ *  showing the section subtotal, and a final total-line outside the
+ *  accordions so the bottom-line is always visible.
+ *
+ *  `accent` controls the colour family of the section (blue/rose/purple).
+ */
+function BalanceSheetSection({
+  title,
+  accent,
+  groups,
+  total,
+  emptyLabel,
+}: {
+  title: string
+  accent: 'blue' | 'rose' | 'purple'
+  groups: Array<{ key: string; label: string; rows: ReportRow[] }>
+  total: number
+  emptyLabel: string
+}) {
+  const palette = {
+    blue: { totalRow: 'bg-blue-100 text-blue-800', value: 'text-blue-700', hover: 'hover:bg-blue-50/50' },
+    rose: { totalRow: 'bg-rose-100 text-rose-800', value: 'text-rose-700', hover: 'hover:bg-rose-50/50' },
+    purple: { totalRow: 'bg-purple-100 text-purple-800', value: 'text-purple-700', hover: 'hover:bg-purple-50/50' },
+  }[accent]
+
+  const allEmpty = groups.length === 0 || groups.every(g => g.rows.length === 0)
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-xs font-bold tracking-[0.16em] uppercase text-gray-700 px-1">{title}</h3>
+      {allEmpty ? (
+        <div className="rounded-xl border border-gray-200 bg-white px-5 py-6 text-center text-gray-400 text-sm">
+          {emptyLabel}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {groups.map(group => (
+            <Accordion
+              key={group.key}
+              title={group.label}
+              right={
+                <span className={cn('text-sm font-semibold tabular-nums', palette.value)}>
+                  {formatCurrency(sumRows(group.rows))}
+                </span>
+              }
+            >
+              <div className="divide-y divide-gray-100">
+                {group.rows.map((acc: any, idx: number) => (
+                  <div
+                    key={`${acc.code}-${idx}`}
+                    className={cn('px-5 py-2.5 flex items-center gap-3 transition-colors', palette.hover)}
+                  >
+                    <span className="text-[10px] font-mono text-gray-400 w-12 shrink-0">{acc.code || ''}</span>
+                    <span className="flex-1 min-w-0 text-sm text-gray-700 truncate" title={acc.name}>
+                      {acc.name}
+                    </span>
+                    <span className={cn('text-sm font-semibold tabular-nums shrink-0', palette.value)}>
+                      {formatCurrency(acc.balance)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Accordion>
+          ))}
+        </div>
+      )}
+      <div className={cn('px-5 py-3 rounded-xl flex justify-between font-bold', palette.totalRow)}>
+        <span>Total {title}</span>
+        <span className="tabular-nums">{formatCurrency(total)}</span>
+      </div>
+    </div>
+  )
+}
+
+
+/** Income Statement section — Revenue or Expenses — grouped into
+ *  accordions per subtype. Mirrors BalanceSheetSection's structure but
+ *  without the two-column layout. `parenthesize` wraps expense totals
+ *  in parentheses per accounting convention. */
+function IncomeStatementSection({
+  title,
+  accent,
+  groups,
+  total,
+  emptyLabel,
+  parenthesize,
+}: {
+  title: string
+  accent: 'emerald' | 'rose'
+  groups: Array<{ label: string; rows: ReportRow[] }>
+  total: number
+  emptyLabel: string
+  parenthesize?: boolean
+}) {
+  const palette = {
+    emerald: { value: 'text-emerald-700', totalRow: 'border-emerald-200 text-emerald-800', hover: 'hover:bg-emerald-50/40' },
+    rose: { value: 'text-rose-700', totalRow: 'border-rose-200 text-rose-800', hover: 'hover:bg-rose-50/40' },
+  }[accent]
+  const fmt = (v: number) => parenthesize ? `(${formatCurrency(v)})` : formatCurrency(v)
+  const allEmpty = groups.length === 0 || groups.every(g => g.rows.length === 0)
+
+  return (
+    <div className="space-y-2">
+      <h3 className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500 px-1">{title}</h3>
+      {allEmpty ? (
+        <div className="rounded-xl border border-gray-200 px-5 py-6 text-center text-gray-400 text-sm">
+          {emptyLabel}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {groups.map(group => (
+            <Accordion
+              key={group.label}
+              title={group.label}
+              right={
+                <span className={cn('text-sm font-semibold tabular-nums', palette.value)}>
+                  {fmt(sumRows(group.rows))}
+                </span>
+              }
+            >
+              <div className="divide-y divide-gray-100">
+                {group.rows.map((acc: any, idx: number) => (
+                  <div
+                    key={`${acc.code}-${idx}`}
+                    className={cn('px-5 py-2 flex items-center gap-3 transition-colors', palette.hover)}
+                  >
+                    <span className="text-[10px] font-mono text-gray-400 w-12 shrink-0">{acc.code || ''}</span>
+                    <span className="flex-1 min-w-0 text-sm text-gray-700 truncate" title={acc.name}>
+                      {acc.name}
+                    </span>
+                    <span className={cn('text-sm tabular-nums shrink-0 font-medium text-gray-900')}>
+                      {fmt(acc.balance)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Accordion>
+          ))}
+        </div>
+      )}
+      <div className={cn('px-5 py-3 rounded-xl flex justify-between font-semibold border-t-2', palette.totalRow, 'bg-gray-50')}>
+        <span>Total {title}</span>
+        <span className="tabular-nums">{fmt(total)}</span>
+      </div>
+    </div>
+  )
+}
+
 
 /** Numbered notes section that renders Trust Composition, Per-Property,
  *  Equity Reconciliation and Accrued-by-Category breakdowns sent by the
@@ -1939,15 +2035,28 @@ function CashFlowReport() {
         </button>
       </div>
 
-      <div className="p-6 space-y-6">
-        {/* Operating Activities */}
-        <div className="rounded-xl border border-emerald-200 overflow-hidden">
-          <div className="px-5 py-4 bg-emerald-50 border-b border-emerald-200">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-emerald-600" />
-              <h3 className="font-semibold text-emerald-800">Operating Activities</h3>
-            </div>
-          </div>
+      <div className="p-6 space-y-4">
+        {/* Operating Activities — wrapped in an Accordion so users can
+            collapse sections they don't need. Net-cash line stays
+            in the header (right slot) so collapsed sections still
+            communicate the section bottom-line. */}
+        <Accordion
+          title={
+            <span className="inline-flex items-center gap-2 text-emerald-800">
+              <TrendingUp className="w-4 h-4 text-emerald-600" />
+              Operating Activities
+            </span>
+          }
+          right={
+            isLoading
+              ? <div className="h-4 w-24 bg-emerald-100 rounded animate-pulse" />
+              : <span className="text-sm font-semibold text-emerald-700 tabular-nums">
+                  {formatCurrency(data?.operating_activities?.net_cash || 0)}
+                </span>
+          }
+          className="border-emerald-200"
+          headerClassName="bg-emerald-50 hover:bg-emerald-100/60"
+        >
           <div className="divide-y divide-emerald-100">
             <div className="px-5 py-3 flex justify-between hover:bg-emerald-50/50">
               <span className="text-gray-700 flex items-center gap-2">
@@ -2027,16 +2136,26 @@ function CashFlowReport() {
               <span className="tabular-nums">{formatCurrency(data?.operating_activities?.net_cash || 0)}</span>
             )}
           </div>
-        </div>
+        </Accordion>
 
         {/* Investing Activities */}
-        <div className="rounded-xl border border-blue-200 overflow-hidden">
-          <div className="px-5 py-4 bg-blue-50 border-b border-blue-200">
-            <div className="flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-blue-600" />
-              <h3 className="font-semibold text-blue-800">Investing Activities</h3>
-            </div>
-          </div>
+        <Accordion
+          title={
+            <span className="inline-flex items-center gap-2 text-blue-800">
+              <Building2 className="w-4 h-4 text-blue-600" />
+              Investing Activities
+            </span>
+          }
+          right={
+            isLoading
+              ? <div className="h-4 w-24 bg-blue-100 rounded animate-pulse" />
+              : <span className="text-sm font-semibold text-blue-700 tabular-nums">
+                  {formatCurrency(data?.investing_activities?.net_cash || 0)}
+                </span>
+          }
+          className="border-blue-200"
+          headerClassName="bg-blue-50 hover:bg-blue-100/60"
+        >
           <div className="divide-y divide-blue-100">
             <div className="px-5 py-3 flex justify-between hover:bg-blue-50/50">
               <span className="text-gray-700 flex items-center gap-2">
@@ -2073,16 +2192,26 @@ function CashFlowReport() {
               <span className="tabular-nums">{formatCurrency(data?.investing_activities?.net_cash || 0)}</span>
             )}
           </div>
-        </div>
+        </Accordion>
 
         {/* Financing Activities */}
-        <div className="rounded-xl border border-purple-200 overflow-hidden">
-          <div className="px-5 py-4 bg-purple-50 border-b border-purple-200">
-            <div className="flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-purple-600" />
-              <h3 className="font-semibold text-purple-800">Financing Activities</h3>
-            </div>
-          </div>
+        <Accordion
+          title={
+            <span className="inline-flex items-center gap-2 text-purple-800">
+              <DollarSign className="w-4 h-4 text-purple-600" />
+              Financing Activities
+            </span>
+          }
+          right={
+            isLoading
+              ? <div className="h-4 w-24 bg-purple-100 rounded animate-pulse" />
+              : <span className="text-sm font-semibold text-purple-700 tabular-nums">
+                  {formatCurrency(data?.financing_activities?.net_cash || 0)}
+                </span>
+          }
+          className="border-purple-200"
+          headerClassName="bg-purple-50 hover:bg-purple-100/60"
+        >
           <div className="divide-y divide-purple-100">
             <div className="px-5 py-3 flex justify-between hover:bg-purple-50/50">
               <span className="text-gray-700 flex items-center gap-2">
@@ -2119,7 +2248,7 @@ function CashFlowReport() {
               <span className="tabular-nums">{formatCurrency(data?.financing_activities?.net_cash || 0)}</span>
             )}
           </div>
-        </div>
+        </Accordion>
 
         {/* Summary */}
         <div className="space-y-3">

@@ -515,7 +515,11 @@ class TrialBalanceReportView(APIView):
                 continue
             report_data.append({
                 'code': row['account__code'],
-                'name': row['account__name'],
+                'name': _bs_display_name(
+                    row['account__name'],
+                    row.get('account__account_subtype'),
+                ),
+                'subtype': row.get('account__account_subtype'),
                 'type': acct_type,
                 'debit': float(debit),
                 'credit': float(credit),
@@ -581,7 +585,11 @@ class IncomeStatementView(APIView):
                     continue
                 entry = {
                     'code': row['account__code'],
-                    'name': row['account__name'],
+                    'name': _bs_display_name(
+                        row['account__name'],
+                        row.get('account__account_subtype'),
+                    ),
+                    'subtype': row.get('account__account_subtype'),
                     'balance': float(bal),
                 }
                 if acct_type == 'revenue':
@@ -757,18 +765,20 @@ class IncomeStatementView(APIView):
 
 
 def _bs_display_name(name, subtype):
-    """Display name override for Balance Sheet account rows.
+    """Display name override for report account rows.
 
-    The only VAT the agency collects is on its commission revenue. Showing
-    a generic "VAT Payable" line on the agency Balance Sheet obscures
-    what that liability actually represents — it is the commission VAT
-    owed to the revenue authority. Rename so the line is self-explanatory.
+    The COA migration (0016) renames the commission-VAT liability from
+    "VAT Payable (Commission)" to "Commission Payable (Commission)".
+    This helper is a safety net for tenants where the migration hasn't
+    landed yet — it does the same rename at display time. The plain
+    "VAT Payable" account (code 2100) is left untouched.
     """
-    name = name or ''
-    s = (subtype or '').lower()
-    n = name.lower()
-    if s == 'vat_payable' or 'vat payable' in n:
+    name = (name or '').strip()
+    if name == 'VAT Payable (Commission)':
         return 'Commission Payable (Commission)'
+    # `subtype` arg kept for API stability; not consulted now that the
+    # DB is the source of truth for the rename.
+    _ = subtype
     return name
 
 
@@ -893,6 +903,7 @@ class BalanceSheetView(APIView):
                         row['account__name'],
                         row.get('account__account_subtype'),
                     ),
+                    'subtype': row.get('account__account_subtype') or '',
                     'balance': float(bal),
                 }
                 if acct_type == 'asset':
@@ -961,8 +972,11 @@ class BalanceSheetView(APIView):
             for row in agg:
                 acct_type = row['account__account_type']
                 code = row['account__code']
-                name = row['account__name']
                 subtype = row.get('account__account_subtype') or ''
+                # Apply the report-wide display rename here too so the
+                # landlord-scoped Balance Sheet picks up the new label
+                # even though the vat_payable row is filtered out below.
+                name = _bs_display_name(row['account__name'], subtype)
                 debit_total = row['total_debit']
                 credit_total = row['total_credit']
 
@@ -974,7 +988,10 @@ class BalanceSheetView(APIView):
                         # Aggregate bank balances into the single trust line.
                         funds_held_in_trust += bal
                     else:
-                        asset_list.append({'code': code, 'name': name, 'balance': float(bal)})
+                        asset_list.append({
+                            'code': code, 'name': name,
+                            'subtype': subtype, 'balance': float(bal),
+                        })
                         total_assets += bal
                 elif acct_type == 'liability':
                     bal = credit_total - debit_total
@@ -993,7 +1010,10 @@ class BalanceSheetView(APIView):
                         continue
                     if subtype == 'vat_payable' or 'vat payable' in name.lower():
                         continue
-                    liability_list.append({'code': code, 'name': name, 'balance': float(bal)})
+                    liability_list.append({
+                        'code': code, 'name': name,
+                        'subtype': subtype, 'balance': float(bal),
+                    })
                     total_liabilities += bal
                 # We deliberately ignore equity rows from the GL under scope —
                 # any landlord-level equity is derived below.

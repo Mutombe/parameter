@@ -109,7 +109,7 @@ class ChartOfAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, v
             # Liabilities
             ('2000', 'Accounts Payable', 'liability', 'accounts_payable', True),
             ('2100', 'VAT Payable', 'liability', 'vat_payable', True),
-            ('2110', 'VAT Payable (Commission)', 'liability', 'vat_payable', True),
+            ('2110', 'Commission Payable (Commission)', 'liability', 'vat_payable', True),
             ('2200', 'Unpaid Rent (Deferred Revenue)', 'liability', 'tenant_deposits', True),
             ('2300', 'Landlord Trust Payable', 'liability', 'accounts_payable', True),
             # Equity

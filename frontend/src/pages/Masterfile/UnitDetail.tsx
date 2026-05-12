@@ -20,6 +20,7 @@ import {
   Plus,
   BarChart3,
   Download,
+  CreditCard,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -36,6 +37,7 @@ import {
 import { unitApi, leaseApi, invoiceApi, subsidiaryApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { Button, TableFilter, Modal, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker } from '../../components/ui'
+import { ProfileInfoBar, InfoColumn, InfoLine } from '../../components/detail/ProfileInfoBar'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
 import { usePagination } from '../../hooks/usePagination'
@@ -369,14 +371,16 @@ export default function UnitDetail() {
           <button onClick={() => navigate('/dashboard/units')} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             {loadingUnit ? (
               <div className="h-8 w-48 bg-gray-200 rounded animate-pulse" />
             ) : (
               <>
-                <h1 className="text-xl md:text-2xl font-bold text-gray-900">Unit {unit?.unit_number}</h1>
+                <h1 className="text-xl md:text-2xl font-bold text-gray-900 truncate" title={`Unit ${unit?.unit_number}`}>
+                  Unit <span className="text-primary-600 font-mono tracking-tight">{unit?.unit_number}</span>
+                </h1>
                 <span className={cn(
-                  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
+                  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap',
                   isOccupied
                     ? 'bg-emerald-50 text-emerald-600'
                     : 'bg-rose-50 text-rose-600'
@@ -384,105 +388,157 @@ export default function UnitDetail() {
                   {isOccupied ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
                   {isOccupied ? 'Occupied' : 'Vacant'}
                 </span>
+                {unit?.unit_type && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ring-1 bg-blue-50 text-blue-700 ring-blue-200 whitespace-nowrap">
+                    {unitTypeLabels[unit.unit_type] || unit.unit_type}
+                  </span>
+                )}
+                {unit?.is_active === false && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ring-1 bg-gray-50 text-gray-600 ring-gray-200 whitespace-nowrap">
+                    Inactive
+                  </span>
+                )}
               </>
             )}
           </div>
         </div>
-        <Button variant="outline" onClick={() => navigate('/dashboard/units')} className="gap-2">
-          <Edit2 className="w-4 h-4" />
-          Edit
-        </Button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/dashboard/units?action=create')}
+            className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+          >
+            <Plus className="w-4 h-4" />
+            New Unit
+          </button>
+          {!isOccupied && (
+            <Button onClick={() => navigate('/dashboard/leases?action=create')} className="gap-2">
+              <Plus className="w-4 h-4" />
+              Add Lease
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => navigate('/dashboard/units')} className="gap-2">
+            <Edit2 className="w-4 h-4" />
+            Edit
+          </Button>
+        </div>
       </motion.div>
 
-      {/* Profile Info Bar */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05 }}
-        className="bg-white rounded-xl border border-gray-200 p-4 md:p-6"
-      >
-        {loadingUnit ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="space-y-2 animate-pulse">
-                <div className="h-3 w-16 bg-gray-200 rounded" />
-                <div className="h-4 w-32 bg-gray-200 rounded" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {/* Property */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Property</p>
-              <button
-                onClick={() => unit?.property && navigate(`/dashboard/properties/${unit.property}`)}
-                onMouseEnter={() => unit?.property && prefetch(`/dashboard/properties/${unit.property}`)}
-                className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
-              >
-                <PiBuildingApartmentLight className="w-3.5 h-3.5" />
-                <span>{unit?.property_name}</span>
-              </button>
-            </div>
+      {/* Profile Info Bar — Identity, Property chain, Specs, Financial,
+          Current Tenant. Columns collapse if data is missing. */}
+      <ProfileInfoBar loading={loadingUnit} skeletonCount={5}>
+        {/* Identity */}
+        <InfoColumn label="Identity">
+          {unit?.code && (
+            <InfoLine icon={CreditCard}>
+              <span className="font-mono text-xs">{unit.code}</span>
+            </InfoLine>
+          )}
+          <InfoLine muted>
+            <DoorOpen className="inline w-3 h-3 mr-1 text-gray-400" />
+            {unitTypeLabels[unit?.unit_type] || unit?.unit_type || '—'}
+          </InfoLine>
+          {(unit?.floor_number != null && unit.floor_number > 0) && (
+            <InfoLine muted>Floor {unit.floor_number}</InfoLine>
+          )}
+        </InfoColumn>
 
-            {/* Details */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Details</p>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <DoorOpen className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{unitTypeLabels[unit?.unit_type] || unit?.unit_type}</span>
-                </div>
-                <div className="flex items-center gap-4 text-sm text-gray-600">
-                  {unit?.floor_number > 0 && (
-                    <span className="flex items-center gap-1"><Layers className="w-3.5 h-3.5 text-gray-400" /> Floor {unit.floor_number}</span>
-                  )}
-                  {unit?.square_meters > 0 && (
-                    <span className="flex items-center gap-1"><Square className="w-3.5 h-3.5 text-gray-400" /> {unit.square_meters}m²</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-4 text-sm text-gray-600">
-                  <span className="flex items-center gap-1"><Bed className="w-3.5 h-3.5 text-gray-400" /> {unit?.bedrooms} bed</span>
-                  <span className="flex items-center gap-1"><Bath className="w-3.5 h-3.5 text-gray-400" /> {unit?.bathrooms} bath</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Financial */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Financial</p>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <DollarSign className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{formatCurrency(unit?.rental_amount || 0)} /month</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <DollarSign className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{formatCurrency(unit?.deposit_amount || 0)} deposit</span>
-                </div>
-                <div className="text-xs text-gray-400">{unit?.currency}</div>
-              </div>
-            </div>
-
-            {/* Tenant */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Tenant</p>
-              {unit?.current_tenant ? (
+        {/* Property chain */}
+        <InfoColumn label="Property">
+          {unit?.property_name && (
+            <InfoLine
+              icon={PiBuildingApartmentLight}
+              primary={!!unit?.property}
+              title={unit.property_name}
+            >
+              {unit?.property ? (
                 <button
-                  onClick={() => navigate(`/dashboard/tenants/${unit.current_tenant.id}`)}
-                  onMouseEnter={() => prefetch(`/dashboard/tenants/${unit.current_tenant.id}`)}
-                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
+                  onClick={() => navigate(`/dashboard/properties/${unit.property}`)}
+                  onMouseEnter={() => prefetch(`/dashboard/properties/${unit.property}`)}
+                  className="hover:underline"
                 >
-                  <TbUserSquareRounded className="w-3.5 h-3.5" />
-                  <span>{unit.current_tenant.name}</span>
+                  {unit.property_name}
                 </button>
-              ) : (
-                <span className="text-sm text-gray-400">Vacant</span>
+              ) : unit.property_name}
+            </InfoLine>
+          )}
+          {unit?.landlord_name && (
+            <InfoLine
+              muted
+              primary={!!unit?.landlord_id}
+              icon={TbUserSquareRounded}
+              title={unit.landlord_name}
+            >
+              {unit?.landlord_id ? (
+                <button
+                  onClick={() => navigate(`/dashboard/landlords/${unit.landlord_id}`)}
+                  onMouseEnter={() => prefetch(`/dashboard/landlords/${unit.landlord_id}`)}
+                  className="hover:underline"
+                >
+                  {unit.landlord_name}
+                </button>
+              ) : unit.landlord_name}
+            </InfoLine>
+          )}
+        </InfoColumn>
+
+        {/* Specs */}
+        <InfoColumn label="Specs">
+          {((unit?.bedrooms ?? 0) > 0 || (unit?.bathrooms ?? 0) > 0) && (
+            <InfoLine title={`${unit?.bedrooms || 0} bed · ${unit?.bathrooms || 0} bath`}>
+              <Bed className="inline w-3.5 h-3.5 mr-1 text-gray-400" />
+              {unit?.bedrooms || 0} bed
+              <span className="mx-2 text-gray-300">·</span>
+              <Bath className="inline w-3.5 h-3.5 mr-1 text-gray-400" />
+              {unit?.bathrooms || 0} bath
+            </InfoLine>
+          )}
+          {(unit?.square_meters > 0) && (
+            <InfoLine muted icon={Square}>{unit.square_meters} m²</InfoLine>
+          )}
+          {Array.isArray(unit?.amenities) && unit.amenities.length > 0 && (
+            <InfoLine muted title={unit.amenities.join(', ')}>
+              {unit.amenities.length} amenit{unit.amenities.length === 1 ? 'y' : 'ies'}
+            </InfoLine>
+          )}
+        </InfoColumn>
+
+        {/* Financial */}
+        <InfoColumn label="Financial">
+          <InfoLine icon={DollarSign} className="font-semibold text-gray-900">
+            {formatCurrency(unit?.rental_amount || 0)} <span className="text-xs text-gray-400 font-normal">/mo</span>
+          </InfoLine>
+          {(unit?.deposit_amount || 0) > 0 && (
+            <InfoLine muted>
+              {formatCurrency(unit?.deposit_amount || 0)} deposit
+            </InfoLine>
+          )}
+          <InfoLine muted><span className="font-mono">{unit?.currency}</span></InfoLine>
+        </InfoColumn>
+
+        {/* Current tenant */}
+        <InfoColumn label="Tenant">
+          {activeTenantId && (unit?.current_tenant?.name || activeLease?.tenant_name) ? (
+            <>
+              <InfoLine icon={TbUserSquareRounded} primary title={unit?.current_tenant?.name || activeLease?.tenant_name}>
+                <button
+                  onClick={() => navigate(`/dashboard/tenants/${activeTenantId}`)}
+                  onMouseEnter={() => prefetch(`/dashboard/tenants/${activeTenantId}`)}
+                  className="hover:underline"
+                >
+                  {unit?.current_tenant?.name || activeLease?.tenant_name}
+                </button>
+              </InfoLine>
+              {activeLease?.start_date && activeLease?.end_date && (
+                <InfoLine muted icon={Calendar} title={`${formatDate(activeLease.start_date)} → ${formatDate(activeLease.end_date)}`}>
+                  {formatDate(activeLease.start_date)} → {formatDate(activeLease.end_date)}
+                </InfoLine>
               )}
-            </div>
-          </div>
-        )}
-      </motion.div>
+            </>
+          ) : (
+            <InfoLine muted icon={Clock}>Vacant</InfoLine>
+          )}
+        </InfoColumn>
+      </ProfileInfoBar>
 
       {/* KPI Cards */}
       <motion.div variants={container} initial="hidden" animate="show" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

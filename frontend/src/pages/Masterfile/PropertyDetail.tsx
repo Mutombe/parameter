@@ -19,9 +19,11 @@ import {
   Layers,
   Eye,
   Calendar as CalendarIcon,
+  Calendar,
   BarChart3,
   Percent,
   Loader2,
+  CreditCard,
 } from 'lucide-react'
 import {
   BarChart,
@@ -39,6 +41,7 @@ import api, { propertyApi, landlordApi, unitApi, reportsApi, leaseApi, invoiceAp
 import { CommissionGrid } from '../../components/property/CommissionGrid'
 import { formatCurrency, formatPercent, formatDate, cn } from '../../lib/utils'
 import { Modal, Button, Input, Select, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker } from '../../components/ui'
+import { ProfileInfoBar, InfoColumn, InfoLine } from '../../components/detail/ProfileInfoBar'
 import { showToast, parseApiError } from '../../lib/toast'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
 import { TbUserSquareRounded } from 'react-icons/tb'
@@ -656,20 +659,52 @@ export default function PropertyDetail() {
           >
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             {loadingProfile ? (
               <div className="h-8 w-48 bg-gray-200 rounded animate-pulse" />
             ) : (
               <>
-                <h1 className="text-xl md:text-2xl font-bold text-gray-900">{property?.name}</h1>
-                <span className={cn('px-2.5 py-1 rounded-full text-xs font-medium', typeConfig.bgColor, typeConfig.color)}>
+                <h1 className="text-xl md:text-2xl font-bold text-gray-900 truncate" title={property?.name}>
+                  {property?.name}
+                </h1>
+                <span className={cn(
+                  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap',
+                  property?.is_active === false ? 'bg-gray-100 text-gray-600' : 'bg-emerald-50 text-emerald-600',
+                )}>
+                  {property?.is_active === false ? <Clock className="w-3 h-3" /> : <Building2 className="w-3 h-3" />}
+                  {property?.is_active === false ? 'Inactive' : 'Active'}
+                </span>
+                <span className={cn(
+                  'inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ring-1 whitespace-nowrap',
+                  typeConfig.bgColor, typeConfig.color,
+                  property?.property_type === 'residential' ? 'ring-blue-200' :
+                  property?.property_type === 'commercial' ? 'ring-purple-200' :
+                  property?.property_type === 'industrial' ? 'ring-amber-200' : 'ring-emerald-200',
+                )}>
                   {typeConfig.label}
                 </span>
+                {property?.management_type && (
+                  <span className={cn(
+                    'inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ring-1 whitespace-nowrap',
+                    property.management_type === 'levy'
+                      ? 'bg-violet-50 text-violet-700 ring-violet-200'
+                      : 'bg-sky-50 text-sky-700 ring-sky-200'
+                  )}>
+                    {property.management_type === 'levy' ? 'Levy' : 'Rental'}
+                  </span>
+                )}
               </>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/dashboard/properties?action=create')}
+            className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+          >
+            <Plus className="w-4 h-4" />
+            New Property
+          </button>
           <Button
             onClick={() => setShowLeaseModal(true)}
             className="gap-2"
@@ -698,102 +733,118 @@ export default function PropertyDetail() {
         </div>
       </motion.div>
 
-      {/* Profile Info Bar */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05 }}
-        className="bg-white rounded-xl border border-gray-200 p-4 md:p-6"
-      >
-        {loadingProfile ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="space-y-2 animate-pulse">
-                <div className="h-3 w-16 bg-gray-200 rounded" />
-                <div className="h-4 w-32 bg-gray-200 rounded" />
-                <div className="h-4 w-28 bg-gray-200 rounded" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {/* Location */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Location</p>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <MapPin className="w-3.5 h-3.5 text-gray-400" />
-                  <span className="truncate">{property?.address || 'No address'}</span>
-                </div>
-                {property?.city && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Building2 className="w-3.5 h-3.5 text-gray-400" />
-                    <span>{property.city}</span>
-                  </div>
-                )}
-              </div>
-            </div>
+      {/* Profile Info Bar — Identity, Address, Owner, Building, Performance. */}
+      <ProfileInfoBar loading={loadingProfile} skeletonCount={5}>
+        {/* Identity */}
+        <InfoColumn label="Identity">
+          {property?.code && (
+            <InfoLine icon={CreditCard}>
+              <span className="font-mono text-xs">{property.code}</span>
+            </InfoLine>
+          )}
+          <InfoLine muted className="capitalize">{property?.property_type || 'residential'}</InfoLine>
+          {property?.unit_definition && (
+            <InfoLine muted className="capitalize">
+              {String(property.unit_definition).replace(/_/g, ' ')} layout
+            </InfoLine>
+          )}
+        </InfoColumn>
 
-            {/* Landlord */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Landlord</p>
-              <div className="space-y-1.5">
-                <button
-                  onClick={() => property?.landlord && navigate(`/dashboard/landlords/${property.landlord}`)}
-                  onMouseEnter={() => property?.landlord && prefetch(`/dashboard/landlords/${property.landlord}`)}
-                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
+        {/* Address */}
+        <InfoColumn
+          label="Address"
+          hidden={!property?.address && !property?.city && !property?.suburb && !property?.country}
+        >
+          {property?.address && (
+            <InfoLine icon={MapPin} title={property.address}>{property.address}</InfoLine>
+          )}
+          {(property?.suburb || property?.city) && (
+            <InfoLine muted title={[property?.suburb, property?.city].filter(Boolean).join(', ')}>
+              {[property?.suburb, property?.city].filter(Boolean).join(', ')}
+            </InfoLine>
+          )}
+          {property?.country && (
+            <InfoLine muted>{property.country}</InfoLine>
+          )}
+        </InfoColumn>
+
+        {/* Owner & Managers */}
+        <InfoColumn label="Owner">
+          {property?.landlord ? (
+            <InfoLine icon={TbUserSquareRounded} primary title={property?.landlord_name}>
+              <button
+                onClick={() => navigate(`/dashboard/landlords/${property.landlord}`)}
+                onMouseEnter={() => prefetch(`/dashboard/landlords/${property.landlord}`)}
+                className="hover:underline"
+              >
+                {property?.landlord_name || 'Unknown'}
+              </button>
+            </InfoLine>
+          ) : (
+            <InfoLine icon={TbUserSquareRounded} muted>Unknown</InfoLine>
+          )}
+          {property?.managers_list && property.managers_list.length > 0 ? (
+            <>
+              {property.managers_list.slice(0, 2).map((mgr: any) => (
+                <InfoLine
+                  key={mgr.id}
+                  icon={Shield}
+                  muted
+                  title={mgr.name + (mgr.is_primary ? ' · primary manager' : '')}
                 >
-                  <TbUserSquareRounded className="w-3.5 h-3.5" />
-                  <span>{property?.landlord_name || 'Unknown'}</span>
-                </button>
-              </div>
-            </div>
+                  {mgr.name}{mgr.is_primary && <span className="ml-1 text-[10px] text-indigo-600">(Primary)</span>}
+                </InfoLine>
+              ))}
+              {property.managers_list.length > 2 && (
+                <InfoLine muted>+{property.managers_list.length - 2} more</InfoLine>
+              )}
+            </>
+          ) : (
+            <InfoLine muted>No managers assigned</InfoLine>
+          )}
+        </InfoColumn>
 
-            {/* Details */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Details</p>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <PiBuildingApartmentLight className="w-3.5 h-3.5 text-gray-400" />
-                  <span className="capitalize">{property?.property_type}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className={cn(
-                    'px-2 py-0.5 rounded-full text-xs font-medium',
-                    property?.management_type === 'levy'
-                      ? 'bg-violet-50 text-violet-600'
-                      : 'bg-sky-50 text-sky-600'
-                  )}>
-                    {property?.management_type === 'levy' ? 'Levy' : 'Rental'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Home className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{totalUnits} total units</span>
-                </div>
-              </div>
-            </div>
+        {/* Building */}
+        <InfoColumn label="Building">
+          <InfoLine icon={Home} className="font-semibold text-gray-900">
+            {property?.total_units || totalUnits || 0} unit{(property?.total_units || totalUnits || 0) === 1 ? '' : 's'}
+          </InfoLine>
+          {property?.total_floors != null && property.total_floors > 0 && (
+            <InfoLine muted>
+              {property.total_floors} floor{property.total_floors === 1 ? '' : 's'}
+              {property?.parking_spaces != null && property.parking_spaces > 0 && (
+                <span> · {property.parking_spaces} parking</span>
+              )}
+            </InfoLine>
+          )}
+          {property?.year_built && (
+            <InfoLine muted icon={Calendar}>Built {property.year_built}</InfoLine>
+          )}
+        </InfoColumn>
 
-            {/* Managers */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Managers</p>
-              <div className="space-y-1.5">
-                {property?.managers_list && property.managers_list.length > 0 ? (
-                  property.managers_list.map((mgr: any) => (
-                    <div key={mgr.id} className="flex items-center gap-2 text-sm text-gray-600">
-                      <Shield className="w-3.5 h-3.5 text-gray-400" />
-                      <span className="truncate">{mgr.name}</span>
-                      {mgr.is_primary && <span className="text-xs text-indigo-600">(Primary)</span>}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-gray-400">None assigned</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </motion.div>
+        {/* Performance */}
+        <InfoColumn label="Performance" hidden={(totalUnits || 0) === 0}>
+          <InfoLine
+            icon={BarChart3}
+            className={cn(
+              'font-semibold',
+              occupancyRate >= 80 ? 'text-emerald-700'
+                : occupancyRate >= 50 ? 'text-amber-700'
+                : 'text-red-700'
+            )}
+          >
+            {formatPercent(occupancyRate)} occupancy
+          </InfoLine>
+          <InfoLine muted>
+            {occupiedUnits} occ · {vacantUnits} vac
+          </InfoLine>
+          {totalOutstanding > 0 && (
+            <InfoLine muted className="text-red-500" title={`${formatCurrency(totalOutstanding)} outstanding receivables`}>
+              {formatCurrency(totalOutstanding)} outstanding
+            </InfoLine>
+          )}
+        </InfoColumn>
+      </ProfileInfoBar>
 
       {/* KPI Cards */}
       <motion.div variants={container} initial="hidden" animate="show" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
