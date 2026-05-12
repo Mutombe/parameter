@@ -240,6 +240,37 @@ def _invoice_scope_q(unit_id_list, property_id_list):
     )
 
 
+def _scoped_receipt_qs(unit_id_list, property_id_list):
+    """Return a clean Receipt queryset matching the landlord scope.
+
+    The naive form — `Receipt.objects.filter(_receipt_scope_q(...)).distinct()`
+    — produces SQL that Django's compiler can't combine with the
+    `_commission_expr()` subquery: the OUTER `Sum(commission_expr)` inside
+    `.aggregate()` references `OuterRef('invoice__...')`, but when the
+    parent query has its own JOINs and a DISTINCT wrapper, the alias
+    `billing_receipt` is no longer reachable from the subquery's FROM
+    clause and PostgreSQL throws
+        ProgrammingError: missing FROM-clause entry for table "billing_receipt"
+
+    Workaround: collect the matching IDs via a sub-SELECT, then return a
+    plain `Receipt.objects.filter(id__in=...)` queryset that owns no
+    joins of its own. Outer aggregations can then attach the
+    `invoice` join the subquery needs.
+    """
+    scoped_ids = Receipt.objects.filter(
+        _receipt_scope_q(unit_id_list, property_id_list)
+    ).values('id')
+    return Receipt.objects.filter(id__in=scoped_ids)
+
+
+def _scoped_invoice_qs(unit_id_list, property_id_list):
+    """Same shape as `_scoped_receipt_qs` but for Invoices."""
+    scoped_ids = Invoice.objects.filter(
+        _invoice_scope_q(unit_id_list, property_id_list)
+    ).values('id')
+    return Invoice.objects.filter(id__in=scoped_ids)
+
+
 def _aged_analysis_property_q(property_id):
     """Q-clause matching invoices linked to `property_id` via any path."""
     return (
@@ -1064,11 +1095,15 @@ class BalanceSheetView(APIView):
                     property_id_list = list(properties.values_list('id', flat=True))
                     units = Unit.objects.filter(property__in=properties)
                     unit_id_list = list(units.values_list('id', flat=True))
-                    receipt_qs = Receipt.objects.filter(
-                        _receipt_scope_q(unit_id_list, property_id_list),
+                    # Build the scoped receipt set via id__in subquery so
+                    # the outer .aggregate(_commission_expr()) has a clean
+                    # Receipt FROM clause for its OuterRef subqueries.
+                    receipt_qs = _scoped_receipt_qs(unit_id_list, property_id_list).filter(
                         date__lte=as_of_date,
-                    ).distinct()
+                    )
                     if property_id:
+                        # Narrow further to a single property — same shape
+                        # of OR across all four linkage paths.
                         receipt_qs = receipt_qs.filter(
                             Q(invoice__unit__property_id=property_id) |
                             Q(invoice__property_id=property_id) |
@@ -1165,10 +1200,9 @@ class BalanceSheetView(APIView):
                 _unit_id_list = list(_units_qs.values_list('id', flat=True))
 
                 # ---- Trust composition (inception → as_of_date) ----
-                _all_receipts_qs = Receipt.objects.filter(
-                    _receipt_scope_q(_unit_id_list, _property_id_list),
+                _all_receipts_qs = _scoped_receipt_qs(_unit_id_list, _property_id_list).filter(
                     date__lte=as_of_date,
-                ).distinct()
+                )
                 _rcpt_total = _all_receipts_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
                 _comm_total = _all_receipts_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
                 # Per-income-type split of trust commission so the note
@@ -1321,10 +1355,9 @@ class BalanceSheetView(APIView):
                 _period_start = _as_of.replace(month=1, day=1)
                 _opening_cutoff = _period_start - timedelta(days=1)
 
-                _open_rcpt_qs = Receipt.objects.filter(
-                    _receipt_scope_q(_unit_id_list, _property_id_list),
+                _open_rcpt_qs = _scoped_receipt_qs(_unit_id_list, _property_id_list).filter(
                     date__lte=_opening_cutoff,
-                ).distinct()
+                )
                 _open_rcpt = _open_rcpt_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
                 _open_comm = _open_rcpt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
                 _open_exp = Expense.objects.filter(
@@ -1337,16 +1370,14 @@ class BalanceSheetView(APIView):
                 # Period net income — invoiced revenue minus operating
                 # expenses + commission within the period. Mirrors the
                 # Income Statement's accrual frame.
-                _period_invoice = Invoice.objects.filter(
-                    _invoice_scope_q(_unit_id_list, _property_id_list),
+                _period_invoice = _scoped_invoice_qs(_unit_id_list, _property_id_list).filter(
                     date__gte=_period_start,
                     date__lte=as_of_date,
-                ).distinct().aggregate(t=Sum('amount'))['t'] or Decimal('0')
+                ).aggregate(t=Sum('amount'))['t'] or Decimal('0')
 
-                _period_rcpt_qs = Receipt.objects.filter(
-                    _receipt_scope_q(_unit_id_list, _property_id_list),
+                _period_rcpt_qs = _scoped_receipt_qs(_unit_id_list, _property_id_list).filter(
                     date__gte=_period_start, date__lte=as_of_date,
-                ).distinct()
+                )
                 _period_comm = _period_rcpt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
 
                 _period_expenses = Expense.objects.filter(
@@ -1766,10 +1797,11 @@ class LandlordStatementView(APIView):
 
     @staticmethod
     def _receipt_base_qs(unit_id_list, property_id_list, currency=None):
-        """Apply the shared `_receipt_scope_q` and optionally filter currency."""
-        qs = Receipt.objects.filter(
-            _receipt_scope_q(unit_id_list, property_id_list)
-        ).distinct()
+        """Apply the shared scope helper. Uses `_scoped_receipt_qs` so the
+        OR'd JOINs from `_receipt_scope_q` don't break later
+        `.aggregate(_commission_expr())` calls (the OuterRef subquery in
+        _commission_expr can't bind through a DISTINCT wrapper)."""
+        qs = _scoped_receipt_qs(unit_id_list, property_id_list)
         if currency:
             qs = qs.filter(currency=currency)
         return qs
@@ -3634,10 +3666,11 @@ class IncomeExpenditureReportView(APIView):
 
     @staticmethod
     def _receipt_base_qs(unit_id_list, property_id_list, currency=None):
-        """Apply the shared `_receipt_scope_q` and optionally filter currency."""
-        qs = Receipt.objects.filter(
-            _receipt_scope_q(unit_id_list, property_id_list)
-        ).distinct()
+        """Apply the shared scope helper. Uses `_scoped_receipt_qs` so the
+        OR'd JOINs from `_receipt_scope_q` don't break later
+        `.aggregate(_commission_expr())` calls (the OuterRef subquery in
+        _commission_expr can't bind through a DISTINCT wrapper)."""
+        qs = _scoped_receipt_qs(unit_id_list, property_id_list)
         if currency:
             qs = qs.filter(currency=currency)
         return qs
