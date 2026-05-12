@@ -497,6 +497,47 @@ class Receipt(SoftDeleteModel):
                 return active_lease.property.landlord
         return None
 
+    def _resolve_property_for_commission(self):
+        """Resolve the property this receipt is tied to, for commission
+        override lookup. Returns property_id or None.
+
+        Resolution chain (first hit wins):
+          1. invoice.unit.property_id
+          2. invoice.property_id
+          3. invoice.lease.unit.property_id
+          4. invoice.lease.property_id
+          5. tenant's active LeaseAgreement → unit.property_id or property_id
+
+        The chain exists because invoices created via different flows leave
+        different combinations of (unit, property, lease) populated, and ad-
+        hoc receipts (no invoice) need to resolve via the tenant's lease.
+        """
+        if self.invoice_id:
+            inv = self.invoice
+            if inv:
+                if inv.unit_id and inv.unit and inv.unit.property_id:
+                    return inv.unit.property_id
+                if inv.property_id:
+                    return inv.property_id
+                if inv.lease_id and inv.lease:
+                    if inv.lease.unit_id and inv.lease.unit and inv.lease.unit.property_id:
+                        return inv.lease.unit.property_id
+                    if inv.lease.property_id:
+                        return inv.lease.property_id
+
+        # No invoice or invoice has no property linkage — fall back to the
+        # tenant's active lease.
+        from apps.masterfile.models import LeaseAgreement
+        active_lease = LeaseAgreement.objects.filter(
+            tenant_id=self.tenant_id, status='active'
+        ).select_related('unit__property', 'property').first()
+        if active_lease:
+            if active_lease.unit_id and active_lease.unit and active_lease.unit.property_id:
+                return active_lease.unit.property_id
+            if active_lease.property_id:
+                return active_lease.property_id
+        return None
+
     def _get_commission_settings(self):
         """Resolve commission rate and VAT rate for this receipt.
 
@@ -523,15 +564,13 @@ class Receipt(SoftDeleteModel):
         if not self.income_type:
             commission_rate = Decimal('0')
         else:
-            # Look up the property the receipt is tied to via its invoice.
-            prop_id = None
-            if self.invoice_id:
-                inv = self.invoice
-                if inv:
-                    if inv.unit_id and inv.unit and inv.unit.property_id:
-                        prop_id = inv.unit.property_id
-                    elif inv.property_id:
-                        prop_id = inv.property_id
+            # Resolve the property this receipt is tied to. The resolver tries
+            # progressively wider fallbacks because invoices don't always carry
+            # a direct unit/property FK (older imports, batch generators, and
+            # the InvoiceCreateSerializer that takes only `lease`+`unit` all
+            # leave at least one of these blank). Called via the class so the
+            # unbound form works in tests that pass SimpleNamespace as self.
+            prop_id = Receipt._resolve_property_for_commission(self)
 
             override_rate = None
             if prop_id:
