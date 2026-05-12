@@ -19,25 +19,38 @@ import { printElement } from '../../lib/printTemplate'
 import { Tooltip, DatePicker } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 
+/** Field names mirror the backend exactly (see AgedAnalysisView.get):
+ *  buckets sit under `summary.buckets.{key}.amount`, tenant rows live in
+ *  `by_tenant`. Bucket keys are `current / 31_60 / 61_90 / 91_120 / over_120`.
+ */
+interface AgedBucket {
+  label: string
+  amount: number
+  count: number
+  percentage: number
+}
+
 interface AgedAnalysisSummary {
   total_outstanding: number
-  total_overdue: number
-  overdue_count: number
-  current: number
-  days_31_60: number
-  days_61_90: number
-  days_91_120: number
-  days_over_120: number
+  total_invoices: number
+  buckets: {
+    current: AgedBucket
+    '31_60': AgedBucket
+    '61_90': AgedBucket
+    '91_120': AgedBucket
+    over_120: AgedBucket
+  }
 }
 
 interface TenantAging {
   tenant_id: number
+  tenant_code: string
   tenant_name: string
   current: number
-  days_31_60: number
-  days_61_90: number
-  days_91_120: number
-  days_over_120: number
+  '31_60': number
+  '61_90': number
+  '91_120': number
+  over_120: number
   total: number
 }
 
@@ -58,11 +71,11 @@ interface Landlord {
 }
 
 const bucketConfig = [
-  { key: 'current', label: 'Current (0-30)', color: 'bg-green-500', textColor: 'text-green-700', bgLight: 'bg-green-50' },
-  { key: 'days_31_60', label: '31-60 Days', color: 'bg-amber-500', textColor: 'text-amber-700', bgLight: 'bg-amber-50' },
-  { key: 'days_61_90', label: '61-90 Days', color: 'bg-orange-500', textColor: 'text-orange-700', bgLight: 'bg-orange-50' },
-  { key: 'days_91_120', label: '91-120 Days', color: 'bg-red-500', textColor: 'text-red-700', bgLight: 'bg-red-50' },
-  { key: 'days_over_120', label: '120+ Days', color: 'bg-red-800', textColor: 'text-red-900', bgLight: 'bg-red-100' },
+  { key: 'current',  label: 'Current (0-30)', color: 'bg-green-500',  textColor: 'text-green-700', bgLight: 'bg-green-50'  },
+  { key: '31_60',    label: '31-60 Days',     color: 'bg-amber-500',  textColor: 'text-amber-700', bgLight: 'bg-amber-50'  },
+  { key: '61_90',    label: '61-90 Days',     color: 'bg-orange-500', textColor: 'text-orange-700', bgLight: 'bg-orange-50' },
+  { key: '91_120',   label: '91-120 Days',    color: 'bg-red-500',    textColor: 'text-red-700',   bgLight: 'bg-red-50'    },
+  { key: 'over_120', label: '120+ Days',      color: 'bg-red-800',    textColor: 'text-red-900',   bgLight: 'bg-red-100'   },
 ] as const
 
 export default function AgedAnalysis() {
@@ -95,35 +108,44 @@ export default function AgedAnalysis() {
     placeholderData: keepPreviousData,
   })
 
+  const emptyBucket: AgedBucket = { label: '', amount: 0, count: 0, percentage: 0 }
   const summary: AgedAnalysisSummary = analysisData?.summary || {
     total_outstanding: 0,
-    total_overdue: 0,
-    overdue_count: 0,
-    current: 0,
-    days_31_60: 0,
-    days_61_90: 0,
-    days_91_120: 0,
-    days_over_120: 0,
+    total_invoices: 0,
+    buckets: {
+      current: emptyBucket,
+      '31_60': emptyBucket,
+      '61_90': emptyBucket,
+      '91_120': emptyBucket,
+      over_120: emptyBucket,
+    },
   }
 
   const tenants: TenantAging[] = analysisData?.by_tenant || []
   const properties: Property[] = Array.isArray(propertiesData) ? propertiesData : []
   const landlords: Landlord[] = Array.isArray(landlordsData) ? landlordsData : []
 
-  // Calculate chart max for bar widths
+  // "Overdue" = anything past the current bucket (31+ days).
+  const overdueCount = useMemo(() => {
+    const b = summary.buckets || ({} as AgedAnalysisSummary['buckets'])
+    return (b['31_60']?.count || 0) + (b['61_90']?.count || 0) +
+           (b['91_120']?.count || 0) + (b.over_120?.count || 0)
+  }, [summary])
+
+  // Chart max scales bar widths within the bucket section.
   const chartMax = useMemo(() => {
-    const values = bucketConfig.map(b => summary[b.key as keyof AgedAnalysisSummary] as number || 0)
+    const b = summary.buckets || ({} as AgedAnalysisSummary['buckets'])
+    const values = bucketConfig.map(bc => b[bc.key as keyof AgedAnalysisSummary['buckets']]?.amount || 0)
     return Math.max(...values, 1)
   }, [summary])
 
-  // Find worst bucket
+  // Worst bucket = largest outstanding bucket by amount.
   const worstBucket = useMemo(() => {
+    const b = summary.buckets || ({} as AgedAnalysisSummary['buckets'])
     let worst = { label: 'None', value: 0 }
-    for (const b of bucketConfig) {
-      const val = (summary[b.key as keyof AgedAnalysisSummary] as number) || 0
-      if (val > worst.value) {
-        worst = { label: b.label, value: val }
-      }
+    for (const bc of bucketConfig) {
+      const val = b[bc.key as keyof AgedAnalysisSummary['buckets']]?.amount || 0
+      if (val > worst.value) worst = { label: bc.label, value: val }
     }
     return worst
   }, [summary])
@@ -241,7 +263,7 @@ export default function AgedAnalysis() {
             <div>
               <p className="text-sm text-gray-500">Overdue Invoices</p>
               <p className="text-xl font-bold text-gray-900">
-                {summary.overdue_count}
+                {overdueCount}
               </p>
             </div>
           </div>
@@ -287,7 +309,8 @@ export default function AgedAnalysis() {
         ) : (
           <div className="space-y-3">
             {bucketConfig.map((bucket) => {
-              const value = (summary[bucket.key as keyof AgedAnalysisSummary] as number) || 0
+              const bucketData = summary.buckets?.[bucket.key as keyof AgedAnalysisSummary['buckets']]
+              const value = bucketData?.amount || 0
               const percentage = chartMax > 0 ? (value / chartMax) * 100 : 0
               const totalPercentage = summary.total_outstanding > 0
                 ? (value / summary.total_outstanding) * 100 : 0

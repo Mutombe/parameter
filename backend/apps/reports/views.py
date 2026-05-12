@@ -716,6 +716,22 @@ class IncomeStatementView(APIView):
         })
 
 
+def _bs_display_name(name, subtype):
+    """Display name override for Balance Sheet account rows.
+
+    The only VAT the agency collects is on its commission revenue. Showing
+    a generic "VAT Payable" line on the agency Balance Sheet obscures
+    what that liability actually represents — it is the commission VAT
+    owed to the revenue authority. Rename so the line is self-explanatory.
+    """
+    name = name or ''
+    s = (subtype or '').lower()
+    n = name.lower()
+    if s == 'vat_payable' or 'vat payable' in n:
+        return 'Commission Payable (Commission)'
+    return name
+
+
 class BalanceSheetView(APIView):
     """Balance Sheet Report."""
     permission_classes = [IsAuthenticated]
@@ -833,7 +849,10 @@ class BalanceSheetView(APIView):
                     continue
                 entry = {
                     'code': row['account__code'],
-                    'name': row['account__name'],
+                    'name': _bs_display_name(
+                        row['account__name'],
+                        row.get('account__account_subtype'),
+                    ),
                     'balance': float(bal),
                 }
                 if acct_type == 'asset':
@@ -1636,12 +1655,20 @@ class LandlordStatementView(APIView):
 
     @staticmethod
     def _receipt_base_qs(unit_id_list, property_id_list, currency=None):
-        """Build a receipt queryset covering both unit-based and property-based
-        invoices (levy leases may have no unit)."""
+        """Build a receipt queryset covering every path an invoice may carry
+        its property linkage on: direct unit, direct property, or via lease.
+
+        Without the lease branch, receipts whose invoice was created by a
+        flow that left both `unit` and `property` blank (the standard
+        InvoiceCreateSerializer takes `lease`+optional `unit`) silently
+        drop out of every landlord-scoped report.
+        """
         qs = Receipt.objects.filter(
             Q(invoice__unit_id__in=unit_id_list) |
-            Q(invoice__property_id__in=property_id_list)
-        )
+            Q(invoice__property_id__in=property_id_list) |
+            Q(invoice__lease__unit_id__in=unit_id_list) |
+            Q(invoice__lease__property_id__in=property_id_list)
+        ).distinct()
         if currency:
             qs = qs.filter(currency=currency)
         return qs
@@ -2183,19 +2210,40 @@ class AgedAnalysisView(APIView):
         property_id = request.query_params.get('property_id')
         landlord_id = request.query_params.get('landlord_id')
 
-        # Base queryset - unpaid invoices
+        # Base queryset - unpaid invoices.
+        # `draft` is included because invoices issued via flows that don't
+        # auto-transition to 'sent' (manual create, batch generators) sit in
+        # draft with a non-zero balance and ARE genuine receivables — owing
+        # the same money to the landlord whether the agency has formally
+        # mailed the invoice yet or not.
         invoices = Invoice.objects.filter(
-            status__in=['sent', 'partial', 'overdue'],
+            status__in=['draft', 'sent', 'partial', 'overdue'],
             balance__gt=0
-        ).select_related('tenant', 'unit', 'unit__property', 'unit__property__landlord')
+        ).select_related(
+            'tenant', 'unit', 'unit__property', 'unit__property__landlord',
+            'lease', 'lease__unit__property', 'lease__property', 'property',
+        )
 
-        # Apply filters
+        # Apply filters. Property/landlord scoping ORs every linkage path —
+        # an invoice may carry the property via `unit`, via direct `property`
+        # FK (levy invoices), or via the `lease` chain. Narrowing only on
+        # `unit__property_id` silently drops every invoice that lacks a unit.
         if tenant_id:
             invoices = invoices.filter(tenant_id=tenant_id)
         if property_id:
-            invoices = invoices.filter(unit__property_id=property_id)
+            invoices = invoices.filter(
+                Q(unit__property_id=property_id) |
+                Q(property_id=property_id) |
+                Q(lease__unit__property_id=property_id) |
+                Q(lease__property_id=property_id)
+            )
         if landlord_id:
-            invoices = invoices.filter(unit__property__landlord_id=landlord_id)
+            invoices = invoices.filter(
+                Q(unit__property__landlord_id=landlord_id) |
+                Q(property__landlord_id=landlord_id) |
+                Q(lease__unit__property__landlord_id=landlord_id) |
+                Q(lease__property__landlord_id=landlord_id)
+            ).distinct()
 
         # Calculate aging buckets
         buckets = {
@@ -3451,12 +3499,15 @@ class IncomeExpenditureReportView(APIView):
         # `landlord` arg kept for signature stability; not consulted any
         # more. Rate now resolves per (property, income_type) via the
         # PropertyIncomeCommission table.
-        prop_id = None
-        if receipt.invoice_id and receipt.invoice:
-            if receipt.invoice.unit_id and receipt.invoice.unit and receipt.invoice.unit.property_id:
-                prop_id = receipt.invoice.unit.property_id
-            elif receipt.invoice.property_id:
-                prop_id = receipt.invoice.property_id
+        #
+        # Delegates property resolution to Receipt._resolve_property_for_commission
+        # so this report-side helper picks up the same fallback chain
+        # (invoice.unit → invoice.property → invoice.lease.* → active
+        # lease) that the receipt-time resolver uses. Keeping the chain
+        # in one place avoids the kind of drift that previously caused
+        # the override to be ignored on invoice-less receipts.
+        from apps.billing.models import Receipt as _Receipt
+        prop_id = _Receipt._resolve_property_for_commission(receipt)
         rate = _resolve_commission_rate_pct(receipt.income_type, prop_id) / 100
         return receipt.amount * rate
 
@@ -3492,12 +3543,20 @@ class IncomeExpenditureReportView(APIView):
 
     @staticmethod
     def _receipt_base_qs(unit_id_list, property_id_list, currency=None):
-        """Build a receipt queryset covering both unit-based and property-based
-        invoices (levy leases may have no unit)."""
+        """Build a receipt queryset covering every path an invoice may carry
+        its property linkage on: direct unit, direct property, or via lease.
+
+        Without the lease branch, receipts whose invoice was created by a
+        flow that left both `unit` and `property` blank (the standard
+        InvoiceCreateSerializer takes `lease`+optional `unit`) silently
+        drop out of every landlord-scoped report.
+        """
         qs = Receipt.objects.filter(
             Q(invoice__unit_id__in=unit_id_list) |
-            Q(invoice__property_id__in=property_id_list)
-        )
+            Q(invoice__property_id__in=property_id_list) |
+            Q(invoice__lease__unit_id__in=unit_id_list) |
+            Q(invoice__lease__property_id__in=property_id_list)
+        ).distinct()
         if currency:
             qs = qs.filter(currency=currency)
         return qs

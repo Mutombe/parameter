@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
@@ -902,13 +902,19 @@ export default function LandlordDetail() {
                         <tr
                           key={prop.id || idx}
                           onMouseEnter={() => prop.id && prefetch(`/dashboard/properties/${prop.id}`)}
-                          onClick={() => prop.id && navigate(`/dashboard/properties/${prop.id}`)}
-                          className="hover:bg-gray-50 cursor-pointer transition-colors"
+                          className="hover:bg-gray-50 transition-colors"
                         >
                           <td className="px-6 py-4 text-sm font-medium">
-                            <span className="text-primary-600 hover:text-primary-700 hover:underline cursor-pointer">
-                              {prop.property_name || prop.name}
-                            </span>
+                            {prop.id ? (
+                              <Link
+                                to={`/dashboard/properties/${prop.id}`}
+                                className="text-primary-600 hover:text-primary-700 hover:underline"
+                              >
+                                {prop.property_name || prop.name}
+                              </Link>
+                            ) : (
+                              <span className="text-gray-900">{prop.property_name || prop.name}</span>
+                            )}
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-600 text-right">{prop.total_units ?? prop.units ?? '-'}</td>
                           <td className="px-6 py-4 text-right">

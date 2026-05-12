@@ -30,7 +30,6 @@ import {
   Landmark,
   ClipboardList,
   Plus,
-  Trash2,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -4577,23 +4576,8 @@ function IncomeExpenditureReport() {
   const workingCapital: any = data?.working_capital || {}
   const tenants: any[] = incomeSummary?.tenants || []
 
-  // Custom working capital line items
-  const [customDebtors, setCustomDebtors] = useState<{ label: string; amount: number }[]>([])
-  const [customCreditors, setCustomCreditors] = useState<{ label: string; amount: number }[]>([])
-
-  const addCustomDebtor = () => setCustomDebtors(prev => [...prev, { label: '', amount: 0 }])
-  const addCustomCreditor = () => setCustomCreditors(prev => [...prev, { label: '', amount: 0 }])
-  const removeCustomDebtor = (i: number) => setCustomDebtors(prev => prev.filter((_, idx) => idx !== i))
-  const removeCustomCreditor = (i: number) => setCustomCreditors(prev => prev.filter((_, idx) => idx !== i))
-  const updateCustomDebtor = (i: number, field: 'label' | 'amount', value: string | number) =>
-    setCustomDebtors(prev => prev.map((item, idx) => idx === i ? { ...item, [field]: field === 'amount' ? Number(value) : value } : item))
-  const updateCustomCreditor = (i: number, field: 'label' | 'amount', value: string | number) =>
-    setCustomCreditors(prev => prev.map((item, idx) => idx === i ? { ...item, [field]: field === 'amount' ? Number(value) : value } : item))
-
-  const customDebtorsTotal = customDebtors.reduce((s, item) => s + (item.amount || 0), 0)
-  const customCreditorsTotal = customCreditors.reduce((s, item) => s + (item.amount || 0), 0)
-  const adjDebtorsSubtotal = (workingCapital.debtors?.subtotal || 0) + customDebtorsTotal
-  const adjCreditorsSubtotal = (workingCapital.creditors?.subtotal || 0) + customCreditorsTotal
+  const adjDebtorsSubtotal = workingCapital.debtors?.subtotal || 0
+  const adjCreditorsSubtotal = workingCapital.creditors?.subtotal || 0
   const adjNetWorkingCapital = adjDebtorsSubtotal - adjCreditorsSubtotal
 
   const balColor = (v: number) => v < 0 ? 'text-red-600 font-semibold' : 'text-emerald-700 font-semibold'
@@ -4897,29 +4881,6 @@ function IncomeExpenditureReport() {
                       <span className="text-gray-600">Levies in arrears</span>
                       <span className="tabular-nums font-medium text-red-600">{fmtNum(workingCapital.debtors?.levies_in_arrears ?? workingCapital.debtors?.arrears)}</span>
                     </div>
-                    {/* Custom debtor items */}
-                    {customDebtors.map((item, i) => (
-                      <div key={i} className="flex items-center gap-2 py-1 border-b border-dashed border-gray-200">
-                        <input
-                          type="text"
-                          value={item.label}
-                          onChange={e => updateCustomDebtor(i, 'label', e.target.value)}
-                          placeholder="Item name..."
-                          className="flex-1 text-sm border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                        />
-                        <input
-                          type="number"
-                          value={item.amount || ''}
-                          onChange={e => updateCustomDebtor(i, 'amount', e.target.value)}
-                          placeholder="0.00"
-                          className="w-28 text-sm text-right tabular-nums border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                        />
-                        <button onClick={() => removeCustomDebtor(i)} className="p-1 text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                      </div>
-                    ))}
-                    <button onClick={addCustomDebtor} className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 py-1.5 hover:bg-blue-50 rounded px-2 -mx-2 transition-colors">
-                      <Plus className="w-3.5 h-3.5" /> Add debtor item
-                    </button>
                     {/* Subtotal */}
                     <div className="flex justify-between py-2 bg-blue-50 rounded px-2 -mx-2">
                       <span className="font-semibold text-gray-900">Total Assets</span>
@@ -4941,29 +4902,6 @@ function IncomeExpenditureReport() {
                       <span className="text-gray-600">Prepayments in levies</span>
                       <span className="tabular-nums font-medium text-gray-700">{fmtNum(workingCapital.creditors?.prepayments)}</span>
                     </div>
-                    {/* Custom creditor items */}
-                    {customCreditors.map((item, i) => (
-                      <div key={i} className="flex items-center gap-2 py-1 border-b border-dashed border-gray-200">
-                        <input
-                          type="text"
-                          value={item.label}
-                          onChange={e => updateCustomCreditor(i, 'label', e.target.value)}
-                          placeholder="Item name..."
-                          className="flex-1 text-sm border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-orange-400"
-                        />
-                        <input
-                          type="number"
-                          value={item.amount || ''}
-                          onChange={e => updateCustomCreditor(i, 'amount', e.target.value)}
-                          placeholder="0.00"
-                          className="w-28 text-sm text-right tabular-nums border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-orange-400"
-                        />
-                        <button onClick={() => removeCustomCreditor(i)} className="p-1 text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                      </div>
-                    ))}
-                    <button onClick={addCustomCreditor} className="flex items-center gap-1.5 text-xs text-orange-600 hover:text-orange-700 py-1.5 hover:bg-orange-50 rounded px-2 -mx-2 transition-colors">
-                      <Plus className="w-3.5 h-3.5" /> Add creditor item
-                    </button>
                     {/* Subtotal */}
                     <div className="flex justify-between py-2 bg-orange-50 rounded px-2 -mx-2">
                       <span className="font-semibold text-gray-900">Total Liabilities</span>
@@ -4978,9 +4916,6 @@ function IncomeExpenditureReport() {
                   <span className="text-lg font-bold text-gray-900">Net Working Capital</span>
                   <span className={cn('text-2xl tabular-nums font-bold', adjNetWorkingCapital >= 0 ? 'text-emerald-700' : 'text-red-600')}>{fmtNum(adjNetWorkingCapital)}</span>
                 </div>
-                {(customDebtors.length > 0 || customCreditors.length > 0) && (
-                  <p className="text-xs text-gray-400 mt-1">Includes {customDebtors.length + customCreditors.length} manual adjustment{customDebtors.length + customCreditors.length !== 1 ? 's' : ''}</p>
-                )}
               </div>
             </div>
           </div>
