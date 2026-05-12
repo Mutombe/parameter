@@ -226,6 +226,20 @@ def _receipt_scope_q(unit_id_list, property_id_list):
     )
 
 
+def _invoice_scope_q(unit_id_list, property_id_list):
+    """Q-clause matching every linkage path an Invoice may carry.
+
+    Mirror of `_receipt_scope_q` but for the Invoice table (no `invoice__`
+    prefix). Used by report queries that aggregate invoiced revenue.
+    """
+    return (
+        Q(unit_id__in=unit_id_list) |
+        Q(property_id__in=property_id_list) |
+        Q(lease__unit_id__in=unit_id_list) |
+        Q(lease__property_id__in=property_id_list)
+    )
+
+
 def _aged_analysis_property_q(property_id):
     """Q-clause matching invoices linked to `property_id` via any path."""
     return (
@@ -878,6 +892,18 @@ class BalanceSheetView(APIView):
         total_assets = Decimal('0')
         total_liabilities = Decimal('0')
         total_equity = Decimal('0')
+        # `equity_method` is how the equity total was reached:
+        #   - 'gl_derived'         (agency-wide)    : equity lines come from
+        #                          posted equity-type GL accounts +
+        #                          retained earnings = Σrevenue − Σexpense.
+        #   - 'balancing_residual' (landlord-scoped): equity = assets − liabilities
+        #                          (a plug, because there's no per-landlord
+        #                          equity account in the agency's chart).
+        # The frontend renders a small "Plug — calculated as A − L" badge on
+        # the equity row when the method is balancing_residual so the user
+        # knows the number isn't sourced from posted entries.
+        equity_method = 'gl_derived'
+        equity_components: dict | None = None
 
         if scope_filter is None:
             # Agency-wide Balance Sheet — aggregate from GL up to as_of_date.
@@ -1023,6 +1049,11 @@ class BalanceSheetView(APIView):
             # expenses. Falls back to the GL-derived bank net when the
             # receipts/expenses path can't be computed.
             funds_held = funds_held_in_trust
+            # Track the components so we can surface them in the response —
+            # otherwise the "Owner's Equity" line is an unexplained plug.
+            funds_held_receipts = None
+            funds_held_commissions = None
+            funds_held_expenses = None
             if landlord_id:
                 try:
                     landlord_obj = Landlord.objects.get(id=landlord_id)
@@ -1034,14 +1065,15 @@ class BalanceSheetView(APIView):
                     units = Unit.objects.filter(property__in=properties)
                     unit_id_list = list(units.values_list('id', flat=True))
                     receipt_qs = Receipt.objects.filter(
-                        Q(invoice__unit_id__in=unit_id_list) |
-                        Q(invoice__property_id__in=property_id_list),
+                        _receipt_scope_q(unit_id_list, property_id_list),
                         date__lte=as_of_date,
-                    )
+                    ).distinct()
                     if property_id:
                         receipt_qs = receipt_qs.filter(
                             Q(invoice__unit__property_id=property_id) |
-                            Q(invoice__property_id=property_id)
+                            Q(invoice__property_id=property_id) |
+                            Q(invoice__lease__unit__property_id=property_id) |
+                            Q(invoice__lease__property_id=property_id)
                         )
                     rcpt_agg = receipt_qs.aggregate(
                         receipts=Sum('amount'),
@@ -1055,11 +1087,10 @@ class BalanceSheetView(APIView):
                         status='paid',
                         date__lte=as_of_date,
                     ).exclude(expense_kind='non_cash').aggregate(t=Sum('amount'))['t'] or Decimal('0')
-                    funds_held = (
-                        (rcpt_agg['receipts'] or Decimal('0'))
-                        - (rcpt_agg['commissions'] or Decimal('0'))
-                        - expense_total
-                    )
+                    funds_held_receipts = rcpt_agg['receipts'] or Decimal('0')
+                    funds_held_commissions = rcpt_agg['commissions'] or Decimal('0')
+                    funds_held_expenses = expense_total
+                    funds_held = funds_held_receipts - funds_held_commissions - funds_held_expenses
 
             if funds_held != 0:
                 # Insert at top of assets — matches the "cash first" convention.
@@ -1070,18 +1101,35 @@ class BalanceSheetView(APIView):
                 })
                 total_assets += funds_held
 
-            # Force the sheet to balance — equity = assets - liabilities.
-            # Single line because there's no per-landlord equity account in
-            # the agency's chart; the residual represents the landlord's
-            # net worth held with the agency.
+            # On a landlord-scoped sheet there's no per-landlord equity
+            # account in the agency's chart, so we synthesise a single
+            # "Owner's Equity" line equal to assets − liabilities. This is
+            # mathematically correct (the residual IS what the landlord
+            # owns), but if either side has a bug it gets absorbed
+            # silently into equity.
+            #
+            # `equity_method='balancing_residual'` and the per-component
+            # `equity_components` block let the frontend show the math
+            # so the figure isn't a black box.
             derived_equity = total_assets - total_liabilities
             if derived_equity != 0:
                 equity_list = [{
                     'code': '',
                     'name': "Owner's Equity (Net Worth)",
+                    'subtype': 'owner_equity_plug',
                     'balance': float(derived_equity),
                 }]
                 total_equity = derived_equity
+            equity_method = 'balancing_residual'
+            equity_components = {
+                'total_assets': float(total_assets),
+                'total_liabilities': float(total_liabilities),
+                'derived_equity': float(derived_equity),
+                'funds_held_in_trust': float(funds_held),
+                'receipts_collected': float(funds_held_receipts) if funds_held_receipts is not None else None,
+                'commissions_charged': float(funds_held_commissions) if funds_held_commissions is not None else None,
+                'paid_expenses': float(funds_held_expenses) if funds_held_expenses is not None else None,
+            }
 
         # ------------------------------------------------------------
         # Notes / breakdowns — landlord-scoped only.
@@ -1118,10 +1166,9 @@ class BalanceSheetView(APIView):
 
                 # ---- Trust composition (inception → as_of_date) ----
                 _all_receipts_qs = Receipt.objects.filter(
-                    Q(invoice__unit_id__in=_unit_id_list) |
-                    Q(invoice__property_id__in=_property_id_list),
+                    _receipt_scope_q(_unit_id_list, _property_id_list),
                     date__lte=as_of_date,
-                )
+                ).distinct()
                 _rcpt_total = _all_receipts_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
                 _comm_total = _all_receipts_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
                 # Per-income-type split of trust commission so the note
@@ -1275,10 +1322,9 @@ class BalanceSheetView(APIView):
                 _opening_cutoff = _period_start - timedelta(days=1)
 
                 _open_rcpt_qs = Receipt.objects.filter(
-                    Q(invoice__unit_id__in=_unit_id_list) |
-                    Q(invoice__property_id__in=_property_id_list),
+                    _receipt_scope_q(_unit_id_list, _property_id_list),
                     date__lte=_opening_cutoff,
-                )
+                ).distinct()
                 _open_rcpt = _open_rcpt_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
                 _open_comm = _open_rcpt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
                 _open_exp = Expense.objects.filter(
@@ -1292,16 +1338,15 @@ class BalanceSheetView(APIView):
                 # expenses + commission within the period. Mirrors the
                 # Income Statement's accrual frame.
                 _period_invoice = Invoice.objects.filter(
-                    Q(unit_id__in=_unit_id_list) | Q(property_id__in=_property_id_list),
+                    _invoice_scope_q(_unit_id_list, _property_id_list),
                     date__gte=_period_start,
                     date__lte=as_of_date,
-                ).aggregate(t=Sum('amount'))['t'] or Decimal('0')
+                ).distinct().aggregate(t=Sum('amount'))['t'] or Decimal('0')
 
                 _period_rcpt_qs = Receipt.objects.filter(
-                    Q(invoice__unit_id__in=_unit_id_list) |
-                    Q(invoice__property_id__in=_property_id_list),
+                    _receipt_scope_q(_unit_id_list, _property_id_list),
                     date__gte=_period_start, date__lte=as_of_date,
-                )
+                ).distinct()
                 _period_comm = _period_rcpt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
 
                 _period_expenses = Expense.objects.filter(
@@ -1442,7 +1487,13 @@ class BalanceSheetView(APIView):
             'totals': {
                 'assets': float(total_assets),
                 'liabilities_equity': float(total_liab_equity),
-                'balanced': abs(total_assets - total_liab_equity) < Decimal('0.01')
+                'balanced': abs(total_assets - total_liab_equity) < Decimal('0.01'),
+                # 'gl_derived' on agency-wide sheets, 'balancing_residual' on
+                # landlord-scoped. `balanced=true` is meaningless under the
+                # plug method — surface the method so the frontend can show
+                # the math instead of pretending the books cleared.
+                'equity_method': equity_method,
+                'equity_components': equity_components,
             }
         })
 

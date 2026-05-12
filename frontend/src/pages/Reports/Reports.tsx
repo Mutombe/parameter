@@ -1492,6 +1492,7 @@ function BalanceSheetReport() {
                 groups={[{ key: 'equity', label: 'Equity Accounts', rows: data?.equity?.accounts || [] }]}
                 total={data?.equity?.total || 0}
                 emptyLabel="No equity accounts"
+                plugLabel={data?.totals?.equity_method === 'balancing_residual' ? 'Plug (Assets − Liabilities)' : undefined}
               />
             </div>
           </div>
@@ -1502,6 +1503,10 @@ function BalanceSheetReport() {
               {formatCurrency((data?.liabilities?.total || 0) + (data?.equity?.total || 0))}
             </span>
           </div>
+
+          {data?.totals?.equity_method === 'balancing_residual' && (
+            <EquityPlugExplainer components={data.totals.equity_components} />
+          )}
 
           <BalanceSheetNotes data={data} />
         </div>
@@ -1523,12 +1528,18 @@ function BalanceSheetSection({
   groups,
   total,
   emptyLabel,
+  plugLabel,
 }: {
   title: string
   accent: 'blue' | 'rose' | 'purple'
   groups: Array<{ key: string; label: string; rows: ReportRow[] }>
   total: number
   emptyLabel: string
+  /** When set, renders a small amber pill next to the section header
+   *  flagging that the section value isn't sourced from posted ledger
+   *  rows — it's a plug. E.g. "Plug (Assets − Liabilities)" on a
+   *  landlord-scoped Equity section. */
+  plugLabel?: string
 }) {
   const palette = {
     blue: { totalRow: 'bg-blue-100 text-blue-800', value: 'text-blue-700', hover: 'hover:bg-blue-50/50' },
@@ -1540,7 +1551,17 @@ function BalanceSheetSection({
 
   return (
     <div className="space-y-3">
-      <h3 className="text-xs font-bold tracking-[0.16em] uppercase text-gray-700 px-1">{title}</h3>
+      <div className="flex items-center gap-2 px-1">
+        <h3 className="text-xs font-bold tracking-[0.16em] uppercase text-gray-700">{title}</h3>
+        {plugLabel && (
+          <span
+            title="This figure isn't posted to a ledger account — it's the balancing residual on the sheet. Investigate components below to verify it."
+            className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200"
+          >
+            {plugLabel}
+          </span>
+        )}
+      </div>
       {allEmpty ? (
         <div className="rounded-xl border border-gray-200 bg-white px-5 py-6 text-center text-gray-400 text-sm">
           {emptyLabel}
@@ -1581,6 +1602,68 @@ function BalanceSheetSection({
         <span>Total {title}</span>
         <span className="tabular-nums">{formatCurrency(total)}</span>
       </div>
+    </div>
+  )
+}
+
+
+/** Surfaces the math behind the "Owner's Equity" plug on a
+ *  landlord-scoped Balance Sheet. Without this panel, equity is an
+ *  unexplained number that absorbs any bug on either side.
+ *
+ *  Funds Held in Trust = Receipts − Commissions − Paid Expenses
+ *  Owner's Equity      = Total Assets − Total Liabilities
+ *
+ *  Both equations are shown side by side. If something looks wrong on
+ *  the sheet, the receipts/commissions/expenses figures here are the
+ *  inputs to check.
+ */
+function EquityPlugExplainer({ components }: { components: any }) {
+  if (!components) return null
+  const fmt = (v: number | null | undefined) =>
+    v == null ? '—' : formatCurrency(v)
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-5">
+      <div className="flex items-baseline justify-between gap-2 pb-2 border-b border-amber-200/60">
+        <h3 className="text-xs font-bold tracking-[0.16em] uppercase text-amber-800">
+          Owner's Equity — How the Plug Was Computed
+        </h3>
+        <span className="text-[10px] uppercase tracking-wider text-amber-700/70">Verify the inputs</span>
+      </div>
+      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm">
+        <div className="space-y-1.5">
+          <div className="text-[10px] font-semibold tracking-wider uppercase text-amber-700/80">Funds Held in Trust</div>
+          <Row label="Receipts collected"        value={fmt(components.receipts_collected)} />
+          <Row label="Less: Commission charged" value={fmt(components.commissions_charged)} negative />
+          <Row label="Less: Paid expenses"      value={fmt(components.paid_expenses)} negative />
+          <div className="border-t border-amber-300 pt-1 mt-1">
+            <Row label="= Funds Held in Trust" value={fmt(components.funds_held_in_trust)} bold />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <div className="text-[10px] font-semibold tracking-wider uppercase text-amber-700/80">Sheet Reconciliation</div>
+          <Row label="Total Assets"           value={fmt(components.total_assets)} />
+          <Row label="Less: Total Liabilities" value={fmt(components.total_liabilities)} negative />
+          <div className="border-t border-amber-300 pt-1 mt-1">
+            <Row label="= Owner's Equity"      value={fmt(components.derived_equity)} bold />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Row({ label, value, bold, negative }: { label: string; value: string; bold?: boolean; negative?: boolean }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <span className={cn('text-gray-700', bold && 'font-semibold text-gray-900')}>{label}</span>
+      <span className={cn(
+        'tabular-nums',
+        bold && 'font-semibold text-gray-900',
+        negative && !bold && 'text-rose-700',
+      )}>
+        {negative && !bold ? `(${value})` : value}
+      </span>
     </div>
   )
 }
