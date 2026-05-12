@@ -1069,16 +1069,26 @@ class BalanceSheetView(APIView):
                     #     landlord doesn't owe this; it's an agency tax
                     #     liability that happened to trace through this
                     #     landlord's receipts.
-                    #   * Unpaid Rent / Deferred Revenue (2200) — this is
-                    #     the agent's mirror of tenants-outstanding. From
-                    #     the landlord's perspective the same money is an
+                    #   * Unpaid Rent / Deferred Revenue — this is the
+                    #     agent's mirror of tenants-outstanding. From the
+                    #     landlord's perspective the same money is an
                     #     ASSET (Accounts Receivable, computed below).
                     #     Including both double-counts the exposure.
+                    #
+                    # We match by NAME, not by code, because there are
+                    # multiple seed paths in the codebase: code 2200 is
+                    # "Unpaid Rent (Deferred Revenue)" in some seeds and
+                    # the legitimate "Tenant Deposits Liability" in
+                    # onboarding.py, plus seed_trust_accounts.py uses
+                    # code 6000/010 for "Unpaid Rent USD". Filtering on
+                    # code 2200 would either hide real deposits or miss
+                    # the alt-code variant.
                     if name.lower().startswith('landlord trust') or code.startswith('2300'):
                         continue
                     if subtype == 'vat_payable' or 'vat payable' in name.lower():
                         continue
-                    if code == '2200' or 'unpaid rent' in name.lower() or 'deferred revenue' in name.lower():
+                    name_lower = name.lower()
+                    if 'unpaid rent' in name_lower or 'deferred revenue' in name_lower:
                         continue
                     liability_list.append({
                         'code': code, 'name': name,
