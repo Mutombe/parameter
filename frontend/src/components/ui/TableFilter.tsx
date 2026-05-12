@@ -1,4 +1,5 @@
 import { Search, X, Calendar } from 'lucide-react'
+import { DatePicker } from './DatePicker'
 
 interface TableFilterProps {
   searchPlaceholder?: string
@@ -54,18 +55,16 @@ export function TableFilter({
       {showDateFilter && (
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-gray-400" />
-          <input
-            type="date"
+          <DatePicker
             value={dateFrom}
-            onChange={(e) => onDateFromChange?.(e.target.value)}
-            className="px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+            onChange={(v) => onDateFromChange?.(v)}
+            className="min-w-[150px]"
           />
           <span className="text-gray-400 text-sm">to</span>
-          <input
-            type="date"
+          <DatePicker
             value={dateTo}
-            onChange={(e) => onDateToChange?.(e.target.value)}
-            className="px-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+            onChange={(v) => onDateToChange?.(v)}
+            className="min-w-[150px]"
           />
         </div>
       )}

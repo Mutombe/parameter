@@ -21,7 +21,7 @@ import {
   Ban,
 } from 'lucide-react'
 import { penaltyApi, propertyApi, tenantApi } from '../../services/api'
-import { PageHeader, Button, Input, Modal, Badge, EmptyState, ConfirmDialog, Select, Tooltip } from '../../components/ui'
+import { PageHeader, Button, Input, Modal, Badge, EmptyState, ConfirmDialog, Select, Tooltip, DatePicker } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import toast from 'react-hot-toast'
 import { cn, formatCurrency } from '../../lib/utils'
@@ -744,8 +744,8 @@ export default function LatePenalties() {
           <Input label="Reason" value={exclusionForm.reason}
             onChange={(e) => setExclusionForm({ ...exclusionForm, reason: e.target.value })}
             required placeholder="Reason for exclusion" />
-          <Input label="Exclude Until (optional)" type="date" value={exclusionForm.excluded_until}
-            onChange={(e) => setExclusionForm({ ...exclusionForm, excluded_until: e.target.value })} />
+          <DatePicker label="Exclude Until (optional)" value={exclusionForm.excluded_until}
+            onChange={(v) => setExclusionForm({ ...exclusionForm, excluded_until: v })} />
           <p className="text-xs text-gray-500">Leave empty for permanent exclusion.</p>
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setShowExclusionModal(false)}>Cancel</Button>

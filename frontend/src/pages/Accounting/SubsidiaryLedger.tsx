@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { subsidiaryApi } from '../../services/api'
 import { formatCurrency, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Button, Input, Select, Badge, Skeleton, Pagination } from '../../components/ui'
+import { PageHeader, Button, Input, Select, Badge, Skeleton, Pagination, DatePicker } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
 import toast from 'react-hot-toast'
 
@@ -445,18 +445,16 @@ export default function SubsidiaryLedger() {
                 <div className="flex gap-3 items-end">
                   <div className="flex-1">
                     <label className="text-xs font-medium text-gray-600 block mb-1">From</label>
-                    <Input
-                      type="date"
+                    <DatePicker
                       value={periodStart}
-                      onChange={e => setPeriodStart(e.target.value)}
+                      onChange={v => setPeriodStart(v)}
                     />
                   </div>
                   <div className="flex-1">
                     <label className="text-xs font-medium text-gray-600 block mb-1">To</label>
-                    <Input
-                      type="date"
+                    <DatePicker
                       value={periodEnd}
-                      onChange={e => setPeriodEnd(e.target.value)}
+                      onChange={v => setPeriodEnd(v)}
                     />
                   </div>
                   <div className="relative group">

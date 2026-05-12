@@ -32,7 +32,7 @@ import { landlordApi, reportsApi, propertyApi, leaseApi, invoiceApi, receiptApi,
 import PropertyForm from '../../components/forms/PropertyForm'
 import LeaseForm from '../../components/forms/LeaseForm'
 import { formatCurrency, formatPercent, cn } from '../../lib/utils'
-import { Modal, Button, Input, Select, Textarea, Tooltip as UiTooltip, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui'
+import { Modal, Button, Input, Select, Textarea, Tooltip as UiTooltip, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { usePrefetch } from '../../hooks/usePrefetch'
 import { usePagination } from '../../hooks/usePagination'
@@ -640,18 +640,26 @@ export default function LandlordDetail() {
                 </h1>
                 <span
                   className={cn(
-                    'px-2.5 py-1 rounded-full text-xs font-medium',
+                    'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
                     typeConfig.bgColor,
                     typeConfig.color
                   )}
                 >
+                  <typeConfig.icon className="w-3 h-3" />
                   {typeConfig.label}
                 </span>
               </>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/dashboard/landlords?action=create')}
+            className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
+          >
+            <Plus className="w-4 h-4" />
+            New Landlord
+          </button>
           <Button
             onClick={() => setShowPropertyModal(true)}
             className="gap-2"
@@ -1327,18 +1335,16 @@ export default function LandlordDetail() {
             </div>
             <div className="flex items-center gap-2">
               <CalendarIcon className="w-4 h-4 text-gray-400" />
-              <input
-                type="date"
+              <DatePicker
                 value={subAccountDateRange.period_start}
-                onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_start: e.target.value }))}
-                className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                onChange={(v) => setSubAccountDateRange((p) => ({ ...p, period_start: v }))}
+                className="min-w-[160px]"
               />
               <span className="text-gray-400">to</span>
-              <input
-                type="date"
+              <DatePicker
                 value={subAccountDateRange.period_end}
-                onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_end: e.target.value }))}
-                className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                onChange={(v) => setSubAccountDateRange((p) => ({ ...p, period_end: v }))}
+                className="min-w-[160px]"
               />
             </div>
           </div>

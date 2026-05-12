@@ -57,7 +57,7 @@ import { reportsApi, tenantApi, landlordApi, propertyApi } from '../../services/
 import { formatCurrency, formatPercent, formatDate, cn } from '../../lib/utils'
 import { printElement, printFinancialReport, type FinancialReportType } from '../../lib/printTemplate'
 import { exportReport } from '../../lib/export'
-import { PageHeader, Button, Badge, Skeleton, EmptyState, TableFilter, Pagination, Tooltip as UITooltip } from '../../components/ui'
+import { PageHeader, Button, Badge, Skeleton, EmptyState, TableFilter, Pagination, Tooltip as UITooltip, DatePicker } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import toast from 'react-hot-toast'
 import { PiBuildingApartmentLight } from "react-icons/pi";
@@ -2713,9 +2713,9 @@ function RentRolloverReport() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-500">From</label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <DatePicker value={startDate} onChange={v => setStartDate(v)} className="min-w-[160px]" />
             <label className="text-sm text-gray-500">To</label>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <DatePicker value={endDate} onChange={v => setEndDate(v)} className="min-w-[160px]" />
           </div>
           <button onClick={() => { setDrillState({ level: 1 }); refetch() }} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
             <RefreshCw className="w-5 h-5" />
@@ -3330,7 +3330,7 @@ function AgedAnalysisReport() {
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">As of Date</label>
-            <input type="date" value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <DatePicker value={asOfDate} onChange={(v) => setAsOfDate(v)} className="min-w-[180px]" />
           </div>
           <AsyncSelect label="Property" placeholder="All Properties" value={propertyFilter} onChange={(val) => setPropertyFilter(String(val))} options={properties.map((p: any) => ({ value: p.id, label: p.name }))} searchable clearable className="min-w-[180px]" />
           <AsyncSelect label="Landlord" placeholder="All Landlords" value={landlordFilter} onChange={(val) => setLandlordFilter(String(val))} options={landlords.map((l: any) => ({ value: l.id, label: l.name }))} searchable clearable className="min-w-[180px]" />
@@ -3627,9 +3627,9 @@ function LandlordAccountReport() {
         <div className="flex flex-wrap items-center gap-4">
           <AsyncSelect label="Landlord" placeholder="Select a landlord..." value={selectedLandlord} onChange={(val) => setSelectedLandlord(String(val))} options={landlordsList.map((l: any) => ({ value: l.id, label: `${l.code ? l.code + ' - ' : ''}${l.name}` }))} searchable className="min-w-[280px]" />
           <div className="flex items-center gap-2 mt-4">
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <DatePicker value={startDate} onChange={v => setStartDate(v)} className="min-w-[160px]" />
             <span className="text-gray-400 text-sm">to</span>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <DatePicker value={endDate} onChange={v => setEndDate(v)} className="min-w-[160px]" />
           </div>
           {selectedLandlord && (
             <button onClick={() => refetch()} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors mt-4">
@@ -4609,9 +4609,9 @@ function IncomeExpenditureReport() {
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-gray-400" />
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <DatePicker value={startDate} onChange={v => setStartDate(v)} className="min-w-[160px]" />
             <span className="text-gray-400 text-sm">to</span>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <DatePicker value={endDate} onChange={v => setEndDate(v)} className="min-w-[160px]" />
           </div>
           {/* Currency toggle */}
           <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">

@@ -35,7 +35,7 @@ import {
 } from 'recharts'
 import { leaseApi, invoiceApi, receiptApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, getMediaUrl } from '../../lib/utils'
-import { Button, ConfirmDialog, TableFilter, Modal, Input, Select, Textarea } from '../../components/ui'
+import { Button, ConfirmDialog, TableFilter, Modal, Input, Select, Textarea, DatePicker } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
 import { TbUserSquareRounded } from 'react-icons/tb'
@@ -408,14 +408,14 @@ export default function LeaseDetail() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
+        <div className="flex items-center gap-3">
+          <button
             onClick={() => navigate('/dashboard/leases?action=create')}
-            className="gap-2"
+            className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
           >
             <Plus className="w-4 h-4" />
-            Add Lease
-          </Button>
+            New Lease
+          </button>
           <Button variant="outline" onClick={() => {
             setReceiptForm(f => ({ ...f, tenant: String(lease?.tenant || '') }))
             setShowReceiptModal(true)
@@ -994,7 +994,7 @@ export default function LeaseDetail() {
             createNewLabel="+ Create new invoice"
           />
           <div className="grid grid-cols-2 gap-4">
-            <Input type="date" label="Date" value={receiptForm.date} onChange={(e) => setReceiptForm({ ...receiptForm, date: e.target.value })} required />
+            <DatePicker label="Date" value={receiptForm.date} onChange={(v) => setReceiptForm({ ...receiptForm, date: v })} required />
             <Input type="number" label="Amount" placeholder="0.00" step="0.01" min="0" value={receiptForm.amount} onChange={(e) => setReceiptForm({ ...receiptForm, amount: e.target.value })} required />
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -1019,10 +1019,10 @@ export default function LeaseDetail() {
         <form onSubmit={(e) => { e.preventDefault(); createInvoiceMutation.mutate(invoiceForm); }} className="space-y-5">
           <div className="grid grid-cols-2 gap-4">
             <Select label="Invoice Type" value={invoiceForm.invoice_type} onChange={(e) => setInvoiceForm({ ...invoiceForm, invoice_type: e.target.value })} options={[{ value: 'rent', label: 'Rent' }, { value: 'utilities', label: 'Utilities' }, { value: 'deposit', label: 'Deposit' }, { value: 'other', label: 'Other' }]} />
-            <Input type="date" label="Date" value={invoiceForm.date} onChange={(e) => setInvoiceForm({ ...invoiceForm, date: e.target.value })} required />
+            <DatePicker label="Date" value={invoiceForm.date} onChange={(v) => setInvoiceForm({ ...invoiceForm, date: v })} required />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input type="date" label="Due Date" value={invoiceForm.due_date} onChange={(e) => setInvoiceForm({ ...invoiceForm, due_date: e.target.value })} required />
+            <DatePicker label="Due Date" value={invoiceForm.due_date} onChange={(v) => setInvoiceForm({ ...invoiceForm, due_date: v })} required />
             <Input type="number" label="Amount" placeholder="0.00" step="0.01" min="0" value={invoiceForm.amount} onChange={(e) => setInvoiceForm({ ...invoiceForm, amount: e.target.value })} required />
           </div>
           <Textarea label="Description" placeholder="Invoice description..." value={invoiceForm.description} onChange={(e) => setInvoiceForm({ ...invoiceForm, description: e.target.value })} rows={2} />

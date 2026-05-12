@@ -20,7 +20,7 @@ import { openingBalanceApi, accountApi, landlordApi, subsidiaryApi, supplierApi 
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import {
   PageHeader, Modal, Button, Input, Select, Badge, EmptyState,
-  Skeleton, Textarea, SelectionCheckbox, BulkActionsBar, Pagination,
+  Skeleton, Textarea, SelectionCheckbox, BulkActionsBar, Pagination, DatePicker,
 } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { exportTableData } from '../../lib/export'
@@ -709,11 +709,10 @@ export default function OpeningBalances() {
         <form onSubmit={handleContinue} className="space-y-4">
           {/* Step 1: Date + Currency */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
+            <DatePicker
               label="Date"
-              type="date"
               value={form.date}
-              onChange={(e) => setForm({ ...form, date: e.target.value })}
+              onChange={(v) => setForm({ ...form, date: v })}
               required
             />
             <Select

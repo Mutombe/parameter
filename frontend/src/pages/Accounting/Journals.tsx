@@ -27,7 +27,7 @@ import {
 } from 'lucide-react'
 import { journalApi, accountApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton, Textarea, SelectionCheckbox, BulkActionsBar, TimeAgo, Tooltip, Pagination } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton, Textarea, SelectionCheckbox, BulkActionsBar, TimeAgo, Tooltip, Pagination, DatePicker } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
@@ -668,11 +668,10 @@ export default function Journals() {
         >
           {/* Header Info */}
           <div className="grid grid-cols-2 gap-4">
-            <Input
-              type="date"
+            <DatePicker
               label="Date"
               value={newJournal.date}
-              onChange={(e) => setNewJournal({ ...newJournal, date: e.target.value })}
+              onChange={(v) => setNewJournal({ ...newJournal, date: v })}
               required
             />
             <div />

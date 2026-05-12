@@ -29,7 +29,7 @@ import { expenseApi, landlordApi, supplierApi, incomeTypeApi, expenseCategoryApi
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { SubAccountBadge } from '../../components/SubAccountBadge'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, Tooltip, Pagination } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, Tooltip, Pagination, DatePicker } from '../../components/ui'
 import { AutocompleteInput } from '../../components/ui/AutocompleteInput'
 import { showToast, parseApiError } from '../../lib/toast'
 import { undoToast } from '../../lib/undoToast'
@@ -1247,11 +1247,10 @@ export default function Expenses() {
           <form onSubmit={handleBatchSubmit} className="space-y-4">
             {/* Shared header — date + bank account (cash) or currency (non-cash) */}
             <div className="grid grid-cols-2 gap-4">
-              <Input
+              <DatePicker
                 label="Date"
-                type="date"
                 value={expenseForm.date}
-                onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
+                onChange={(v) => setExpenseForm({ ...expenseForm, date: v })}
                 required
               />
               {expenseKind === 'cash' ? (
@@ -1411,11 +1410,10 @@ export default function Expenses() {
         ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Step 1 — Date */}
-          <Input
+          <DatePicker
             label="Date"
-            type="date"
             value={expenseForm.date}
-            onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })}
+            onChange={(v) => setExpenseForm({ ...expenseForm, date: v })}
             required
           />
 

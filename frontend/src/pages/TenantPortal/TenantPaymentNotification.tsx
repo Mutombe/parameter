@@ -12,7 +12,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { tenantPortalApi } from '../../services/api'
-import { Button, Input, Select, Textarea } from '../../components/ui'
+import { Button, Input, Select, Textarea, DatePicker } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 
 export default function TenantPaymentNotification() {
@@ -106,11 +106,10 @@ export default function TenantPaymentNotification() {
                 required
               />
 
-              <Input
-                type="date"
+              <DatePicker
                 label="Payment Date"
                 value={form.payment_date}
-                onChange={(e) => setForm({ ...form, payment_date: e.target.value })}
+                onChange={(v) => setForm({ ...form, payment_date: v })}
                 required
               />
 

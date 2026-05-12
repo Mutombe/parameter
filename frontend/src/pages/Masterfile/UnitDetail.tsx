@@ -35,7 +35,7 @@ import {
 } from 'recharts'
 import { unitApi, leaseApi, invoiceApi, subsidiaryApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
-import { Button, TableFilter, Modal, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui'
+import { Button, TableFilter, Modal, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker } from '../../components/ui'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
 import { usePagination } from '../../hooks/usePagination'
@@ -815,9 +815,9 @@ export default function UnitDetail() {
             <div className="flex items-center gap-3 flex-wrap">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-gray-400" />
-                <input type="date" value={subAccountDateRange.period_start} onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_start: e.target.value }))} className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                <DatePicker value={subAccountDateRange.period_start} onChange={(v) => setSubAccountDateRange((p) => ({ ...p, period_start: v }))} className="min-w-[160px]" />
                 <span className="text-gray-400">to</span>
-                <input type="date" value={subAccountDateRange.period_end} onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_end: e.target.value }))} className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                <DatePicker value={subAccountDateRange.period_end} onChange={(v) => setSubAccountDateRange((p) => ({ ...p, period_end: v }))} className="min-w-[160px]" />
               </div>
               <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
                 <button onClick={() => setSubAccountStatementView('consolidated')} className={cn('px-2.5 py-1 text-xs font-medium rounded-md transition-colors', subAccountStatementView === 'consolidated' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>Consolidated</button>

@@ -9,7 +9,7 @@ import {
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { accountHolderApi, invoiceApi, receiptApi, subsidiaryApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
-import { Modal, Button, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui'
+import { Modal, Button, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { usePagination } from '../../hooks/usePagination'
 import { usePrefetch } from '../../hooks/usePrefetch'
@@ -41,12 +41,11 @@ function DateNav({ value, onChange, ariaLabel }: { value: string; onChange: (v: 
       >
         <ChevronLeft className="w-3.5 h-3.5" />
       </button>
-      <input
-        type="date"
+      <DatePicker
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label={ariaLabel}
-        className="h-[30px] px-2 text-sm border-y border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
+        onChange={(v) => onChange(v)}
+        clearable={false}
+        className="h-[30px] !rounded-none border-y border-x-0 !py-0 min-w-[150px]"
       />
       <button
         type="button"

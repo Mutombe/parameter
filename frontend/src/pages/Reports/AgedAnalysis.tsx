@@ -16,7 +16,7 @@ import { reportsApi, propertyApi, landlordApi } from '../../services/api'
 import { cn } from '../../lib/utils'
 import { formatCurrency } from '../../lib/utils'
 import { printElement } from '../../lib/printTemplate'
-import { Tooltip } from '../../components/ui'
+import { Tooltip, DatePicker } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 
 interface AgedAnalysisSummary {
@@ -161,11 +161,10 @@ export default function AgedAnalysis() {
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">As of Date</label>
-            <input
-              type="date"
+            <DatePicker
               value={asOfDate}
-              onChange={(e) => setAsOfDate(e.target.value)}
-              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              onChange={(v) => setAsOfDate(v)}
+              className="min-w-[180px]"
             />
           </div>
           <AsyncSelect

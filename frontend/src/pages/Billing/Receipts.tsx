@@ -5,7 +5,7 @@ import { motion } from 'framer-motion'
 import { Search, CreditCard, Plus, Send, Loader2, Eye, X, User, Download, Printer, BookOpen } from 'lucide-react'
 import { receiptApi, tenantApi, invoiceApi, leaseApi } from '../../services/api'
 import { formatCurrency, formatDate, useDebounce, cn } from '../../lib/utils'
-import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination } from '../../components/ui'
+import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination, DatePicker } from '../../components/ui'
 import { PayerSelect } from '../../components/PayerSelect'
 import { PayerCell } from '../../components/PayerCell'
 import { SubAccountBadge } from '../../components/SubAccountBadge'
@@ -652,11 +652,10 @@ export default function Receipts() {
           />
 
           <div className="grid grid-cols-2 gap-4">
-            <Input
-              type="date"
+            <DatePicker
               label="Date"
               value={form.date}
-              onChange={(e) => setForm({ ...form, date: e.target.value })}
+              onChange={(v) => setForm({ ...form, date: v })}
               required
             />
             <Input
@@ -804,20 +803,18 @@ export default function Receipts() {
                 { value: 'other', label: 'Other' },
               ]}
             />
-            <Input
-              type="date"
+            <DatePicker
               label="Date"
               value={quickInvoice.date}
-              onChange={(e) => setQuickInvoice({ ...quickInvoice, date: e.target.value })}
+              onChange={(v) => setQuickInvoice({ ...quickInvoice, date: v })}
               required
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input
-              type="date"
+            <DatePicker
               label="Due Date"
               value={quickInvoice.due_date}
-              onChange={(e) => setQuickInvoice({ ...quickInvoice, due_date: e.target.value })}
+              onChange={(v) => setQuickInvoice({ ...quickInvoice, due_date: v })}
             />
             <Input
               type="number"

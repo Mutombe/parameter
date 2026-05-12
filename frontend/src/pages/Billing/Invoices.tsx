@@ -27,7 +27,7 @@ import {
 import { invoiceApi, tenantApi, unitApi, leaseApi, propertyApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { printInvoice } from '../../lib/printTemplate'
-import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination, DatePicker } from '../../components/ui'
 import { PayerSelect } from '../../components/PayerSelect'
 import { PayerCell } from '../../components/PayerCell'
 import { SubAccountBadge } from '../../components/SubAccountBadge'
@@ -848,18 +848,16 @@ export default function Invoices() {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400">From</span>
-          <input
-            type="date"
+          <DatePicker
             value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="text-sm border border-gray-200 rounded-lg px-2.5 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white"
+            onChange={(v) => setDateFrom(v)}
+            className="min-w-[150px]"
           />
           <span className="text-xs text-gray-400">To</span>
-          <input
-            type="date"
+          <DatePicker
             value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="text-sm border border-gray-200 rounded-lg px-2.5 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white"
+            onChange={(v) => setDateTo(v)}
+            className="min-w-[150px]"
           />
           {(dateFrom || dateTo) && (
             <button
@@ -1237,18 +1235,16 @@ export default function Invoices() {
           />
 
           <div className="grid grid-cols-2 gap-4">
-            <Input
-              type="date"
+            <DatePicker
               label="Invoice Date"
               value={form.date}
-              onChange={(e) => setForm({ ...form, date: e.target.value })}
+              onChange={(v) => setForm({ ...form, date: v })}
               required
             />
-            <Input
-              type="date"
+            <DatePicker
               label="Due Date"
               value={form.due_date}
-              onChange={(e) => setForm({ ...form, due_date: e.target.value })}
+              onChange={(v) => setForm({ ...form, due_date: v })}
               required
             />
           </div>
@@ -1371,17 +1367,15 @@ export default function Invoices() {
 
           {/* Optional: custom invoice date and due date */}
           <div className="grid grid-cols-2 gap-4">
-            <Input
-              type="date"
+            <DatePicker
               label={`Invoice Date (optional — defaults to 1st of ${generateForm.batchMode ? 'each' : 'the'} month)`}
               value={generateForm.invoice_date}
-              onChange={(e) => setGenerateForm({ ...generateForm, invoice_date: e.target.value })}
+              onChange={(v) => setGenerateForm({ ...generateForm, invoice_date: v })}
             />
-            <Input
-              type="date"
+            <DatePicker
               label={`Due Date (optional — defaults to 15th of ${generateForm.batchMode ? 'each' : 'the'} month)`}
               value={generateForm.due_date}
-              onChange={(e) => setGenerateForm({ ...generateForm, due_date: e.target.value })}
+              onChange={(v) => setGenerateForm({ ...generateForm, due_date: v })}
             />
           </div>
 

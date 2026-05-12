@@ -31,6 +31,7 @@ import {
   Textarea,
   Modal,
   ModalFooter,
+  DatePicker,
 } from '../../components/ui'
 
 // ---------------------------------------------------------------------------
@@ -563,14 +564,13 @@ export default function MaintenanceDetail() {
               icon={DollarSign}
             />
 
-            <Input
+            <DatePicker
               label="Scheduled Date"
-              type="date"
               value={workOrderForm.scheduled_date}
-              onChange={(e) =>
+              onChange={(v) =>
                 setWorkOrderForm((prev) => ({
                   ...prev,
-                  scheduled_date: e.target.value,
+                  scheduled_date: v,
                 }))
               }
               error={workOrderErrors.scheduled_date}

@@ -1,7 +1,7 @@
 import { useState, useImperativeHandle, forwardRef, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Upload, XCircle } from 'lucide-react'
-import { Input, Select, Textarea } from '../ui'
+import { Input, Select, Textarea, DatePicker } from '../ui'
 import { AutocompleteInput } from '../ui/AutocompleteInput'
 import { AsyncSelect } from '../ui/AsyncSelect'
 import { tenantApi, accountHolderApi, unitApi, propertyApi } from '../../services/api'
@@ -318,19 +318,17 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
         })()}
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Input
-            type="date"
+          <DatePicker
             label="Start Date"
             value={form.start_date}
-            onChange={(e) => setForm({ ...form, start_date: e.target.value })}
+            onChange={(v) => setForm({ ...form, start_date: v })}
             required
           />
 
-          <Input
-            type="date"
+          <DatePicker
             label="End Date"
             value={form.end_date}
-            onChange={(e) => setForm({ ...form, end_date: e.target.value })}
+            onChange={(v) => setForm({ ...form, end_date: v })}
             required
           />
 

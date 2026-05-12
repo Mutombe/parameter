@@ -37,7 +37,7 @@ import {
 import api, { propertyApi, landlordApi, unitApi, reportsApi, leaseApi, invoiceApi, receiptApi, subsidiaryApi } from '../../services/api'
 import { CommissionGrid } from '../../components/property/CommissionGrid'
 import { formatCurrency, formatPercent, formatDate, cn } from '../../lib/utils'
-import { Modal, Button, Input, Select, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui'
+import { Modal, Button, Input, Select, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
 import { TbUserSquareRounded } from 'react-icons/tb'
@@ -1758,18 +1758,16 @@ export default function PropertyDetail() {
           </div>
           <div className="flex items-center gap-2">
             <CalendarIcon className="w-4 h-4 text-gray-400" />
-            <input
-              type="date"
+            <DatePicker
               value={subAccountDateRange.period_start}
-              onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_start: e.target.value }))}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              onChange={(v) => setSubAccountDateRange((p) => ({ ...p, period_start: v }))}
+              className="min-w-[160px]"
             />
             <span className="text-gray-400">to</span>
-            <input
-              type="date"
+            <DatePicker
               value={subAccountDateRange.period_end}
-              onChange={(e) => setSubAccountDateRange((p) => ({ ...p, period_end: e.target.value }))}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              onChange={(v) => setSubAccountDateRange((p) => ({ ...p, period_end: v }))}
+              className="min-w-[160px]"
             />
           </div>
         </div>
@@ -2239,17 +2237,15 @@ function PropertyBillingStatus({ propertyId, propertyName, billingForm, setBilli
 
       {/* Optional: custom invoice date and due date */}
       <div className="grid grid-cols-2 gap-4">
-        <Input
-          type="date"
+        <DatePicker
           label="Invoice Date (optional — defaults to 1st of month)"
           value={billingForm.invoice_date}
-          onChange={(e) => setBillingForm({ ...billingForm, invoice_date: e.target.value })}
+          onChange={(v) => setBillingForm({ ...billingForm, invoice_date: v })}
         />
-        <Input
-          type="date"
+        <DatePicker
           label="Due Date (optional — defaults to 15th of month)"
           value={billingForm.due_date}
-          onChange={(e) => setBillingForm({ ...billingForm, due_date: e.target.value })}
+          onChange={(v) => setBillingForm({ ...billingForm, due_date: v })}
         />
       </div>
 

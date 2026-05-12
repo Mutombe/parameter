@@ -27,6 +27,8 @@ import {
   Printer,
   Loader2,
   ChevronDown,
+  CheckCircle,
+  Clock,
 } from 'lucide-react'
 import {
   BarChart,
@@ -40,7 +42,7 @@ import {
 import api from '../../services/api'
 import { tenantApi, reportsApi, invoiceApi, receiptApi, unitApi, subsidiaryApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
-import { Modal, Button, Input, Select, Textarea, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui'
+import { Modal, Button, Input, Select, Textarea, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
 import { useAuthStore } from '../../stores/authStore'
@@ -164,12 +166,11 @@ function DateNav({ value, onChange, ariaLabel }: { value: string; onChange: (v: 
       >
         <ChevronLeft className="w-3.5 h-3.5" />
       </button>
-      <input
-        type="date"
+      <DatePicker
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label={ariaLabel}
-        className="h-[30px] px-2 text-sm border-y border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
+        onChange={(v) => onChange(v)}
+        clearable={false}
+        className="h-[30px] !rounded-none border-y border-x-0 !py-0 min-w-[150px]"
       />
       <button
         type="button"
@@ -686,13 +687,14 @@ export default function TenantDetail() {
               <>
                 <h1 className="text-xl md:text-2xl font-bold text-gray-900">{tenantInfo?.name}</h1>
                 <span className={cn(
-                  'px-2.5 py-1 rounded-full text-xs font-medium',
+                  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
                   hasActiveLease ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-600'
                 )}>
+                  {hasActiveLease ? <CheckCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
                   {hasActiveLease ? 'Active' : 'Inactive'}
                 </span>
                 {tenantInfo?.account_type && (
-                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-600">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ring-1 bg-blue-50 text-blue-700 ring-blue-200">
                     {tenantInfo.account_type === 'rental' ? 'Rental' : tenantInfo.account_type === 'levy' ? 'Levy' : tenantInfo.account_type}
                   </span>
                 )}
@@ -700,14 +702,14 @@ export default function TenantDetail() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
+        <div className="flex items-center gap-3">
+          <button
             onClick={() => navigate('/dashboard/tenants?action=create')}
-            className="gap-2"
+            className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
           >
             <Plus className="w-4 h-4" />
-            Add Tenant
-          </Button>
+            New Tenant
+          </button>
           <Button
             variant="outline"
             onClick={() => {
@@ -1078,58 +1080,100 @@ export default function TenantDetail() {
           ) : ledger.length === 0 ? (
             <div className="p-12 text-center text-sm text-gray-400">No ledger entries found</div>
           ) : (
-            <table className="w-full">
+            <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Date</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Reference</th>
-                  <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Description</th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Debit</th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Credit</th>
-                  <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">Balance</th>
+                {/* Sticky header — small caps, tracked, hairline rule below
+                    so the column intent reads at a glance. */}
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left px-6 py-3 text-[10px] font-semibold text-gray-500 uppercase tracking-[0.1em]">Date</th>
+                  <th className="text-left px-6 py-3 text-[10px] font-semibold text-gray-500 uppercase tracking-[0.1em]">Reference</th>
+                  <th className="text-left px-6 py-3 text-[10px] font-semibold text-gray-500 uppercase tracking-[0.1em]">Description</th>
+                  {/* Debit = charges to the tenant (sky blue tinge) */}
+                  <th className="text-right px-6 py-3 text-[10px] font-semibold text-sky-700 uppercase tracking-[0.1em]">Debit</th>
+                  {/* Credit = payments received from the tenant (emerald tinge) */}
+                  <th className="text-right px-6 py-3 text-[10px] font-semibold text-emerald-700 uppercase tracking-[0.1em]">Credit</th>
+                  <th className="text-right px-6 py-3 text-[10px] font-semibold text-gray-700 uppercase tracking-[0.1em]">Balance</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {(ledgerPeriodStart || ledgerPeriodEnd) && ledgerData?.opening_balance !== undefined && (
-                  <tr className="bg-gray-50">
-                    <td className="px-6 py-3 text-sm text-gray-500" colSpan={3}>Balance brought forward</td>
-                    <td className="px-6 py-3 text-sm text-right">-</td>
-                    <td className="px-6 py-3 text-sm text-right">-</td>
-                    <td className="px-6 py-3 text-sm font-semibold text-right">{formatCurrency(ledgerData.opening_balance)}</td>
+                  <tr className="bg-amber-50/40">
+                    <td className="px-6 py-3 text-xs italic text-amber-900" colSpan={3}>
+                      Balance brought forward
+                    </td>
+                    <td className="px-6 py-3 text-right text-gray-300">—</td>
+                    <td className="px-6 py-3 text-right text-gray-300">—</td>
+                    <td className="px-6 py-3 text-right tabular-nums font-bold text-amber-900">
+                      {formatCurrency(ledgerData.opening_balance)}
+                    </td>
                   </tr>
                 )}
-                {paginatedLedger.map((entry: any, idx: number) => (
-                  <tr key={entry.id || idx} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 text-sm text-gray-600">{formatDate(entry.date)}</td>
-                    <td className="px-6 py-4 text-sm font-medium">
-                      {entry.type === 'invoice' ? (
-                        <button onClick={() => navigate(`/dashboard/invoices/${entry.id}`)} onMouseEnter={() => prefetch(`/dashboard/invoices/${entry.id}`)} className="text-blue-600 hover:text-blue-700 hover:underline">
-                          {entry.reference || '-'}
-                        </button>
-                      ) : entry.type === 'receipt' ? (
-                        <button onClick={() => navigate(`/dashboard/receipts/${entry.id}`)} onMouseEnter={() => prefetch(`/dashboard/receipts/${entry.id}`)} className="text-emerald-600 hover:text-emerald-700 hover:underline">
-                          {entry.reference || '-'}
-                        </button>
-                      ) : (
-                        <span className="text-gray-900">{entry.reference || entry.ref || '-'}</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{entry.description || entry.narration || '-'}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600 text-right">{(entry.debit || 0) > 0 ? formatCurrency(entry.debit) : ''}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600 text-right">{(entry.credit || 0) > 0 ? formatCurrency(entry.credit) : ''}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-right">
-                      <span className={(entry.balance || 0) > 0 ? 'text-red-600' : 'text-gray-900'}>
-                        {formatCurrency(entry.balance || 0)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {paginatedLedger.map((entry: any, idx: number) => {
+                  const dr = Number(entry.debit) || 0
+                  const cr = Number(entry.credit) || 0
+                  const bal = Number(entry.balance) || 0
+                  return (
+                    <tr key={entry.id || idx} className="hover:bg-gray-50/60 transition-colors">
+                      <td className="px-6 py-3 text-gray-600 tabular-nums whitespace-nowrap">{formatDate(entry.date)}</td>
+                      <td className="px-6 py-3 font-medium">
+                        {entry.type === 'invoice' ? (
+                          <button onClick={() => navigate(`/dashboard/invoices/${entry.id}`)} onMouseEnter={() => prefetch(`/dashboard/invoices/${entry.id}`)} className="inline-flex items-center gap-1.5 text-sky-700 hover:text-sky-800 hover:underline">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-500"></span>
+                            {entry.reference || '—'}
+                          </button>
+                        ) : entry.type === 'receipt' ? (
+                          <button onClick={() => navigate(`/dashboard/receipts/${entry.id}`)} onMouseEnter={() => prefetch(`/dashboard/receipts/${entry.id}`)} className="inline-flex items-center gap-1.5 text-emerald-700 hover:text-emerald-800 hover:underline">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            {entry.reference || '—'}
+                          </button>
+                        ) : (
+                          <span className="text-gray-900">{entry.reference || entry.ref || '—'}</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-3 text-gray-600 max-w-md truncate">{entry.description || entry.narration || '—'}</td>
+                      <td className={cn(
+                        'px-6 py-3 text-right tabular-nums',
+                        dr > 0 ? 'text-sky-700 font-semibold' : 'text-gray-300',
+                      )}>
+                        {dr > 0 ? formatCurrency(dr) : '—'}
+                      </td>
+                      <td className={cn(
+                        'px-6 py-3 text-right tabular-nums',
+                        cr > 0 ? 'text-emerald-700 font-semibold' : 'text-gray-300',
+                      )}>
+                        {cr > 0 ? formatCurrency(cr) : '—'}
+                      </td>
+                      <td className={cn(
+                        'px-6 py-3 text-right tabular-nums font-medium',
+                        bal > 0 ? 'text-rose-700' : bal < 0 ? 'text-emerald-700' : 'text-gray-500',
+                      )}>
+                        {formatCurrency(bal)}
+                      </td>
+                    </tr>
+                  )
+                })}
                 {ledgerData?.total_debits !== undefined && (
-                  <tr className="bg-gray-50 font-semibold">
-                    <td className="px-6 py-3 text-sm" colSpan={3}>Totals</td>
-                    <td className="px-6 py-3 text-sm text-right">{formatCurrency(ledgerData.total_debits)}</td>
-                    <td className="px-6 py-3 text-sm text-right">{formatCurrency(ledgerData.total_credits)}</td>
-                    <td className="px-6 py-3 text-sm text-right">{formatCurrency(ledgerData.closing_balance)}</td>
+                  // Accountant grand-total double rule + bolded totals row.
+                  <tr style={{ borderTop: '1pt solid #111827', borderBottom: '3pt double #111827' }} className="bg-gray-50">
+                    <td className="px-6 py-3 font-bold text-gray-900 text-[11px] uppercase tracking-[0.1em]" colSpan={3}>
+                      Totals
+                    </td>
+                    <td className="px-6 py-3 text-right tabular-nums font-bold text-sky-800">
+                      {formatCurrency(ledgerData.total_debits)}
+                    </td>
+                    <td className="px-6 py-3 text-right tabular-nums font-bold text-emerald-800">
+                      {formatCurrency(ledgerData.total_credits)}
+                    </td>
+                    <td className={cn(
+                      'px-6 py-3 text-right tabular-nums font-bold',
+                      Number(ledgerData.closing_balance) > 0
+                        ? 'text-rose-800'
+                        : Number(ledgerData.closing_balance) < 0
+                          ? 'text-emerald-800'
+                          : 'text-gray-700',
+                    )}>
+                      {formatCurrency(ledgerData.closing_balance)}
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -1279,7 +1323,7 @@ export default function TenantDetail() {
           />
         )}
         <div className="overflow-x-auto">
-          {loadingDetail ? (
+          {loadingDetail || !detail ? (
             <div className="p-6"><TableSkeleton /></div>
           ) : recentInvoices.length === 0 ? (
             <div className="p-12 text-center text-sm text-gray-400">No invoices found</div>
@@ -1351,7 +1395,11 @@ export default function TenantDetail() {
           />
         )}
         <div className="overflow-x-auto">
-          {loadingDetail ? (
+          {loadingDetail || !detail ? (
+            // Show skeleton both during the initial fetch and the brief
+            // window where the query has settled but `detail` is still
+            // undefined (refetch in flight, etc.) — avoids a flash of
+            // "No payments recorded" before the data lands.
             <div className="p-6"><TableSkeleton /></div>
           ) : recentReceipts.length === 0 ? (
             <div className="p-12 text-center text-sm text-gray-400">No payments recorded</div>
@@ -1408,7 +1456,7 @@ export default function TenantDetail() {
           />
         )}
         <div className="overflow-x-auto">
-          {loadingDetail ? (
+          {loadingDetail || !detail ? (
             <div className="p-6"><TableSkeleton rows={3} /></div>
           ) : activeLeases.length === 0 ? (
             <div className="p-12 text-center text-sm text-gray-400">No active leases</div>
@@ -1616,8 +1664,8 @@ export default function TenantDetail() {
             clearable
           />
           <div className="grid grid-cols-2 gap-4">
-            <Input type="date" label="Invoice Date" value={invoiceForm.date} onChange={(e) => setInvoiceForm({ ...invoiceForm, date: e.target.value })} required />
-            <Input type="date" label="Due Date" value={invoiceForm.due_date} onChange={(e) => setInvoiceForm({ ...invoiceForm, due_date: e.target.value })} required />
+            <DatePicker label="Invoice Date" value={invoiceForm.date} onChange={(v) => setInvoiceForm({ ...invoiceForm, date: v })} required />
+            <DatePicker label="Due Date" value={invoiceForm.due_date} onChange={(v) => setInvoiceForm({ ...invoiceForm, due_date: v })} required />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Select label="Invoice Type" value={invoiceForm.invoice_type} onChange={(e) => setInvoiceForm({ ...invoiceForm, invoice_type: e.target.value })} options={[{ value: 'rent', label: 'Rent' }, { value: 'utilities', label: 'Utilities' }, { value: 'deposit', label: 'Deposit' }, { value: 'other', label: 'Other' }]} />
@@ -1650,7 +1698,7 @@ export default function TenantDetail() {
             clearable
           />
           <div className="grid grid-cols-2 gap-4">
-            <Input type="date" label="Date" value={receiptForm.date} onChange={(e) => setReceiptForm({ ...receiptForm, date: e.target.value })} required />
+            <DatePicker label="Date" value={receiptForm.date} onChange={(v) => setReceiptForm({ ...receiptForm, date: v })} required />
             <Input type="number" label="Amount" placeholder="0.00" step="0.01" min="0" value={receiptForm.amount} onChange={(e) => setReceiptForm({ ...receiptForm, amount: e.target.value })} required />
           </div>
           <div className="grid grid-cols-2 gap-4">

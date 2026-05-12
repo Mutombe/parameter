@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { Search, Shield, Clock, ChevronLeft, ChevronRight, Calendar, Monitor, Globe } from 'lucide-react'
 import { auditApi } from '../../services/api'
-import { Select, TimeAgo } from '../../components/ui'
+import { Select, TimeAgo, DatePicker } from '../../components/ui'
 import { formatDate, useDebounce } from '../../lib/utils'
 import { TbUserSquareRounded } from "react-icons/tb";
 
@@ -134,20 +134,18 @@ export default function AuditTrail() {
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">From Date</label>
-          <input
-            type="date"
+          <DatePicker
             value={startDate}
-            onChange={(e) => handleFilterChange(setStartDate, e.target.value)}
-            className="input w-auto"
+            onChange={(v) => handleFilterChange(setStartDate, v)}
+            className="min-w-[170px]"
           />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">To Date</label>
-          <input
-            type="date"
+          <DatePicker
             value={endDate}
-            onChange={(e) => handleFilterChange(setEndDate, e.target.value)}
-            className="input w-auto"
+            onChange={(v) => handleFilterChange(setEndDate, v)}
+            className="min-w-[170px]"
           />
         </div>
         {(startDate || endDate || actionFilter || search) && (
