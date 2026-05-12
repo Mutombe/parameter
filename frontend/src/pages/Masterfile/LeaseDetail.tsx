@@ -36,6 +36,7 @@ import {
 import { leaseApi, invoiceApi, receiptApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, getMediaUrl } from '../../lib/utils'
 import { Button, ConfirmDialog, TableFilter, Modal, Input, Select, Textarea, DatePicker } from '../../components/ui'
+import { ProfileInfoBar, InfoColumn, InfoLine } from '../../components/detail/ProfileInfoBar'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
 import { TbUserSquareRounded } from 'react-icons/tb'
@@ -444,127 +445,120 @@ export default function LeaseDetail() {
         </div>
       </motion.div>
 
-      {/* Profile Info Bar */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05 }}
-        className="bg-white rounded-xl border border-gray-200 p-4 md:p-6"
-      >
-        {loadingLease ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="space-y-2 animate-pulse">
-                <div className="h-3 w-16 bg-gray-200 rounded" />
-                <div className="h-4 w-32 bg-gray-200 rounded" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
-            {/* Tenant */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Tenant</p>
+      {/* Profile Info Bar — five strategic columns. Tenant/Property
+          collapse the navigation chain into two columns to leave room
+          for Financial / Term / Billing. */}
+      <ProfileInfoBar loading={loadingLease} skeletonCount={5}>
+        {/* Tenant */}
+        <InfoColumn label="Tenant">
+          <InfoLine icon={TbUserSquareRounded} primary={!!lease?.tenant} title={lease?.tenant_name}>
+            {lease?.tenant ? (
               <button
-                onClick={() => lease?.tenant && navigate(`/dashboard/tenants/${lease.tenant}`)}
-                onMouseEnter={() => lease?.tenant && prefetch(`/dashboard/tenants/${lease.tenant}`)}
-                className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
+                onClick={() => navigate(`/dashboard/tenants/${lease.tenant}`)}
+                onMouseEnter={() => prefetch(`/dashboard/tenants/${lease.tenant}`)}
+                className="hover:underline"
               >
-                <TbUserSquareRounded className="w-3.5 h-3.5" />
-                <span>{lease?.tenant_name}</span>
+                {lease?.tenant_name}
               </button>
-            </div>
+            ) : lease?.tenant_name}
+          </InfoLine>
+          {lease?.tenant_code && (
+            <InfoLine muted><span className="font-mono">{lease.tenant_code}</span></InfoLine>
+          )}
+          {lease?.lease_type && (
+            <InfoLine muted className="capitalize">{lease.lease_type} lease</InfoLine>
+          )}
+        </InfoColumn>
 
-            {/* Unit */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Unit</p>
+        {/* Property chain */}
+        <InfoColumn label="Property">
+          {lease?.unit_display && (
+            <InfoLine icon={Home} primary={!!lease?.unit} title={lease.unit_display}>
               {lease?.unit ? (
                 <button
                   onClick={() => navigate(`/dashboard/units/${lease.unit}`)}
                   onMouseEnter={() => prefetch(`/dashboard/units/${lease.unit}`)}
-                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
+                  className="hover:underline"
                 >
-                  <Home className="w-3.5 h-3.5" />
-                  <span>{lease?.unit_display}</span>
+                  {lease.unit_display}
                 </button>
-              ) : (
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Home className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{lease?.unit_display}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Property */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Property</p>
+              ) : lease.unit_display}
+            </InfoLine>
+          )}
+          {lease?.property_name && (
+            <InfoLine icon={PiBuildingApartmentLight} primary={!!lease?.property_id} muted={!lease?.property_id} title={lease.property_name}>
               {lease?.property_id ? (
                 <button
                   onClick={() => navigate(`/dashboard/properties/${lease.property_id}`)}
                   onMouseEnter={() => prefetch(`/dashboard/properties/${lease.property_id}`)}
-                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
+                  className="hover:underline"
                 >
-                  <PiBuildingApartmentLight className="w-3.5 h-3.5" />
-                  <span>{lease?.property_name}</span>
+                  {lease.property_name}
                 </button>
-              ) : (
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <PiBuildingApartmentLight className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{lease?.property_name || '-'}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Landlord */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Landlord</p>
+              ) : lease.property_name}
+            </InfoLine>
+          )}
+          {lease?.landlord_name && (
+            <InfoLine muted primary={!!lease?.landlord_id} title={lease.landlord_name}>
               {lease?.landlord_id ? (
                 <button
                   onClick={() => navigate(`/dashboard/landlords/${lease.landlord_id}`)}
                   onMouseEnter={() => prefetch(`/dashboard/landlords/${lease.landlord_id}`)}
-                  className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 hover:underline cursor-pointer transition-colors"
+                  className="hover:underline"
                 >
-                  <TbUserSquareRounded className="w-3.5 h-3.5" />
-                  <span>{lease?.landlord_name}</span>
+                  {lease.landlord_name}
                 </button>
-              ) : (
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <TbUserSquareRounded className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{lease?.landlord_name || '-'}</span>
-                </div>
-              )}
-            </div>
+              ) : lease.landlord_name}
+            </InfoLine>
+          )}
+        </InfoColumn>
 
-            {/* Financial */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Financial</p>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <DollarSign className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{formatCurrency(lease?.monthly_rent || 0)} /month</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <DollarSign className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{formatCurrency(lease?.deposit_amount || 0)} deposit</span>
-                </div>
-                <div className="text-xs text-gray-400">{lease?.currency}</div>
-              </div>
-            </div>
+        {/* Financial */}
+        <InfoColumn label="Financial">
+          <InfoLine icon={DollarSign} className="font-semibold text-gray-900" title={`${formatCurrency(lease?.monthly_rent || 0)} ${lease?.currency || ''} per month`}>
+            {formatCurrency(lease?.monthly_rent || 0)} <span className="text-xs text-gray-400 font-normal">/mo</span>
+          </InfoLine>
+          {(lease?.deposit_amount || 0) > 0 && (
+            <InfoLine muted title={`${formatCurrency(lease?.deposit_amount || 0)} deposit`}>
+              {formatCurrency(lease?.deposit_amount || 0)} deposit
+            </InfoLine>
+          )}
+          <InfoLine muted>
+            <span className="font-mono">{lease?.currency}</span>
+            {(lease?.annual_escalation_rate || 0) > 0 && (
+              <span className="ml-2">· {lease.annual_escalation_rate}% escalation</span>
+            )}
+          </InfoLine>
+        </InfoColumn>
 
-            {/* Terms */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Terms</p>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{lease?.start_date ? formatDate(lease.start_date) : '-'} - {lease?.end_date ? formatDate(lease.end_date) : '-'}</span>
-                </div>
-                <div className="text-sm text-gray-600">Payment day: {lease?.payment_day || 1}</div>
-              </div>
-            </div>
-          </div>
-        )}
-      </motion.div>
+        {/* Term */}
+        <InfoColumn label="Term">
+          <InfoLine icon={Calendar} title={`${lease?.start_date ? formatDate(lease.start_date) : '?'} → ${lease?.end_date ? formatDate(lease.end_date) : '?'}`}>
+            {lease?.start_date ? formatDate(lease.start_date) : '—'} → {lease?.end_date ? formatDate(lease.end_date) : '—'}
+          </InfoLine>
+          {lease?.status === 'active' ? (
+            <InfoLine muted className={daysColor}>
+              {daysRemaining >= 0 ? `${daysRemaining} days left` : `Expired ${Math.abs(daysRemaining)}d ago`}
+            </InfoLine>
+          ) : null}
+          <InfoLine muted>{leaseTerm} month{leaseTerm === 1 ? '' : 's'}</InfoLine>
+        </InfoColumn>
+
+        {/* Billing rhythm */}
+        <InfoColumn label="Billing">
+          <InfoLine icon={Receipt} title={`Due on the ${lease?.payment_day || 1}${(lease?.payment_day || 1) === 1 ? 'st' : (lease?.payment_day || 1) === 2 ? 'nd' : (lease?.payment_day || 1) === 3 ? 'rd' : 'th'} of each month`}>
+            Due day {lease?.payment_day || 1}
+          </InfoLine>
+          {lease?.grace_period_days != null && (
+            <InfoLine muted>{lease.grace_period_days}d grace</InfoLine>
+          )}
+          {lease?.auto_renew && (
+            <InfoLine muted className="text-emerald-600">
+              Auto-renew on
+            </InfoLine>
+          )}
+        </InfoColumn>
+      </ProfileInfoBar>
 
       {/* KPI Cards */}
       <motion.div variants={container} initial="hidden" animate="show" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

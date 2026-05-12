@@ -43,6 +43,7 @@ import api from '../../services/api'
 import { tenantApi, reportsApi, invoiceApi, receiptApi, unitApi, subsidiaryApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { Modal, Button, Input, Select, Textarea, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker } from '../../components/ui'
+import { ProfileInfoBar, InfoColumn, InfoLine } from '../../components/detail/ProfileInfoBar'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
 import { useAuthStore } from '../../stores/authStore'
@@ -728,153 +729,158 @@ export default function TenantDetail() {
         </div>
       </motion.div>
 
-      {/* Profile Info Bar */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05 }}
-        className="bg-white rounded-xl border border-gray-200 p-4 md:p-6"
-      >
-        {loadingProfile && loadingDetail ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="space-y-2 animate-pulse">
-                <div className="h-3 w-16 bg-gray-200 rounded" />
-                <div className="h-4 w-32 bg-gray-200 rounded" />
-                <div className="h-4 w-28 bg-gray-200 rounded" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {/* Contact */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Contact</p>
-              <div className="space-y-1.5">
-                {tenantInfo?.email && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Mail className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="truncate">{tenantInfo.email}</span>
-                  </div>
-                )}
-                {tenantInfo?.phone && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Phone className="w-3.5 h-3.5 text-gray-400" />
-                    <span>{tenantInfo.phone}</span>
-                  </div>
-                )}
-                {(tenantInfo?.id_number || tenantInfo?.id_type) && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <CreditCard className="w-3.5 h-3.5 text-gray-400" />
-                    <span>{tenantInfo.id_number} ({tenantInfo.id_type})</span>
-                  </div>
-                )}
-              </div>
-            </div>
+      {/* Profile Info Bar — five strategic columns, hiding any that have
+          no data so the row never wastes space. Each column shows a
+          PRIMARY value with icon + a MUTED secondary line. Long strings
+          truncate with `title=` tooltips for hover-to-read. */}
+      <ProfileInfoBar loading={loadingProfile && loadingDetail} skeletonCount={5}>
+        {/* Identity */}
+        <InfoColumn label="Identity">
+          {tenantInfo?.code && (
+            <InfoLine icon={CreditCard}>
+              <span className="font-mono text-xs">{tenantInfo.code}</span>
+            </InfoLine>
+          )}
+          {(tenantInfo?.id_number || tenantInfo?.id_type) && (
+            <InfoLine muted title={`${tenantInfo?.id_type || ''} ${tenantInfo?.id_number || ''}`.trim()}>
+              {tenantInfo.id_type ? `${tenantInfo.id_type} · ` : ''}
+              {tenantInfo.id_number || '—'}
+            </InfoLine>
+          )}
+          {tenantInfo?.tenant_type && (
+            <InfoLine muted>
+              <span className="capitalize">{tenantInfo.tenant_type}</span>
+            </InfoLine>
+          )}
+        </InfoColumn>
 
-            {/* Active Lease */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Active Lease</p>
-              <div className="space-y-1.5">
-                {activeLeases.length > 0 ? (
-                  <>
-                    {activeLeases[0].unit_id ? (
-                      <button
-                        onClick={() => navigate(`/dashboard/units/${activeLeases[0].unit_id}`)}
-                        onMouseEnter={() => prefetch(`/dashboard/units/${activeLeases[0].unit_id}`)}
-                        className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
-                      >
-                        <Home className="w-3.5 h-3.5" />
-                        <span>{activeLeases[0].unit}</span>
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Home className="w-3.5 h-3.5 text-gray-400" />
-                        <span>{activeLeases[0].unit}</span>
-                      </div>
-                    )}
-                    {activeLeases[0].property_id ? (
-                      <button
-                        onClick={() => navigate(`/dashboard/properties/${activeLeases[0].property_id}`)}
-                        onMouseEnter={() => prefetch(`/dashboard/properties/${activeLeases[0].property_id}`)}
-                        className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                        <span>{activeLeases[0].property}</span>
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <FileText className="w-3.5 h-3.5 text-gray-400" />
-                        <span>{activeLeases[0].property}</span>
-                      </div>
-                    )}
-                    {activeLeases[0].landlord_id && (
-                      <button
-                        onClick={() => navigate(`/dashboard/landlords/${activeLeases[0].landlord_id}`)}
-                        onMouseEnter={() => prefetch(`/dashboard/landlords/${activeLeases[0].landlord_id}`)}
-                        className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 transition-colors"
-                      >
-                        <Briefcase className="w-3.5 h-3.5" />
-                        <span>{activeLeases[0].landlord}</span>
-                      </button>
-                    )}
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                      <span>{formatDate(activeLeases[0].start_date)} - {formatDate(activeLeases[0].end_date)}</span>
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-sm text-gray-400">No active lease</p>
-                )}
-              </div>
-            </div>
+        {/* Contact */}
+        <InfoColumn
+          label="Contact"
+          hidden={!tenantInfo?.phone && !tenantInfo?.email && !tenantInfo?.alt_phone}
+        >
+          {tenantInfo?.phone && (
+            <InfoLine icon={Phone} title={tenantInfo.phone}>{tenantInfo.phone}</InfoLine>
+          )}
+          {tenantInfo?.email && (
+            <InfoLine icon={Mail} title={tenantInfo.email} muted={!tenantInfo?.phone ? false : undefined}>
+              {tenantInfo.email}
+            </InfoLine>
+          )}
+          {tenantInfo?.alt_phone && (
+            <InfoLine muted title={`Alt: ${tenantInfo.alt_phone}`}>
+              Alt: {tenantInfo.alt_phone}
+            </InfoLine>
+          )}
+        </InfoColumn>
 
-            {/* Billing */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Billing</p>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <DollarSign className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{formatCurrency(billing.total_invoiced || 0)} invoiced</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Wallet className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{formatCurrency(billing.total_paid || 0)} paid</span>
-                </div>
-                {(billing.overdue_amount || 0) > 0 && (
-                  <div className="flex items-center gap-2 text-sm text-red-600">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    <span>{formatCurrency(billing.overdue_amount)} overdue</span>
-                  </div>
-                )}
-              </div>
-            </div>
+        {/* Current Lease */}
+        <InfoColumn label="Current Lease" hidden={activeLeases.length === 0}>
+          {activeLeases.length > 0 && (
+            <>
+              {activeLeases[0].unit && (
+                <InfoLine
+                  icon={Home}
+                  primary={!!activeLeases[0].unit_id}
+                  title={activeLeases[0].unit}
+                >
+                  {activeLeases[0].unit_id ? (
+                    <button
+                      onClick={() => navigate(`/dashboard/units/${activeLeases[0].unit_id}`)}
+                      onMouseEnter={() => prefetch(`/dashboard/units/${activeLeases[0].unit_id}`)}
+                      className="hover:underline"
+                    >
+                      {activeLeases[0].unit}
+                    </button>
+                  ) : activeLeases[0].unit}
+                </InfoLine>
+              )}
+              {activeLeases[0].property && (
+                <InfoLine
+                  icon={FileText}
+                  primary={!!activeLeases[0].property_id}
+                  muted={!activeLeases[0].property_id}
+                  title={activeLeases[0].property}
+                >
+                  {activeLeases[0].property_id ? (
+                    <button
+                      onClick={() => navigate(`/dashboard/properties/${activeLeases[0].property_id}`)}
+                      onMouseEnter={() => prefetch(`/dashboard/properties/${activeLeases[0].property_id}`)}
+                      className="hover:underline"
+                    >
+                      {activeLeases[0].property}
+                    </button>
+                  ) : activeLeases[0].property}
+                </InfoLine>
+              )}
+              {activeLeases[0].landlord_id && activeLeases[0].landlord && (
+                <InfoLine icon={Briefcase} primary title={activeLeases[0].landlord}>
+                  <button
+                    onClick={() => navigate(`/dashboard/landlords/${activeLeases[0].landlord_id}`)}
+                    onMouseEnter={() => prefetch(`/dashboard/landlords/${activeLeases[0].landlord_id}`)}
+                    className="hover:underline"
+                  >
+                    {activeLeases[0].landlord}
+                  </button>
+                </InfoLine>
+              )}
+              <InfoLine icon={Calendar} muted title={`${formatDate(activeLeases[0].start_date)} → ${formatDate(activeLeases[0].end_date)}`}>
+                {formatDate(activeLeases[0].start_date)} → {formatDate(activeLeases[0].end_date)}
+              </InfoLine>
+            </>
+          )}
+        </InfoColumn>
 
-            {/* Employment */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Employment</p>
-              <div className="space-y-1.5">
-                {tenantInfo?.employer_name ? (
-                  <>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Briefcase className="w-3.5 h-3.5 text-gray-400" />
-                      <span className="truncate">{tenantInfo.employer_name}</span>
-                    </div>
-                    {tenantInfo?.occupation && (
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <TbUserSquareRounded className="w-3.5 h-3.5 text-gray-400" />
-                        <span>{tenantInfo.occupation}</span>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-sm text-gray-400">Not provided</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </motion.div>
+        {/* Account / Billing */}
+        <InfoColumn label="Account">
+          <InfoLine
+            icon={(billing.overdue_amount || 0) > 0 ? AlertTriangle : DollarSign}
+            className={(billing.overdue_amount || 0) > 0 ? 'text-red-600 font-semibold' : 'text-gray-900 font-semibold'}
+            title={`${formatCurrency(billing.balance_due || 0)} outstanding`}
+          >
+            {formatCurrency(billing.balance_due || 0)}
+          </InfoLine>
+          <InfoLine muted title={`${formatCurrency(billing.total_paid || 0)} paid of ${formatCurrency(billing.total_invoiced || 0)} invoiced`}>
+            {formatCurrency(billing.total_paid || 0)} / {formatCurrency(billing.total_invoiced || 0)}
+          </InfoLine>
+          {(billing.overdue_amount || 0) > 0 && (
+            <InfoLine muted className="text-red-500" title={`${formatCurrency(billing.overdue_amount)} overdue`}>
+              {formatCurrency(billing.overdue_amount)} overdue
+            </InfoLine>
+          )}
+        </InfoColumn>
+
+        {/* Emergency contact or Employer — whichever has data, emergency wins */}
+        <InfoColumn
+          label={tenantInfo?.emergency_contact_name ? 'Emergency' : 'Employer'}
+          hidden={!tenantInfo?.emergency_contact_name && !tenantInfo?.employer_name}
+        >
+          {tenantInfo?.emergency_contact_name ? (
+            <>
+              <InfoLine icon={Shield} title={tenantInfo.emergency_contact_name}>
+                {tenantInfo.emergency_contact_name}
+              </InfoLine>
+              {tenantInfo?.emergency_contact_relation && (
+                <InfoLine muted className="capitalize">
+                  {tenantInfo.emergency_contact_relation}
+                </InfoLine>
+              )}
+              {tenantInfo?.emergency_contact_phone && (
+                <InfoLine muted icon={Phone}>{tenantInfo.emergency_contact_phone}</InfoLine>
+              )}
+            </>
+          ) : tenantInfo?.employer_name ? (
+            <>
+              <InfoLine icon={Briefcase} title={tenantInfo.employer_name}>
+                {tenantInfo.employer_name}
+              </InfoLine>
+              {tenantInfo?.occupation && (
+                <InfoLine muted title={tenantInfo.occupation}>{tenantInfo.occupation}</InfoLine>
+              )}
+            </>
+          ) : null}
+        </InfoColumn>
+      </ProfileInfoBar>
 
       {/* KPI Cards */}
       <motion.div variants={container} initial="hidden" animate="show" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

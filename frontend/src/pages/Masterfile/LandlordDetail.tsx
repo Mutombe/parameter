@@ -33,6 +33,7 @@ import PropertyForm from '../../components/forms/PropertyForm'
 import LeaseForm from '../../components/forms/LeaseForm'
 import { formatCurrency, formatPercent, cn } from '../../lib/utils'
 import { Modal, Button, Input, Select, Textarea, Tooltip as UiTooltip, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker } from '../../components/ui'
+import { ProfileInfoBar, InfoColumn, InfoLine } from '../../components/detail/ProfileInfoBar'
 import { showToast, parseApiError } from '../../lib/toast'
 import { usePrefetch } from '../../hooks/usePrefetch'
 import { usePagination } from '../../hooks/usePagination'
@@ -678,114 +679,114 @@ export default function LandlordDetail() {
         </div>
       </motion.div>
 
-      {/* Profile Info Bar */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05 }}
-        className="bg-white rounded-xl border border-gray-200 p-4 md:p-6"
-      >
-        {loadingProfile ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="space-y-2 animate-pulse">
-                <div className="h-3 w-16 bg-gray-200 rounded" />
-                <div className="h-4 w-32 bg-gray-200 rounded" />
-                <div className="h-4 w-28 bg-gray-200 rounded" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {/* Contact */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Contact</p>
-              <div className="space-y-1.5">
-                {landlord?.email && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Mail className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="truncate">{landlord.email}</span>
-                  </div>
-                )}
-                {landlord?.phone && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Phone className="w-3.5 h-3.5 text-gray-400" />
-                    <span>{landlord.phone}</span>
-                  </div>
-                )}
-                {landlord?.address && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <MapPin className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="truncate">{landlord.address}</span>
-                  </div>
-                )}
-              </div>
-            </div>
+      {/* Profile Info Bar — Identity, Contact, Banking, Commission&Tax,
+          Portfolio. Each column hides cleanly when it has nothing to show. */}
+      <ProfileInfoBar loading={loadingProfile} skeletonCount={5}>
+        {/* Identity */}
+        <InfoColumn label="Identity">
+          {landlord?.code && (
+            <InfoLine icon={CreditCard}>
+              <span className="font-mono text-xs">{landlord.code}</span>
+            </InfoLine>
+          )}
+          {landlord?.landlord_type && (
+            <InfoLine muted className="capitalize">
+              {landlord.landlord_type}
+            </InfoLine>
+          )}
+          {landlord?.preferred_currency && (
+            <InfoLine muted>
+              <span className="font-mono">{landlord.preferred_currency}</span>
+              {landlord?.payment_frequency && (
+                <span className="ml-2 capitalize">· {landlord.payment_frequency}</span>
+              )}
+            </InfoLine>
+          )}
+        </InfoColumn>
 
-            {/* Financial */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Financial</p>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Percent className="w-3.5 h-3.5 text-gray-400" />
-                  <span title="Management fee deducted from collected rent">{landlord?.commission_rate}% commission</span>
-                </div>
-                {landlord?.currency && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <DollarSign className="w-3.5 h-3.5 text-gray-400" />
-                    <span>{landlord.currency}</span>
-                  </div>
-                )}
-                {landlord?.payment_frequency && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Receipt className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="capitalize">{landlord.payment_frequency}</span>
-                  </div>
-                )}
-              </div>
-            </div>
+        {/* Contact */}
+        <InfoColumn
+          label="Contact"
+          hidden={!landlord?.phone && !landlord?.email && !landlord?.address}
+        >
+          {landlord?.phone && (
+            <InfoLine icon={Phone} title={landlord.phone}>{landlord.phone}</InfoLine>
+          )}
+          {landlord?.email && (
+            <InfoLine icon={Mail} title={landlord.email} muted={!!landlord?.phone}>
+              {landlord.email}
+            </InfoLine>
+          )}
+          {landlord?.address && (
+            <InfoLine icon={MapPin} muted title={landlord.address}>
+              {landlord.address}
+            </InfoLine>
+          )}
+        </InfoColumn>
 
-            {/* Banking */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Banking</p>
-              <div className="space-y-1.5">
-                {landlord?.bank_name ? (
-                  <>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <CreditCard className="w-3.5 h-3.5 text-gray-400" />
-                      <span>{landlord.bank_name}</span>
-                    </div>
-                    {landlord?.account_number && (
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <span className="text-gray-400 text-xs ml-5">
-                          ****{landlord.account_number.slice(-4)}
-                        </span>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-sm text-gray-400">Not provided</p>
-                )}
-              </div>
-            </div>
+        {/* Banking */}
+        <InfoColumn
+          label="Banking"
+          hidden={!landlord?.bank_name && !landlord?.account_number}
+        >
+          {landlord?.bank_name && (
+            <InfoLine icon={CreditCard} title={landlord.bank_name}>
+              {landlord.bank_name}
+            </InfoLine>
+          )}
+          {landlord?.account_number && (
+            <InfoLine muted title={`Account ending ${landlord.account_number.slice(-4)}`}>
+              ****{landlord.account_number.slice(-4)}
+            </InfoLine>
+          )}
+          {landlord?.account_name && (
+            <InfoLine muted title={landlord.account_name}>
+              {landlord.account_name}
+            </InfoLine>
+          )}
+        </InfoColumn>
 
-            {/* Tax */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Tax</p>
-              <div className="space-y-1.5">
-                {landlord?.tax_id || landlord?.tax_number ? (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <FileText className="w-3.5 h-3.5 text-gray-400" />
-                    <span>{landlord.tax_id || landlord.tax_number}</span>
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-400">Not provided</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </motion.div>
+        {/* Commission & Tax */}
+        <InfoColumn label="Commission & Tax">
+          <InfoLine icon={Percent} title="Management fee deducted from collected rent">
+            <span className="font-semibold">{landlord?.commission_rate ?? 0}%</span>
+            <span className="ml-1 text-xs text-gray-400">commission</span>
+          </InfoLine>
+          {landlord?.vat_registered && (
+            <InfoLine muted className="text-emerald-600">
+              VAT registered{landlord?.vat_number ? ` · ${landlord.vat_number}` : ''}
+            </InfoLine>
+          )}
+          {(landlord?.tax_id || landlord?.tax_number) && (
+            <InfoLine muted title={landlord.tax_id || landlord.tax_number}>
+              Tax ID {landlord.tax_id || landlord.tax_number}
+            </InfoLine>
+          )}
+        </InfoColumn>
+
+        {/* Portfolio summary */}
+        <InfoColumn label="Portfolio">
+          <InfoLine icon={Building2} className="font-semibold text-gray-900">
+            {totalProperties} {totalProperties === 1 ? 'property' : 'properties'}
+          </InfoLine>
+          <InfoLine muted icon={Home}>
+            {totalUnits} unit{totalUnits === 1 ? '' : 's'}
+            {totalUnits > 0 && ` · ${occupied} occ`}
+          </InfoLine>
+          {totalUnits > 0 && (
+            <InfoLine
+              muted
+              className={
+                occupancyRate >= 80 ? 'text-emerald-600'
+                : occupancyRate >= 50 ? 'text-amber-600'
+                : 'text-red-600'
+              }
+            >
+              {formatPercent(occupancyRate)} occupancy
+            </InfoLine>
+          )}
+        </InfoColumn>
+      </ProfileInfoBar>
 
       {/* KPI Cards */}
       <motion.div
