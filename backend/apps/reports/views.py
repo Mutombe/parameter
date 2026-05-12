@@ -1044,6 +1044,12 @@ class BalanceSheetView(APIView):
                     if code in bank_account_codes:
                         # Aggregate bank balances into the single trust line.
                         funds_held_in_trust += bal
+                    elif subtype == 'accounts_receivable':
+                        # Skip the GL-derived AR row — we replace it below
+                        # with a Sum of unpaid Invoice.balance so the figure
+                        # always matches the tenants-outstanding total
+                        # regardless of GL posting state.
+                        continue
                     else:
                         asset_list.append({
                             'code': code, 'name': name,
@@ -1058,14 +1064,21 @@ class BalanceSheetView(APIView):
                     # landlord-scoped sheet:
                     #   * Landlord Trust Payable (2300) — agency's mirror of
                     #     the trust funds shown above on the asset side.
-                    #   * VAT Payable on commission — VAT the agency owes the
-                    #     tax authority for ITS commission revenue. The
+                    #   * VAT Payable on commission — VAT the agency owes
+                    #     the tax authority for ITS commission revenue. The
                     #     landlord doesn't owe this; it's an agency tax
                     #     liability that happened to trace through this
                     #     landlord's receipts.
+                    #   * Unpaid Rent / Deferred Revenue (2200) — this is
+                    #     the agent's mirror of tenants-outstanding. From
+                    #     the landlord's perspective the same money is an
+                    #     ASSET (Accounts Receivable, computed below).
+                    #     Including both double-counts the exposure.
                     if name.lower().startswith('landlord trust') or code.startswith('2300'):
                         continue
                     if subtype == 'vat_payable' or 'vat payable' in name.lower():
+                        continue
+                    if code == '2200' or 'unpaid rent' in name.lower() or 'deferred revenue' in name.lower():
                         continue
                     liability_list.append({
                         'code': code, 'name': name,
@@ -1085,6 +1098,10 @@ class BalanceSheetView(APIView):
             funds_held_receipts = None
             funds_held_commissions = None
             funds_held_expenses = None
+            # Hoisted so the Accounts Receivable calc further down can
+            # reuse the same scoped id lists.
+            unit_id_list: list[int] = []
+            property_id_list: list[int] = []
             if landlord_id:
                 try:
                     landlord_obj = Landlord.objects.get(id=landlord_id)
@@ -1132,9 +1149,44 @@ class BalanceSheetView(APIView):
                 asset_list.insert(0, {
                     'code': '',
                     'name': 'Funds Held in Trust',
+                    'subtype': 'cash',
                     'balance': float(funds_held),
                 })
                 total_assets += funds_held
+
+            # Accounts Receivable on a landlord-scoped sheet is the sum
+            # of unpaid invoice balances for tenants on this landlord's
+            # properties — that's the literal "what tenants owe me"
+            # figure the landlord cares about. Computed directly from
+            # Invoice.balance so it stays correct regardless of GL
+            # posting state (the GL-derived AR row from this section's
+            # loop above was skipped because of this replacement).
+            ar_total = Decimal('0')
+            if landlord_id and (unit_id_list or property_id_list):
+                ar_qs = _scoped_invoice_qs(unit_id_list, property_id_list).filter(
+                    balance__gt=0,
+                    status__in=['draft', 'sent', 'partial', 'overdue'],
+                    date__lte=as_of_date,
+                )
+                if property_id:
+                    ar_qs = ar_qs.filter(
+                        Q(unit__property_id=property_id) |
+                        Q(property_id=property_id) |
+                        Q(lease__unit__property_id=property_id) |
+                        Q(lease__property_id=property_id)
+                    )
+                ar_total = ar_qs.aggregate(t=Sum('balance'))['t'] or Decimal('0')
+            if ar_total > 0:
+                # Insert AR right after Funds Held in Trust so the asset
+                # ordering reads cash → receivables → other on the page.
+                insert_at = 1 if funds_held != 0 else 0
+                asset_list.insert(insert_at, {
+                    'code': '1200',
+                    'name': 'Accounts Receivable',
+                    'subtype': 'accounts_receivable',
+                    'balance': float(ar_total),
+                })
+                total_assets += ar_total
 
             # On a landlord-scoped sheet there's no per-landlord equity
             # account in the agency's chart, so we synthesise a single
@@ -1147,14 +1199,17 @@ class BalanceSheetView(APIView):
             # `equity_components` block let the frontend show the math
             # so the figure isn't a black box.
             derived_equity = total_assets - total_liabilities
-            if derived_equity != 0:
-                equity_list = [{
-                    'code': '',
-                    'name': "Owner's Equity (Net Worth)",
-                    'subtype': 'owner_equity_plug',
-                    'balance': float(derived_equity),
-                }]
-                total_equity = derived_equity
+            # Always emit the equity row — even when it lands at zero on
+            # a fresh tenant. The UI needs the line to anchor the
+            # Assets = Liabilities + Equity identity; hiding it makes
+            # the sheet look incomplete.
+            equity_list = [{
+                'code': '',
+                'name': "Owner's Equity (Net Worth)",
+                'subtype': 'owner_equity_plug',
+                'balance': float(derived_equity),
+            }]
+            total_equity = derived_equity
             equity_method = 'balancing_residual'
             equity_components = {
                 'total_assets': float(total_assets),
