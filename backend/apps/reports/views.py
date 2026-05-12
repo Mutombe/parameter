@@ -206,6 +206,46 @@ def _commission_expr():
     )
 
 
+def _receipt_scope_q(unit_id_list, property_id_list):
+    """Build the Q-clause matching every invoice→property linkage path.
+
+    Receipts may carry their property tie via: direct unit, direct property,
+    or the lease chain (invoice.lease.unit.property or invoice.lease.property).
+    The standard InvoiceCreateSerializer takes `lease`+optional `unit`, so
+    without the lease branch every receipt whose invoice was created that
+    way silently drops out of landlord-scoped reports.
+
+    Module-level so report views can share the chain and tests can walk
+    the resulting Q tree without spinning up a tenant database.
+    """
+    return (
+        Q(invoice__unit_id__in=unit_id_list) |
+        Q(invoice__property_id__in=property_id_list) |
+        Q(invoice__lease__unit_id__in=unit_id_list) |
+        Q(invoice__lease__property_id__in=property_id_list)
+    )
+
+
+def _aged_analysis_property_q(property_id):
+    """Q-clause matching invoices linked to `property_id` via any path."""
+    return (
+        Q(unit__property_id=property_id) |
+        Q(property_id=property_id) |
+        Q(lease__unit__property_id=property_id) |
+        Q(lease__property_id=property_id)
+    )
+
+
+def _aged_analysis_landlord_q(landlord_id):
+    """Q-clause matching invoices linked to `landlord_id` via any path."""
+    return (
+        Q(unit__property__landlord_id=landlord_id) |
+        Q(property__landlord_id=landlord_id) |
+        Q(lease__unit__property__landlord_id=landlord_id) |
+        Q(lease__property__landlord_id=landlord_id)
+    )
+
+
 def _resolve_commission_rate_pct(income_type, property_id=None):
     """Resolve the commission rate as a Decimal percent (10.00 == 10%) for a
     single (income_type, property) pair. Mirrors `_commission_expr()` but
@@ -1655,19 +1695,9 @@ class LandlordStatementView(APIView):
 
     @staticmethod
     def _receipt_base_qs(unit_id_list, property_id_list, currency=None):
-        """Build a receipt queryset covering every path an invoice may carry
-        its property linkage on: direct unit, direct property, or via lease.
-
-        Without the lease branch, receipts whose invoice was created by a
-        flow that left both `unit` and `property` blank (the standard
-        InvoiceCreateSerializer takes `lease`+optional `unit`) silently
-        drop out of every landlord-scoped report.
-        """
+        """Apply the shared `_receipt_scope_q` and optionally filter currency."""
         qs = Receipt.objects.filter(
-            Q(invoice__unit_id__in=unit_id_list) |
-            Q(invoice__property_id__in=property_id_list) |
-            Q(invoice__lease__unit_id__in=unit_id_list) |
-            Q(invoice__lease__property_id__in=property_id_list)
+            _receipt_scope_q(unit_id_list, property_id_list)
         ).distinct()
         if currency:
             qs = qs.filter(currency=currency)
@@ -2231,19 +2261,9 @@ class AgedAnalysisView(APIView):
         if tenant_id:
             invoices = invoices.filter(tenant_id=tenant_id)
         if property_id:
-            invoices = invoices.filter(
-                Q(unit__property_id=property_id) |
-                Q(property_id=property_id) |
-                Q(lease__unit__property_id=property_id) |
-                Q(lease__property_id=property_id)
-            )
+            invoices = invoices.filter(_aged_analysis_property_q(property_id))
         if landlord_id:
-            invoices = invoices.filter(
-                Q(unit__property__landlord_id=landlord_id) |
-                Q(property__landlord_id=landlord_id) |
-                Q(lease__unit__property__landlord_id=landlord_id) |
-                Q(lease__property__landlord_id=landlord_id)
-            ).distinct()
+            invoices = invoices.filter(_aged_analysis_landlord_q(landlord_id)).distinct()
 
         # Calculate aging buckets
         buckets = {
@@ -3543,19 +3563,9 @@ class IncomeExpenditureReportView(APIView):
 
     @staticmethod
     def _receipt_base_qs(unit_id_list, property_id_list, currency=None):
-        """Build a receipt queryset covering every path an invoice may carry
-        its property linkage on: direct unit, direct property, or via lease.
-
-        Without the lease branch, receipts whose invoice was created by a
-        flow that left both `unit` and `property` blank (the standard
-        InvoiceCreateSerializer takes `lease`+optional `unit`) silently
-        drop out of every landlord-scoped report.
-        """
+        """Apply the shared `_receipt_scope_q` and optionally filter currency."""
         qs = Receipt.objects.filter(
-            Q(invoice__unit_id__in=unit_id_list) |
-            Q(invoice__property_id__in=property_id_list) |
-            Q(invoice__lease__unit_id__in=unit_id_list) |
-            Q(invoice__lease__property_id__in=property_id_list)
+            _receipt_scope_q(unit_id_list, property_id_list)
         ).distinct()
         if currency:
             qs = qs.filter(currency=currency)
