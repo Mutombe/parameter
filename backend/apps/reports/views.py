@@ -809,6 +809,30 @@ class IncomeStatementView(APIView):
         })
 
 
+# Agent-only liability accounts (per BALANCE SHEET REPORTING spec).
+# These ten accounts exist in the agent's chart to maintain transaction
+# flow but never belong on a landlord-scoped Balance Sheet — they're
+# the agent's own liabilities, not the landlord's. Match on name so we
+# catch every seed variant (codes drift between onboarding paths).
+_AGENT_LIABILITY_NAME_FRAGMENTS = (
+    'unpaid rent', 'unpaid levy', 'unpaid rates', 'unpaid maintenance',
+    'unpaid parking', 'unpaid special levy', 'unpaid vat',
+    'unpaid deposit',  # also catches "unpaid deposits"
+    'vat payable', 'commission payable',
+    'deferred revenue',  # synonym sometimes used for Unpaid Rent
+    'landlord trust',  # Landlord Trust Payable — agent's mirror of trust assets
+)
+
+
+def _is_agent_liability(name):
+    """True when `name` matches one of the 10 agent-only liability
+    accounts described in the spec. Substring match because the chart
+    of accounts has multiple seed variants ("Unpaid Rent", "Unpaid Rent
+    (Deferred Revenue)", "Unpaid Rent USD", etc.)."""
+    n = (name or '').lower()
+    return any(f in n for f in _AGENT_LIABILITY_NAME_FRAGMENTS)
+
+
 def _bs_display_name(name, subtype):
     """Display name override for report account rows.
 
@@ -935,6 +959,11 @@ class BalanceSheetView(APIView):
         # knows the number isn't sourced from posted entries.
         equity_method = 'gl_derived'
         equity_components: dict | None = None
+        # `sub_categories_*` are the spec'd 4-bucket structure used on
+        # landlord-scoped sheets. Agency-wide sheets leave them as None;
+        # the frontend then falls back to the flat `accounts` list.
+        sub_categories_assets: list | None = None
+        sub_categories_liabilities: list | None = None
 
         if scope_filter is None:
             # Agency-wide Balance Sheet — aggregate from GL up to as_of_date.
@@ -1001,19 +1030,139 @@ class BalanceSheetView(APIView):
                 })
                 total_equity += retained_earnings
         else:
-            # Landlord-scoped Balance Sheet — framed from the landlord's
-            # perspective, not the agency's:
-            #   * Bank/cash accounts collapse into a single "Funds Held in
-            #     Trust" asset line equal to net_payable (receipts - commissions
-            #     - expenses paid). Users don't care which agency bank holds
-            #     the cash, just how much is theirs.
-            #   * The agency's own "Landlord Trust Payable" liability is the
-            #     mirror of those funds — skipped to avoid double-counting.
-            #   * Equity is forced to balance (assets - liabilities) so the
-            #     statement is self-consistent regardless of partial GL
-            #     coverage. Without this, scoped sheets often look unbalanced
-            #     because the equity slice we'd compute from the GL doesn't
-            #     correspond to a real per-landlord equity account.
+            # ============================================================
+            # Landlord-scoped Balance Sheet — built per the spec from
+            # SUB-ACCOUNT balances, not from agency GL aggregates.
+            #
+            # Current Assets (always 4, even when zero):
+            #   1. Funds Held in Trust  = Σ landlord sub-account POSITIVE
+            #                              balances (rent, levy, rates,
+            #                              maintenance, parking, deposit,
+            #                              VAT, special levy)
+            #   2. Lessees Arrears       = Σ tenant/account-holder
+            #                              POSITIVE balances (debit-normal,
+            #                              positive = tenant owes us)
+            #   3. Prepayments           = Σ paid Expense rows tagged as
+            #                              prepaid (or COA Prepaid Expenses)
+            #   4. Other Current Assets  = remaining non-bank assets from
+            #                              the landlord-scoped GL
+            #
+            # Current Liabilities (always 4, even when zero):
+            #   1. Funds Owed By Trust   = Σ landlord sub-account NEGATIVE
+            #                              balances (overdrawn → liability)
+            #   2. Lessees Prepayments   = Σ tenant/account-holder NEGATIVE
+            #                              balances (tenant paid ahead)
+            #   3. Accruals              = Σ unpaid AccruedExpense for
+            #                              this landlord
+            #   4. Other Current Liab.   = remaining liabilities, excluding
+            #                              the 10 agent-only accounts
+            #                              filtered by _is_agent_liability.
+            # ============================================================
+            from apps.accounting.models import (
+                SubsidiaryAccount, SubsidiaryTransaction, AccruedExpense,
+            )
+
+            sub_categories_assets = []
+            sub_categories_liabilities = []
+
+            # --- Landlord sub-accounts (funds held / funds owed) ---
+            # Balance "as of date" = the last SubsidiaryTransaction.balance
+            # with date <= as_of_date. If no transactions, balance is 0.
+            landlord_subs = SubsidiaryAccount.objects.filter(
+                landlord_id=int(landlord_id), entity_type='landlord',
+            )
+
+            funds_held_total = Decimal('0')
+            funds_owed_total = Decimal('0')
+            funds_held_breakdown = []
+            funds_owed_breakdown = []
+            for sub in landlord_subs:
+                last_txn = SubsidiaryTransaction.objects.filter(
+                    account=sub, date__lte=as_of_date,
+                ).order_by('-transaction_number').first()
+                bal = last_txn.balance if last_txn else Decimal('0')
+                # Landlord accounts are credit-normal: positive balance
+                # = credit balance = agent holds cash for landlord.
+                if bal > 0:
+                    funds_held_total += bal
+                    funds_held_breakdown.append({
+                        'code': sub.code,
+                        'category': sub.category,
+                        'currency': sub.currency,
+                        'balance': float(bal),
+                    })
+                elif bal < 0:
+                    overdraft = abs(bal)
+                    funds_owed_total += overdraft
+                    funds_owed_breakdown.append({
+                        'code': sub.code,
+                        'category': sub.category,
+                        'currency': sub.currency,
+                        'balance': float(overdraft),
+                    })
+
+            # --- Tenant sub-accounts (arrears / prepayments) ---
+            # Tenants are linked to the landlord via the lease chain.
+            # `_invoice_scope_q`-style logic resolved to a set of tenant IDs.
+            from apps.masterfile.models import LeaseAgreement as _Lease
+            tenant_ids = set(
+                _Lease.objects.filter(
+                    Q(unit__property__landlord_id=landlord_id) |
+                    Q(property__landlord_id=landlord_id)
+                ).values_list('tenant_id', flat=True)
+            )
+            if property_id:
+                tenant_ids &= set(
+                    _Lease.objects.filter(
+                        Q(unit__property_id=property_id) |
+                        Q(property_id=property_id)
+                    ).values_list('tenant_id', flat=True)
+                )
+
+            tenant_subs = SubsidiaryAccount.objects.filter(
+                tenant_id__in=list(tenant_ids),
+                entity_type__in=['tenant', 'account_holder'],
+            )
+
+            lessees_arrears_total = Decimal('0')
+            lessees_prepayments_total = Decimal('0')
+            arrears_breakdown = []
+            prepayments_breakdown = []
+            for sub in tenant_subs:
+                last_txn = SubsidiaryTransaction.objects.filter(
+                    account=sub, date__lte=as_of_date,
+                ).order_by('-transaction_number').first()
+                bal = last_txn.balance if last_txn else Decimal('0')
+                # Tenant/account_holder accounts are debit-normal:
+                # positive = tenant owes us (arrears), negative = prepaid.
+                if bal > 0:
+                    lessees_arrears_total += bal
+                    arrears_breakdown.append({
+                        'tenant_id': sub.tenant_id,
+                        'tenant_code': sub.code,
+                        'tenant_name': sub.name,
+                        'balance': float(bal),
+                    })
+                elif bal < 0:
+                    prepaid = abs(bal)
+                    lessees_prepayments_total += prepaid
+                    prepayments_breakdown.append({
+                        'tenant_id': sub.tenant_id,
+                        'tenant_code': sub.code,
+                        'tenant_name': sub.name,
+                        'balance': float(prepaid),
+                    })
+
+            # --- Accruals (Layer 2 non-cash expenses awaiting payment) ---
+            accruals_total = AccruedExpense.objects.filter(
+                landlord_id=int(landlord_id),
+                status='posted',  # 'cleared' means already paid
+                date__lte=as_of_date,
+            ).aggregate(t=Sum('amount'))['t'] or Decimal('0')
+
+            # --- Prepayments / Other CA / Other CL: walk the GL for the
+            #     landlord scope and bucket the rows. Anything that isn't
+            #     a sub-account-tracked balance falls here. ---
             agg = _aggregate_balances_from_gl(
                 scope_filter,
                 account_types=['asset', 'liability', 'equity'],
@@ -1025,14 +1174,21 @@ class BalanceSheetView(APIView):
                 _CoA.objects.filter(account_subtype='bank').values_list('code', flat=True)
             )
 
-            funds_held_in_trust = Decimal('0')
+            # Walk the landlord-scoped GL and collect "Other" buckets.
+            #   Other CA = non-bank, non-AR, non-prepaid assets
+            #   Other CL = liabilities minus the 10 agent-only accounts
+            #     and the Accruals (already counted from AccruedExpense)
+            prepayments_total = Decimal('0')
+            prepayments_breakdown_gl = []
+            other_ca_total = Decimal('0')
+            other_ca_breakdown = []
+            other_cl_total = Decimal('0')
+            other_cl_breakdown = []
+
             for row in agg:
                 acct_type = row['account__account_type']
                 code = row['account__code']
                 subtype = row.get('account__account_subtype') or ''
-                # Apply the report-wide display rename here too so the
-                # landlord-scoped Balance Sheet picks up the new label
-                # even though the vat_payable row is filtered out below.
                 name = _bs_display_name(row['account__name'], subtype)
                 debit_total = row['total_debit']
                 credit_total = row['total_credit']
@@ -1041,178 +1197,126 @@ class BalanceSheetView(APIView):
                     bal = debit_total - credit_total
                     if bal == 0:
                         continue
+                    # Bank rows are already represented by the
+                    # sub-account-derived Funds Held in Trust — skip.
                     if code in bank_account_codes:
-                        # Aggregate bank balances into the single trust line.
-                        funds_held_in_trust += bal
-                    elif subtype == 'accounts_receivable':
-                        # Skip the GL-derived AR row — we replace it below
-                        # with a Sum of unpaid Invoice.balance so the figure
-                        # always matches the tenants-outstanding total
-                        # regardless of GL posting state.
                         continue
-                    else:
-                        asset_list.append({
-                            'code': code, 'name': name,
-                            'subtype': subtype, 'balance': float(bal),
+                    # AR rows are already represented by the
+                    # sub-account-derived Lessees Arrears — skip.
+                    if subtype == 'accounts_receivable':
+                        continue
+                    # Prepaid Expenses → Prepayments bucket.
+                    if subtype == 'prepaid' or 'prepaid' in name.lower():
+                        prepayments_total += bal
+                        prepayments_breakdown_gl.append({
+                            'code': code, 'name': name, 'balance': float(bal),
                         })
-                        total_assets += bal
+                        continue
+                    other_ca_total += bal
+                    other_ca_breakdown.append({
+                        'code': code, 'name': name,
+                        'subtype': subtype, 'balance': float(bal),
+                    })
                 elif acct_type == 'liability':
                     bal = credit_total - debit_total
                     if bal == 0:
                         continue
-                    # Filter agency-side liabilities that don't belong on a
-                    # landlord-scoped sheet:
-                    #   * Landlord Trust Payable (2300) — agency's mirror of
-                    #     the trust funds shown above on the asset side.
-                    #   * VAT Payable on commission — VAT the agency owes
-                    #     the tax authority for ITS commission revenue. The
-                    #     landlord doesn't owe this; it's an agency tax
-                    #     liability that happened to trace through this
-                    #     landlord's receipts.
-                    #   * Unpaid Rent / Deferred Revenue — this is the
-                    #     agent's mirror of tenants-outstanding. From the
-                    #     landlord's perspective the same money is an
-                    #     ASSET (Accounts Receivable, computed below).
-                    #     Including both double-counts the exposure.
-                    #
-                    # We match by NAME, not by code, because there are
-                    # multiple seed paths in the codebase: code 2200 is
-                    # "Unpaid Rent (Deferred Revenue)" in some seeds and
-                    # the legitimate "Tenant Deposits Liability" in
-                    # onboarding.py, plus seed_trust_accounts.py uses
-                    # code 6000/010 for "Unpaid Rent USD". Filtering on
-                    # code 2200 would either hide real deposits or miss
-                    # the alt-code variant.
-                    if name.lower().startswith('landlord trust') or code.startswith('2300'):
+                    # The 10 agent-only liabilities never appear on a
+                    # landlord-scoped sheet per the BS REPORTING spec.
+                    if _is_agent_liability(name):
                         continue
-                    if subtype == 'vat_payable' or 'vat payable' in name.lower():
-                        continue
-                    name_lower = name.lower()
-                    if 'unpaid rent' in name_lower or 'deferred revenue' in name_lower:
-                        continue
-                    liability_list.append({
+                    # Tenant Deposits → typically goes to the Funds Owed
+                    # bucket via the sub-account flow, not the GL row.
+                    # Anything else flows into Other CL.
+                    other_cl_total += bal
+                    other_cl_breakdown.append({
                         'code': code, 'name': name,
                         'subtype': subtype, 'balance': float(bal),
                     })
-                    total_liabilities += bal
-                # We deliberately ignore equity rows from the GL under scope —
-                # any landlord-level equity is derived below.
+                # Equity rows from GL are ignored under scope — landlord
+                # equity is derived below as the balancing residual.
 
-            # Compute Funds Held in Trust as the simple definition the user
-            # described: net payable to landlord = receipts - commissions -
-            # expenses. Falls back to the GL-derived bank net when the
-            # receipts/expenses path can't be computed.
-            funds_held = funds_held_in_trust
-            # Track the components so we can surface them in the response —
-            # otherwise the "Owner's Equity" line is an unexplained plug.
-            funds_held_receipts = None
-            funds_held_commissions = None
-            funds_held_expenses = None
-            # Hoisted so the Accounts Receivable calc further down can
-            # reuse the same scoped id lists.
-            unit_id_list: list[int] = []
-            property_id_list: list[int] = []
-            if landlord_id:
-                try:
-                    landlord_obj = Landlord.objects.get(id=landlord_id)
-                except Landlord.DoesNotExist:
-                    landlord_obj = None
-                if landlord_obj:
-                    properties = landlord_obj.properties.all()
-                    property_id_list = list(properties.values_list('id', flat=True))
-                    units = Unit.objects.filter(property__in=properties)
-                    unit_id_list = list(units.values_list('id', flat=True))
-                    # Build the scoped receipt set via id__in subquery so
-                    # the outer .aggregate(_commission_expr()) has a clean
-                    # Receipt FROM clause for its OuterRef subqueries.
-                    receipt_qs = _scoped_receipt_qs(unit_id_list, property_id_list).filter(
-                        date__lte=as_of_date,
-                    )
-                    if property_id:
-                        # Narrow further to a single property — same shape
-                        # of OR across all four linkage paths.
-                        receipt_qs = receipt_qs.filter(
-                            Q(invoice__unit__property_id=property_id) |
-                            Q(invoice__property_id=property_id) |
-                            Q(invoice__lease__unit__property_id=property_id) |
-                            Q(invoice__lease__property_id=property_id)
-                        )
-                    rcpt_agg = receipt_qs.aggregate(
-                        receipts=Sum('amount'),
-                        commissions=Sum(_commission_expr()),
-                    )
-                    # Funds Held in Trust is a cash position — non-cash
-                    # expenses (accruals) never left the bank, so excluding
-                    # them keeps the trust balance honest.
-                    expense_total = Expense.objects.filter(
-                        landlord_id=landlord_obj.id,
-                        status='paid',
-                        date__lte=as_of_date,
-                    ).exclude(expense_kind='non_cash').aggregate(t=Sum('amount'))['t'] or Decimal('0')
-                    funds_held_receipts = rcpt_agg['receipts'] or Decimal('0')
-                    funds_held_commissions = rcpt_agg['commissions'] or Decimal('0')
-                    funds_held_expenses = expense_total
-                    funds_held = funds_held_receipts - funds_held_commissions - funds_held_expenses
-
-            if funds_held != 0:
-                # Insert at top of assets — matches the "cash first" convention.
-                asset_list.insert(0, {
-                    'code': '',
+            # --- Build the structured 4-sub-category sections per spec.
+            #     ALWAYS emit all 4 even when totals are zero so the UI
+            #     can render the sub-categories consistently. ---
+            sub_categories_assets = [
+                {
                     'name': 'Funds Held in Trust',
-                    'subtype': 'cash',
-                    'balance': float(funds_held),
-                })
-                total_assets += funds_held
+                    'total': float(funds_held_total),
+                    'breakdown': funds_held_breakdown,
+                    'description': 'Positive landlord sub-account balances (cash held on behalf)',
+                },
+                {
+                    'name': 'Lessees Arrears',
+                    'total': float(lessees_arrears_total),
+                    'breakdown': arrears_breakdown,
+                    'description': 'Sum of each tenant/account-holder outstanding balance',
+                },
+                {
+                    'name': 'Prepayments',
+                    'total': float(prepayments_total),
+                    'breakdown': prepayments_breakdown_gl,
+                    'description': 'Expenses paid in advance',
+                },
+                {
+                    'name': 'Other Current Assets',
+                    'total': float(other_ca_total),
+                    'breakdown': other_ca_breakdown,
+                    'description': 'Remaining current assets from the GL',
+                },
+            ]
+            sub_categories_liabilities = [
+                {
+                    'name': 'Funds Owed By Trust',
+                    'total': float(funds_owed_total),
+                    'breakdown': funds_owed_breakdown,
+                    'description': 'Negative landlord sub-account balances (overdrawn)',
+                },
+                {
+                    'name': 'Lessees Prepayments',
+                    'total': float(lessees_prepayments_total),
+                    'breakdown': prepayments_breakdown,
+                    'description': 'Sum of each tenant/account-holder credit balance (paid ahead)',
+                },
+                {
+                    'name': 'Accruals',
+                    'total': float(accruals_total),
+                    'breakdown': [],
+                    'description': 'Accrued expenses awaiting payment',
+                },
+                {
+                    'name': 'Other Current Liabilities',
+                    'total': float(other_cl_total),
+                    'breakdown': other_cl_breakdown,
+                    'description': 'Remaining current liabilities from the GL',
+                },
+            ]
 
-            # Accounts Receivable on a landlord-scoped sheet is the sum
-            # of unpaid invoice balances for tenants on this landlord's
-            # properties — that's the literal "what tenants owe me"
-            # figure the landlord cares about. Computed directly from
-            # Invoice.balance so it stays correct regardless of GL
-            # posting state (the GL-derived AR row from this section's
-            # loop above was skipped because of this replacement).
-            ar_total = Decimal('0')
-            if landlord_id and (unit_id_list or property_id_list):
-                ar_qs = _scoped_invoice_qs(unit_id_list, property_id_list).filter(
-                    balance__gt=0,
-                    status__in=['draft', 'sent', 'partial', 'overdue'],
-                    date__lte=as_of_date,
-                )
-                if property_id:
-                    ar_qs = ar_qs.filter(
-                        Q(unit__property_id=property_id) |
-                        Q(property_id=property_id) |
-                        Q(lease__unit__property_id=property_id) |
-                        Q(lease__property_id=property_id)
-                    )
-                ar_total = ar_qs.aggregate(t=Sum('balance'))['t'] or Decimal('0')
-            if ar_total > 0:
-                # Insert AR right after Funds Held in Trust so the asset
-                # ordering reads cash → receivables → other on the page.
-                insert_at = 1 if funds_held != 0 else 0
-                asset_list.insert(insert_at, {
-                    'code': '1200',
-                    'name': 'Accounts Receivable',
-                    'subtype': 'accounts_receivable',
-                    'balance': float(ar_total),
-                })
-                total_assets += ar_total
+            # Mirror the sub-category totals into the legacy flat
+            # `accounts` shape so the existing UI still has data to
+            # render. The new `sections` field is what spec-compliant
+            # UI should consume.
+            for sc in sub_categories_assets:
+                if sc['total'] != 0:
+                    asset_list.append({
+                        'code': '',
+                        'name': sc['name'],
+                        'subtype': 'sub_category',
+                        'balance': sc['total'],
+                    })
+                    total_assets += Decimal(str(sc['total']))
+            for sc in sub_categories_liabilities:
+                if sc['total'] != 0:
+                    liability_list.append({
+                        'code': '',
+                        'name': sc['name'],
+                        'subtype': 'sub_category',
+                        'balance': sc['total'],
+                    })
+                    total_liabilities += Decimal(str(sc['total']))
 
-            # On a landlord-scoped sheet there's no per-landlord equity
-            # account in the agency's chart, so we synthesise a single
-            # "Owner's Equity" line equal to assets − liabilities. This is
-            # mathematically correct (the residual IS what the landlord
-            # owns), but if either side has a bug it gets absorbed
-            # silently into equity.
-            #
-            # `equity_method='balancing_residual'` and the per-component
-            # `equity_components` block let the frontend show the math
-            # so the figure isn't a black box.
+            # Equity = Assets - Liabilities (always shown).
             derived_equity = total_assets - total_liabilities
-            # Always emit the equity row — even when it lands at zero on
-            # a fresh tenant. The UI needs the line to anchor the
-            # Assets = Liabilities + Equity identity; hiding it makes
-            # the sheet look incomplete.
             equity_list = [{
                 'code': '',
                 'name': "Owner's Equity (Net Worth)",
@@ -1225,10 +1329,11 @@ class BalanceSheetView(APIView):
                 'total_assets': float(total_assets),
                 'total_liabilities': float(total_liabilities),
                 'derived_equity': float(derived_equity),
-                'funds_held_in_trust': float(funds_held),
-                'receipts_collected': float(funds_held_receipts) if funds_held_receipts is not None else None,
-                'commissions_charged': float(funds_held_commissions) if funds_held_commissions is not None else None,
-                'paid_expenses': float(funds_held_expenses) if funds_held_expenses is not None else None,
+                'funds_held_in_trust': float(funds_held_total),
+                'funds_owed_by_trust': float(funds_owed_total),
+                'lessees_arrears': float(lessees_arrears_total),
+                'lessees_prepayments': float(lessees_prepayments_total),
+                'accruals': float(accruals_total),
             }
 
         # ------------------------------------------------------------
@@ -1564,11 +1669,17 @@ class BalanceSheetView(APIView):
             'as_of_date': str(as_of_date),
             'assets': {
                 'accounts': asset_list,
-                'total': float(total_assets)
+                'total': float(total_assets),
+                # Spec-compliant 4-sub-category structure for landlord-
+                # scoped sheets. Frontend should prefer `sub_categories`
+                # when present and render the 4 buckets unconditionally
+                # (even when totals are zero).
+                'sub_categories': sub_categories_assets,
             },
             'liabilities': {
                 'accounts': liability_list,
-                'total': float(total_liabilities)
+                'total': float(total_liabilities),
+                'sub_categories': sub_categories_liabilities,
             },
             'equity': {
                 'accounts': equity_list,

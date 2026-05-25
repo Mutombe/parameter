@@ -1465,27 +1465,52 @@ function BalanceSheetReport() {
         </div>
       ) : (
         <div className="p-6 space-y-6">
-          {/* Two-column layout: Assets on the left, Liabilities + Equity
-              on the right. Each section is a stack of accordions grouped
-              by subtype (Current / Non-Current / Other). Headers carry
-              the section subtotal so users see numbers at a glance even
-              when individual groups are collapsed. */}
+          {/* If the backend emits the spec'd `sub_categories` structure
+              (landlord-scoped sheets), render the 4-bucket layout per
+              the BS REPORTING spec — Funds Held in Trust / Lessees
+              Arrears / Prepayments / Other CA on the asset side and
+              Funds Owed By Trust / Lessees Prepayments / Accruals /
+              Other CL on the liability side. The 4 sub-categories
+              ALWAYS show, even at zero, so the structure is consistent
+              across all landlords.
+
+              Agency-wide sheets fall back to the legacy subtype-grouped
+              accordion layout (Current / Non-Current / Other) because
+              the spec is landlord-specific. */}
           <div className="grid md:grid-cols-2 gap-6">
-            <BalanceSheetSection
-              title="Assets"
-              accent="blue"
-              groups={groupAssets(data?.assets?.accounts || [])}
-              total={data?.assets?.total || 0}
-              emptyLabel="No asset accounts"
-            />
-            <div className="space-y-6">
-              <BalanceSheetSection
-                title="Liabilities"
-                accent="rose"
-                groups={groupLiabilities(data?.liabilities?.accounts || [])}
-                total={data?.liabilities?.total || 0}
-                emptyLabel="No liability accounts"
+            {data?.assets?.sub_categories ? (
+              <SubCategorySection
+                title="Current Assets"
+                accent="blue"
+                buckets={data.assets.sub_categories}
+                total={data?.assets?.total || 0}
               />
+            ) : (
+              <BalanceSheetSection
+                title="Assets"
+                accent="blue"
+                groups={groupAssets(data?.assets?.accounts || [])}
+                total={data?.assets?.total || 0}
+                emptyLabel="No asset accounts"
+              />
+            )}
+            <div className="space-y-6">
+              {data?.liabilities?.sub_categories ? (
+                <SubCategorySection
+                  title="Current Liabilities"
+                  accent="rose"
+                  buckets={data.liabilities.sub_categories}
+                  total={data?.liabilities?.total || 0}
+                />
+              ) : (
+                <BalanceSheetSection
+                  title="Liabilities"
+                  accent="rose"
+                  groups={groupLiabilities(data?.liabilities?.accounts || [])}
+                  total={data?.liabilities?.total || 0}
+                  emptyLabel="No liability accounts"
+                />
+              )}
               <BalanceSheetSection
                 title="Equity"
                 accent="purple"
@@ -1607,6 +1632,112 @@ function BalanceSheetSection({
 }
 
 
+/** Spec-compliant landlord Balance Sheet section.
+ *
+ *  Renders the 4 sub-categories defined in the BALANCE SHEET REPORTING
+ *  spec (Funds Held in Trust / Lessees Arrears / Prepayments / Other
+ *  Current Assets — or the liability equivalents). Each bucket is its
+ *  own accordion with its total on the right. ALL FOUR ALWAYS SHOW,
+ *  even when the bucket has no rows — that's intentional, the spec is
+ *  explicit about it. A toggle on the title hides zero-total buckets
+ *  for users who want a tighter view.
+ */
+function SubCategorySection({
+  title,
+  accent,
+  buckets,
+  total,
+}: {
+  title: string
+  accent: 'blue' | 'rose'
+  buckets: Array<{
+    name: string
+    total: number
+    breakdown: Array<any>
+    description?: string
+  }>
+  total: number
+}) {
+  const palette = {
+    blue: { value: 'text-blue-700', totalRow: 'bg-blue-100 text-blue-800', hover: 'hover:bg-blue-50/50' },
+    rose: { value: 'text-rose-700', totalRow: 'bg-rose-100 text-rose-800', hover: 'hover:bg-rose-50/50' },
+  }[accent]
+  const [hideZeros, setHideZeros] = useState(false)
+  const visible = hideZeros ? buckets.filter(b => b.total !== 0) : buckets
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2 px-1">
+        <h3 className="text-xs font-bold tracking-[0.16em] uppercase text-gray-700">{title}</h3>
+        <button
+          onClick={() => setHideZeros(h => !h)}
+          className="text-[10px] uppercase tracking-wider text-gray-500 hover:text-gray-700"
+        >
+          {hideZeros ? 'Show all' : 'Hide zero'}
+        </button>
+      </div>
+      <div className="space-y-2">
+        {visible.map(bucket => (
+          <Accordion
+            key={bucket.name}
+            title={
+              <span className="flex items-center gap-2">
+                {bucket.name}
+                {bucket.description && (
+                  <span className="text-[10px] font-normal text-gray-400 hidden md:inline">
+                    · {bucket.description}
+                  </span>
+                )}
+              </span>
+            }
+            right={
+              <span className={cn('text-sm font-semibold tabular-nums', palette.value)}>
+                {formatCurrency(bucket.total)}
+              </span>
+            }
+            defaultOpen={bucket.total !== 0}
+          >
+            {bucket.breakdown.length === 0 ? (
+              <div className="px-5 py-3 text-center text-xs text-gray-400">
+                No items in this category
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {bucket.breakdown.map((row: any, idx: number) => {
+                  const code = row.code || row.tenant_code || row.account_code || ''
+                  const name = row.name || row.tenant_name ||
+                    (row.category ? `${row.category}${row.currency ? ` (${row.currency})` : ''}` : '')
+                  return (
+                    <div
+                      key={`${code}-${idx}`}
+                      className={cn('px-5 py-2 flex items-center gap-3 text-sm transition-colors', palette.hover)}
+                    >
+                      {code && (
+                        <span className="text-[10px] font-mono text-gray-400 w-20 shrink-0 truncate" title={code}>{code}</span>
+                      )}
+                      <span className="flex-1 min-w-0 text-gray-700 truncate capitalize" title={name}>
+                        {name || '—'}
+                      </span>
+                      <span className={cn('tabular-nums font-semibold shrink-0', palette.value)}>
+                        {formatCurrency(row.balance ?? 0)}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </Accordion>
+        ))}
+      </div>
+      <div className={cn('px-5 py-3 rounded-xl flex justify-between font-bold', palette.totalRow)}>
+        <span>Total {title}</span>
+        <span className="tabular-nums">{formatCurrency(total)}</span>
+      </div>
+    </div>
+  )
+}
+
+
 /** Surfaces the math behind the "Owner's Equity" plug on a
  *  landlord-scoped Balance Sheet. Without this panel, equity is an
  *  unexplained number that absorbs any bug on either side.
@@ -1632,13 +1763,12 @@ function EquityPlugExplainer({ components }: { components: any }) {
       </div>
       <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm">
         <div className="space-y-1.5">
-          <div className="text-[10px] font-semibold tracking-wider uppercase text-amber-700/80">Funds Held in Trust</div>
-          <Row label="Receipts collected"        value={fmt(components.receipts_collected)} />
-          <Row label="Less: Commission charged" value={fmt(components.commissions_charged)} negative />
-          <Row label="Less: Paid expenses"      value={fmt(components.paid_expenses)} negative />
-          <div className="border-t border-amber-300 pt-1 mt-1">
-            <Row label="= Funds Held in Trust" value={fmt(components.funds_held_in_trust)} bold />
-          </div>
+          <div className="text-[10px] font-semibold tracking-wider uppercase text-amber-700/80">Sub-Account Inputs</div>
+          <Row label="Funds Held in Trust"   value={fmt(components.funds_held_in_trust)} />
+          <Row label="Lessees Arrears"       value={fmt(components.lessees_arrears)} />
+          <Row label="Less: Funds Owed By Trust" value={fmt(components.funds_owed_by_trust)} negative />
+          <Row label="Less: Lessees Prepayments" value={fmt(components.lessees_prepayments)} negative />
+          <Row label="Less: Accruals"        value={fmt(components.accruals)} negative />
         </div>
         <div className="space-y-1.5">
           <div className="text-[10px] font-semibold tracking-wider uppercase text-amber-700/80">Sheet Reconciliation</div>
