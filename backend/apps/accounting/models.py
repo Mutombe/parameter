@@ -58,10 +58,35 @@ class ChartOfAccount(models.Model):
         ACCRUED_LIABILITIES = 'accrued_liabilities', 'Accrued Liabilities'
         ACCUMULATED_DEPRECIATION = 'accumulated_depreciation', 'Accumulated Depreciation'
 
+    class BalanceSheetCategory(models.TextChoices):
+        """User-selected landlord Balance Sheet sub-category.
+
+        Mandatory for asset/liability accounts at creation. The landlord
+        Balance Sheet places each account STRICTLY under the bucket chosen
+        here — no name/subtype guessing. Unset (legacy) accounts fall into
+        the matching 'Other Current ...' bucket on the report.
+        """
+        # Current Asset buckets
+        FUNDS_HELD_IN_TRUST = 'funds_held_in_trust', 'Funds Held in Trust'
+        LESSEES_ARREARS = 'lessees_arrears', 'Lessees Arrears'
+        PREPAYMENTS = 'prepayments', 'Prepayments'
+        OTHER_CURRENT_ASSETS = 'other_current_assets', 'Other Current Assets'
+        # Current Liability buckets
+        FUNDS_OWED_BY_TRUST = 'funds_owed_by_trust', 'Funds Owed by Trust'
+        LESSEES_PREPAYMENTS = 'lessees_prepayments', 'Lessees Prepayments'
+        ACCRUALS = 'accruals', 'Accruals'
+        OTHER_CURRENT_LIABILITIES = 'other_current_liabilities', 'Other Current Liabilities'
+
     code = models.CharField(max_length=20, unique=True)
     name = models.CharField(max_length=255)
     account_type = models.CharField(max_length=20, choices=AccountType.choices)
     account_subtype = models.CharField(max_length=30, choices=AccountSubType.choices)
+    # Landlord Balance Sheet sub-category (asset/liability accounts only).
+    # Blank for equity/revenue/expense and for legacy rows created before
+    # this field existed; the report treats blank as 'Other Current ...'.
+    balance_sheet_category = models.CharField(
+        max_length=40, choices=BalanceSheetCategory.choices, blank=True, default=''
+    )
     description = models.TextField(blank=True)
     parent = models.ForeignKey(
         'self', on_delete=models.SET_NULL, null=True, blank=True,

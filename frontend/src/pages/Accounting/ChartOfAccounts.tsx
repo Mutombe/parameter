@@ -138,6 +138,7 @@ export default function ChartOfAccounts() {
     name: '',
     account_type: 'asset',
     account_subtype: 'current_asset',
+    balance_sheet_category: 'other_current_assets',
   })
 
   const selection = useSelection<number>({ clearOnChange: [search, typeFilter] })
@@ -165,7 +166,7 @@ export default function ChartOfAccounts() {
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
       toast.success('Account created successfully')
       setShowCreateModal(false)
-      setNewAccount({ code: '', name: '', account_type: 'asset', account_subtype: 'current_asset' })
+      setNewAccount({ code: '', name: '', account_type: 'asset', account_subtype: 'current_asset', balance_sheet_category: 'other_current_assets' })
     },
     onError: () => {
       toast.error('Failed to create account')
@@ -210,6 +211,29 @@ export default function ChartOfAccounts() {
     revenue: ['operating_revenue', 'other_income'],
     expense: ['operating_expense', 'cost_of_sales', 'other_expense'],
   }
+
+  // Mandatory landlord Balance Sheet sub-category for asset/liability
+  // accounts. The report places each account STRICTLY under the bucket
+  // chosen here, so it must be selected at creation.
+  const bsCategoryOptions: Record<string, { value: string; label: string }[]> = {
+    asset: [
+      { value: 'funds_held_in_trust', label: 'Funds Held in Trust' },
+      { value: 'lessees_arrears', label: 'Lessees Arrears' },
+      { value: 'prepayments', label: 'Prepayments' },
+      { value: 'other_current_assets', label: 'Other Current Assets' },
+    ],
+    liability: [
+      { value: 'funds_owed_by_trust', label: 'Funds Owed by Trust' },
+      { value: 'lessees_prepayments', label: 'Lessees Prepayments' },
+      { value: 'accruals', label: 'Accruals' },
+      { value: 'other_current_liabilities', label: 'Other Current Liabilities' },
+    ],
+  }
+  const defaultBsCategory: Record<string, string> = {
+    asset: 'other_current_assets',
+    liability: 'other_current_liabilities',
+  }
+  const needsBsCategory = newAccount.account_type === 'asset' || newAccount.account_type === 'liability'
 
   const allAccounts = accounts || []
   const selectableItems = Array.isArray(allAccounts) ? allAccounts.filter((a: any) => !a._isOptimistic) : []
@@ -541,7 +565,8 @@ export default function ChartOfAccounts() {
               onChange={(e) => setNewAccount({
                 ...newAccount,
                 account_type: e.target.value,
-                account_subtype: subtypeOptions[e.target.value][0]
+                account_subtype: subtypeOptions[e.target.value][0],
+                balance_sheet_category: defaultBsCategory[e.target.value] || '',
               })}
             >
               <option value="asset">Asset</option>
@@ -571,6 +596,22 @@ export default function ChartOfAccounts() {
               </option>
             ))}
           </Select>
+
+          {needsBsCategory && (
+            <Select
+              label="Balance Sheet Sub-Category"
+              value={newAccount.balance_sheet_category}
+              onChange={(e) => setNewAccount({ ...newAccount, balance_sheet_category: e.target.value })}
+              required
+              hint="Where this account appears on the landlord Balance Sheet. Required."
+            >
+              {bsCategoryOptions[newAccount.account_type]?.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
+          )}
 
           <div className="flex gap-3 pt-4">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setShowCreateModal(false)}>

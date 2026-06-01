@@ -30,6 +30,17 @@ class Command(BaseCommand):
                         )
                         self.stdout.write("  - Added/verified unit_definition in masterfile_property")
 
+                        # Add balance_sheet_category to accounting_chartofaccount
+                        # if missing (migration 0017 may be fake-applied in
+                        # some tenant schemas). Drives strict BS sub-category
+                        # placement on the landlord Balance Sheet.
+                        cursor.execute(
+                            "ALTER TABLE accounting_chartofaccount "
+                            "ADD COLUMN IF NOT EXISTS balance_sheet_category "
+                            "VARCHAR(40) NOT NULL DEFAULT ''"
+                        )
+                        self.stdout.write("  - Added/verified balance_sheet_category in accounting_chartofaccount")
+
                         # Add unit_id to masterfile_rentaltenant if missing
                         cursor.execute("""
                             DO $$

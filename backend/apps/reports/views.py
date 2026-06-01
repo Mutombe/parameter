@@ -346,7 +346,8 @@ def _aggregate_balances_from_gl(scope_filter, account_types, end_date=None, star
     if end_date:
         qs = qs.filter(date__lte=end_date)
     return list(
-        qs.values('account__code', 'account__name', 'account__account_type', 'account__account_subtype')
+        qs.values('account__code', 'account__name', 'account__account_type',
+                  'account__account_subtype', 'account__balance_sheet_category')
         .annotate(
             total_debit=Coalesce(Sum('debit_amount'), Value(Decimal('0'))),
             total_credit=Coalesce(Sum('credit_amount'), Value(Decimal('0'))),
@@ -1077,9 +1078,12 @@ class BalanceSheetView(APIView):
             funds_held_breakdown = []
             funds_owed_breakdown = []
             for sub in landlord_subs:
+                # Strict period rule: the closing balance is the latest
+                # transaction DATED on/before the report date — an entry
+                # dated after as_of_date can never affect this sheet.
                 last_txn = SubsidiaryTransaction.objects.filter(
                     account=sub, date__lte=as_of_date,
-                ).order_by('-transaction_number').first()
+                ).order_by('-date', '-transaction_number').first()
                 bal = last_txn.balance if last_txn else Decimal('0')
                 # Landlord accounts are credit-normal: positive balance
                 # = credit balance = agent holds cash for landlord.
@@ -1129,9 +1133,11 @@ class BalanceSheetView(APIView):
             arrears_breakdown = []
             prepayments_breakdown = []
             for sub in tenant_subs:
+                # Strict period rule: closing balance as at the report
+                # date — latest dated transaction on/before as_of_date.
                 last_txn = SubsidiaryTransaction.objects.filter(
                     account=sub, date__lte=as_of_date,
-                ).order_by('-transaction_number').first()
+                ).order_by('-date', '-transaction_number').first()
                 bal = last_txn.balance if last_txn else Decimal('0')
                 # Tenant/account_holder accounts are debit-normal:
                 # positive = tenant owes us (arrears), negative = prepaid.
@@ -1174,21 +1180,80 @@ class BalanceSheetView(APIView):
                 _CoA.objects.filter(account_subtype='bank').values_list('code', flat=True)
             )
 
-            # Walk the landlord-scoped GL and collect "Other" buckets.
-            #   Other CA = non-bank, non-AR, non-prepaid assets
-            #   Other CL = liabilities minus the 10 agent-only accounts
-            #     and the Accruals (already counted from AccruedExpense)
-            prepayments_total = Decimal('0')
-            prepayments_breakdown_gl = []
-            other_ca_total = Decimal('0')
-            other_ca_breakdown = []
-            other_cl_total = Decimal('0')
-            other_cl_breakdown = []
+            # ============================================================
+            # Strict sub-category placement (BS SECOND PROMPT spec).
+            #
+            # Every asset/liability GL account is reported under the
+            # `balance_sheet_category` the user picked at creation time.
+            # We NEVER guess by name/subtype any more. An account with no
+            # category (legacy rows) falls into the matching 'Other
+            # Current ...' bucket so nothing silently disappears.
+            #
+            # The four sub-ledger-derived buckets (Funds Held, Lessees
+            # Arrears, Funds Owed, Lessees Prepayments) are pre-seeded
+            # with their sub-account totals; an explicitly-assigned GL
+            # account is ADDED on top (the user's deliberate choice).
+            # Bank and AR GL rows are still skipped because the trust
+            # sub-ledger already represents that same cash / receivable.
+            # ============================================================
+            asset_buckets = {
+                'funds_held_in_trust': {
+                    'name': 'Funds Held in Trust',
+                    'total': funds_held_total,
+                    'breakdown': funds_held_breakdown,
+                    'description': 'Positive landlord sub-account balances (cash held on behalf)',
+                },
+                'lessees_arrears': {
+                    'name': 'Lessees Arrears',
+                    'total': lessees_arrears_total,
+                    'breakdown': arrears_breakdown,
+                    'description': 'Sum of each tenant/account-holder outstanding balance as at the report date',
+                },
+                'prepayments': {
+                    'name': 'Prepayments',
+                    'total': Decimal('0'),
+                    'breakdown': [],
+                    'description': 'Expenses paid in advance',
+                },
+                'other_current_assets': {
+                    'name': 'Other Current Assets',
+                    'total': Decimal('0'),
+                    'breakdown': [],
+                    'description': 'Asset accounts classified as Other Current Assets at creation',
+                },
+            }
+            liability_buckets = {
+                'funds_owed_by_trust': {
+                    'name': 'Funds Owed by Trust',
+                    'total': funds_owed_total,
+                    'breakdown': funds_owed_breakdown,
+                    'description': 'Negative landlord sub-account balances (overdrawn)',
+                },
+                'lessees_prepayments': {
+                    'name': 'Lessees Prepayments',
+                    'total': lessees_prepayments_total,
+                    'breakdown': prepayments_breakdown,
+                    'description': 'Sum of each tenant/account-holder credit balance (paid ahead) as at the report date',
+                },
+                'accruals': {
+                    'name': 'Accruals',
+                    'total': accruals_total,
+                    'breakdown': [],
+                    'description': 'Accrued expenses awaiting payment',
+                },
+                'other_current_liabilities': {
+                    'name': 'Other Current Liabilities',
+                    'total': Decimal('0'),
+                    'breakdown': [],
+                    'description': 'Liability accounts classified as Other Current Liabilities at creation',
+                },
+            }
 
             for row in agg:
                 acct_type = row['account__account_type']
                 code = row['account__code']
                 subtype = row.get('account__account_subtype') or ''
+                category = row.get('account__balance_sheet_category') or ''
                 name = _bs_display_name(row['account__name'], subtype)
                 debit_total = row['total_debit']
                 credit_total = row['total_credit']
@@ -1205,15 +1270,10 @@ class BalanceSheetView(APIView):
                     # sub-account-derived Lessees Arrears — skip.
                     if subtype == 'accounts_receivable':
                         continue
-                    # Prepaid Expenses → Prepayments bucket.
-                    if subtype == 'prepaid' or 'prepaid' in name.lower():
-                        prepayments_total += bal
-                        prepayments_breakdown_gl.append({
-                            'code': code, 'name': name, 'balance': float(bal),
-                        })
-                        continue
-                    other_ca_total += bal
-                    other_ca_breakdown.append({
+                    # Strict placement: use the chosen bucket, else Other.
+                    bucket_key = category if category in asset_buckets else 'other_current_assets'
+                    asset_buckets[bucket_key]['total'] += bal
+                    asset_buckets[bucket_key]['breakdown'].append({
                         'code': code, 'name': name,
                         'subtype': subtype, 'balance': float(bal),
                     })
@@ -1225,11 +1285,10 @@ class BalanceSheetView(APIView):
                     # landlord-scoped sheet per the BS REPORTING spec.
                     if _is_agent_liability(name):
                         continue
-                    # Tenant Deposits → typically goes to the Funds Owed
-                    # bucket via the sub-account flow, not the GL row.
-                    # Anything else flows into Other CL.
-                    other_cl_total += bal
-                    other_cl_breakdown.append({
+                    # Strict placement: use the chosen bucket, else Other.
+                    bucket_key = category if category in liability_buckets else 'other_current_liabilities'
+                    liability_buckets[bucket_key]['total'] += bal
+                    liability_buckets[bucket_key]['breakdown'].append({
                         'code': code, 'name': name,
                         'subtype': subtype, 'balance': float(bal),
                     })
@@ -1237,59 +1296,27 @@ class BalanceSheetView(APIView):
                 # equity is derived below as the balancing residual.
 
             # --- Build the structured 4-sub-category sections per spec.
-            #     ALWAYS emit all 4 even when totals are zero so the UI
-            #     can render the sub-categories consistently. ---
+            #     ALWAYS emit all 4 (fixed order) even when totals are
+            #     zero so the UI can render the sub-categories. ---
+            def _finalize(bucket):
+                return {
+                    'name': bucket['name'],
+                    'total': float(bucket['total']),
+                    'breakdown': bucket['breakdown'],
+                    'description': bucket['description'],
+                }
+
             sub_categories_assets = [
-                {
-                    'name': 'Funds Held in Trust',
-                    'total': float(funds_held_total),
-                    'breakdown': funds_held_breakdown,
-                    'description': 'Positive landlord sub-account balances (cash held on behalf)',
-                },
-                {
-                    'name': 'Lessees Arrears',
-                    'total': float(lessees_arrears_total),
-                    'breakdown': arrears_breakdown,
-                    'description': 'Sum of each tenant/account-holder outstanding balance',
-                },
-                {
-                    'name': 'Prepayments',
-                    'total': float(prepayments_total),
-                    'breakdown': prepayments_breakdown_gl,
-                    'description': 'Expenses paid in advance',
-                },
-                {
-                    'name': 'Other Current Assets',
-                    'total': float(other_ca_total),
-                    'breakdown': other_ca_breakdown,
-                    'description': 'Remaining current assets from the GL',
-                },
+                _finalize(asset_buckets['funds_held_in_trust']),
+                _finalize(asset_buckets['lessees_arrears']),
+                _finalize(asset_buckets['prepayments']),
+                _finalize(asset_buckets['other_current_assets']),
             ]
             sub_categories_liabilities = [
-                {
-                    'name': 'Funds Owed By Trust',
-                    'total': float(funds_owed_total),
-                    'breakdown': funds_owed_breakdown,
-                    'description': 'Negative landlord sub-account balances (overdrawn)',
-                },
-                {
-                    'name': 'Lessees Prepayments',
-                    'total': float(lessees_prepayments_total),
-                    'breakdown': prepayments_breakdown,
-                    'description': 'Sum of each tenant/account-holder credit balance (paid ahead)',
-                },
-                {
-                    'name': 'Accruals',
-                    'total': float(accruals_total),
-                    'breakdown': [],
-                    'description': 'Accrued expenses awaiting payment',
-                },
-                {
-                    'name': 'Other Current Liabilities',
-                    'total': float(other_cl_total),
-                    'breakdown': other_cl_breakdown,
-                    'description': 'Remaining current liabilities from the GL',
-                },
+                _finalize(liability_buckets['funds_owed_by_trust']),
+                _finalize(liability_buckets['lessees_prepayments']),
+                _finalize(liability_buckets['accruals']),
+                _finalize(liability_buckets['other_current_liabilities']),
             ]
 
             # Mirror the sub-category totals into the legacy flat

@@ -20,9 +20,9 @@ class ChartOfAccountSerializer(serializers.ModelSerializer):
         model = ChartOfAccount
         fields = [
             'id', 'code', 'name', 'account_type', 'account_subtype',
-            'description', 'parent', 'is_active', 'is_system', 'currency',
-            'current_balance', 'normal_balance', 'children',
-            'created_at', 'updated_at'
+            'balance_sheet_category', 'description', 'parent', 'is_active',
+            'is_system', 'currency', 'current_balance', 'normal_balance',
+            'children', 'created_at', 'updated_at'
         ]
         read_only_fields = ['current_balance', 'created_at', 'updated_at']
 
@@ -30,6 +30,49 @@ class ChartOfAccountSerializer(serializers.ModelSerializer):
         # Use prefetched children to avoid N+1 recursive queries
         children = [c for c in obj.children.all() if c.is_active]
         return ChartOfAccountListSerializer(children, many=True).data
+
+    def validate(self, attrs):
+        """A Balance Sheet sub-category is mandatory for asset/liability
+        accounts so the landlord Balance Sheet can place every account
+        strictly under its chosen bucket (per BS REPORTING spec). On a
+        partial update, fall back to the instance's existing values.
+        """
+        account_type = attrs.get(
+            'account_type',
+            getattr(self.instance, 'account_type', None),
+        )
+        bs_category = attrs.get(
+            'balance_sheet_category',
+            getattr(self.instance, 'balance_sheet_category', ''),
+        )
+        if account_type in ('asset', 'liability') and not bs_category:
+            raise serializers.ValidationError({
+                'balance_sheet_category':
+                    'A Balance Sheet sub-category is required for asset and '
+                    'liability accounts.'
+            })
+        # Guard against an asset account being filed under a liability
+        # bucket (and vice-versa) — that would scramble the report.
+        if bs_category:
+            ASSET_BUCKETS = {
+                'funds_held_in_trust', 'lessees_arrears',
+                'prepayments', 'other_current_assets',
+            }
+            LIABILITY_BUCKETS = {
+                'funds_owed_by_trust', 'lessees_prepayments',
+                'accruals', 'other_current_liabilities',
+            }
+            if account_type == 'asset' and bs_category not in ASSET_BUCKETS:
+                raise serializers.ValidationError({
+                    'balance_sheet_category':
+                        'Selected sub-category is not an asset bucket.'
+                })
+            if account_type == 'liability' and bs_category not in LIABILITY_BUCKETS:
+                raise serializers.ValidationError({
+                    'balance_sheet_category':
+                        'Selected sub-category is not a liability bucket.'
+                })
+        return attrs
 
 
 class ChartOfAccountListSerializer(serializers.ModelSerializer):
@@ -40,8 +83,8 @@ class ChartOfAccountListSerializer(serializers.ModelSerializer):
         model = ChartOfAccount
         fields = [
             'id', 'code', 'name', 'account_type', 'account_subtype',
-            'parent', 'is_active', 'is_system', 'currency',
-            'current_balance', 'normal_balance',
+            'balance_sheet_category', 'parent', 'is_active', 'is_system',
+            'currency', 'current_balance', 'normal_balance',
         ]
 
 
