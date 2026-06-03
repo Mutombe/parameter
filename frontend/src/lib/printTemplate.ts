@@ -838,8 +838,12 @@ function buildTrialBalanceBody(data: any, currency: string): string {
 
 function buildIncomeStatementBody(data: any, currency: string): string {
   const rev = data?.revenue?.accounts || []
+  const cos = data?.cost_of_sales?.accounts || []
   const exp = data?.expenses?.accounts || []
   const revTotal = data?.revenue?.total || 0
+  const cosTotal = data?.cost_of_sales?.total || 0
+  const grossProfit = data?.gross_profit
+  const hasCostOfSales = grossProfit != null
   const expTotal = data?.expenses?.total || 0
   const net = data?.net_income || 0
   const isProfit = net >= 0
@@ -856,7 +860,7 @@ function buildIncomeStatementBody(data: any, currency: string): string {
     <div class="sec">
       <div class="sec-h">
         <div class="sec-h-title">Revenue</div>
-        <div class="sec-h-meta">Income earned</div>
+        <div class="sec-h-meta">Gross income from tenants (before commission)</div>
       </div>
       <table class="ftbl"><tbody>
         ${sectionRows(rev, 'No revenue recognised in this period.')}
@@ -867,15 +871,34 @@ function buildIncomeStatementBody(data: any, currency: string): string {
       </tbody></table>
     </div>
 
+    ${hasCostOfSales ? `
     <div class="sec">
       <div class="sec-h">
-        <div class="sec-h-title">Expenses</div>
+        <div class="sec-h-title">Cost of Sales</div>
+        <div class="sec-h-meta">Agent commission deducted from revenue</div>
+      </div>
+      <table class="ftbl"><tbody>
+        ${sectionRows(cos, 'No commission charged this period.')}
+        <tr class="total">
+          <td colspan="2">Total Cost of Sales</td>
+          <td class="num">(${fmtMoney(cosTotal, currency, false)})</td>
+        </tr>
+        <tr class="total">
+          <td colspan="2">Gross Profit</td>
+          <td class="num">${fmtMoney(grossProfit, currency, false)}</td>
+        </tr>
+      </tbody></table>
+    </div>` : ''}
+
+    <div class="sec">
+      <div class="sec-h">
+        <div class="sec-h-title">${hasCostOfSales ? 'Operating Expenses' : 'Expenses'}</div>
         <div class="sec-h-meta">Costs incurred (cash &amp; accrued)</div>
       </div>
       <table class="ftbl"><tbody>
         ${sectionRows(exp, 'No expenses recognised in this period.')}
         <tr class="total">
-          <td colspan="2">Total Expenses</td>
+          <td colspan="2">Total ${hasCostOfSales ? 'Operating ' : ''}Expenses</td>
           <td class="num">(${fmtMoney(expTotal, currency, false)})</td>
         </tr>
       </tbody></table>

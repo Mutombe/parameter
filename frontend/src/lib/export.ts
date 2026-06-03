@@ -114,22 +114,34 @@ export function exportReport(
       ]
       break
 
-    case 'income-statement':
-      // Combine revenue and expense accounts
+    case 'income-statement': {
+      // Combine revenue, cost of sales and expense accounts. Cost of
+      // Sales (commission) + Gross Profit only appear on the landlord
+      // statement (gross_profit != null).
       const revenueAccounts = (data?.revenue?.accounts || []).map((a: any) => ({
         ...a,
         category: 'Revenue'
       }))
+      const costOfSalesAccounts = (data?.cost_of_sales?.accounts || []).map((a: any) => ({
+        ...a,
+        category: 'Cost of Sales'
+      }))
+      const hasCostOfSales = data?.gross_profit != null
       const expenseAccounts = (data?.expenses?.accounts || []).map((a: any) => ({
         ...a,
-        category: 'Expense'
+        category: hasCostOfSales ? 'Operating Expense' : 'Expense'
       }))
-      exportData = [...revenueAccounts, ...expenseAccounts]
+      exportData = [...revenueAccounts, ...costOfSalesAccounts, ...expenseAccounts]
 
       // Add totals
       exportData.push({ code: '', name: 'Total Revenue', category: '', balance: data?.revenue?.total || 0 })
-      exportData.push({ code: '', name: 'Total Expenses', category: '', balance: data?.expenses?.total || 0 })
+      if (hasCostOfSales) {
+        exportData.push({ code: '', name: 'Total Cost of Sales', category: '', balance: data?.cost_of_sales?.total || 0 })
+        exportData.push({ code: '', name: 'Gross Profit', category: '', balance: data?.gross_profit || 0 })
+      }
+      exportData.push({ code: '', name: hasCostOfSales ? 'Total Operating Expenses' : 'Total Expenses', category: '', balance: data?.expenses?.total || 0 })
       exportData.push({ code: '', name: 'Net Income', category: '', balance: data?.net_income || 0 })
+    }
 
       columns = [
         { key: 'code', header: 'Account Code' },

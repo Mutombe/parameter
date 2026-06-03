@@ -604,6 +604,13 @@ class IncomeStatementView(APIView):
 
         scope_filter = _gl_filter_for_landlord(landlord_id, property_id)
 
+        # Cost of Sales / Gross Profit only exist on the landlord-scoped
+        # statement (commission is the landlord's Cost of Sales). The
+        # agency-wide P&L leaves these empty / null.
+        cost_of_sales_list = []
+        total_cost_of_sales = Decimal('0')
+        gross_profit = None
+
         if scope_filter is None:
             # Agency-wide P&L — aggregate revenue and expense GL entries
             # within [start_date, end_date]. ChartOfAccount.current_balance
@@ -679,43 +686,99 @@ class IncomeStatementView(APIView):
                 Unit.objects.filter(property_id__in=property_id_list).values_list('id', flat=True)
             )
 
-            # Income (accrual): invoiced amounts on landlord's units/properties.
-            invoice_qs = Invoice.objects.filter(
-                Q(unit_id__in=unit_id_list) | Q(property_id__in=property_id_list)
-            )
+            # ============================================================
+            # Landlord Income Statement (INCOME STATEMENT REPORTING spec).
+            #
+            #   Revenue        = GROSS tenant payments (receipts) for this
+            #                    landlord, split into the 8 canonical
+            #                    sub-categories, BEFORE the agent's
+            #                    commission is deducted.
+            #   Cost of Sales  = commission deducted from those revenue
+            #                    sub-categories (the cross-entity Commission
+            #                    account — agent's Revenue, landlord's COS).
+            #   Gross Profit   = Revenue − Cost of Sales.
+            #   Expenses       = operating expenses booked against the
+            #                    landlord (cash AND non-cash), below
+            #                    Gross Profit, to reach Net Income.
+            #
+            # Everything is scoped to the selected period [start, end] so
+            # the figures strictly match the month/quarter the user picked.
+            # ============================================================
+            scoped_receipts = _scoped_receipt_qs(unit_id_list, property_id_list)
             if start_date:
-                invoice_qs = invoice_qs.filter(date__gte=start_date)
-            invoice_qs = invoice_qs.filter(date__lte=end_date)
+                scoped_receipts = scoped_receipts.filter(date__gte=start_date)
+            scoped_receipts = scoped_receipts.filter(date__lte=end_date)
 
-            # Group income by invoice_type so the Rental Income / Levy /
-            # Parking lines mirror the chart users already know from the
-            # Income & Expenditure report.
-            INCOME_LABELS = {
-                'rent': 'Rental Income', 'levy': 'Levy Income',
-                'special_levy': 'Special Levy', 'maintenance': 'Maintenance Income',
-                'parking': 'Parking Income', 'rates': 'Rates Income',
-                'deposit': 'Deposit', 'penalty': 'Late Payment Penalty',
-                'utility': 'Utility Income', 'vat': 'VAT', 'other': 'Other Income',
-            }
+            # The 8 canonical landlord revenue sub-categories, in order.
+            # Always emitted (even at zero) so the statement is consistent.
+            REVENUE_BUCKETS = [
+                ('rent', 'Rental Income'),
+                ('levy', 'Levy Income'),
+                ('special_levy', 'Special Levy Income'),
+                ('maintenance', 'Maintenance Income'),
+                ('rates', 'Rates Income'),
+                ('parking', 'Parking Income'),
+                ('deposit', 'Deposit Income'),
+                ('vat', 'VAT Income'),
+            ]
+            _canonical = dict(REVENUE_BUCKETS)
+
+            # --- Revenue: gross receipts grouped by invoice_type. ---
+            gross_by_type = {}
+            for row in scoped_receipts.values('invoice__invoice_type').annotate(g=Sum('amount')):
+                gross_by_type[row['invoice__invoice_type'] or 'other'] = row['g'] or Decimal('0')
+
             revenue_list = []
             total_revenue = Decimal('0')
-            for row in invoice_qs.values('invoice_type').annotate(t=Sum('amount')).order_by('invoice_type'):
-                amt = row['t'] or Decimal('0')
+            for key, label in REVENUE_BUCKETS:
+                amt = gross_by_type.get(key, Decimal('0'))
+                revenue_list.append({'code': '', 'name': label, 'balance': float(amt)})
+                total_revenue += amt
+            # Payment types outside the canonical 8 (penalty, utility,
+            # other) are surfaced as Other Income so nothing is dropped.
+            other_income = sum(
+                (v for k, v in gross_by_type.items() if k not in _canonical),
+                Decimal('0'),
+            )
+            if other_income:
+                revenue_list.append({'code': '', 'name': 'Other Income', 'balance': float(other_income)})
+                total_revenue += other_income
+
+            # --- Cost of Sales: commission deducted per revenue bucket. ---
+            commission_by_type = {}
+            for row in scoped_receipts.values('invoice__invoice_type').annotate(
+                c=Sum(_commission_expr())
+            ):
+                commission_by_type[row['invoice__invoice_type'] or 'other'] = row['c'] or Decimal('0')
+
+            for key, label in REVENUE_BUCKETS:
+                amt = commission_by_type.get(key, Decimal('0'))
                 if amt == 0:
                     continue
-                key = row['invoice_type'] or 'other'
-                revenue_list.append({
+                cost_of_sales_list.append({
                     'code': '',
-                    'name': INCOME_LABELS.get(key, key.replace('_', ' ').title()),
+                    'name': f'Commission on {label}',
                     'balance': float(amt),
+                    'group': 'cost_of_sales',
                 })
-                total_revenue += amt
+                total_cost_of_sales += amt
+            other_commission = sum(
+                (v for k, v in commission_by_type.items() if k not in _canonical),
+                Decimal('0'),
+            )
+            if other_commission:
+                cost_of_sales_list.append({
+                    'code': '', 'name': 'Commission on Other Income',
+                    'balance': float(other_commission), 'group': 'cost_of_sales',
+                })
+                total_cost_of_sales += other_commission
 
-            # Expenses: every expense booked against the landlord (cash
-            # AND non-cash). Group by expense_category so each line shows
-            # up cleanly. Status='paid' for cash, 'approved'/'paid' for
-            # non-cash — accruals belong on the P&L the moment they're
-            # approved, not when settled.
+            gross_profit = total_revenue - total_cost_of_sales
+
+            # --- Operating expenses booked against the landlord (cash AND
+            #     non-cash accruals). Commission is NOT here — it's Cost of
+            #     Sales above. Accruals belong on the P&L the moment they're
+            #     approved, not when settled. ---
             expense_qs = Expense.objects.filter(
                 Q(landlord_id=landlord_obj.id) | Q(payee_type='landlord', payee_id=landlord_obj.id)
             ) if landlord_obj else Expense.objects.none()
@@ -726,48 +789,6 @@ class IncomeStatementView(APIView):
 
             expense_list = []
             total_expenses = Decimal('0')
-
-            # Management commission — a real cost to the landlord; charged
-            # on each receipt at the income-type-or-landlord-default rate.
-            if landlord_obj and unit_id_list or property_id_list:
-                receipt_qs = Receipt.objects.filter(
-                    Q(invoice__unit_id__in=unit_id_list) |
-                    Q(invoice__property_id__in=property_id_list)
-                )
-                if start_date:
-                    receipt_qs = receipt_qs.filter(date__gte=start_date)
-                receipt_qs = receipt_qs.filter(date__lte=end_date)
-                # Split commission per income type so the P&L shows
-                # "Management Commission — Rent", "Management Commission —
-                # Maintenance", etc. — one line per sub-account, since
-                # rates can differ (10% rent / 15% maintenance / 9% parking).
-                commission_breakdown = list(
-                    receipt_qs.values(
-                        'income_type__id', 'income_type__name', 'income_type__code',
-                    ).annotate(
-                        commission=Sum(_commission_expr())
-                    ).order_by('income_type__name')
-                )
-                commission_total_check = Decimal('0')
-                for row in commission_breakdown:
-                    amt = row['commission'] or Decimal('0')
-                    if amt == 0:
-                        continue
-                    label = row['income_type__name'] or 'Other'
-                    expense_list.append({
-                        'code': row['income_type__code'] or '',
-                        'name': f'Management Commission — {label}',
-                        'balance': float(amt),
-                        # Tag so the frontend can group these under a single
-                        # parent header without needing to string-match.
-                        'group': 'management_commission',
-                    })
-                    total_expenses += amt
-                    commission_total_check += amt
-
-            # Group landlord-attributed expenses by expense_category, with
-            # the kind shown so users can see at a glance which lines are
-            # accruals.
             grouped = expense_qs.values(
                 'expense_category__name', 'expense_category__gl_account__code', 'expense_kind',
             ).annotate(t=Sum('amount')).order_by('expense_category__name', 'expense_kind')
@@ -784,7 +805,12 @@ class IncomeStatementView(APIView):
                 })
                 total_expenses += amt
 
-        net_income = total_revenue - total_expenses
+        # Net income: from Gross Profit on the landlord statement; straight
+        # revenue − expenses on the agency-wide statement.
+        if gross_profit is not None:
+            net_income = gross_profit - total_expenses
+        else:
+            net_income = total_revenue - total_expenses
 
         return Response({
             'report_name': 'Income Statement',
@@ -801,6 +827,11 @@ class IncomeStatementView(APIView):
                 'accounts': revenue_list,
                 'total': float(total_revenue)
             },
+            'cost_of_sales': {
+                'accounts': cost_of_sales_list,
+                'total': float(total_cost_of_sales)
+            },
+            'gross_profit': float(gross_profit) if gross_profit is not None else None,
             'expenses': {
                 'accounts': expense_list,
                 'total': float(total_expenses)

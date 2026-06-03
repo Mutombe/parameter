@@ -14,6 +14,7 @@ import {
   Download,
   Printer,
   Calendar,
+  CalendarDays,
   TrendingUp,
   TrendingDown,
   RefreshCw,
@@ -88,18 +89,70 @@ const CASH_ONLY_REPORTS: ReadonlySet<ReportType> = new Set<ReportType>([
   'cash-flow',
 ])
 
+// Reporting period — the financial reports (Trial Balance, Income
+// Statement, Balance Sheet, Cash Flow) all read these so the figures
+// strictly match the month/quarter/year the user picked. Per the
+// INCOME STATEMENT REPORTING spec, period selection is mandatory and
+// shared across those four statements.
+const PERIOD_REPORTS: ReadonlySet<ReportType> = new Set<ReportType>([
+  'trial-balance', 'income-statement', 'balance-sheet', 'cash-flow',
+])
+
+type PeriodMode = 'month' | 'quarter' | 'half' | 'year' | 'custom'
+
+function _ymd(d: Date) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const _MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+// Expand a (mode, anchor-month) pair into a concrete [start, end] range
+// plus a short human label. anchorMonth is "YYYY-MM".
+function derivePeriod(
+  mode: PeriodMode, anchorMonth: string, customStart: string, customEnd: string,
+): { start: string; end: string; label: string } {
+  if (mode === 'custom') {
+    return { start: customStart, end: customEnd, label: `${customStart} – ${customEnd}` }
+  }
+  const [yStr, mStr] = anchorMonth.split('-')
+  const y = Number(yStr)
+  const m = Number(mStr) - 1 // 0-based month
+  let startM = m, endM = m
+  if (mode === 'quarter') { const q = Math.floor(m / 3); startM = q * 3; endM = q * 3 + 2 }
+  else if (mode === 'half') { startM = m < 6 ? 0 : 6; endM = m < 6 ? 5 : 11 }
+  else if (mode === 'year') { startM = 0; endM = 11 }
+  const start = new Date(y, startM, 1)
+  const end = new Date(y, endM + 1, 0) // day 0 of next month = last day of endM
+  let label: string
+  if (mode === 'month') label = `${_MONTHS[startM]} ${y}`
+  else if (mode === 'quarter') label = `Q${Math.floor(startM / 3) + 1} ${y}`
+  else if (mode === 'half') label = `${startM === 0 ? 'H1' : 'H2'} ${y}`
+  else label = `FY ${y}`
+  return { start: _ymd(start), end: _ymd(end), label }
+}
+
 interface ReportFilterContextValue {
   landlordId: string
   propertyId: string
   setLandlordId: (v: string) => void
   setPropertyId: (v: string) => void
+  // Shared reporting period (resolved [start, end] for the active selection).
+  periodStart: string
+  periodEnd: string
+  periodLabel: string
 }
 const ReportFilterContext = createContext<ReportFilterContextValue | null>(null)
 function useReportFilters() {
   // Returns inert defaults outside the provider so legacy report components
   // that haven't been migrated still render without crashing.
   const ctx = useContext(ReportFilterContext)
-  if (!ctx) return { landlordId: '', propertyId: '', setLandlordId: () => {}, setPropertyId: () => {} }
+  if (!ctx) return {
+    landlordId: '', propertyId: '', setLandlordId: () => {}, setPropertyId: () => {},
+    periodStart: '', periodEnd: '', periodLabel: '',
+  }
   return ctx
 }
 
@@ -754,6 +807,17 @@ export default function Reports() {
   const [landlordId, setLandlordId] = useState<string>(() => searchParams.get('landlord_id') || '')
   const [propertyId, setPropertyId] = useState<string>(() => searchParams.get('property_id') || '')
 
+  // Shared reporting period — defaults to the current month. Drives the
+  // Trial Balance / Income Statement / Balance Sheet / Cash Flow queries.
+  const [periodMode, setPeriodMode] = useState<PeriodMode>('month')
+  const [anchorMonth, setAnchorMonth] = useState<string>(() => new Date().toISOString().slice(0, 7))
+  const [customStart, setCustomStart] = useState<string>(() => new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10))
+  const [customEnd, setCustomEnd] = useState<string>(() => new Date().toISOString().slice(0, 10))
+  const period = useMemo(
+    () => derivePeriod(periodMode, anchorMonth, customStart, customEnd),
+    [periodMode, anchorMonth, customStart, customEnd],
+  )
+
   // Resolve landlord/property names so the bank-statement export can
   // print "Account Holder: Acme Holdings" instead of just an ID. Cached
   // alongside the ones the filter bar uses so we don't double-fetch.
@@ -949,9 +1013,23 @@ export default function Reports() {
             }
           />
 
-          <ReportFilterContext.Provider value={{ landlordId, propertyId, setLandlordId, setPropertyId }}>
+          <ReportFilterContext.Provider value={{
+            landlordId, propertyId, setLandlordId, setPropertyId,
+            periodStart: period.start, periodEnd: period.end, periodLabel: period.label,
+          }}>
             {/* Filter bar shown only on the financial reports the filter applies to. */}
             {FINANCIAL_REPORTS.has(activeReport) && <ReportFilterBar />}
+            {/* Period selector — Trial Balance / Income Statement / Balance
+                Sheet / Cash Flow report strictly within the chosen period. */}
+            {PERIOD_REPORTS.has(activeReport) && (
+              <PeriodSelector
+                mode={periodMode} setMode={setPeriodMode}
+                anchorMonth={anchorMonth} setAnchorMonth={setAnchorMonth}
+                customStart={customStart} setCustomStart={setCustomStart}
+                customEnd={customEnd} setCustomEnd={setCustomEnd}
+                label={period.label}
+              />
+            )}
             {/* Indeterminate progress strip — top-of-content tell that data
                 is being recomputed (slow first-hit) without re-rendering
                 the whole report skeleton. */}
@@ -1005,13 +1083,79 @@ export default function Reports() {
   )
 }
 
+function PeriodSelector({
+  mode, setMode, anchorMonth, setAnchorMonth,
+  customStart, setCustomStart, customEnd, setCustomEnd, label,
+}: {
+  mode: PeriodMode
+  setMode: (m: PeriodMode) => void
+  anchorMonth: string
+  setAnchorMonth: (v: string) => void
+  customStart: string
+  setCustomStart: (v: string) => void
+  customEnd: string
+  setCustomEnd: (v: string) => void
+  label: string
+}) {
+  const modes: { value: PeriodMode; label: string }[] = [
+    { value: 'month', label: 'Monthly' },
+    { value: 'quarter', label: 'Quarterly' },
+    { value: 'half', label: 'Half-Year' },
+    { value: 'year', label: 'Annual' },
+    { value: 'custom', label: 'Custom' },
+  ]
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-md border border-gray-200 bg-gray-50/60 px-3 py-2">
+      <div className="flex items-center gap-1.5">
+        <CalendarDays className="w-4 h-4 text-gray-400" />
+        <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Period</span>
+      </div>
+      <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5">
+        {modes.map(m => (
+          <button
+            key={m.value}
+            onClick={() => setMode(m.value)}
+            className={cn(
+              'px-2.5 py-1 text-xs font-medium rounded transition-colors',
+              mode === m.value ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-100',
+            )}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'custom' ? (
+        <div className="flex items-center gap-2">
+          <DatePicker value={customStart} onChange={setCustomStart} className="min-w-[150px]" />
+          <span className="text-gray-400 text-sm">to</span>
+          <DatePicker value={customEnd} onChange={setCustomEnd} className="min-w-[150px]" />
+        </div>
+      ) : (
+        <input
+          type="month"
+          value={anchorMonth}
+          onChange={e => setAnchorMonth(e.target.value)}
+          className="h-9 rounded-md border border-gray-200 bg-white px-2.5 text-sm text-gray-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+        />
+      )}
+
+      <span className="ml-auto text-xs text-gray-500">
+        Reporting: <span className="font-semibold text-gray-700">{label}</span>
+      </span>
+    </div>
+  )
+}
+
 function TrialBalanceReport() {
-  const { landlordId, propertyId } = useReportFilters()
+  const { landlordId, propertyId, periodEnd } = useReportFilters()
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['trial-balance', landlordId, propertyId],
+    queryKey: ['trial-balance', landlordId, propertyId, periodEnd],
     queryFn: () => reportsApi.trialBalance({
       ...(landlordId ? { landlord_id: Number(landlordId) } : {}),
       ...(propertyId ? { property_id: Number(propertyId) } : {}),
+      // Trial Balance is cumulative — balances "as at" the period end.
+      ...(periodEnd ? { as_of_date: periodEnd } : {}),
     }).then(r => r.data),
     placeholderData: keepPreviousData,
   })
@@ -1201,12 +1345,14 @@ function TrialBalanceReport() {
 }
 
 function IncomeStatementReport() {
-  const { landlordId, propertyId } = useReportFilters()
+  const { landlordId, propertyId, periodStart, periodEnd } = useReportFilters()
   const { data, isLoading } = useQuery({
-    queryKey: ['income-statement', landlordId, propertyId],
+    queryKey: ['income-statement', landlordId, propertyId, periodStart, periodEnd],
     queryFn: () => reportsApi.incomeStatement({
       ...(landlordId ? { landlord_id: Number(landlordId) } : {}),
       ...(propertyId ? { property_id: Number(propertyId) } : {}),
+      ...(periodStart ? { start_date: periodStart } : {}),
+      ...(periodEnd ? { end_date: periodEnd } : {}),
     }).then(r => r.data),
     placeholderData: keepPreviousData,
   })
@@ -1216,6 +1362,9 @@ function IncomeStatementReport() {
 
   const isProfit = data?.is_profit
   const netIncome = Math.abs(data?.net_income || 0)
+  // Landlord statement carries Cost of Sales (commission) + Gross Profit;
+  // the agency-wide P&L returns gross_profit === null.
+  const hasCostOfSales = data?.gross_profit != null
 
   return (
     <div className="bg-white border-y md:border md:rounded-md border-gray-200">
@@ -1301,23 +1450,49 @@ function IncomeStatementReport() {
             </motion.div>
           )}
 
-          {/* ── KPI strip — borderless cells separated by hairlines ── */}
-          <div className="grid grid-cols-3 border-y border-gray-200 divide-x divide-gray-200">
-            <div className="px-5 py-4">
-              <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Revenue</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{formatCurrency(data?.revenue?.total || 0)}</p>
+          {/* ── KPI strip — borderless cells separated by hairlines.
+              On the landlord statement we surface Revenue → Cost of Sales
+              → Gross Profit → Net so the commission deduction is explicit;
+              the agency-wide P&L keeps the simpler Revenue/Expenses/Net. ── */}
+          {hasCostOfSales ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 border-y border-gray-200 divide-x divide-gray-200">
+              <div className="px-5 py-4">
+                <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Revenue</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{formatCurrency(data?.revenue?.total || 0)}</p>
+              </div>
+              <div className="px-5 py-4">
+                <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Cost of Sales</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">({formatCurrency(data?.cost_of_sales?.total || 0)})</p>
+              </div>
+              <div className="px-5 py-4">
+                <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Gross Profit</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{formatCurrency(data?.gross_profit || 0)}</p>
+              </div>
+              <div className="px-5 py-4">
+                <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Net {isProfit ? 'Income' : 'Loss'}</p>
+                <p className={cn('mt-1 text-2xl font-semibold tabular-nums tracking-tight', isProfit ? 'text-emerald-700' : 'text-rose-700')}>
+                  {isProfit ? formatCurrency(netIncome) : `(${formatCurrency(netIncome)})`}
+                </p>
+              </div>
             </div>
-            <div className="px-5 py-4">
-              <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Expenses</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{formatCurrency(data?.expenses?.total || 0)}</p>
+          ) : (
+            <div className="grid grid-cols-3 border-y border-gray-200 divide-x divide-gray-200">
+              <div className="px-5 py-4">
+                <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Revenue</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{formatCurrency(data?.revenue?.total || 0)}</p>
+              </div>
+              <div className="px-5 py-4">
+                <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Expenses</p>
+                <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-gray-900">{formatCurrency(data?.expenses?.total || 0)}</p>
+              </div>
+              <div className="px-5 py-4">
+                <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Net {isProfit ? 'Income' : 'Loss'}</p>
+                <p className={cn('mt-1 text-2xl font-semibold tabular-nums tracking-tight', isProfit ? 'text-emerald-700' : 'text-rose-700')}>
+                  {isProfit ? formatCurrency(netIncome) : `(${formatCurrency(netIncome)})`}
+                </p>
+              </div>
             </div>
-            <div className="px-5 py-4">
-              <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Net {isProfit ? 'Income' : 'Loss'}</p>
-              <p className={cn('mt-1 text-2xl font-semibold tabular-nums tracking-tight', isProfit ? 'text-emerald-700' : 'text-rose-700')}>
-                {isProfit ? formatCurrency(netIncome) : `(${formatCurrency(netIncome).replace('$','$')})`}
-              </p>
-            </div>
-          </div>
+          )}
 
           {/* Revenue section — grouped accordions by income subtype.
               Each accordion's header shows its subtotal so a collapsed
@@ -1330,8 +1505,28 @@ function IncomeStatementReport() {
             emptyLabel="No revenue accounts"
           />
 
+          {/* Cost of Sales (commission) + Gross Profit — landlord
+              statement only. Commission is the landlord's Cost of Sales,
+              deducted from gross revenue to reach Gross Profit. */}
+          {hasCostOfSales && (
+            <>
+              <IncomeStatementSection
+                title="Cost of Sales"
+                accent="rose"
+                groups={[{ label: 'Commission (Cost of Sales)', rows: data?.cost_of_sales?.accounts || [] }]}
+                total={data?.cost_of_sales?.total || 0}
+                emptyLabel="No commission charged this period"
+                parenthesize
+              />
+              <div className="px-2 py-2.5 flex justify-between text-[13px] font-semibold border-t border-gray-300">
+                <span className="text-gray-900">Gross Profit</span>
+                <span className="tabular-nums text-gray-900">{formatCurrency(data?.gross_profit || 0)}</span>
+              </div>
+            </>
+          )}
+
           <IncomeStatementSection
-            title="Expenses"
+            title={hasCostOfSales ? 'Operating Expenses' : 'Expenses'}
             accent="rose"
             groups={groupExpenses(data?.expenses?.accounts || [])}
             total={data?.expenses?.total || 0}
@@ -1353,12 +1548,14 @@ function IncomeStatementReport() {
 }
 
 function BalanceSheetReport() {
-  const { landlordId, propertyId } = useReportFilters()
+  const { landlordId, propertyId, periodEnd } = useReportFilters()
   const { data, isLoading } = useQuery({
-    queryKey: ['balance-sheet', landlordId, propertyId],
+    queryKey: ['balance-sheet', landlordId, propertyId, periodEnd],
     queryFn: () => reportsApi.balanceSheet({
       ...(landlordId ? { landlord_id: Number(landlordId) } : {}),
       ...(propertyId ? { property_id: Number(propertyId) } : {}),
+      // A balance sheet is point-in-time — "as at" the end of the period.
+      ...(periodEnd ? { as_of_date: periodEnd } : {}),
     }).then(r => r.data),
     placeholderData: keepPreviousData,
   })
@@ -2213,12 +2410,14 @@ function BalanceSheetNote({ number, title, meta, children }: {
 }
 
 function CashFlowReport() {
-  const { landlordId, propertyId } = useReportFilters()
+  const { landlordId, propertyId, periodStart, periodEnd } = useReportFilters()
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['cash-flow', landlordId, propertyId],
+    queryKey: ['cash-flow', landlordId, propertyId, periodStart, periodEnd],
     queryFn: () => reportsApi.cashFlow({
       ...(landlordId ? { landlord_id: Number(landlordId) } : {}),
       ...(propertyId ? { property_id: Number(propertyId) } : {}),
+      ...(periodStart ? { start_date: periodStart } : {}),
+      ...(periodEnd ? { end_date: periodEnd } : {}),
     }).then(r => r.data),
     placeholderData: keepPreviousData,
   })
