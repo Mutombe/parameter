@@ -493,21 +493,21 @@ const generateEmailLink = () => {
         </div>
       </section>
 
-      {/* Pricing Section — VANTA dark band (Ownership pattern) */}
-      <section id="pricing" className="relative overflow-hidden bg-void py-16 sm:py-28 px-4 sm:px-6">
-        {/* plasma bloom */}
+      {/* Pricing Section — Ownership pattern, theme-aware (light <-> navy via html.dark overrides) */}
+      <section id="pricing" className="relative overflow-hidden bg-gray-50 py-16 sm:py-28 px-4 sm:px-6">
+        {/* ion bloom */}
         <div
           aria-hidden
-          className="pointer-events-none absolute left-1/2 top-0 h-[460px] w-[460px] -translate-x-1/2 rounded-full opacity-25 blur-[130px]"
+          className="pointer-events-none absolute left-1/2 top-0 h-[460px] w-[460px] -translate-x-1/2 rounded-full opacity-20 blur-[130px]"
           style={{ background: 'radial-gradient(circle, #5ee7ff, transparent 60%)' }}
         />
-        {/* faint grid */}
+        {/* faint grid — neutral slate so it reads on both light and navy */}
         <div
           aria-hidden
-          className="absolute inset-0 opacity-[0.04]"
+          className="absolute inset-0 opacity-60"
           style={{
             backgroundImage:
-              'linear-gradient(to right, #fff 1px, transparent 1px), linear-gradient(to bottom, #fff 1px, transparent 1px)',
+              'linear-gradient(to right, rgba(148,163,184,0.10) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.10) 1px, transparent 1px)',
             backgroundSize: '44px 44px',
           }}
         />
@@ -519,14 +519,14 @@ const generateEmailLink = () => {
             className="text-center mb-12 sm:mb-16"
           >
             <div className="inline-flex items-center gap-3 mb-5">
-              <span className="h-px w-10 bg-ion" />
-              <span className="eyebrow-mono text-ion">Pricing</span>
-              <span className="h-px w-10 bg-ion" />
+              <span className="h-px w-10 bg-ion-deep dark:bg-ion" />
+              <span className="eyebrow-mono text-ion-deep dark:text-ion">Pricing</span>
+              <span className="h-px w-10 bg-ion-deep dark:bg-ion" />
             </div>
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-4">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-gray-900 mb-4">
               Three ways to <span className="text-plasma">run your books.</span>
             </h2>
-            <p className="text-base sm:text-lg text-slate-400 max-w-2xl mx-auto px-2">
+            <p className="text-base sm:text-lg text-gray-500 max-w-2xl mx-auto px-2">
               Choose the plan that fits your portfolio. Every tier runs the full double-entry
               core, with no hidden fees and no lock-in.
             </p>
@@ -542,8 +542,8 @@ const generateEmailLink = () => {
                 transition={{ type: 'spring', stiffness: 90, damping: 16, delay: index * 0.1 }}
                 className={`relative flex w-full flex-col rounded-3xl border p-7 sm:p-8 transition-transform duration-300 hover:-translate-y-1.5 lg:w-80 ${
                   plan.popular
-                    ? 'border-ion/50 bg-graphite glow-accent lg:-translate-y-4 lg:scale-[1.04]'
-                    : 'border-white/10 bg-carbon'
+                    ? 'border-ion/60 bg-white glow-accent lg:-translate-y-4 lg:scale-[1.04]'
+                    : 'border-gray-200 bg-white'
                 }`}
               >
                 {plan.popular && (
@@ -551,25 +551,29 @@ const generateEmailLink = () => {
                     Most Popular
                   </span>
                 )}
-                <p className="eyebrow-mono text-slate-400">{plan.name}</p>
+                <p className="eyebrow-mono text-gray-500">{plan.name}</p>
                 <div className="mt-4 flex items-end gap-1">
-                  <span className="text-4xl sm:text-5xl font-bold tracking-tight text-white">${plan.price}</span>
-                  <span className="mb-1.5 text-sm text-slate-500">/{plan.period}</span>
+                  <span className="text-4xl sm:text-5xl font-bold tracking-tight text-gray-900">${plan.price}</span>
+                  <span className="mb-1.5 text-sm text-gray-400">/{plan.period}</span>
                 </div>
-                <p className="mt-3 min-h-[2.5rem] text-sm leading-relaxed text-slate-400">{plan.note}</p>
+                <p className="mt-3 min-h-[2.5rem] text-sm leading-relaxed text-gray-500">{plan.note}</p>
 
-                <div className="my-7 h-px w-full bg-white/10" />
+                <div className="my-7 h-px w-full bg-gray-200" />
 
                 <ul className="flex-1 space-y-3.5">
                   {plan.features.map((feature) => (
                     <li key={feature} className="flex items-start gap-3">
                       <span
-                        className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
-                        style={{ background: plan.popular ? '#5ee7ff' : 'rgba(255,255,255,0.08)' }}
+                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                          plan.popular ? 'bg-ion' : 'bg-gray-200'
+                        }`}
                       >
-                        <Check className={`w-3 h-3 ${plan.popular ? 'text-[#04060a]' : 'text-white'}`} strokeWidth={3} />
+                        <Check
+                          className={`w-3 h-3 ${plan.popular ? 'text-[#04060a]' : 'text-gray-600 dark:text-white'}`}
+                          strokeWidth={3}
+                        />
                       </span>
-                      <span className="text-[0.95rem] text-slate-300">{feature}</span>
+                      <span className="text-[0.95rem] text-gray-600">{feature}</span>
                     </li>
                   ))}
                 </ul>
@@ -579,7 +583,7 @@ const generateEmailLink = () => {
                   className={
                     plan.popular
                       ? 'btn-spark mt-8 w-full py-3 text-sm'
-                      : 'mt-8 block w-full rounded-xl border border-white/15 py-3 text-center text-sm font-semibold text-white transition-all hover:border-ion hover:text-ion'
+                      : 'mt-8 block w-full rounded-xl border border-gray-300 py-3 text-center text-sm font-semibold text-gray-900 transition-all hover:border-ion-deep hover:text-ion-deep'
                   }
                 >
                   {plan.cta}
@@ -588,7 +592,7 @@ const generateEmailLink = () => {
             ))}
           </div>
 
-          <p className="mt-10 text-center eyebrow-mono tracking-[0.2em] text-slate-500">
+          <p className="mt-10 text-center eyebrow-mono tracking-[0.2em] text-gray-400">
             Prices in USD · Demo free forever · Cancel anytime
           </p>
         </div>
@@ -628,7 +632,7 @@ const generateEmailLink = () => {
       </section>
 
 {/* Contact Section */}
-      <section id="contact" className="relative overflow-hidden bg-void text-white py-12 sm:py-20 px-4 sm:px-6">
+      <section id="contact" className="relative overflow-hidden bg-gray-50 py-12 sm:py-20 px-4 sm:px-6">
         {/* ion top hairline */}
         <div
           aria-hidden
@@ -649,10 +653,10 @@ const generateEmailLink = () => {
               viewport={{ once: true }}
             >
               <div className="inline-flex items-center gap-3 mb-5">
-                <span className="h-px w-10 bg-ion" />
-                <span className="eyebrow-mono text-ion">Contact</span>
+                <span className="h-px w-10 bg-ion-deep dark:bg-ion" />
+                <span className="eyebrow-mono text-ion-deep dark:text-ion">Contact</span>
               </div>
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4 text-gray-900">
                 Let's <span className="text-plasma">get in touch.</span>
               </h2>
               <p className="text-gray-400 text-base sm:text-lg mb-6 sm:mb-8">
@@ -662,33 +666,33 @@ const generateEmailLink = () => {
               <div className="space-y-6">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-ion/10 ring-1 ring-ion/20 rounded-xl flex items-center justify-center">
-                    <Phone className="w-6 h-6 text-ion" />
+                    <Phone className="w-6 h-6 text-ion-deep dark:text-ion" />
                   </div>
                   <div>
                     <div className="text-sm text-gray-400">Phone</div>
-                    <a href="tel:+263785948128" className="text-lg font-medium hover:text-ion transition-colors">
+                    <a href="tel:+263785948128" className="text-lg font-medium text-gray-900 hover:text-ion-deep dark:hover:text-ion transition-colors">
                       +263 785 948 128
                     </a>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-ion/10 ring-1 ring-ion/20 rounded-xl flex items-center justify-center">
-                    <Mail className="w-6 h-6 text-ion" />
+                    <Mail className="w-6 h-6 text-ion-deep dark:text-ion" />
                   </div>
                   <div>
                     <div className="text-sm text-gray-400">Email (Parameter)</div>
-                    <a href="mailto:admin@parameter.co.zw" className="text-lg font-medium hover:text-ion transition-colors">
+                    <a href="mailto:admin@parameter.co.zw" className="text-lg font-medium text-gray-900 hover:text-ion-deep dark:hover:text-ion transition-colors">
                       admin@parameter.co.zw
                     </a>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-ion/10 ring-1 ring-ion/20 rounded-xl flex items-center justify-center">
-                    <GiWorld className="w-6 h-6 text-ion" />
+                    <GiWorld className="w-6 h-6 text-ion-deep dark:text-ion" />
                   </div>
                   <div>
                     <div className="text-sm text-gray-400">Email (Bit Studio)</div>
-                    <a href="mailto:admin@bitstudio.co.zw" className="text-lg font-medium hover:text-ion transition-colors">
+                    <a href="mailto:admin@bitstudio.co.zw" className="text-lg font-medium text-gray-900 hover:text-ion-deep dark:hover:text-ion transition-colors">
                       admin@bitstudio.co.zw
                     </a>
                   </div>
@@ -701,8 +705,8 @@ const generateEmailLink = () => {
               viewport={{ once: true }}
               transition={{ delay: 0.2 }}
             >
-              <div className="bg-graphite border border-white/10 ring-1 ring-ion/10 rounded-xl sm:rounded-2xl p-5 sm:p-8">
-                <h3 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6">Send us a message</h3>
+              <div className="bg-white border border-gray-200 ring-1 ring-ion/10 rounded-xl sm:rounded-2xl p-5 sm:p-8">
+                <h3 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6 text-gray-900">Send us a message</h3>
                 <div className="space-y-3 sm:space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     <input
@@ -710,14 +714,14 @@ const generateEmailLink = () => {
                       placeholder="First name"
                       value={contactForm.firstName}
                       onChange={(e) => setContactForm({ ...contactForm, firstName: e.target.value })}
-                      className="px-4 py-2.5 sm:py-3 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-ion focus:border-transparent text-sm sm:text-base"
+                      className="px-4 py-2.5 sm:py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-ion focus:border-transparent text-sm sm:text-base"
                     />
                     <input
                       type="text"
                       placeholder="Last name"
                       value={contactForm.lastName}
                       onChange={(e) => setContactForm({ ...contactForm, lastName: e.target.value })}
-                      className="px-4 py-2.5 sm:py-3 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-ion focus:border-transparent text-sm sm:text-base"
+                      className="px-4 py-2.5 sm:py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-ion focus:border-transparent text-sm sm:text-base"
                     />
                   </div>
                   <input
@@ -725,21 +729,21 @@ const generateEmailLink = () => {
                     placeholder="Email address"
                     value={contactForm.email}
                     onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
-                    className="w-full px-4 py-2.5 sm:py-3 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-ion focus:border-transparent text-sm sm:text-base"
+                    className="w-full px-4 py-2.5 sm:py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-ion focus:border-transparent text-sm sm:text-base"
                   />
                   <input
                     type="text"
                     placeholder="Company name"
                     value={contactForm.company}
                     onChange={(e) => setContactForm({ ...contactForm, company: e.target.value })}
-                    className="w-full px-4 py-2.5 sm:py-3 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-ion focus:border-transparent text-sm sm:text-base"
+                    className="w-full px-4 py-2.5 sm:py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-ion focus:border-transparent text-sm sm:text-base"
                   />
                   <textarea
                     rows={4}
                     placeholder="How can we help?"
                     value={contactForm.message}
                     onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
-                    className="w-full px-4 py-2.5 sm:py-3 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-ion focus:border-transparent resize-none text-sm sm:text-base"
+                    className="w-full px-4 py-2.5 sm:py-3 bg-gray-50 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-ion focus:border-transparent resize-none text-sm sm:text-base"
                   />
                   
                   {/* Send Options */}
@@ -772,7 +776,7 @@ const generateEmailLink = () => {
       </section>
 
       {/* Footer */}
-      <footer className="relative overflow-hidden bg-void text-gray-400 py-8 sm:py-12 px-4 sm:px-6">
+      <footer className="relative overflow-hidden bg-gray-50 text-gray-500 py-8 sm:py-12 px-4 sm:px-6">
         {/* ion top hairline */}
         <div
           aria-hidden
@@ -790,44 +794,44 @@ const generateEmailLink = () => {
             <div className="col-span-2 md:col-span-1">
               <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
                 <img src="/logo.png" alt="Parameter" className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl object-contain dark:brightness-0 dark:invert" />
-                <span className="font-bold text-lg sm:text-xl text-white">Parameter</span>
+                <span className="font-bold text-lg sm:text-xl text-gray-900">Parameter</span>
               </div>
               <p className="text-xs sm:text-sm leading-relaxed">
                 Modern real estate accounting platform for property managers in Zimbabwe.
               </p>
             </div>
             <div>
-              <h4 className="font-semibold text-white text-sm sm:text-base mb-3 sm:mb-4">Product</h4>
+              <h4 className="font-semibold text-gray-900 text-sm sm:text-base mb-3 sm:mb-4">Product</h4>
               <ul className="space-y-2 text-sm">
-                <li><a href="#features" className="hover:text-ion transition-colors">Features</a></li>
-                <li><a href="#pricing" className="hover:text-ion transition-colors">Pricing</a></li>
-                <li><Link to="/learn" className="hover:text-ion transition-colors">Documentation</Link></li>
+                <li><a href="#features" className="hover:text-ion-deep dark:hover:text-ion transition-colors">Features</a></li>
+                <li><a href="#pricing" className="hover:text-ion-deep dark:hover:text-ion transition-colors">Pricing</a></li>
+                <li><Link to="/learn" className="hover:text-ion-deep dark:hover:text-ion transition-colors">Documentation</Link></li>
                 <li>
                   {isAuthenticated
-                    ? <Link to={dashboardPath} className="hover:text-ion transition-colors">Dashboard</Link>
-                    : <Link to="/signup" className="hover:text-ion transition-colors">Get Started</Link>
+                    ? <Link to={dashboardPath} className="hover:text-ion-deep dark:hover:text-ion transition-colors">Dashboard</Link>
+                    : <Link to="/signup" className="hover:text-ion-deep dark:hover:text-ion transition-colors">Get Started</Link>
                   }
                 </li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold text-white mb-4">Company</h4>
+              <h4 className="font-semibold text-gray-900 mb-4">Company</h4>
               <ul className="space-y-2 text-sm">
-                <li><a href="#contact" className="hover:text-ion transition-colors">Contact</a></li>
-                <li><button onClick={() => setPrivacyOpen(true)} className="hover:text-ion transition-colors">Privacy Policy</button></li>
-                <li><button onClick={() => setPrivacyOpen(true)} className="hover:text-ion transition-colors">Terms of Service</button></li>
+                <li><a href="#contact" className="hover:text-ion-deep dark:hover:text-ion transition-colors">Contact</a></li>
+                <li><button onClick={() => setPrivacyOpen(true)} className="hover:text-ion-deep dark:hover:text-ion transition-colors">Privacy Policy</button></li>
+                <li><button onClick={() => setPrivacyOpen(true)} className="hover:text-ion-deep dark:hover:text-ion transition-colors">Terms of Service</button></li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold text-white mb-4">Contact</h4>
+              <h4 className="font-semibold text-gray-900 mb-4">Contact</h4>
               <ul className="space-y-2 text-sm">
-                <li><a href="tel:+263785948128" className="hover:text-ion transition-colors">+263 785 948 128</a></li>
-                <li><a href="mailto:admin@parameter.co.zw" className="hover:text-ion transition-colors">admin@parameter.co.zw</a></li>
-                <li><a href="mailto:admin@bitstudio.co.zw" className="hover:text-ion transition-colors">admin@bitstudio.co.zw</a></li>
+                <li><a href="tel:+263785948128" className="hover:text-ion-deep dark:hover:text-ion transition-colors">+263 785 948 128</a></li>
+                <li><a href="mailto:admin@parameter.co.zw" className="hover:text-ion-deep dark:hover:text-ion transition-colors">admin@parameter.co.zw</a></li>
+                <li><a href="mailto:admin@bitstudio.co.zw" className="hover:text-ion-deep dark:hover:text-ion transition-colors">admin@bitstudio.co.zw</a></li>
               </ul>
             </div>
           </div>
-          <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="pt-8 border-t border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-sm">
               © {new Date().getFullYear()} Parameter. All rights reserved.
             </p>
