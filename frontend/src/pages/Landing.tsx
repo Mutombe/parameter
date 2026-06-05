@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Building2, Users, FileText, BarChart3, Shield, Zap,
-  CheckCircle, ArrowRight, Phone, Mail, ChevronRight,
+  CheckCircle, Check, ArrowRight, Phone, Mail, ChevronRight,
   Globe, DollarSign, PieChart, Clock, BookOpen, Lock,
   Menu, X, Sun, Moon, Monitor, LayoutDashboard
 } from 'lucide-react'
@@ -11,6 +11,7 @@ import { useUIStore } from '../stores/uiStore'
 import { useAuthStore } from '../stores/authStore'
 import { useThemeEffect } from '../hooks/useThemeEffect'
 import PrivacyPolicyModal from '../components/PrivacyPolicyModal'
+import HeroDashboard from '../components/HeroDashboard'
 import { SiFsecure } from "react-icons/si";
 import { PiUsersFour } from "react-icons/pi";
 import { IoCheckmarkDoneCircleOutline } from "react-icons/io5";
@@ -46,7 +47,7 @@ const features = [
   {
     icon: Zap,
     title: 'Bulk Data Import',
-    description: 'Onboard instantly — import landlords, tenants, properties, and leases from CSV, Excel, or scanned documents.'
+    description: 'Onboard in an afternoon. Import landlords, tenants, properties and leases straight from CSV, Excel or scanned documents.'
   },
   {
     icon: SiFsecure,
@@ -64,7 +65,7 @@ const onboardingSteps = [
   {
     step: 2,
     title: 'Set Up Your Portfolio',
-    description: 'Add your landlords, properties, and units. Import existing data from CSV, Excel, or scanned documents — or start fresh.'
+    description: 'Add your landlords, properties and units. Import existing data from CSV, Excel or scanned documents, or just start fresh.'
   },
   {
     step: 3,
@@ -83,6 +84,7 @@ const plans = [
     name: 'Testing',
     price: 0,
     period: 'month',
+    note: 'Kick the tyres. Free, forever.',
     features: ['Up to 5 properties', 'Up to 20 units', 'Basic reports', 'Email support'],
     cta: 'Start Free',
     popular: false
@@ -91,6 +93,7 @@ const plans = [
     name: 'Medium',
     price: 500,
     period: 'month',
+    note: 'For the growing portfolio.',
     features: ['Up to 50 properties', 'Up to 200 units', 'All reports', 'AI insights', 'OCR scanning', 'Priority support'],
     cta: 'Get Started',
     popular: true
@@ -99,6 +102,7 @@ const plans = [
     name: 'Enterprise',
     price: 900,
     period: 'month',
+    note: 'For the serious operator.',
     features: ['Unlimited properties', 'Unlimited units', 'Custom integrations', 'Dedicated support', 'SLA guarantee', 'Training included'],
     cta: 'Contact Sales',
     popular: false
@@ -299,22 +303,23 @@ const generateEmailLink = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
-              <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-primary-50 text-primary-700 rounded-full text-xs sm:text-sm font-medium mb-4 sm:mb-6">
-                <Zap className="w-3 h-3 sm:w-4 sm:h-4" />
+              <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-ion/10 text-primary-700 ring-1 ring-ion/30 rounded-full text-xs sm:text-sm font-medium mb-4 sm:mb-6">
+                <Zap className="w-3 h-3 sm:w-4 sm:h-4 text-ion-deep" />
                 AI-Powered Real Estate Accounting
               </div>
               <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight mb-4 sm:mb-6">
                 Modern accounting for{' '}
-                <span className="text-primary-600">property managers</span>
+                <span className="text-plasma">property managers</span>
               </h1>
               <p className="text-base sm:text-lg md:text-xl text-gray-600 mb-6 sm:mb-8 leading-relaxed">
-                Parameter is a comprehensive real estate accounting platform built for Zimbabwe's property management industry.
-                Double-entry bookkeeping, automated billing, and AI-powered insights — all in one place.
+                Built in Zimbabwe, for the people who actually run buildings. Parameter keeps your
+                double-entry books, sends the invoices on time, and lets AI do the data entry. So you
+                can stop living in spreadsheets and close the month in an afternoon.
               </p>
               <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                 <Link
                   to="/signup"
-                  className="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3 sm:py-4 bg-primary-600 text-white font-semibold rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-500/25"
+                  className="btn-spark px-6 sm:px-8 py-3 sm:py-4"
                 >
                   Start Free Demo
                   <ArrowRight className="w-5 h-5" />
@@ -327,21 +332,33 @@ const generateEmailLink = () => {
                   Learn More
                 </Link>
               </div>
-              <div className="flex items-center justify-center sm:justify-start gap-4 sm:gap-6 mt-6 sm:mt-8 pt-6 sm:pt-8 border-t border-gray-100">
-                <div className="text-center">
-                  <div className="text-xl sm:text-2xl font-bold text-gray-900">99.9%</div>
-                  <div className="text-xs sm:text-sm text-gray-500">Uptime</div>
-                </div>
-                <div className="w-px h-10 sm:h-12 bg-gray-200" />
-                <div className="text-center">
-                  <div className="text-xl sm:text-2xl font-bold text-gray-900">256-bit</div>
-                  <div className="text-xs sm:text-sm text-gray-500">Encryption</div>
-                </div>
-                <div className="w-px h-10 sm:h-12 bg-gray-200" />
-                <div className="text-center">
-                  <div className="text-xl sm:text-2xl font-bold text-gray-900">24/7</div>
-                  <div className="text-xs sm:text-sm text-gray-500">Support</div>
-                </div>
+              {/* Trust line */}
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs sm:text-sm text-gray-500 sm:justify-start">
+                {['No card required', 'Free demo', 'Live in minutes'].map((t) => (
+                  <span key={t} className="inline-flex items-center gap-1.5">
+                    <Check className="h-3.5 w-3.5 text-ion-deep" />
+                    {t}
+                  </span>
+                ))}
+              </div>
+
+              {/* Trust stats */}
+              <div className="mt-7 sm:mt-9 flex items-center justify-center gap-6 border-t border-gray-100 pt-6 sm:justify-start sm:gap-8 sm:pt-8">
+                {[
+                  { icon: Zap, value: '99.9%', label: 'Uptime' },
+                  { icon: Shield, value: '256-bit', label: 'Encryption' },
+                  { icon: Clock, value: '24/7', label: 'Support' },
+                ].map((s) => (
+                  <div key={s.label} className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-ion/10 ring-1 ring-ion/20">
+                      <s.icon className="h-4 w-4 text-ion-deep" />
+                    </div>
+                    <div>
+                      <div className="text-base sm:text-lg font-bold leading-none text-gray-900 tabular-nums">{s.value}</div>
+                      <div className="mt-1 text-[11px] text-gray-500 sm:text-xs">{s.label}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </motion.div>
             <motion.div
@@ -350,38 +367,24 @@ const generateEmailLink = () => {
               transition={{ duration: 0.6, delay: 0.2 }}
               className="relative"
             >
-              <div className="bg-white rounded-2xl p-6 shadow-xl border border-gray-100">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="font-semibold text-gray-900">Dashboard Overview</h3>
-                  <span className="text-xs text-gray-500">Live Demo</span>
-                </div>
-                <div className="grid grid-cols-2 gap-4 mb-6">
-                  <div className="bg-emerald-50 rounded-xl p-4">
-                    <AiOutlineDollar className="w-6 h-6 text-emerald-600 mb-2" />
-                    <div className="text-2xl font-bold text-gray-900">$48,250</div>
-                    <div className="text-sm text-gray-500">Revenue MTD</div>
-                  </div>
-                  <div className="bg-blue-50 rounded-xl p-4">
-                    <Building2 className="w-6 h-6 text-blue-600 mb-2" />
-                    <div className="text-2xl font-bold text-gray-900">156</div>
-                    <div className="text-sm text-gray-500">Active Units</div>
-                  </div>
-                  <div className="bg-purple-50 rounded-xl p-4">
-                    <PieChart className="w-6 h-6 text-purple-600 mb-2" />
-                    <div className="text-2xl font-bold text-gray-900">94%</div>
-                    <div className="text-sm text-gray-500">Occupancy Rate</div>
-                  </div>
-                  <div className="bg-amber-50 rounded-xl p-4">
-                    <Clock className="w-6 h-6 text-amber-600 mb-2" />
-                    <div className="text-2xl font-bold text-gray-900">12</div>
-                    <div className="text-sm text-gray-500">Pending Invoices</div>
-                  </div>
-                </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full w-3/4 bg-gradient-to-r from-primary-500 to-primary-600 rounded-full" />
-                </div>
-                <p className="text-xs text-gray-500 mt-2">Collection rate: 75% of target</p>
-              </div>
+              {/* plasma bloom behind the diagram */}
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -inset-6 rounded-[2rem] opacity-40 blur-3xl"
+                style={{
+                  background:
+                    'radial-gradient(circle at 75% 25%, rgba(94,231,255,0.40), transparent 58%), radial-gradient(circle at 20% 85%, rgba(43,143,255,0.32), transparent 60%)',
+                }}
+              />
+              {/* floating ion chip */}
+              <motion.div
+                aria-hidden
+                animate={{ y: [0, -10, 0] }}
+                transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
+                className="absolute -top-5 -right-5 hidden h-16 w-16 rounded-2xl border border-ion/40 bg-ion/5 backdrop-blur-sm sm:block"
+              />
+
+              <HeroDashboard />
             </motion.div>
           </div>
         </div>
@@ -396,8 +399,13 @@ const generateEmailLink = () => {
             viewport={{ once: true }}
             className="text-center mb-10 sm:mb-16"
           >
+            <div className="inline-flex items-center gap-3 mb-5">
+              <span className="h-px w-10 bg-ion" />
+              <span className="eyebrow-mono text-ion-deep">Capabilities</span>
+              <span className="h-px w-10 bg-ion" />
+            </div>
             <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-3 sm:mb-4">
-              Everything you need to manage properties
+              Everything you need to <span className="text-plasma">manage properties</span>
             </h2>
             <p className="text-base sm:text-lg md:text-xl text-gray-600 max-w-3xl mx-auto px-2">
               From tenant management to financial reporting, Parameter provides all the tools
@@ -413,10 +421,10 @@ const generateEmailLink = () => {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1 }}
-                className="bg-white rounded-xl sm:rounded-2xl p-5 sm:p-8 shadow-sm hover:shadow-md transition-shadow"
+                className="group bg-white rounded-xl sm:rounded-2xl p-5 sm:p-8 shadow-sm border border-transparent transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-ion/30"
               >
-                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-primary-100 rounded-xl sm:rounded-2xl flex items-center justify-center mb-4 sm:mb-6">
-                  <feature.icon className="w-6 h-6 sm:w-7 sm:h-7 text-primary-600" />
+                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-primary-100 rounded-xl sm:rounded-2xl flex items-center justify-center mb-4 sm:mb-6 transition-all duration-300 group-hover:bg-gradient-to-br group-hover:from-ion/20 group-hover:to-plasma/20 group-hover:shadow-[0_0_30px_-8px_#5ee7ff]">
+                  <feature.icon className="w-6 h-6 sm:w-7 sm:h-7 text-primary-600 transition-colors duration-300 group-hover:text-ion-deep" />
                 </div>
                 <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2 sm:mb-3">{feature.title}</h3>
                 <p className="text-sm sm:text-base text-gray-600 leading-relaxed">{feature.description}</p>
@@ -476,7 +484,7 @@ const generateEmailLink = () => {
           >
             <Link
               to="/signup"
-              className="inline-flex items-center gap-2 px-8 py-4 bg-primary-600 text-white font-semibold rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-500/25"
+              className="btn-spark px-8 py-4"
             >
               Start Your Free Demo
               <ArrowRight className="w-5 h-5" />
@@ -485,67 +493,104 @@ const generateEmailLink = () => {
         </div>
       </section>
 
-      {/* Pricing Section */}
-      <section id="pricing" className="py-12 sm:py-20 px-4 sm:px-6 bg-gray-50">
-        <div className="max-w-7xl mx-auto">
+      {/* Pricing Section — VANTA dark band (Ownership pattern) */}
+      <section id="pricing" className="relative overflow-hidden bg-void py-16 sm:py-28 px-4 sm:px-6">
+        {/* plasma bloom */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-0 h-[460px] w-[460px] -translate-x-1/2 rounded-full opacity-25 blur-[130px]"
+          style={{ background: 'radial-gradient(circle, #5ee7ff, transparent 60%)' }}
+        />
+        {/* faint grid */}
+        <div
+          aria-hidden
+          className="absolute inset-0 opacity-[0.04]"
+          style={{
+            backgroundImage:
+              'linear-gradient(to right, #fff 1px, transparent 1px), linear-gradient(to bottom, #fff 1px, transparent 1px)',
+            backgroundSize: '44px 44px',
+          }}
+        />
+        <div className="max-w-7xl mx-auto relative z-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="text-center mb-10 sm:mb-16"
+            className="text-center mb-12 sm:mb-16"
           >
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-3 sm:mb-4">
-              Simple, transparent pricing
+            <div className="inline-flex items-center gap-3 mb-5">
+              <span className="h-px w-10 bg-ion" />
+              <span className="eyebrow-mono text-ion">Pricing</span>
+              <span className="h-px w-10 bg-ion" />
+            </div>
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-4">
+              Three ways to <span className="text-plasma">run your books.</span>
             </h2>
-            <p className="text-base sm:text-lg md:text-xl text-gray-600 max-w-3xl mx-auto px-2">
-              Choose the plan that fits your portfolio size. All plans include core features
-              with no hidden fees.
+            <p className="text-base sm:text-lg text-slate-400 max-w-2xl mx-auto px-2">
+              Choose the plan that fits your portfolio. Every tier runs the full double-entry
+              core, with no hidden fees and no lock-in.
             </p>
           </motion.div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8 max-w-5xl mx-auto">
+          <div className="flex flex-col items-stretch justify-center gap-6 lg:flex-row">
             {plans.map((plan, index) => (
               <motion.div
                 key={plan.name}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 40 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-                className={`bg-white rounded-xl sm:rounded-2xl p-5 sm:p-8 ${
-                  plan.popular ? 'ring-2 ring-primary-500 shadow-xl' : 'shadow-sm'
-                } relative`}
+                viewport={{ once: true, margin: '-10%' }}
+                transition={{ type: 'spring', stiffness: 90, damping: 16, delay: index * 0.1 }}
+                className={`relative flex w-full flex-col rounded-3xl border p-7 sm:p-8 transition-transform duration-300 hover:-translate-y-1.5 lg:w-80 ${
+                  plan.popular
+                    ? 'border-ion/50 bg-graphite glow-accent lg:-translate-y-4 lg:scale-[1.04]'
+                    : 'border-white/10 bg-carbon'
+                }`}
               >
                 {plan.popular && (
-                  <div className="absolute -top-3 sm:-top-4 left-1/2 -translate-x-1/2 px-3 sm:px-4 py-1 bg-primary-600 text-white text-xs sm:text-sm font-medium rounded-full whitespace-nowrap">
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-ion px-4 py-1 text-[0.65rem] font-bold uppercase tracking-[0.18em] text-[#04060a]">
                     Most Popular
-                  </div>
+                  </span>
                 )}
-                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">{plan.name}</h3>
-                <div className="mb-4 sm:mb-6">
-                  <span className="text-2xl sm:text-4xl font-bold text-gray-900">${plan.price}</span>
-                  <span className="text-gray-500 text-sm sm:text-base">/{plan.period}</span>
+                <p className="eyebrow-mono text-slate-400">{plan.name}</p>
+                <div className="mt-4 flex items-end gap-1">
+                  <span className="text-4xl sm:text-5xl font-bold tracking-tight text-white">${plan.price}</span>
+                  <span className="mb-1.5 text-sm text-slate-500">/{plan.period}</span>
                 </div>
-                <ul className="space-y-2 sm:space-y-3 mb-6 sm:mb-8">
+                <p className="mt-3 min-h-[2.5rem] text-sm leading-relaxed text-slate-400">{plan.note}</p>
+
+                <div className="my-7 h-px w-full bg-white/10" />
+
+                <ul className="flex-1 space-y-3.5">
                   {plan.features.map((feature) => (
-                    <li key={feature} className="flex items-start gap-2 sm:gap-3 text-sm sm:text-base text-gray-600">
-                      <IoCheckmarkDoneCircleOutline className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-                      {feature}
+                    <li key={feature} className="flex items-start gap-3">
+                      <span
+                        className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
+                        style={{ background: plan.popular ? '#5ee7ff' : 'rgba(255,255,255,0.08)' }}
+                      >
+                        <Check className={`w-3 h-3 ${plan.popular ? 'text-[#04060a]' : 'text-white'}`} strokeWidth={3} />
+                      </span>
+                      <span className="text-[0.95rem] text-slate-300">{feature}</span>
                     </li>
                   ))}
                 </ul>
+
                 <Link
                   to="/signup"
-                  className={`block w-full py-2.5 sm:py-3 text-center text-sm sm:text-base font-medium rounded-xl transition-colors ${
+                  className={
                     plan.popular
-                      ? 'bg-primary-600 text-white hover:bg-primary-700'
-                      : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
-                  }`}
+                      ? 'btn-spark mt-8 w-full py-3 text-sm'
+                      : 'mt-8 block w-full rounded-xl border border-white/15 py-3 text-center text-sm font-semibold text-white transition-all hover:border-ion hover:text-ion'
+                  }
                 >
                   {plan.cta}
                 </Link>
               </motion.div>
             ))}
           </div>
+
+          <p className="mt-10 text-center eyebrow-mono tracking-[0.2em] text-slate-500">
+            Prices in USD · Demo free forever · Cancel anytime
+          </p>
         </div>
       </section>
 
@@ -566,7 +611,7 @@ const generateEmailLink = () => {
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
               <Link
                 to="/signup"
-                className="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3 sm:py-4 bg-primary-600 text-white font-semibold rounded-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-500/25"
+                className="btn-spark px-6 sm:px-8 py-3 sm:py-4"
               >
                 Start Free Demo
                 <ArrowRight className="w-5 h-5" />
@@ -583,49 +628,67 @@ const generateEmailLink = () => {
       </section>
 
 {/* Contact Section */}
-      <section id="contact" className="py-12 sm:py-20 px-4 sm:px-6 bg-gray-900 text-white">
-        <div className="max-w-7xl mx-auto">
+      <section id="contact" className="relative overflow-hidden bg-void text-white py-12 sm:py-20 px-4 sm:px-6">
+        {/* ion top hairline */}
+        <div
+          aria-hidden
+          className="absolute inset-x-0 top-0 h-px"
+          style={{ background: 'linear-gradient(90deg, transparent, #5ee7ff, #2b8fff, transparent)' }}
+        />
+        {/* faint ion bloom */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -left-24 top-1/3 h-72 w-72 rounded-full opacity-20 blur-[120px]"
+          style={{ background: 'radial-gradient(circle, #5ee7ff, transparent 60%)' }}
+        />
+        <div className="max-w-7xl mx-auto relative z-10">
           <div className="grid lg:grid-cols-2 gap-8 lg:gap-12">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
             >
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4">Get in touch</h2>
+              <div className="inline-flex items-center gap-3 mb-5">
+                <span className="h-px w-10 bg-ion" />
+                <span className="eyebrow-mono text-ion">Contact</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-3 sm:mb-4">
+                Let's <span className="text-plasma">get in touch.</span>
+              </h2>
               <p className="text-gray-400 text-base sm:text-lg mb-6 sm:mb-8">
-                Have questions about Parameter? Our team is here to help you find the
-                right solution for your property management needs.
+                Tell us what you run and we'll show you exactly how Parameter fits. Real people,
+                usually back to you the same day.
               </p>
               <div className="space-y-6">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-primary-500/20 rounded-xl flex items-center justify-center">
-                    <Phone className="w-6 h-6 text-primary-400" />
+                  <div className="w-12 h-12 bg-ion/10 ring-1 ring-ion/20 rounded-xl flex items-center justify-center">
+                    <Phone className="w-6 h-6 text-ion" />
                   </div>
                   <div>
                     <div className="text-sm text-gray-400">Phone</div>
-                    <a href="tel:+263785948128" className="text-lg font-medium hover:text-primary-400 transition-colors">
+                    <a href="tel:+263785948128" className="text-lg font-medium hover:text-ion transition-colors">
                       +263 785 948 128
                     </a>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-primary-500/20 rounded-xl flex items-center justify-center">
-                    <Mail className="w-6 h-6 text-primary-400" />
+                  <div className="w-12 h-12 bg-ion/10 ring-1 ring-ion/20 rounded-xl flex items-center justify-center">
+                    <Mail className="w-6 h-6 text-ion" />
                   </div>
                   <div>
                     <div className="text-sm text-gray-400">Email (Parameter)</div>
-                    <a href="mailto:admin@parameter.co.zw" className="text-lg font-medium hover:text-primary-400 transition-colors">
+                    <a href="mailto:admin@parameter.co.zw" className="text-lg font-medium hover:text-ion transition-colors">
                       admin@parameter.co.zw
                     </a>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-primary-500/20 rounded-xl flex items-center justify-center">
-                    <GiWorld className="w-6 h-6 text-primary-400" />
+                  <div className="w-12 h-12 bg-ion/10 ring-1 ring-ion/20 rounded-xl flex items-center justify-center">
+                    <GiWorld className="w-6 h-6 text-ion" />
                   </div>
                   <div>
                     <div className="text-sm text-gray-400">Email (Bit Studio)</div>
-                    <a href="mailto:admin@bitstudio.co.zw" className="text-lg font-medium hover:text-primary-400 transition-colors">
+                    <a href="mailto:admin@bitstudio.co.zw" className="text-lg font-medium hover:text-ion transition-colors">
                       admin@bitstudio.co.zw
                     </a>
                   </div>
@@ -638,7 +701,7 @@ const generateEmailLink = () => {
               viewport={{ once: true }}
               transition={{ delay: 0.2 }}
             >
-              <div className="bg-gray-800 rounded-xl sm:rounded-2xl p-5 sm:p-8">
+              <div className="bg-graphite border border-white/10 ring-1 ring-ion/10 rounded-xl sm:rounded-2xl p-5 sm:p-8">
                 <h3 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6">Send us a message</h3>
                 <div className="space-y-3 sm:space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -647,14 +710,14 @@ const generateEmailLink = () => {
                       placeholder="First name"
                       value={contactForm.firstName}
                       onChange={(e) => setContactForm({ ...contactForm, firstName: e.target.value })}
-                      className="px-4 py-2.5 sm:py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm sm:text-base"
+                      className="px-4 py-2.5 sm:py-3 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-ion focus:border-transparent text-sm sm:text-base"
                     />
                     <input
                       type="text"
                       placeholder="Last name"
                       value={contactForm.lastName}
                       onChange={(e) => setContactForm({ ...contactForm, lastName: e.target.value })}
-                      className="px-4 py-2.5 sm:py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm sm:text-base"
+                      className="px-4 py-2.5 sm:py-3 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-ion focus:border-transparent text-sm sm:text-base"
                     />
                   </div>
                   <input
@@ -662,21 +725,21 @@ const generateEmailLink = () => {
                     placeholder="Email address"
                     value={contactForm.email}
                     onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
-                    className="w-full px-4 py-2.5 sm:py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm sm:text-base"
+                    className="w-full px-4 py-2.5 sm:py-3 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-ion focus:border-transparent text-sm sm:text-base"
                   />
                   <input
                     type="text"
                     placeholder="Company name"
                     value={contactForm.company}
                     onChange={(e) => setContactForm({ ...contactForm, company: e.target.value })}
-                    className="w-full px-4 py-2.5 sm:py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm sm:text-base"
+                    className="w-full px-4 py-2.5 sm:py-3 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-ion focus:border-transparent text-sm sm:text-base"
                   />
                   <textarea
                     rows={4}
                     placeholder="How can we help?"
                     value={contactForm.message}
                     onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
-                    className="w-full px-4 py-2.5 sm:py-3 bg-gray-700 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none text-sm sm:text-base"
+                    className="w-full px-4 py-2.5 sm:py-3 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder-gray-400 focus:ring-2 focus:ring-ion focus:border-transparent resize-none text-sm sm:text-base"
                   />
                   
                   {/* Send Options */}
@@ -694,7 +757,7 @@ const generateEmailLink = () => {
                       </a>
                       <a
                         href={generateEmailLink()}
-                        className="flex items-center justify-center gap-2 py-2.5 sm:py-3 bg-primary-600 text-white font-medium rounded-xl hover:bg-primary-700 transition-colors"
+                        className="btn-spark justify-center py-2.5 sm:py-3"
                       >
                         <Mail className="w-5 h-5" />
                         Email
@@ -709,8 +772,20 @@ const generateEmailLink = () => {
       </section>
 
       {/* Footer */}
-      <footer className="bg-gray-950 text-gray-400 py-8 sm:py-12 px-4 sm:px-6">
-        <div className="max-w-7xl mx-auto">
+      <footer className="relative overflow-hidden bg-void text-gray-400 py-8 sm:py-12 px-4 sm:px-6">
+        {/* ion top hairline */}
+        <div
+          aria-hidden
+          className="absolute inset-x-0 top-0 h-px"
+          style={{ background: 'linear-gradient(90deg, transparent, #5ee7ff, #2b8fff, transparent)' }}
+        />
+        {/* faint plasma bloom */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-24 left-1/2 h-48 w-[36rem] -translate-x-1/2 rounded-full opacity-20 blur-[100px]"
+          style={{ background: 'radial-gradient(circle, #5ee7ff, transparent 60%)' }}
+        />
+        <div className="max-w-7xl mx-auto relative z-10">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 mb-8 sm:mb-12">
             <div className="col-span-2 md:col-span-1">
               <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
@@ -724,13 +799,13 @@ const generateEmailLink = () => {
             <div>
               <h4 className="font-semibold text-white text-sm sm:text-base mb-3 sm:mb-4">Product</h4>
               <ul className="space-y-2 text-sm">
-                <li><a href="#features" className="hover:text-white transition-colors">Features</a></li>
-                <li><a href="#pricing" className="hover:text-white transition-colors">Pricing</a></li>
-                <li><Link to="/learn" className="hover:text-white transition-colors">Documentation</Link></li>
+                <li><a href="#features" className="hover:text-ion transition-colors">Features</a></li>
+                <li><a href="#pricing" className="hover:text-ion transition-colors">Pricing</a></li>
+                <li><Link to="/learn" className="hover:text-ion transition-colors">Documentation</Link></li>
                 <li>
                   {isAuthenticated
-                    ? <Link to={dashboardPath} className="hover:text-white transition-colors">Dashboard</Link>
-                    : <Link to="/signup" className="hover:text-white transition-colors">Get Started</Link>
+                    ? <Link to={dashboardPath} className="hover:text-ion transition-colors">Dashboard</Link>
+                    : <Link to="/signup" className="hover:text-ion transition-colors">Get Started</Link>
                   }
                 </li>
               </ul>
@@ -738,26 +813,26 @@ const generateEmailLink = () => {
             <div>
               <h4 className="font-semibold text-white mb-4">Company</h4>
               <ul className="space-y-2 text-sm">
-                <li><a href="#contact" className="hover:text-white transition-colors">Contact</a></li>
-                <li><button onClick={() => setPrivacyOpen(true)} className="hover:text-white transition-colors">Privacy Policy</button></li>
-                <li><button onClick={() => setPrivacyOpen(true)} className="hover:text-white transition-colors">Terms of Service</button></li>
+                <li><a href="#contact" className="hover:text-ion transition-colors">Contact</a></li>
+                <li><button onClick={() => setPrivacyOpen(true)} className="hover:text-ion transition-colors">Privacy Policy</button></li>
+                <li><button onClick={() => setPrivacyOpen(true)} className="hover:text-ion transition-colors">Terms of Service</button></li>
               </ul>
             </div>
             <div>
               <h4 className="font-semibold text-white mb-4">Contact</h4>
               <ul className="space-y-2 text-sm">
-                <li><a href="tel:+263785948128" className="hover:text-white transition-colors">+263 785 948 128</a></li>
-                <li><a href="mailto:admin@parameter.co.zw" className="hover:text-white transition-colors">admin@parameter.co.zw</a></li>
-                <li><a href="mailto:admin@bitstudio.co.zw" className="hover:text-white transition-colors">admin@bitstudio.co.zw</a></li>
+                <li><a href="tel:+263785948128" className="hover:text-ion transition-colors">+263 785 948 128</a></li>
+                <li><a href="mailto:admin@parameter.co.zw" className="hover:text-ion transition-colors">admin@parameter.co.zw</a></li>
+                <li><a href="mailto:admin@bitstudio.co.zw" className="hover:text-ion transition-colors">admin@bitstudio.co.zw</a></li>
               </ul>
             </div>
           </div>
-          <div className="pt-8 border-t border-gray-800 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-sm">
               © {new Date().getFullYear()} Parameter. All rights reserved.
             </p>
             <p className="text-sm flex items-center gap-2">
-              A product of <span className="font-semibold text-white">Bit Studio ZW</span>
+              A product of <span className="font-semibold text-plasma">Bit Studio ZW</span>
             </p>
           </div>
         </div>

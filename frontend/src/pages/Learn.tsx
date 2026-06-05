@@ -2173,7 +2173,7 @@ export default function Learn() {
                 <span className="font-bold text-lg text-gray-900">Parameter</span>
               </Link>
               <span className="text-gray-300">|</span>
-              <span className="text-gray-600 font-medium">Documentation</span>
+              <span className="eyebrow-mono text-ion-deep">Documentation</span>
             </div>
             <div className="flex items-center gap-2 md:gap-6">
               <div className="hidden md:flex items-center gap-6">
@@ -2181,7 +2181,7 @@ export default function Learn() {
                 {isAuthenticated ? (
                   <Link
                     to={dashboardPath}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors"
+                    className="btn-spark px-4 py-2"
                   >
                     <LayoutDashboard className="w-4 h-4" />
                     Dashboard
@@ -2191,7 +2191,7 @@ export default function Learn() {
                     <Link to="/login" className="text-gray-600 hover:text-gray-900 transition-colors">Sign In</Link>
                     <Link
                       to="/signup"
-                      className="px-4 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors"
+                      className="btn-spark px-4 py-2"
                     >
                       Get Started
                     </Link>
@@ -2240,7 +2240,7 @@ export default function Learn() {
                       setActiveSubsection(section.subsections[0].id)
                     }}
                     className={`flex items-center gap-2 w-full text-left font-semibold mb-2 ${
-                      activeSection === section.id ? 'text-primary-600' : 'text-gray-900'
+                      activeSection === section.id ? 'text-ion-deep' : 'text-gray-900'
                     }`}
                   >
                     <section.icon className="w-4 h-4" />
@@ -2255,12 +2255,15 @@ export default function Learn() {
                             setActiveSubsection(sub.id)
                             setMobileMenuOpen(false)
                           }}
-                          className={`block w-full text-left py-1 text-sm transition-colors ${
+                          className={`relative block w-full text-left py-1 pl-3 text-sm transition-colors ${
                             activeSubsection === sub.id
-                              ? 'text-primary-600 font-medium'
+                              ? 'text-ion-deep font-semibold'
                               : 'text-gray-600 hover:text-gray-900'
                           }`}
                         >
+                          {activeSubsection === sub.id && (
+                            <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-ion" />
+                          )}
                           {sub.title}
                         </button>
                       </li>
@@ -2288,6 +2291,9 @@ export default function Learn() {
                 <span className="text-gray-900">{currentContent?.title}</span>
               </div>
 
+              <p className="eyebrow-mono text-ion-deep mb-2">
+                {sections.find((s) => s.id === activeSection)?.title}
+              </p>
               <h1 className="text-3xl font-bold text-gray-900 mb-6">{currentContent?.title}</h1>
               {currentContent?.content}
             </motion.div>

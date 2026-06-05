@@ -32,6 +32,20 @@ export default {
           800: '#1e293b',
           900: '#0f172a',
         },
+        // Accent layer: an electric "ion" cyan spark + a deeper azure blue.
+        ion: {
+          DEFAULT: '#5ee7ff',
+          soft: '#7df9ff',
+          deep: '#22b8d6',
+        },
+        // (kept the `plasma` name for the gradient's deep stop; now an azure blue, no violet)
+        plasma: '#2b8fff',
+        // Premium dark bands — tuned to the platform's own navy/slate scale
+        // (not neutral black) so they read as THIS brand, not a foreign band.
+        void: '#020617',     // slate-950 — deepest section background
+        carbon: '#0f172a',   // slate-900 — standard card surface
+        graphite: '#1e293b', // slate-800 — featured / form surface (raised)
+        ash: '#334155',      // slate-700
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
