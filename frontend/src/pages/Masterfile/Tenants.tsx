@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { Plus, Search, Users, Phone, Mail, Trash2, Loader2, Eye, X, FileText, Receipt, Building2, Calendar, DollarSign, AlertCircle, Home, Download, Wand2, Edit2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, FileSpreadsheet } from 'lucide-react'
-import { tenantApi, unitApi, propertyApi, importsApi } from '../../services/api'
+import { tenantApi, unitApi, propertyApi, importsApi, landlordApi } from '../../services/api'
 import { useDebounce, formatCurrency, formatDate, cn } from '../../lib/utils'
 import { Pagination, EmptyState, Modal, SelectionCheckbox, BulkActionsBar, ConfirmDialog, SplitButton, Select, Tooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
@@ -50,8 +50,11 @@ export default function Tenants() {
   // Filter state
   const [tenantTypeFilter, setTenantTypeFilter] = useState('')
   const [leaseStatusFilter, setLeaseStatusFilter] = useState('')
+  // Landlord scope — seeded from ?landlord=<id> (deep-link from the
+  // Landlord detail page's "View Tenants" button).
+  const landlordFilter = searchParams.get('landlord') || ''
 
-  const selection = useSelection<number>({ clearOnChange: [debouncedSearch, tenantTypeFilter, leaseStatusFilter] })
+  const selection = useSelection<number>({ clearOnChange: [debouncedSearch, tenantTypeFilter, leaseStatusFilter, landlordFilter] })
   const prefetch = usePrefetch()
 
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -115,8 +118,13 @@ export default function Tenants() {
     setCurrentPage(1)
   }
 
+  // Reset to page 1 when the landlord scope changes via the URL.
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [landlordFilter])
+
   const { data: tenantsData, isLoading } = useQuery({
-    queryKey: ['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter],
+    queryKey: ['tenants', debouncedSearch, currentPage, tenantTypeFilter, leaseStatusFilter, landlordFilter],
     queryFn: () => tenantApi.list({
       account_type: 'rental',
       search: debouncedSearch,
@@ -124,9 +132,24 @@ export default function Tenants() {
       page_size: PAGE_SIZE,
       ...(tenantTypeFilter && { tenant_type: tenantTypeFilter }),
       ...(leaseStatusFilter && { lease_status: leaseStatusFilter }),
+      ...(landlordFilter && { landlord: landlordFilter }),
     }).then(r => r.data),
     placeholderData: keepPreviousData,
   })
+
+  // Resolve the landlord's name for the scope banner (only when filtered).
+  const { data: landlordScope } = useQuery({
+    queryKey: ['tenant-landlord-scope', landlordFilter],
+    queryFn: () => landlordApi.get(Number(landlordFilter)).then(r => r.data),
+    enabled: !!landlordFilter,
+    placeholderData: keepPreviousData,
+  })
+
+  const clearLandlordFilter = () => {
+    searchParams.delete('landlord')
+    setSearchParams(searchParams, { replace: true })
+    setCurrentPage(1)
+  }
 
   // Query for tenant detail
   const { data: tenantDetail, isLoading: detailLoading } = useQuery({
@@ -363,6 +386,30 @@ export default function Tenants() {
           <Plus className="w-4 h-4" /> Add Tenant
         </SplitButton>
       </div>
+
+      {landlordFilter && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-primary-900">
+            <Building2 className="w-4 h-4 text-primary-600" />
+            <span>
+              Showing tenants under{' '}
+              <button
+                onClick={() => navigate(`/dashboard/landlords/${landlordFilter}`)}
+                className="font-semibold underline underline-offset-2 hover:text-primary-700"
+              >
+                {landlordScope?.name || `landlord #${landlordFilter}`}
+              </button>
+              {"'s properties"}
+            </span>
+          </div>
+          <button
+            onClick={clearLandlordFilter}
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-900"
+          >
+            <X className="w-3.5 h-3.5" /> Clear filter
+          </button>
+        </div>
+      )}
 
       <div className="card p-4">
         <div className="flex flex-wrap items-center gap-4">

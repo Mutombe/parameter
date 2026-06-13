@@ -1428,36 +1428,50 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
         start = datetime.strptime(period_start, '%Y-%m-%d').date()
         end = datetime.strptime(period_end, '%Y-%m-%d').date()
 
-        # Calculate opening balance from transactions before the period
-        prior_txns = account.transactions.filter(date__lt=start)
+        # Sign convention matches SubsidiaryTransaction.create_entry:
+        #   tenant / account_holder → debit-normal (debit − credit)
+        #   landlord               → credit-normal (credit − debit)
+        is_debit_normal = account.entity_type in ('tenant', 'account_holder')
+
+        # Opening balance = the net of every movement DATED before the
+        # period. Summed (order-independent) rather than read off one
+        # transaction's stored balance, because transaction_number is
+        # posting order — a back-dated entry would otherwise corrupt it.
+        prior_qs = account.transactions.filter(date__lt=start)
         if view_mode == 'consolidated':
-            prior_txns = prior_txns.filter(is_consolidated=False)
-        if prior_txns.exists():
-            last_prior = prior_txns.order_by('-transaction_number').first()
-            opening_balance = last_prior.balance
-        else:
-            opening_balance = Decimal('0.00')
+            prior_qs = prior_qs.filter(is_consolidated=False)
+        prior = prior_qs.aggregate(d=Sum('debit_amount'), c=Sum('credit_amount'))
+        prior_d = prior['d'] or Decimal('0.00')
+        prior_c = prior['c'] or Decimal('0.00')
+        opening_balance = (prior_d - prior_c) if is_debit_normal else (prior_c - prior_d)
 
-        # Get transactions in the period
-        transactions = account.transactions.filter(
-            date__gte=start, date__lte=end
-        )
-
-        # In consolidated view, hide merged source transactions
+        # Period transactions, sorted strictly by DATE (transaction_number
+        # then id break same-day ties deterministically).
+        txn_qs = account.transactions.filter(date__gte=start, date__lte=end)
         if view_mode == 'consolidated':
-            transactions = transactions.filter(is_consolidated=False)
+            txn_qs = txn_qs.filter(is_consolidated=False)
+        txn_qs = txn_qs.order_by('date', 'transaction_number', 'id')
 
-        transactions = transactions.order_by('transaction_number')
-
-        totals = transactions.aggregate(
+        totals = txn_qs.aggregate(
             total_debits=Sum('debit_amount'),
             total_credits=Sum('credit_amount'),
         )
 
-        closing_balance = account.current_balance
-        if account.transactions.filter(date__gt=end).exists():
-            last_in_period = transactions.last()
-            closing_balance = last_in_period.balance if last_in_period else opening_balance
+        transactions = list(txn_qs)
+
+        # Recompute the running balance in DATE order so the Balance column
+        # is coherent even when entries were posted out of date sequence.
+        running = opening_balance
+        txn_rows = SubsidiaryTransactionSerializer(transactions, many=True).data
+        for txn, row in zip(transactions, txn_rows):
+            delta = (txn.debit_amount - txn.credit_amount) if is_debit_normal \
+                else (txn.credit_amount - txn.debit_amount)
+            running += delta
+            row['balance'] = str(running.quantize(Decimal('0.01')))
+
+        # Closing balance = opening + every period movement = the running
+        # balance after the last (latest-dated) transaction.
+        closing_balance = running
 
         data = {
             'account': SubsidiaryAccountSerializer(account).data,
@@ -1465,7 +1479,7 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
             'period_end': period_end,
             'view_mode': view_mode,
             'opening_balance': opening_balance,
-            'transactions': SubsidiaryTransactionSerializer(transactions, many=True).data,
+            'transactions': txn_rows,
             'total_debits': totals['total_debits'] or Decimal('0.00'),
             'total_credits': totals['total_credits'] or Decimal('0.00'),
             'closing_balance': closing_balance,
@@ -1488,24 +1502,36 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
         start = datetime.strptime(period_start, '%Y-%m-%d').date()
         end = datetime.strptime(period_end, '%Y-%m-%d').date()
 
-        prior_txns = account.transactions.filter(date__lt=start)
-        if view_mode == 'consolidated':
-            prior_txns = prior_txns.filter(is_consolidated=False)
-        opening_balance = prior_txns.order_by('-transaction_number').first()
-        opening = opening_balance.balance if opening_balance else Decimal('0')
+        is_debit_normal = account.entity_type in ('tenant', 'account_holder')
 
+        # Opening balance = net of every movement dated before the period
+        # (summed, order-independent — transaction_number is posting order).
+        prior_qs = account.transactions.filter(date__lt=start)
+        if view_mode == 'consolidated':
+            prior_qs = prior_qs.filter(is_consolidated=False)
+        prior = prior_qs.aggregate(d=Sum('debit_amount'), c=Sum('credit_amount'))
+        prior_d = prior['d'] or Decimal('0')
+        prior_c = prior['c'] or Decimal('0')
+        opening = (prior_d - prior_c) if is_debit_normal else (prior_c - prior_d)
+
+        # Transactions sorted strictly by DATE.
         transactions = account.transactions.filter(date__gte=start, date__lte=end)
         if view_mode == 'consolidated':
             transactions = transactions.filter(is_consolidated=False)
-        transactions = transactions.order_by('transaction_number')
+        transactions = transactions.order_by('date', 'transaction_number', 'id')
 
+        # Running balance recomputed in date order (matches create_entry's
+        # sign convention) so the Balance column stays coherent.
         total_dr = Decimal('0')
         total_cr = Decimal('0')
-        last_balance = opening
+        running = opening
         txn_list = []
         for t in transactions:
             desc = t.overwritten_description or t.description
             marker = t.consolidation_marker == 'C'
+            delta = (t.debit_amount - t.credit_amount) if is_debit_normal \
+                else (t.credit_amount - t.debit_amount)
+            running += delta
             txn_list.append({
                 'transaction_number': t.transaction_number,
                 'date': t.date,
@@ -1515,11 +1541,11 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
                 'marker': marker,
                 'debit_amount': t.debit_amount if t.debit_amount else None,
                 'credit_amount': t.credit_amount if t.credit_amount else None,
-                'balance': f'{t.balance:.2f}',
+                'balance': f'{running:.2f}',
             })
             total_dr += t.debit_amount
             total_cr += t.credit_amount
-            last_balance = t.balance
+        last_balance = running
 
         if export_format == 'pdf':
             from .pdf_utils import render_pdf

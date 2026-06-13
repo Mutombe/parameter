@@ -263,6 +263,18 @@ class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets
         elif lease_status == 'inactive':
             queryset = queryset.exclude(leases__status='active').distinct()
 
+        # Filter by landlord — tenants tied to a landlord's properties via
+        # the tenant's direct unit OR through any lease (unit→property or
+        # property-level lease). Drives the "View Tenants" link from the
+        # Landlord detail page.
+        landlord_id = self.request.query_params.get('landlord')
+        if landlord_id:
+            queryset = queryset.filter(
+                Q(unit__property__landlord_id=landlord_id) |
+                Q(leases__unit__property__landlord_id=landlord_id) |
+                Q(leases__property__landlord_id=landlord_id)
+            ).distinct()
+
         return queryset
 
     def get_serializer_class(self):

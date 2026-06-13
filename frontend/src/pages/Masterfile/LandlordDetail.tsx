@@ -24,6 +24,7 @@ import {
   Layers,
   Download,
   Eye,
+  Users,
   Calendar as CalendarIcon,
   BarChart3,
   ChevronRight,
@@ -668,6 +669,14 @@ export default function LandlordDetail() {
           >
             <Plus className="w-4 h-4" />
             Add Property
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => navigate(`/dashboard/tenants?landlord=${landlordId}`)}
+            className="gap-2"
+          >
+            <Users className="w-4 h-4" />
+            View Tenants
           </Button>
           <Button
             variant="outline"
