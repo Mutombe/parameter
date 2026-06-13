@@ -98,7 +98,7 @@ const PERIOD_REPORTS: ReadonlySet<ReportType> = new Set<ReportType>([
   'trial-balance', 'income-statement', 'balance-sheet', 'cash-flow',
 ])
 
-type PeriodMode = 'month' | 'quarter' | 'half' | 'year' | 'custom'
+type PeriodMode = 'all' | 'month' | 'quarter' | 'half' | 'year' | 'custom'
 
 function _ymd(d: Date) {
   const y = d.getFullYear()
@@ -114,6 +114,12 @@ const _MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 
 function derivePeriod(
   mode: PeriodMode, anchorMonth: string, customStart: string, customEnd: string,
 ): { start: string; end: string; label: string } {
+  if (mode === 'all') {
+    // No start bound; end at today. Reports then show everything to date
+    // (matches the pre-period-selector behaviour) so data is never hidden
+    // behind an empty current month.
+    return { start: '', end: _ymd(new Date()), label: 'All time' }
+  }
   if (mode === 'custom') {
     return { start: customStart, end: customEnd, label: `${customStart} – ${customEnd}` }
   }
@@ -809,7 +815,7 @@ export default function Reports() {
 
   // Shared reporting period — defaults to the current month. Drives the
   // Trial Balance / Income Statement / Balance Sheet / Cash Flow queries.
-  const [periodMode, setPeriodMode] = useState<PeriodMode>('month')
+  const [periodMode, setPeriodMode] = useState<PeriodMode>('all')
   const [anchorMonth, setAnchorMonth] = useState<string>(() => new Date().toISOString().slice(0, 7))
   const [customStart, setCustomStart] = useState<string>(() => new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10))
   const [customEnd, setCustomEnd] = useState<string>(() => new Date().toISOString().slice(0, 10))
@@ -1098,6 +1104,7 @@ function PeriodSelector({
   label: string
 }) {
   const modes: { value: PeriodMode; label: string }[] = [
+    { value: 'all', label: 'All time' },
     { value: 'month', label: 'Monthly' },
     { value: 'quarter', label: 'Quarterly' },
     { value: 'half', label: 'Half-Year' },
@@ -1131,7 +1138,7 @@ function PeriodSelector({
           <span className="text-gray-400 text-sm">to</span>
           <DatePicker value={customEnd} onChange={setCustomEnd} className="min-w-[150px]" />
         </div>
-      ) : (
+      ) : mode === 'all' ? null : (
         <input
           type="month"
           value={anchorMonth}
@@ -1494,15 +1501,18 @@ function IncomeStatementReport() {
             </div>
           )}
 
-          {/* Revenue section — grouped accordions by income subtype.
-              Each accordion's header shows its subtotal so a collapsed
-              view still communicates structure. */}
+          {/* Revenue. On the landlord statement the rows are already the
+              named buckets (Rental Income, Levy Income, …) so we render
+              them flat; the agency-wide P&L groups GL accounts by subtype. */}
           <IncomeStatementSection
             title="Revenue"
             accent="emerald"
-            groups={groupRevenue(data?.revenue?.accounts || [])}
+            groups={hasCostOfSales
+              ? [{ label: 'Revenue', rows: data?.revenue?.accounts || [] }]
+              : groupRevenue(data?.revenue?.accounts || [])}
             total={data?.revenue?.total || 0}
-            emptyLabel="No revenue accounts"
+            emptyLabel="No revenue in this period"
+            flat={hasCostOfSales}
           />
 
           {/* Cost of Sales (commission) + Gross Profit — landlord
@@ -1517,6 +1527,7 @@ function IncomeStatementReport() {
                 total={data?.cost_of_sales?.total || 0}
                 emptyLabel="No commission charged this period"
                 parenthesize
+                flat
               />
               <div className="px-2 py-2.5 flex justify-between text-[13px] font-semibold border-t border-gray-300">
                 <span className="text-gray-900">Gross Profit</span>
@@ -1528,10 +1539,13 @@ function IncomeStatementReport() {
           <IncomeStatementSection
             title={hasCostOfSales ? 'Operating Expenses' : 'Expenses'}
             accent="rose"
-            groups={groupExpenses(data?.expenses?.accounts || [])}
+            groups={hasCostOfSales
+              ? [{ label: 'Operating Expenses', rows: data?.expenses?.accounts || [] }]
+              : groupExpenses(data?.expenses?.accounts || [])}
             total={data?.expenses?.total || 0}
-            emptyLabel="No expense accounts"
+            emptyLabel="No expenses in this period"
             parenthesize
+            flat={hasCostOfSales}
           />
 
           {/* ── Grand-total row, accountant-double-rule ── */}
@@ -2007,6 +2021,7 @@ function IncomeStatementSection({
   total,
   emptyLabel,
   parenthesize,
+  flat,
 }: {
   title: string
   accent: 'emerald' | 'rose'
@@ -2014,13 +2029,21 @@ function IncomeStatementSection({
   total: number
   emptyLabel: string
   parenthesize?: boolean
+  // `flat` renders the rows as a plain list (no per-subtype accordions).
+  // Used when the rows are already the final categories — e.g. the
+  // landlord statement's named revenue buckets — so they aren't buried
+  // under a generic "Other" group.
+  flat?: boolean
 }) {
   const palette = {
     emerald: { value: 'text-emerald-700', totalRow: 'border-emerald-200 text-emerald-800', hover: 'hover:bg-emerald-50/40' },
     rose: { value: 'text-rose-700', totalRow: 'border-rose-200 text-rose-800', hover: 'hover:bg-rose-50/40' },
   }[accent]
   const fmt = (v: number) => parenthesize ? `(${formatCurrency(v)})` : formatCurrency(v)
-  const allEmpty = groups.length === 0 || groups.every(g => g.rows.length === 0)
+  const flatRows = flat ? groups.flatMap(g => g.rows) : []
+  const allEmpty = flat
+    ? flatRows.length === 0
+    : groups.length === 0 || groups.every(g => g.rows.length === 0)
 
   return (
     <div className="space-y-2">
@@ -2028,6 +2051,19 @@ function IncomeStatementSection({
       {allEmpty ? (
         <div className="rounded-xl border border-gray-200 px-5 py-6 text-center text-gray-400 text-sm">
           {emptyLabel}
+        </div>
+      ) : flat ? (
+        <div className="rounded-xl border border-gray-200 divide-y divide-gray-100">
+          {flatRows.map((acc: any, idx: number) => (
+            <div
+              key={`${acc.code}-${idx}`}
+              className={cn('px-5 py-2.5 flex items-center gap-3 transition-colors', palette.hover)}
+            >
+              <span className="text-[10px] font-mono text-gray-400 w-12 shrink-0">{acc.code || ''}</span>
+              <span className="flex-1 min-w-0 text-sm text-gray-700 truncate" title={acc.name}>{acc.name}</span>
+              <span className="text-sm tabular-nums shrink-0 font-medium text-gray-900">{fmt(acc.balance)}</span>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="space-y-2">

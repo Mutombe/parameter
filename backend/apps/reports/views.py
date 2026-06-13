@@ -218,12 +218,25 @@ def _receipt_scope_q(unit_id_list, property_id_list):
     Module-level so report views can share the chain and tests can walk
     the resulting Q tree without spinning up a tenant database.
     """
-    return (
+    via_invoice = (
         Q(invoice__unit_id__in=unit_id_list) |
         Q(invoice__property_id__in=property_id_list) |
         Q(invoice__lease__unit_id__in=unit_id_list) |
         Q(invoice__lease__property_id__in=property_id_list)
     )
+    # Direct-payment receipts carry NO invoice (ad-hoc payments captured
+    # without raising an invoice first). They scope through the paying
+    # tenant's own unit or lease chain instead — otherwise every such
+    # receipt silently drops out of landlord-scoped reports (Income
+    # Statement, Income & Expenditure, Landlord/Tenant Account, …).
+    via_tenant = Q(invoice__isnull=True) & (
+        Q(tenant__unit_id__in=unit_id_list) |
+        Q(tenant__unit__property_id__in=property_id_list) |
+        Q(tenant__leases__unit_id__in=unit_id_list) |
+        Q(tenant__leases__property_id__in=property_id_list) |
+        Q(tenant__leases__unit__property_id__in=property_id_list)
+    )
+    return via_invoice | via_tenant
 
 
 def _invoice_scope_q(unit_id_list, property_id_list):
@@ -753,10 +766,23 @@ class IncomeStatementView(APIView):
             ]
             _canonical = dict(REVENUE_BUCKETS)
 
-            # --- Revenue: gross receipts grouped by invoice_type. ---
+            # Classify each receipt by its revenue category. Receipts are
+            # not always tied to an invoice (direct payments), but they
+            # always carry an income_type whose code (RENT, LEVY,
+            # SPECIAL_LEVY, …) lower-cases to exactly the invoice_type key.
+            # Prefer the invoice_type when present, else fall back to the
+            # income_type code — otherwise invoice-less receipts collapse to
+            # "Other" and the named buckets read zero.
+            from django.db.models.functions import Lower
+            _cat_expr = Coalesce(
+                'invoice__invoice_type', Lower('income_type__code'),
+                output_field=CharField(),
+            )
+
+            # --- Revenue: gross receipts grouped by category. ---
             gross_by_type = {}
-            for row in scoped_receipts.values('invoice__invoice_type').annotate(g=Sum('amount')):
-                gross_by_type[row['invoice__invoice_type'] or 'other'] = row['g'] or Decimal('0')
+            for row in scoped_receipts.annotate(_cat=_cat_expr).values('_cat').annotate(g=Sum('amount')):
+                gross_by_type[row['_cat'] or 'other'] = row['g'] or Decimal('0')
 
             revenue_list = []
             total_revenue = Decimal('0')
@@ -776,10 +802,10 @@ class IncomeStatementView(APIView):
 
             # --- Cost of Sales: commission deducted per revenue bucket. ---
             commission_by_type = {}
-            for row in scoped_receipts.values('invoice__invoice_type').annotate(
+            for row in scoped_receipts.annotate(_cat=_cat_expr).values('_cat').annotate(
                 c=Sum(_commission_expr())
             ):
-                commission_by_type[row['invoice__invoice_type'] or 'other'] = row['c'] or Decimal('0')
+                commission_by_type[row['_cat'] or 'other'] = row['c'] or Decimal('0')
 
             for key, label in REVENUE_BUCKETS:
                 amt = commission_by_type.get(key, Decimal('0'))
@@ -4067,9 +4093,16 @@ class IncomeExpenditureReportView(APIView):
             return e.expense_type
 
         def _invoice_type_key(receipt):
-            """Return the invoice_type from the linked invoice, or 'other'."""
+            """Revenue category for a receipt. Prefer the linked invoice's
+            type, but fall back to the receipt's income_type code (direct
+            payments carry no invoice). IncomeType codes (RENT, LEVY,
+            SPECIAL_LEVY, …) lower-case to the same keys as invoice_type, so
+            labels and ordering line up either way. 'other' only when both
+            are missing."""
             if receipt.invoice and receipt.invoice.invoice_type:
                 return receipt.invoice.invoice_type
+            if receipt.income_type and receipt.income_type.code:
+                return receipt.income_type.code.lower()
             return 'other'
 
         for m_start, m_end, m_label in self._month_range(start_date, end_date):
