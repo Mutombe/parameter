@@ -356,6 +356,36 @@ def _aggregate_balances_from_gl(scope_filter, account_types, end_date=None, star
     )
 
 
+def _sub_account_balance_as_of(sub, as_of_date):
+    """Closing balance of a subsidiary account as at `as_of_date`.
+
+    Summed from the movements themselves rather than read off the latest
+    transaction's stored running balance. The stored balance is written
+    in posting (transaction_number) order, so a charge DATED in-period
+    but POSTED after a later-dated payment would be dropped if we picked
+    the latest-dated transaction's balance — the charge's effect simply
+    isn't in that earlier-posted row. Summing every movement dated on or
+    before the period end captures all charges and payments regardless of
+    posting order, which is the figure a Balance Sheet must show.
+
+    Consolidated (is_consolidated=False) view: a merged 'C' result carries
+    the net of its hidden source rows, so excluding the sources keeps the
+    total correct and avoids double counting.
+
+    Sign convention mirrors SubsidiaryTransaction.create_entry:
+      tenant / account_holder → debit-normal  (debit − credit)
+      landlord               → credit-normal (credit − debit)
+    """
+    agg = sub.transactions.filter(
+        date__lte=as_of_date, is_consolidated=False,
+    ).aggregate(d=Sum('debit_amount'), c=Sum('credit_amount'))
+    debit = agg['d'] or Decimal('0')
+    credit = agg['c'] or Decimal('0')
+    if sub.entity_type in ('tenant', 'account_holder'):
+        return debit - credit
+    return credit - debit
+
+
 def _cache_report(cache_key, ttl=60):
     """
     Decorator for caching report responses.
@@ -1091,15 +1121,16 @@ class BalanceSheetView(APIView):
             #                              filtered by _is_agent_liability.
             # ============================================================
             from apps.accounting.models import (
-                SubsidiaryAccount, SubsidiaryTransaction, AccruedExpense,
+                SubsidiaryAccount, AccruedExpense,
             )
 
             sub_categories_assets = []
             sub_categories_liabilities = []
 
             # --- Landlord sub-accounts (funds held / funds owed) ---
-            # Balance "as of date" = the last SubsidiaryTransaction.balance
-            # with date <= as_of_date. If no transactions, balance is 0.
+            # Balance "as of date" = net of every movement dated on/before
+            # as_of_date (see _sub_account_balance_as_of). If no movements,
+            # the balance is 0.
             landlord_subs = SubsidiaryAccount.objects.filter(
                 landlord_id=int(landlord_id), entity_type='landlord',
             )
@@ -1109,13 +1140,10 @@ class BalanceSheetView(APIView):
             funds_held_breakdown = []
             funds_owed_breakdown = []
             for sub in landlord_subs:
-                # Strict period rule: the closing balance is the latest
-                # transaction DATED on/before the report date — an entry
-                # dated after as_of_date can never affect this sheet.
-                last_txn = SubsidiaryTransaction.objects.filter(
-                    account=sub, date__lte=as_of_date,
-                ).order_by('-date', '-transaction_number').first()
-                bal = last_txn.balance if last_txn else Decimal('0')
+                # Strict period rule: closing balance as at the report date,
+                # summed from every movement dated on/before as_of_date so
+                # nothing is dropped by posting order.
+                bal = _sub_account_balance_as_of(sub, as_of_date)
                 # Landlord accounts are credit-normal: positive balance
                 # = credit balance = agent holds cash for landlord.
                 if bal > 0:
@@ -1164,12 +1192,13 @@ class BalanceSheetView(APIView):
             arrears_breakdown = []
             prepayments_breakdown = []
             for sub in tenant_subs:
-                # Strict period rule: closing balance as at the report
-                # date — latest dated transaction on/before as_of_date.
-                last_txn = SubsidiaryTransaction.objects.filter(
-                    account=sub, date__lte=as_of_date,
-                ).order_by('-date', '-transaction_number').first()
-                bal = last_txn.balance if last_txn else Decimal('0')
+                # Strict period rule: the tenant's CLOSING balance as at the
+                # report date — summed from every charge and payment dated
+                # on/before as_of_date. Reading the latest transaction's
+                # stored balance would silently drop a charge dated in-period
+                # but posted after a later-dated payment; summing the
+                # movements keeps every charge in the figure.
+                bal = _sub_account_balance_as_of(sub, as_of_date)
                 # Tenant/account_holder accounts are debit-normal:
                 # positive = tenant owes us (arrears), negative = prepaid.
                 if bal > 0:
