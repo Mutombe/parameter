@@ -328,6 +328,74 @@ def _resolve_commission_rate_pct(income_type, property_id=None):
     return Decimal(str(income_type.default_commission_rate or 0))
 
 
+def _comparative_receipt_qs(qs):
+    """Attach the select_related / prefetch a Receipt needs for
+    `_receipt_dims` to resolve property / unit / landlord / income-type
+    without N+1 queries — including the tenant fallback for receipts that
+    carry no invoice."""
+    from django.db.models import Prefetch
+    from apps.masterfile.models import LeaseAgreement as _Lease
+    active_leases = Prefetch(
+        'tenant__leases',
+        queryset=_Lease.objects.filter(status='active').select_related(
+            'unit', 'unit__property', 'unit__property__landlord',
+            'property', 'property__landlord',
+        ),
+        to_attr='_active_leases',
+    )
+    return qs.select_related(
+        'tenant', 'tenant__unit', 'tenant__unit__property',
+        'tenant__unit__property__landlord',
+        'invoice', 'invoice__unit', 'invoice__unit__property',
+        'invoice__unit__property__landlord',
+        'invoice__property', 'invoice__property__landlord',
+        'income_type', 'bank_account',
+    ).prefetch_related(active_leases)
+
+
+def _receipt_dims(rcpt):
+    """Resolve a receipt's reporting dimensions, falling back to the
+    paying tenant when there's no invoice (direct payments).
+
+    Returns landlord/property/unit objects (or None) plus the income-type
+    key + display. The income_type code (RENT, LEVY, …) lower-cases to the
+    same key the invoice_type uses, so downstream grouping lines up.
+    """
+    unit = prop = None
+    inv = rcpt.invoice
+    if inv and inv.unit_id:
+        unit, prop = inv.unit, inv.unit.property
+    elif inv and inv.property_id:
+        prop = inv.property
+    else:
+        t = rcpt.tenant
+        if t and t.unit_id:
+            unit, prop = t.unit, t.unit.property
+        else:
+            for lease in getattr(t, '_active_leases', None) or []:
+                if lease.unit_id:
+                    unit, prop = lease.unit, lease.unit.property
+                    break
+                if lease.property_id:
+                    prop = lease.property
+                    break
+    landlord = prop.landlord if (prop and prop.landlord_id) else None
+
+    if rcpt.income_type_id:
+        key = (rcpt.income_type.code or '').lower() or 'other'
+        display = rcpt.income_type.name
+    elif inv and inv.invoice_type:
+        key = inv.invoice_type
+        display = inv.get_invoice_type_display()
+    else:
+        key, display = 'other', 'Other'
+
+    return {
+        'landlord': landlord, 'property': prop, 'unit': unit,
+        'income_type_key': key, 'income_type_display': display,
+    }
+
+
 def _exclude_non_cash_expenses_q():
     """Q that, when passed to GeneralLedger.exclude(...), drops every entry
     sourced from a non-cash Expense (accruals / depreciation). Used by the
@@ -2976,112 +3044,123 @@ class CommissionReportView(APIView):
         end_date = request.query_params.get('end_date', timezone.now().date())
         landlord_id = request.query_params.get('landlord_id')
 
-        # Base filter for receipts with valid invoice+unit+property
-        base_filter = Q(
-            invoice__isnull=False,
-            invoice__unit__isnull=False,
-            invoice__unit__property__isnull=False,
-            date__lte=end_date,
+        # Invoice-linked receipts aggregate fast at the DB level; receipts
+        # WITHOUT an invoice (direct payments) are resolved per-receipt via
+        # the paying tenant and merged in below — otherwise they vanish
+        # from this report entirely.
+        comm_expr = _commission_expr()
+        invoice_type_choices = dict(Invoice._meta.get_field('invoice_type').flatchoices)
+
+        landlords: dict = {}    # id  -> {…, collected, commission}
+        properties: dict = {}   # id  -> {…, collected, commission}
+        income_types: dict = {}  # key -> {…, collected, commission}
+
+        def _acc(bucket, key, base, collected, commission):
+            row = bucket.get(key)
+            if row is None:
+                row = dict(base, collected=Decimal('0'), commission=Decimal('0'))
+                bucket[key] = row
+            row['collected'] += collected
+            row['commission'] += commission
+
+        # --- Invoice-linked: one grouped DB query ---
+        inv_filter = Q(
+            invoice__isnull=False, invoice__unit__isnull=False,
+            invoice__unit__property__isnull=False, date__lte=end_date,
         )
         if start_date:
-            base_filter &= Q(date__gte=start_date)
+            inv_filter &= Q(date__gte=start_date)
         if landlord_id:
-            base_filter &= Q(invoice__unit__property__landlord_id=landlord_id)
+            inv_filter &= Q(invoice__unit__property__landlord_id=landlord_id)
 
-        # Per-receipt commission via the unified resolver (per-(property,
-        # income_type) override → IncomeType default → 0). We sum that
-        # expression per group instead of multiplying a flat landlord rate.
-        comm_expr = _commission_expr()
-
-        # By landlord
-        landlord_qs = Receipt.objects.filter(base_filter).values(
+        for row in Receipt.objects.filter(inv_filter).values(
             'invoice__unit__property__landlord__id',
             'invoice__unit__property__landlord__name',
             'invoice__unit__property__landlord__code',
-        ).annotate(
-            collected=Sum('amount'),
-            commission=Sum(comm_expr),
-        ).order_by('-collected')
-
-        landlord_list = []
-        for row in landlord_qs:
-            collected = row['collected'] or Decimal('0')
-            commission = row['commission'] or Decimal('0')
-            # Effective blended rate for display (commission / collected)
-            blended = (commission / collected * 100) if collected else Decimal('0')
-            landlord_list.append({
-                'landlord_id': row['invoice__unit__property__landlord__id'],
-                'landlord_name': row['invoice__unit__property__landlord__name'],
-                'landlord_code': row['invoice__unit__property__landlord__code'],
-                'commission_rate': float(blended),
-                'collected': float(collected),
-                'commission': float(commission),
-            })
-        landlord_list.sort(key=lambda x: x['commission'], reverse=True)
-
-        # By property
-        property_qs = Receipt.objects.filter(base_filter).values(
             'invoice__unit__property__id',
             'invoice__unit__property__name',
-            'invoice__unit__property__landlord__id',
-            'invoice__unit__property__landlord__name',
-        ).annotate(
-            collected=Sum('amount'),
-            commission=Sum(comm_expr),
-        ).order_by('-collected')
-
-        property_list = []
-        for row in property_qs:
+            'invoice__invoice_type',
+        ).annotate(collected=Sum('amount'), commission=Sum(comm_expr)):
             collected = row['collected'] or Decimal('0')
             commission = row['commission'] or Decimal('0')
-            blended = (commission / collected * 100) if collected else Decimal('0')
-            property_list.append({
-                'property_id': row['invoice__unit__property__id'],
-                'property_name': row['invoice__unit__property__name'],
-                'landlord_id': row['invoice__unit__property__landlord__id'],
+            lid = row['invoice__unit__property__landlord__id']
+            pid = row['invoice__unit__property__id']
+            itype = row['invoice__invoice_type'] or 'other'
+            _acc(landlords, lid, {
+                'landlord_id': lid,
                 'landlord_name': row['invoice__unit__property__landlord__name'],
-                'commission_rate': float(blended),
-                'collected': float(collected),
-                'commission': float(commission),
-            })
-        property_list.sort(key=lambda x: x['commission'], reverse=True)
+                'landlord_code': row['invoice__unit__property__landlord__code'],
+            }, collected, commission)
+            _acc(properties, pid, {
+                'property_id': pid,
+                'property_name': row['invoice__unit__property__name'],
+                'landlord_id': lid,
+                'landlord_name': row['invoice__unit__property__landlord__name'],
+            }, collected, commission)
+            _acc(income_types, itype, {
+                'income_type': itype,
+                'income_type_display': invoice_type_choices.get(itype, itype),
+            }, collected, commission)
 
-        # By income type - aggregate at DB level
-        income_type_qs = Receipt.objects.filter(base_filter).values(
-            'invoice__invoice_type',
-        ).annotate(
-            collected=Sum('amount'),
-        ).order_by('-collected')
+        # --- Invoice-less direct payments: resolve via the tenant ---
+        ill = Receipt.objects.filter(invoice__isnull=True, date__lte=end_date)
+        if start_date:
+            ill = ill.filter(date__gte=start_date)
+        ill = _comparative_receipt_qs(ill)
+        rate_cache: dict = {}
+        for rcpt in ill:
+            dims = _receipt_dims(rcpt)
+            prop = dims['property']
+            landlord = dims['landlord']
+            if landlord_id and (not landlord or str(landlord.id) != str(landlord_id)):
+                continue
+            collected = rcpt.amount or Decimal('0')
+            pid_for_rate = prop.id if prop else None
+            rkey = (pid_for_rate, rcpt.income_type_id)
+            if rkey not in rate_cache:
+                rate_cache[rkey] = _resolve_commission_rate_pct(rcpt.income_type, pid_for_rate)
+            commission = collected * rate_cache[rkey] / 100
+            if landlord:
+                _acc(landlords, landlord.id, {
+                    'landlord_id': landlord.id, 'landlord_name': landlord.name,
+                    'landlord_code': getattr(landlord, 'code', ''),
+                }, collected, commission)
+            if prop:
+                _acc(properties, prop.id, {
+                    'property_id': prop.id, 'property_name': prop.name,
+                    'landlord_id': landlord.id if landlord else None,
+                    'landlord_name': landlord.name if landlord else None,
+                }, collected, commission)
+            _acc(income_types, dims['income_type_key'], {
+                'income_type': dims['income_type_key'],
+                'income_type_display': dims['income_type_display'],
+            }, collected, commission)
 
-        # Get display names for invoice types
-        invoice_type_choices = dict(Invoice._meta.get_field('invoice_type').flatchoices)
+        # --- Finalize ---
+        def _finalize(bucket):
+            out = []
+            for row in bucket.values():
+                collected = row['collected']
+                commission = row['commission']
+                blended = (commission / collected * 100) if collected else Decimal('0')
+                item = {k: v for k, v in row.items() if k not in ('collected', 'commission')}
+                item['collected'] = float(collected)
+                item['commission'] = float(commission)
+                item['commission_rate'] = float(blended)
+                out.append(item)
+            out.sort(key=lambda x: x['commission'], reverse=True)
+            return out
 
-        income_type_list = []
-        for row in income_type_qs:
-            collected = row['collected'] or Decimal('0')
-            income_type_list.append({
-                'income_type': row['invoice__invoice_type'],
-                'income_type_display': invoice_type_choices.get(row['invoice__invoice_type'], row['invoice__invoice_type']),
-                'collected': float(collected),
-                'commission': 0,  # Will be calculated below
-            })
+        landlord_list = _finalize(landlords)
+        property_list = _finalize(properties)
+        income_type_list = _finalize(income_types)
 
-        # Calculate totals
-        total_collected = sum(item['collected'] for item in property_list)
-        total_commission = sum(item['commission'] for item in property_list)
+        total_collected = float(sum((r['collected'] for r in properties.values()), Decimal('0')))
+        total_commission = float(sum((r['commission'] for r in properties.values()), Decimal('0')))
 
-        # For income types, calculate commission using average effective rate
-        effective_rate = total_commission / total_collected if total_collected else 0
-        for item in income_type_list:
-            item['commission'] = round(item['collected'] * effective_rate, 2)
-        income_type_list.sort(key=lambda x: x['commission'], reverse=True)
-
-        # Add percentage and rank to property list
         for rank, item in enumerate(property_list, 1):
             item['rank'] = rank
             item['percentage'] = round(item['commission'] / total_commission * 100, 1) if total_commission else 0
-
-        # Add percentage and rank to income type list
         for rank, item in enumerate(income_type_list, 1):
             item['rank'] = rank
             item['percentage'] = round(item['commission'] / total_commission * 100, 1) if total_commission else 0
@@ -3351,22 +3430,63 @@ class ReceiptListingView(APIView):
         export = request.query_params.get('export')  # 'csv' or 'excel'
         limit = min(int(request.query_params.get('limit', 500)), 2000)
 
-        # Build queryset
+        # Build queryset. Receipts are often captured WITHOUT an invoice
+        # (ad-hoc direct payments), so we also pull the receipt's own
+        # income_type and the paying tenant's unit / active lease — that's
+        # where Property / Unit / Income Type come from when no invoice
+        # exists. Without this they render blank in the listing.
+        from django.db.models import Prefetch
+        from apps.masterfile.models import LeaseAgreement as _Lease
+        active_leases = Prefetch(
+            'tenant__leases',
+            queryset=_Lease.objects.filter(status='active').select_related(
+                'unit', 'unit__property', 'unit__property__landlord',
+                'property', 'property__landlord',
+            ),
+            to_attr='_active_leases',
+        )
         receipts = Receipt.objects.select_related(
-            'tenant', 'invoice', 'invoice__unit', 'invoice__unit__property',
-            'invoice__unit__property__landlord', 'bank_account', 'created_by'
-        ).filter(date__lte=end_date)
+            'tenant', 'tenant__unit', 'tenant__unit__property',
+            'tenant__unit__property__landlord',
+            'invoice', 'invoice__unit', 'invoice__unit__property',
+            'invoice__unit__property__landlord',
+            'invoice__property', 'invoice__property__landlord',
+            'income_type', 'bank_account', 'created_by',
+        ).prefetch_related(active_leases).filter(date__lte=end_date)
 
         if start_date:
             receipts = receipts.filter(date__gte=start_date)
         if bank_account_id:
             receipts = receipts.filter(bank_account_id=bank_account_id)
         if income_type:
-            receipts = receipts.filter(invoice__invoice_type=income_type)
+            # Match the receipt's own income_type code OR the linked
+            # invoice's type, so invoice-less receipts filter correctly.
+            receipts = receipts.filter(
+                Q(income_type__code__iexact=income_type) |
+                Q(invoice__invoice_type=income_type)
+            )
         if payment_method:
             receipts = receipts.filter(payment_method=payment_method)
 
         receipts = receipts.order_by('-date', '-created_at')[:limit]
+
+        def _resolve_unit_property(rcpt):
+            """(unit, property) for a receipt — invoice first, then the
+            tenant's direct unit, then their active lease."""
+            inv = rcpt.invoice
+            if inv and inv.unit:
+                return inv.unit, inv.unit.property
+            if inv and inv.property_id:
+                return None, inv.property
+            t = rcpt.tenant
+            if t and t.unit:
+                return t.unit, t.unit.property
+            for lease in getattr(t, '_active_leases', None) or []:
+                if lease.unit:
+                    return lease.unit, lease.unit.property
+                if lease.property_id:
+                    return None, lease.property
+            return None, None
 
         # Build receipt list
         receipt_list = []
@@ -3375,18 +3495,26 @@ class ReceiptListingView(APIView):
         totals_by_income_type = {}
 
         for rcpt in receipts:
-            landlord_name = None
-            property_name = None
-            unit_number = None
-            inv_type = None
+            unit_obj, prop_obj = _resolve_unit_property(rcpt)
+            property_name = prop_obj.name if prop_obj else None
+            property_id = prop_obj.id if prop_obj else None
+            unit_number = unit_obj.unit_number if unit_obj else None
+            unit_id = unit_obj.id if unit_obj else None
+            landlord_name = prop_obj.landlord.name if prop_obj and prop_obj.landlord_id else None
 
-            if rcpt.invoice and rcpt.invoice.unit:
-                unit_number = rcpt.invoice.unit.unit_number
-                property_name = rcpt.invoice.unit.property.name
-                landlord_name = rcpt.invoice.unit.property.landlord.name
-                inv_type = rcpt.invoice.invoice_type
+            # Income type — the receipt's own income_type wins (always set
+            # on direct payments); fall back to the invoice's type.
+            if rcpt.income_type:
+                type_key = (rcpt.income_type.code or '').lower() or 'other'
+                type_display = rcpt.income_type.name
+            elif rcpt.invoice and rcpt.invoice.invoice_type:
+                type_key = rcpt.invoice.invoice_type
+                type_display = rcpt.invoice.get_invoice_type_display()
+            else:
+                type_key = 'other'
+                type_display = 'Other'
 
-            bank_name = rcpt.bank_account.name if rcpt.bank_account else rcpt.bank_name
+            bank_name = rcpt.bank_account.name if rcpt.bank_account else (rcpt.bank_name or None)
 
             receipt_list.append({
                 'receipt_id': rcpt.id,
@@ -3396,12 +3524,14 @@ class ReceiptListingView(APIView):
                 'tenant_code': rcpt.tenant.code,
                 'tenant_name': rcpt.tenant.name,
                 'landlord_name': landlord_name,
-                'property_id': rcpt.invoice.unit.property_id if rcpt.invoice and rcpt.invoice.unit else None,
+                'property_id': property_id,
                 'property_name': property_name,
-                'unit_id': rcpt.invoice.unit_id if rcpt.invoice and rcpt.invoice.unit else None,
+                'unit_id': unit_id,
                 'unit_number': unit_number,
-                'income_type': inv_type,
-                'income_type_display': rcpt.invoice.get_invoice_type_display() if rcpt.invoice else None,
+                'unit_name': unit_number,  # alias for the frontend column
+                'income_type': type_display,       # human-readable label
+                'income_type_key': type_key,       # raw key for filtering
+                'income_type_display': type_display,
                 'bank_account': bank_name,
                 'payment_method': rcpt.payment_method,
                 'payment_method_display': rcpt.get_payment_method_display(),
@@ -3419,10 +3549,9 @@ class ReceiptListingView(APIView):
             totals_by_bank[bank_key] += rcpt.amount
 
             # Aggregate by income type
-            type_key = inv_type or 'other'
-            if type_key not in totals_by_income_type:
-                totals_by_income_type[type_key] = Decimal('0')
-            totals_by_income_type[type_key] += rcpt.amount
+            if type_display not in totals_by_income_type:
+                totals_by_income_type[type_display] = Decimal('0')
+            totals_by_income_type[type_display] += rcpt.amount
 
         # Handle export
         if export == 'csv':
@@ -3496,16 +3625,13 @@ class CommissionAnalysisView(APIView):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date', timezone.now().date())
 
-        # Get receipts with commission calculations
-        receipts = Receipt.objects.filter(
-            date__lte=end_date
-        ).select_related(
-            'invoice', 'invoice__unit', 'invoice__unit__property',
-            'invoice__unit__property__landlord'
-        )
-
+        # Receipts (incl. invoice-less direct payments) with the chains
+        # _receipt_dims needs to resolve property / income-type via the
+        # tenant when no invoice is present.
+        receipts = Receipt.objects.filter(date__lte=end_date)
         if start_date:
             receipts = receipts.filter(date__gte=start_date)
+        receipts = _comparative_receipt_qs(receipts)
 
         # Calculate commissions
         by_income_type = {}
@@ -3513,41 +3639,40 @@ class CommissionAnalysisView(APIView):
         by_month = {}
         total_income = Decimal('0')
         total_commission = Decimal('0')
-
-        # Pre-fetch the income_type relation so the per-receipt resolver
-        # doesn't trigger N+1 queries below.
-        receipts = receipts.select_related('income_type')
+        rate_cache: dict = {}
 
         for rcpt in receipts:
-            if not rcpt.invoice or not rcpt.invoice.unit:
-                continue
-
-            prop = rcpt.invoice.unit.property
-            commission_rate = _resolve_commission_rate_pct(rcpt.income_type, prop.id) / 100
-            commission = rcpt.amount * commission_rate
-            income_type = rcpt.invoice.invoice_type
+            dims = _receipt_dims(rcpt)
+            prop = dims['property']
+            income_type = dims['income_type_key']
+            pid_for_rate = prop.id if prop else None
+            rkey = (pid_for_rate, rcpt.income_type_id)
+            if rkey not in rate_cache:
+                rate_cache[rkey] = _resolve_commission_rate_pct(rcpt.income_type, pid_for_rate) / 100
+            commission = rcpt.amount * rate_cache[rkey]
             month_key = rcpt.date.strftime('%Y-%m')
 
             # By income type
             if income_type not in by_income_type:
                 by_income_type[income_type] = {
-                    'label': rcpt.invoice.get_invoice_type_display(),
+                    'label': dims['income_type_display'],
                     'income': Decimal('0'),
                     'commission': Decimal('0')
                 }
             by_income_type[income_type]['income'] += rcpt.amount
             by_income_type[income_type]['commission'] += commission
 
-            # By property
-            if prop.id not in by_property:
-                by_property[prop.id] = {
-                    'property_id': prop.id,
-                    'property_name': prop.name,
-                    'income': Decimal('0'),
-                    'commission': Decimal('0')
-                }
-            by_property[prop.id]['income'] += rcpt.amount
-            by_property[prop.id]['commission'] += commission
+            # By property (only when the receipt resolves to one)
+            if prop is not None:
+                if prop.id not in by_property:
+                    by_property[prop.id] = {
+                        'property_id': prop.id,
+                        'property_name': prop.name,
+                        'income': Decimal('0'),
+                        'commission': Decimal('0')
+                    }
+                by_property[prop.id]['income'] += rcpt.amount
+                by_property[prop.id]['commission'] += commission
 
             # By month (for trend chart)
             if month_key not in by_month:
@@ -3650,11 +3775,16 @@ class IncomeItemAnalysisView(APIView):
         if start_date:
             receipts = receipts.filter(date__gte=start_date)
         if income_type:
-            receipts = receipts.filter(invoice__invoice_type=income_type)
+            # Match the receipt's own income_type OR the linked invoice's
+            # type so invoice-less receipts filter correctly.
+            receipts = receipts.filter(
+                Q(income_type__code__iexact=income_type) |
+                Q(invoice__invoice_type=income_type)
+            )
         if bank_account_id:
             receipts = receipts.filter(bank_account_id=bank_account_id)
 
-        receipts = receipts.select_related('invoice', 'bank_account')
+        receipts = _comparative_receipt_qs(receipts)
 
         # Build analysis matrix: income_type x bank_account
         matrix = {}
@@ -3665,8 +3795,12 @@ class IncomeItemAnalysisView(APIView):
         grand_total = Decimal('0')
 
         for rcpt in receipts:
-            inv_type = rcpt.invoice.invoice_type if rcpt.invoice else 'other'
-            inv_type_display = rcpt.invoice.get_invoice_type_display() if rcpt.invoice else 'Other'
+            # Income type from the receipt's own income_type, falling back
+            # to the invoice — invoice-less payments would otherwise all
+            # land under "Other".
+            _dims = _receipt_dims(rcpt)
+            inv_type = _dims['income_type_key']
+            inv_type_display = _dims['income_type_display']
             bank_id = rcpt.bank_account_id if rcpt.bank_account else None
             bank_name = rcpt.bank_account.name if rcpt.bank_account else (rcpt.bank_name or 'Cash')
 
