@@ -1330,8 +1330,14 @@ class BalanceSheetView(APIView):
             )
 
             from apps.accounting.models import ChartOfAccount as _CoA
-            bank_account_codes = set(
-                _CoA.objects.filter(account_subtype='bank').values_list('code', flat=True)
+            # Bank AND cash GL accounts are the agency's record of the trust
+            # cash. On a landlord-scoped sheet that same money is already
+            # presented as Funds Held in Trust (derived from the landlord's
+            # sub-ledger), so excluding them here prevents a duplicate
+            # "Cash on Hand" line double-counting the trust balance.
+            trust_cash_codes = set(
+                _CoA.objects.filter(account_subtype__in=['bank', 'cash'])
+                .values_list('code', flat=True)
             )
 
             # ============================================================
@@ -1416,9 +1422,10 @@ class BalanceSheetView(APIView):
                     bal = debit_total - credit_total
                     if bal == 0:
                         continue
-                    # Bank rows are already represented by the
-                    # sub-account-derived Funds Held in Trust — skip.
-                    if code in bank_account_codes:
+                    # Bank/cash rows are already represented by the
+                    # sub-account-derived Funds Held in Trust — skip so a
+                    # "Cash on Hand" GL line doesn't duplicate the trust.
+                    if code in trust_cash_codes:
                         continue
                     # AR rows are already represented by the
                     # sub-account-derived Lessees Arrears — skip.
