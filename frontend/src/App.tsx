@@ -37,7 +37,10 @@ const ChartOfAccounts = lazy(() => import('./pages/Accounting/ChartOfAccounts'))
 const Journals = lazy(() => import('./pages/Accounting/Journals'))
 const BankAccounts = lazy(() => import('./pages/Accounting/BankAccounts'))
 const IncomeTypes = lazy(() => import('./pages/Accounting/IncomeTypes'))
+const IncomeTypeDetail = lazy(() => import('./pages/Accounting/IncomeTypeDetail'))
 const ExpenseCategories = lazy(() => import('./pages/Accounting/ExpenseCategories'))
+const ExpenseCategoryDetail = lazy(() => import('./pages/Accounting/ExpenseCategoryDetail'))
+const AccountDetail = lazy(() => import('./pages/Accounting/AccountDetail'))
 const Reports = lazy(() => import('./pages/Reports/Reports'))
 // AgedAnalysis now lives inside Reports.tsx — old route redirects there
 const BankReconciliation = lazy(() => import('./pages/Accounting/BankReconciliation'))
@@ -208,12 +211,15 @@ export default function App() {
         <Route path="journals" element={<LazyPage><Journals /></LazyPage>} />
         <Route path="bank-accounts" element={<LazyPage><BankAccounts /></LazyPage>} />
         <Route path="income-types" element={<LazyPage><IncomeTypes /></LazyPage>} />
+        <Route path="income-types/:id" element={<LazyPage><IncomeTypeDetail /></LazyPage>} />
         <Route path="expense-categories" element={<LazyPage><ExpenseCategories /></LazyPage>} />
+        <Route path="expense-categories/:id" element={<LazyPage><ExpenseCategoryDetail /></LazyPage>} />
         <Route path="bank-reconciliation" element={<LazyPage><BankReconciliation /></LazyPage>} />
         <Route path="subsidiary-ledger" element={<LazyPage><SubsidiaryLedger /></LazyPage>} />
         <Route path="bs-movements" element={<LazyPage><BalanceSheetMovements /></LazyPage>} />
         <Route path="opening-balances" element={<LazyPage><OpeningBalances /></LazyPage>} />
         <Route path="global-accounts" element={<LazyPage><GlobalAccounts /></LazyPage>} />
+        <Route path="global-accounts/:id" element={<LazyPage><AccountDetail /></LazyPage>} />
         <Route path="reports" element={<LazyPage><Reports /></LazyPage>} />
         <Route path="aged-analysis" element={<Navigate to="/dashboard/reports?report=aged-analysis" replace />} />
         <Route path="audit-trail" element={<LazyPage><AuditTrail /></LazyPage>} />

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   Wallet,
@@ -31,7 +32,7 @@ import { cn, useDebounce } from '../../lib/utils'
  */
 export default function GlobalAccounts() {
   return (
-    <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+    <div className="max-w-7xl mx-auto">
       <PageHeader
         title="Global Accounts"
         subtitle="Assets, Liabilities and Suppliers — shared across every landlord"
@@ -74,6 +75,7 @@ function AccountsList({
   emptyHint: string
 }) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [showForm, setShowForm] = useState(false)
@@ -210,8 +212,12 @@ function AccountsList({
           </thead>
           <tbody className="divide-y divide-gray-100">
             {filtered.map((a: any) => (
-              <tr key={a.id} className="hover:bg-gray-50/40">
-                <td className="px-6 py-3 font-mono text-xs text-gray-500">{a.code}</td>
+              <tr
+                key={a.id}
+                onClick={() => navigate(`/dashboard/global-accounts/${a.id}`)}
+                className="hover:bg-gray-50/40 cursor-pointer"
+              >
+                <td className="px-6 py-3 font-mono text-xs text-primary-600">{a.code}</td>
                 <td className="px-6 py-3 font-medium text-gray-900">{a.name}</td>
                 <td className="px-6 py-3 text-gray-500 text-xs">
                   {(a.account_subtype || '—').replace(/_/g, ' ')}
@@ -220,7 +226,7 @@ function AccountsList({
                   {Number(a.current_balance || 0).toFixed(2)}
                 </td>
                 <td className="px-6 py-3 text-right">
-                  <div className="flex items-center justify-end gap-1">
+                  <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => startEdit(a)}
                       className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"

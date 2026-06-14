@@ -307,8 +307,9 @@ export default function ExpenseCategories() {
               key={category.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
+              onClick={() => navigate(`/dashboard/expense-categories/${category.id}`)}
               className={cn(
-                "relative bg-white rounded-xl border p-6 pl-12 hover:shadow-lg transition-shadow",
+                "relative bg-white rounded-xl border p-6 pl-12 hover:shadow-lg transition-shadow cursor-pointer",
                 selection.isSelected(category.id)
                   ? "border-primary-400 ring-2 ring-primary-100"
                   : "border-gray-200"
@@ -328,7 +329,7 @@ export default function ExpenseCategories() {
                 <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", getCategoryColor(category.code))}>
                   <Wallet className="w-5 h-5" />
                 </div>
-                <div className="relative">
+                <div className="relative" onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={() => setDropdownOpen(dropdownOpen === category.id ? null : category.id)}
                     className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"

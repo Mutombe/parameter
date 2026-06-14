@@ -726,7 +726,7 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
     permission_classes = [IsAuthenticated]
     filterset_fields = [
         'tenant', 'invoice', 'invoice__unit', 'invoice__unit__property',
-        'payment_method', 'date', 'currency', 'bank_account',
+        'payment_method', 'date', 'currency', 'bank_account', 'income_type',
     ]
     search_fields = [
         'receipt_number', 'tenant__name', 'tenant__code',

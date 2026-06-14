@@ -319,8 +319,9 @@ export default function IncomeTypes() {
               key={type.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
+              onClick={() => navigate(`/dashboard/income-types/${type.id}`)}
               className={cn(
-                "relative bg-white rounded-xl border p-6 pl-12 hover:shadow-lg transition-shadow",
+                "relative bg-white rounded-xl border p-6 pl-12 hover:shadow-lg transition-shadow cursor-pointer",
                 selection.isSelected(type.id)
                   ? "border-primary-400 ring-2 ring-primary-100"
                   : "border-gray-200"
@@ -339,7 +340,7 @@ export default function IncomeTypes() {
                 <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", getTypeColor(type.code))}>
                   <DollarSign className="w-5 h-5" />
                 </div>
-                <div className="relative">
+                <div className="relative" onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={() => setDropdownOpen(dropdownOpen === type.id ? null : type.id)}
                     className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
