@@ -1867,7 +1867,7 @@ export default function PropertyDetail() {
                           return (
                             <button
                               key={acc.id}
-                              onClick={() => navigate(`/dashboard/subsidiary-ledger?account=${acc.id}`)}
+                              onClick={() => navigate(`/dashboard/subaccounts/${acc.id}`)}
                               className={cn(
                                 'w-[148px] px-3 py-2 border rounded-lg text-left transition-all',
                                 'border-gray-200 hover:border-primary-300 hover:shadow-sm bg-white'

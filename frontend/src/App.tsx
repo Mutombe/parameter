@@ -19,6 +19,7 @@ const Landlords = lazy(() => import('./pages/Masterfile/Landlords'))
 const LandlordDetail = lazy(() => import('./pages/Masterfile/LandlordDetail'))
 const Properties = lazy(() => import('./pages/Masterfile/Properties'))
 const PropertyDetail = lazy(() => import('./pages/Masterfile/PropertyDetail'))
+const SubAccountStatement = lazy(() => import('./pages/Masterfile/SubAccountStatement'))
 const Units = lazy(() => import('./pages/Masterfile/Units'))
 const UnitDetail = lazy(() => import('./pages/Masterfile/UnitDetail'))
 const Tenants = lazy(() => import('./pages/Masterfile/Tenants'))
@@ -216,6 +217,7 @@ export default function App() {
         <Route path="expense-categories/:id" element={<LazyPage><ExpenseCategoryDetail /></LazyPage>} />
         <Route path="bank-reconciliation" element={<LazyPage><BankReconciliation /></LazyPage>} />
         <Route path="subsidiary-ledger" element={<LazyPage><SubsidiaryLedger /></LazyPage>} />
+        <Route path="subaccounts/:id" element={<LazyPage><SubAccountStatement /></LazyPage>} />
         <Route path="bs-movements" element={<LazyPage><BalanceSheetMovements /></LazyPage>} />
         <Route path="opening-balances" element={<LazyPage><OpeningBalances /></LazyPage>} />
         <Route path="global-accounts" element={<LazyPage><GlobalAccounts /></LazyPage>} />
