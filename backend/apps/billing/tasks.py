@@ -186,6 +186,55 @@ Powered by Parameter.co.zw
     return invoices_created
 
 
+def repost_stuck_invoices_all_tenants():
+    """Self-healing backstop for invoices stuck in DRAFT.
+
+    Invoices auto-post the instant they're created (post_save signal +
+    viewset perform_create). If that post ever fails it is only logged —
+    the invoice is left DRAFT with no GL/sub-ledger entry, so its charge
+    never hits the tenant account. On the Balance Sheet that makes paying
+    tenants look like prepayments and never-paid tenants vanish from
+    arrears. Draft is never an intentional end-state here (every creation
+    path posts immediately), so any lingering draft is a failed post and
+    safe to re-post. post_to_ledger is idempotent (returns early when a
+    journal already exists), so this can never double-post.
+
+    Scheduled hourly so a transient failure self-corrects within the hour
+    instead of silently corrupting reports forever.
+    """
+    TenantModel = get_tenant_model()
+    tenants = TenantModel.objects.filter(is_active=True).exclude(schema_name='public')
+    total = 0
+    for tenant in tenants:
+        try:
+            with tenant_context(tenant):
+                total += repost_stuck_invoices_for_tenant()
+        except Exception as e:
+            logger.error(f"Failed to repost stuck invoices for {tenant.name}: {e}")
+    if total:
+        logger.warning(f"Self-healed {total} stuck DRAFT invoice(s) across all tenants")
+    return {'reposted': total}
+
+
+def repost_stuck_invoices_for_tenant():
+    """Re-post DRAFT invoices that never reached the ledger. Returns count."""
+    from apps.billing.models import Invoice
+    from apps.accounts.models import User
+    from apps.accounts.utils import get_tenant_users
+
+    user = get_tenant_users(roles=[User.Role.ADMIN]).first()
+    reposted = 0
+    for inv in Invoice.objects.filter(status='draft', journal__isnull=True):
+        try:
+            with transaction.atomic():
+                inv.post_to_ledger(user)
+            reposted += 1
+            logger.info(f"Self-healed stuck invoice {inv.invoice_number}")
+        except Exception as e:
+            logger.error(f"Could not repost stuck invoice {inv.invoice_number}: {e}")
+    return reposted
+
+
 def mark_overdue_invoices_all_tenants():
     """
     Mark overdue invoices for all tenants.

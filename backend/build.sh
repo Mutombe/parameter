@@ -76,4 +76,10 @@ python manage.py seed_trust_accounts || true
 echo "Seeding standard expense categories from cash mapping spec..."
 python manage.py seed_expense_categories || true
 
+echo "Registering recurring task schedules (Django-Q)..."
+python manage.py setup_billing_schedules || true
+
+echo "Self-healing: posting any invoices stuck in DRAFT (failed auto-post)..."
+python manage.py post_draft_invoices --all-tenants || true
+
 echo "Build completed successfully!"

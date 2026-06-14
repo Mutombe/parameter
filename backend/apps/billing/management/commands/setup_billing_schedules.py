@@ -25,6 +25,14 @@ class Command(BaseCommand):
                 'repeats': -1,
             },
             {
+                # Self-healing backstop: re-post any invoice whose auto-post
+                # failed and left it stuck in DRAFT (no charge in the ledger).
+                'name': 'Repost Stuck Draft Invoices',
+                'func': 'apps.billing.tasks.repost_stuck_invoices_all_tenants',
+                'schedule_type': Schedule.HOURLY,
+                'repeats': -1,
+            },
+            {
                 'name': 'Send Rental Due Reminders',
                 'func': 'apps.billing.tasks.send_rental_due_reminders_all_tenants',
                 'schedule_type': Schedule.DAILY,
