@@ -856,12 +856,12 @@ export default function Expenses() {
     return (
       <div className="space-y-6">
         <PageHeader
-          title="Expenses"
+          title="Expenditure"
           subtitle="Manage expenses and payouts"
           icon={Receipt}
           breadcrumbs={[
             { label: 'Dashboard', href: '/dashboard' },
-            { label: 'Expenses' },
+            { label: 'Expenditure' },
           ]}
         />
         <SkeletonExpenses />
@@ -873,12 +873,12 @@ export default function Expenses() {
     return (
       <div className="space-y-6">
         <PageHeader
-          title="Expenses"
+          title="Expenditure"
           subtitle="Manage expenses and payouts"
           icon={Receipt}
           breadcrumbs={[
             { label: 'Dashboard', href: '/dashboard' },
-            { label: 'Expenses' },
+            { label: 'Expenditure' },
           ]}
         />
         <EmptyState
@@ -911,12 +911,12 @@ export default function Expenses() {
   return (
     <div>
       <PageHeader
-        title="Expenses"
+        title="Expenditure"
         subtitle={`${totalCount} total expenses`}
         icon={Receipt}
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
-          { label: 'Expenses' },
+          { label: 'Expenditure' },
         ]}
         actions={
           <Button onClick={() => setShowModal(true)}>

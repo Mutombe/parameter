@@ -226,12 +226,12 @@ export default function IncomeTypes() {
       <nav className="flex items-center gap-2 text-sm text-gray-500 mb-4">
         <button onClick={() => navigate('/dashboard')} className="hover:text-gray-900 transition-colors">Dashboard</button>
         <span>/</span>
-        <span className="text-gray-900 font-medium">Income Types</span>
+        <span className="text-gray-900 font-medium">Revenue</span>
       </nav>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Income Types</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Revenue</h1>
           <p className="text-gray-500 mt-1">Manage income categories for billing</p>
         </div>
         <button

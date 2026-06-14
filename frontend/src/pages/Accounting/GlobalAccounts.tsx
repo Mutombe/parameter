@@ -34,12 +34,12 @@ export default function GlobalAccounts() {
   return (
     <div className="max-w-7xl mx-auto">
       <PageHeader
-        title="Global Accounts"
+        title="Assets & Liabilities"
         subtitle="Assets, Liabilities and Suppliers — shared across every landlord"
         icon={Wallet}
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
-          { label: 'Global Accounts' },
+          { label: 'Assets & Liabilities' },
         ]}
       />
 

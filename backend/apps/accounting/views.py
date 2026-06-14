@@ -428,6 +428,74 @@ class BankAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, view
             'accounts': BankAccountSerializer(accounts, many=True).data
         })
 
+    @action(detail=True, methods=['get'])
+    def transactions(self, request, pk=None):
+        """Every BOOK movement through this bank account, pulled from across
+        the system: receipts received INTO it (deposits) and expenses paid
+        OUT of it (withdrawals). Gives the Bank Reconciliation tab the full
+        book-side picture to match against the bank statement.
+
+        Optional ?start_date / ?end_date filter the window.
+        """
+        account = self.get_object()
+        from apps.billing.models import Receipt, Expense
+        start = request.query_params.get('start_date')
+        end = request.query_params.get('end_date')
+
+        receipts = Receipt.objects.filter(bank_account=account).select_related('tenant')
+        expenses = Expense.objects.filter(
+            bank_account=account, status='paid',
+        ).exclude(expense_kind='non_cash').select_related('expense_category')
+        if start:
+            receipts = receipts.filter(date__gte=start)
+            expenses = expenses.filter(date__gte=start)
+        if end:
+            receipts = receipts.filter(date__lte=end)
+            expenses = expenses.filter(date__lte=end)
+
+        rows = []
+        for r in receipts:
+            rows.append({
+                'type': 'receipt', 'id': r.id, 'date': str(r.date),
+                'reference': r.reference or r.receipt_number,
+                'description': f'Receipt — {r.tenant.name}' if r.tenant_id else 'Receipt',
+                'party': r.tenant.name if r.tenant_id else '',
+                'inflow': float(r.amount), 'outflow': 0.0,
+                'currency': getattr(r, 'currency', None) or 'USD',
+            })
+        for e in expenses:
+            cat = e.expense_category.name if e.expense_category_id else ''
+            rows.append({
+                'type': 'expense', 'id': e.id, 'date': str(e.date),
+                'reference': getattr(e, 'reference', '') or e.expense_number,
+                'description': cat or e.description or 'Expense',
+                'party': e.payee_name or '',
+                'inflow': 0.0, 'outflow': float(e.amount),
+                'currency': getattr(e, 'currency', None) or 'USD',
+            })
+        # Date order; same-day deposits before withdrawals for a stable run.
+        rows.sort(key=lambda x: (x['date'], 0 if x['type'] == 'receipt' else 1))
+
+        running = Decimal('0')
+        total_in = Decimal('0')
+        total_out = Decimal('0')
+        for row in rows:
+            running += Decimal(str(row['inflow'])) - Decimal(str(row['outflow']))
+            row['balance'] = float(running)
+            total_in += Decimal(str(row['inflow']))
+            total_out += Decimal(str(row['outflow']))
+
+        return Response({
+            'account': BankAccountSerializer(account).data,
+            'transactions': rows,
+            'summary': {
+                'total_inflow': float(total_in),
+                'total_outflow': float(total_out),
+                'net': float(total_in - total_out),
+                'count': len(rows),
+            },
+        })
+
     @action(detail=True, methods=['post'])
     def set_default(self, request, pk=None):
         """Set this bank account as default for its currency."""

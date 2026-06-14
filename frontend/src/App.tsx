@@ -42,6 +42,7 @@ const IncomeTypeDetail = lazy(() => import('./pages/Accounting/IncomeTypeDetail'
 const ExpenseCategories = lazy(() => import('./pages/Accounting/ExpenseCategories'))
 const ExpenseCategoryDetail = lazy(() => import('./pages/Accounting/ExpenseCategoryDetail'))
 const AccountDetail = lazy(() => import('./pages/Accounting/AccountDetail'))
+const BankAccountDetail = lazy(() => import('./pages/Accounting/BankAccountDetail'))
 const Reports = lazy(() => import('./pages/Reports/Reports'))
 // AgedAnalysis now lives inside Reports.tsx — old route redirects there
 const BankReconciliation = lazy(() => import('./pages/Accounting/BankReconciliation'))
@@ -211,6 +212,7 @@ export default function App() {
         <Route path="chart-of-accounts" element={<LazyPage><ChartOfAccounts /></LazyPage>} />
         <Route path="journals" element={<LazyPage><Journals /></LazyPage>} />
         <Route path="bank-accounts" element={<LazyPage><BankAccounts /></LazyPage>} />
+        <Route path="bank-accounts/:id" element={<LazyPage><BankAccountDetail /></LazyPage>} />
         <Route path="income-types" element={<LazyPage><IncomeTypes /></LazyPage>} />
         <Route path="income-types/:id" element={<LazyPage><IncomeTypeDetail /></LazyPage>} />
         <Route path="expense-categories" element={<LazyPage><ExpenseCategories /></LazyPage>} />

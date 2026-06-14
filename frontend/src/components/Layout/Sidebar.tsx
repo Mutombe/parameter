@@ -85,7 +85,7 @@ const navigation: NavSection[] = [
     items: [
       { name: 'Invoices', href: '/dashboard/invoices', icon: Receipt },
       { name: 'Receipts', href: '/dashboard/receipts', icon: CreditCard },
-      { name: 'Expenses', href: '/dashboard/expenses', icon: Wallet },
+      { name: 'Expenditure', href: '/dashboard/expenses', icon: Wallet },
       { name: 'Late Penalties', href: '/dashboard/late-penalties', icon: AlertTriangle },
     ],
   },
@@ -104,10 +104,16 @@ const navigation: NavSection[] = [
     defaultOpen: false,
     items: [
       { name: 'Chart of Accounts', href: '/dashboard/chart-of-accounts', icon: BookOpen },
-      { name: 'Income Types', href: '/dashboard/income-types', icon: DollarSign },
-      { name: 'Expense Categories', href: '/dashboard/expense-categories', icon: GitCompare },
+      { name: 'Revenue', href: '/dashboard/income-types', icon: DollarSign },
+      { name: 'Expense Accounts', href: '/dashboard/expense-categories', icon: GitCompare },
+      { name: 'Assets & Liabilities', href: '/dashboard/global-accounts', icon: Wallet },
+    ],
+  },
+  {
+    title: 'Opening & Transfers',
+    defaultOpen: false,
+    items: [
       { name: 'Opening Balances', href: '/dashboard/opening-balances', icon: BookOpen },
-      { name: 'Global Accounts', href: '/dashboard/global-accounts', icon: Wallet },
       { name: 'Account Transfers', href: '/dashboard/bs-movements', icon: GitCompare },
     ],
   },

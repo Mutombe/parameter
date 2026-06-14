@@ -325,8 +325,9 @@ export default function BankAccounts() {
                 key={account.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
+                onClick={() => navigate(`/dashboard/bank-accounts/${account.id}`)}
                 className={cn(
-                  "bg-white rounded-xl border border-gray-200 p-6 pl-10 hover:shadow-lg transition-shadow relative",
+                  "bg-white rounded-xl border border-gray-200 p-6 pl-10 hover:shadow-lg transition-shadow relative cursor-pointer",
                   selection.isSelected(account.id) && 'ring-2 ring-primary-500 bg-primary-50/30'
                 )}
               >
@@ -343,7 +344,7 @@ export default function BankAccounts() {
                   <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center", getAccountColor(account.account_type))}>
                     <Icon className="w-6 h-6" />
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => openEdit(account)}
                       className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg"

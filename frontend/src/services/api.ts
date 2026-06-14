@@ -480,6 +480,8 @@ export const bankAccountApi = {
   delete: (id: number) => api.delete(`/accounting/bank-accounts/${id}/`),
   byCurrency: () => api.get('/accounting/bank-accounts/by_currency/'),
   summary: () => api.get('/accounting/bank-accounts/summary/'),
+  transactions: (id: number, params?: { start_date?: string; end_date?: string }) =>
+    api.get(`/accounting/bank-accounts/${id}/transactions/`, { params }),
   setDefault: (id: number) => api.post(`/accounting/bank-accounts/${id}/set_default/`),
   seedDefaults: () => api.post('/accounting/bank-accounts/seed_defaults/'),
 }

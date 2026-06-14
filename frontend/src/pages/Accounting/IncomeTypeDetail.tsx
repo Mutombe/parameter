@@ -35,13 +35,13 @@ export default function IncomeTypeDetail() {
       <nav className="flex items-center gap-2 text-sm text-gray-500">
         <button onClick={() => navigate('/dashboard')} className="hover:text-gray-900">Dashboard</button>
         <span>/</span>
-        <button onClick={() => navigate('/dashboard/income-types')} className="hover:text-gray-900">Income Types</button>
+        <button onClick={() => navigate('/dashboard/income-types')} className="hover:text-gray-900">Revenue</button>
         <span>/</span>
         <span className="text-gray-900 font-medium">{incomeType?.name || '…'}</span>
       </nav>
 
       <button onClick={() => navigate('/dashboard/income-types')} className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900">
-        <ArrowLeft className="w-4 h-4" /> Back to Income Types
+        <ArrowLeft className="w-4 h-4" /> Back to Revenue
       </button>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">
