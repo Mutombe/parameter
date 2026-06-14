@@ -1874,7 +1874,12 @@ function SubCategorySection({
     rose: { value: 'text-rose-700', totalRow: 'bg-rose-100 text-rose-800', hover: 'hover:bg-rose-50/50' },
   }[accent]
   const [hideZeros, setHideZeros] = useState(false)
-  const visible = hideZeros ? buckets.filter(b => b.total !== 0) : buckets
+  // Always drop buckets that are completely empty (zero total AND no line
+  // items) — e.g. an unused "Other Current Assets" — so the sheet only
+  // shows sub-categories that actually carry something. A bucket that nets
+  // to zero but still has underlying rows stays (and obeys the toggle).
+  const nonEmpty = buckets.filter(b => b.total !== 0 || (b.breakdown?.length ?? 0) > 0)
+  const visible = hideZeros ? nonEmpty.filter(b => b.total !== 0) : nonEmpty
 
   return (
     <div className="space-y-3">
