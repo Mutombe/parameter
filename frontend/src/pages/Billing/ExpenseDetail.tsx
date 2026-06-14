@@ -287,7 +287,17 @@ export default function ExpenseDetail() {
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2 text-sm text-gray-700">
                   <Layers className="w-3.5 h-3.5 text-gray-400" />
-                  <span>{expense?.expense_category_name || '—'}</span>
+                  {expense?.expense_category && expense?.expense_category_name ? (
+                    <button
+                      onClick={() => navigate(`/dashboard/expenses?category=${expense.expense_category}&category_name=${encodeURIComponent(expense.expense_category_name!)}`)}
+                      className="text-primary-600 hover:text-primary-700 hover:underline"
+                      title={`View all ${expense.expense_category_name} expenses`}
+                    >
+                      {expense.expense_category_name}
+                    </button>
+                  ) : (
+                    <span>{expense?.expense_category_name || '—'}</span>
+                  )}
                 </div>
                 {(expense?.sub_account_category || expense?.expense_category_funding) && (
                   <div className="text-xs text-gray-500 capitalize">

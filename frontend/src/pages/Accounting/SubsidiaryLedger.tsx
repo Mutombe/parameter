@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
   BookOpen,
@@ -123,6 +124,27 @@ export default function SubsidiaryLedger() {
   const [narrationText, setNarrationText] = useState('')
 
   const debouncedSearch = useDebounce(search, 300)
+
+  // Deep-link: ?account=<id> preselects an account (e.g. from a click on a
+  // sub-account card on the Landlord/Property detail pages). Fetched
+  // directly by id so it works even when the account isn't on page 1 of
+  // the list. The param is cleared once applied so manual selection isn't
+  // overridden afterwards.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const accountIdParam = searchParams.get('account')
+  const { data: paramAccount } = useQuery({
+    queryKey: ['subsidiary-account', accountIdParam],
+    queryFn: () => subsidiaryApi.get(Number(accountIdParam)).then(r => r.data),
+    enabled: !!accountIdParam,
+  })
+  useEffect(() => {
+    if (paramAccount) {
+      setSelectedAccount(paramAccount)
+      searchParams.delete('account')
+      setSearchParams(searchParams, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramAccount])
 
   const invalidateStatement = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['subsidiary-statement'] })

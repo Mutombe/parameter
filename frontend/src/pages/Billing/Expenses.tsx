@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -162,10 +162,20 @@ export default function Expenses() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const prefetch = usePrefetch()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [typeFilter, setTypeFilter] = useState<string>('')
   const [kindFilter, setKindFilter] = useState<string>('')
+  // Category scope — deep-linked from a click on a category label (here or
+  // on the expense detail page). Drives ?expense_category=<id> on the list.
+  const categoryFilter = searchParams.get('category') || ''
+  const categoryFilterName = searchParams.get('category_name') || ''
+  const clearCategoryFilter = () => {
+    searchParams.delete('category'); searchParams.delete('category_name')
+    setSearchParams(searchParams, { replace: true })
+    setCurrentPage(1)
+  }
   const [showModal, setShowModal] = useState(false)
   const [showDetail, setShowDetail] = useState<Expense | null>(null)
   const [showApproveConfirm, setShowApproveConfirm] = useState<Expense | null>(null)
@@ -256,13 +266,14 @@ export default function Expenses() {
 
   // Fetch expenses
   const { data: expensesData, isLoading, error } = useQuery({
-    queryKey: ['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage],
+    queryKey: ['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage, categoryFilter],
     queryFn: async () => {
       const params: Record<string, string | number> = { page: currentPage, page_size: PAGE_SIZE }
       if (statusFilter) params.status = statusFilter
       if (typeFilter) params.expense_type = typeFilter
       if (kindFilter) params.expense_kind = kindFilter
       if (debouncedSearch) params.search = debouncedSearch
+      if (categoryFilter) params.expense_category = categoryFilter
       try {
         const response = await expenseApi.list(params)
         return response.data
@@ -297,7 +308,7 @@ export default function Expenses() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [debouncedSearch, statusFilter, typeFilter, kindFilter])
+  }, [debouncedSearch, statusFilter, typeFilter, kindFilter, categoryFilter])
 
   // Fetch landlords for payee selection
   const { data: landlords = [] } = useQuery({
@@ -843,7 +854,7 @@ export default function Expenses() {
 
   if (isLoading) {
     return (
-      <div className="p-4 md:p-6 lg:p-8">
+      <div className="space-y-6">
         <PageHeader
           title="Expenses"
           subtitle="Manage expenses and payouts"
@@ -860,7 +871,7 @@ export default function Expenses() {
 
   if (error) {
     return (
-      <div className="p-4 md:p-6 lg:p-8">
+      <div className="space-y-6">
         <PageHeader
           title="Expenses"
           subtitle="Manage expenses and payouts"
@@ -898,7 +909,7 @@ export default function Expenses() {
   }
 
   return (
-    <div className="p-4 md:p-6 lg:p-8">
+    <div>
       <PageHeader
         title="Expenses"
         subtitle={`${totalCount} total expenses`}
@@ -914,6 +925,23 @@ export default function Expenses() {
           </Button>
         }
       />
+
+      {categoryFilter && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3 mb-6">
+          <div className="flex items-center gap-2 text-sm text-primary-900">
+            <Receipt className="w-4 h-4 text-primary-600" />
+            <span>
+              Showing only <span className="font-semibold">{categoryFilterName || 'selected category'}</span> expenses
+            </span>
+          </div>
+          <button
+            onClick={clearCategoryFilter}
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 hover:text-primary-900"
+          >
+            <X className="w-3.5 h-3.5" /> Clear
+          </button>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -1123,8 +1151,20 @@ export default function Expenses() {
                       {expense.date ? formatDate(expense.date) : '-'}
                     </span>
 
-                    <span className="text-xs text-gray-500 truncate hidden lg:inline w-[140px] flex-shrink-0" title={expense.expense_category_name || ''}>
-                      {expense.expense_category_name || '—'}
+                    <span className="text-xs truncate hidden lg:inline w-[140px] flex-shrink-0" title={expense.expense_category_name ? `View all ${expense.expense_category_name} expenses` : ''}>
+                      {expense.expense_category && expense.expense_category_name ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            navigate(`/dashboard/expenses?category=${expense.expense_category}&category_name=${encodeURIComponent(expense.expense_category_name!)}`)
+                          }}
+                          className="text-primary-600 hover:text-primary-700 hover:underline truncate max-w-full"
+                        >
+                          {expense.expense_category_name}
+                        </button>
+                      ) : (
+                        <span className="text-gray-500">{expense.expense_category_name || '—'}</span>
+                      )}
                     </span>
 
                     <div className="hidden xl:block w-[150px] flex-shrink-0 truncate">

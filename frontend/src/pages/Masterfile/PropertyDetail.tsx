@@ -1864,16 +1864,13 @@ export default function PropertyDetail() {
                       <div className="flex flex-wrap gap-2">
                         {byCurrency[cur].map((acc: any) => {
                           const balance = Number(acc.balance ?? acc.current_balance ?? 0)
-                          const isSelected = selectedSubAccount === acc.id
                           return (
                             <button
                               key={acc.id}
-                              onClick={() => setSelectedSubAccount(isSelected ? null : acc.id)}
+                              onClick={() => navigate(`/dashboard/subsidiary-ledger?account=${acc.id}`)}
                               className={cn(
                                 'w-[148px] px-3 py-2 border rounded-lg text-left transition-all',
-                                isSelected
-                                  ? 'border-primary-500 bg-primary-50 ring-1 ring-primary-200 shadow-sm'
-                                  : 'border-gray-200 hover:border-gray-300 hover:shadow-sm bg-white'
+                                'border-gray-200 hover:border-primary-300 hover:shadow-sm bg-white'
                               )}
                               title={acc.category_name || acc.category || acc.name || 'Account'}
                             >
