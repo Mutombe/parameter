@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Search, CreditCard, Plus, Send, Loader2, Eye, X, User, Download, Printer, BookOpen } from 'lucide-react'
-import { receiptApi, tenantApi, invoiceApi, leaseApi } from '../../services/api'
+import { receiptApi, tenantApi, invoiceApi, leaseApi, bankAccountApi } from '../../services/api'
 import { formatCurrency, formatDate, useDebounce, cn } from '../../lib/utils'
 import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination, DatePicker } from '../../components/ui'
 import { PayerSelect } from '../../components/PayerSelect'
@@ -79,6 +79,7 @@ export default function Receipts() {
     date: new Date().toISOString().split('T')[0],
     amount: '',
     payment_method: recentPaymentMethod.values[0] || 'bank_transfer',
+    bank_account: '',
     reference: '',
     description: '',
   })
@@ -110,6 +111,12 @@ export default function Receipts() {
   }, [debouncedSearch])
 
   // Tenants dropdown - loads when form opens
+  const { data: bankAccounts } = useQuery({
+    queryKey: ['bank-accounts-for-receipts'],
+    queryFn: () => bankAccountApi.list({ is_active: true, page_size: 200 }).then((r: any) => r.data.results || r.data),
+    placeholderData: keepPreviousData,
+  })
+
   const { data: tenants, isLoading: tenantsLoading } = useQuery({
     queryKey: ['tenants-select'],
     queryFn: () => tenantApi.list().then(r => r.data.results || r.data),
@@ -197,7 +204,10 @@ export default function Receipts() {
 
   // Optimistic create mutation
   const createMutation = useMutation({
-    mutationFn: (data: typeof form) => receiptApi.create(data),
+    mutationFn: (data: typeof form) => receiptApi.create({
+      ...data,
+      bank_account: data.bank_account || null,
+    }),
     onMutate: async (newData) => {
       // Close modal immediately (optimistic)
       setShowForm(false)
@@ -279,6 +289,7 @@ export default function Receipts() {
       date: new Date().toISOString().split('T')[0],
       amount: '',
       payment_method: recentPaymentMethod.values[0] || 'bank_transfer',
+      bank_account: '',
       reference: '',
       description: '',
     })
@@ -686,14 +697,28 @@ export default function Receipts() {
                 { value: 'cheque', label: 'Cheque' },
               ]}
             />
-            <AutocompleteInput
-              label="Reference"
-              placeholder="Bank ref, EcoCash ref..."
-              value={form.reference}
-              onChange={(e) => setForm({ ...form, reference: e.target.value })}
-              recentKey="receipt_references"
+            <Select
+              label="Bank Account"
+              hint="Which account this payment landed in — needed for bank reconciliation"
+              value={form.bank_account}
+              onChange={(e) => setForm({ ...form, bank_account: e.target.value })}
+              options={[
+                { value: '', label: '— Select bank account —' },
+                ...(((bankAccounts as any[]) || []).map((b: any) => ({
+                  value: String(b.id),
+                  label: `${b.name}${b.currency ? ` (${b.currency})` : ''}`,
+                }))),
+              ]}
             />
           </div>
+
+          <AutocompleteInput
+            label="Reference"
+            placeholder="Bank ref, EcoCash ref..."
+            value={form.reference}
+            onChange={(e) => setForm({ ...form, reference: e.target.value })}
+            recentKey="receipt_references"
+          />
 
           <AutocompleteInput
             label="Description"
