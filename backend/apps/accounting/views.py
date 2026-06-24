@@ -421,31 +421,32 @@ class BankAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, view
 
     @action(detail=False, methods=['get'])
     def summary(self, request):
-        """Get summary of all bank accounts."""
-        accounts = self.get_queryset().filter(is_active=True)
+        """Get summary of all bank accounts. Totals use the live computed
+        balance (deposits − payments) per the queryset annotation, not the
+        un-maintained stored book_balance."""
+        accounts = list(self.get_queryset().filter(is_active=True))
 
-        usd_total = accounts.filter(currency='USD').aggregate(
-            book_total=Sum('book_balance'),
-            bank_total=Sum('bank_balance')
-        )
-        zwg_total = accounts.filter(currency='ZWG').aggregate(
-            book_total=Sum('book_balance'),
-            bank_total=Sum('bank_balance')
-        )
+        def computed(a):
+            return (getattr(a, '_total_in', None) or Decimal('0')) - (getattr(a, '_total_out', None) or Decimal('0'))
+
+        total_usd = sum((computed(a) for a in accounts if a.currency == 'USD'), Decimal('0'))
+        total_zwg = sum((computed(a) for a in accounts if a.currency == 'ZWG'), Decimal('0'))
+        bank_count = sum(1 for a in accounts if a.account_type == 'bank')
+        mobile_money_count = sum(1 for a in accounts if a.account_type == 'mobile_money')
+        cash_count = sum(1 for a in accounts if a.account_type == 'cash')
 
         return Response({
-            'total_accounts': accounts.count(),
-            'usd': {
-                'book_balance': usd_total['book_total'] or Decimal('0'),
-                'bank_balance': usd_total['bank_total'] or Decimal('0'),
-                'difference': (usd_total['bank_total'] or Decimal('0')) - (usd_total['book_total'] or Decimal('0'))
-            },
-            'zwg': {
-                'book_balance': zwg_total['book_total'] or Decimal('0'),
-                'bank_balance': zwg_total['bank_total'] or Decimal('0'),
-                'difference': (zwg_total['bank_total'] or Decimal('0')) - (zwg_total['book_total'] or Decimal('0'))
-            },
-            'accounts': BankAccountSerializer(accounts, many=True).data
+            'total_accounts': len(accounts),
+            # Flat fields the UI header reads.
+            'total_usd': float(total_usd),
+            'total_zwg': float(total_zwg),
+            'bank_count': bank_count,
+            'mobile_money_count': mobile_money_count,
+            'cash_count': cash_count,
+            # Kept for any other consumer.
+            'usd': {'computed_balance': float(total_usd)},
+            'zwg': {'computed_balance': float(total_zwg)},
+            'accounts': BankAccountSerializer(accounts, many=True).data,
         })
 
     @action(detail=True, methods=['get'])
