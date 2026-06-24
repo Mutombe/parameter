@@ -207,20 +207,6 @@ export function exportReport(
       ]
       break
 
-    case 'rent-roll':
-      exportData = data?.leases || []
-      columns = [
-        { key: 'lease_number', header: 'Lease Number' },
-        { key: 'tenant', header: 'Tenant' },
-        { key: 'property', header: 'Property' },
-        { key: 'unit', header: 'Unit' },
-        { key: 'monthly_rent', header: 'Monthly Rent', format: formatNumber },
-        { key: 'currency', header: 'Currency' },
-        { key: 'start_date', header: 'Start Date' },
-        { key: 'end_date', header: 'End Date' },
-      ]
-      break
-
     case 'rent-rollover':
       exportData = data?.properties || data?.leases || []
       columns = [

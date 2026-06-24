@@ -70,7 +70,7 @@ import { useUIStore } from '../../stores/uiStore'
 
 type ReportType =
   | 'trial-balance' | 'income-statement' | 'balance-sheet' | 'cash-flow' | 'aged-analysis'
-  | 'vacancy' | 'rent-roll' | 'rent-rollover' | 'tenant-account' | 'landlord-account'
+  | 'vacancy' | 'rent-rollover' | 'tenant-account' | 'landlord-account'
   | 'commission-property' | 'commission-income' | 'bank-to-income'
   | 'receipts-listing' | 'deposits-listing' | 'lease-charges'
   | 'income-expenditure'
@@ -195,7 +195,6 @@ const reportCategories: ReportCategory[] = [
     title: 'Property Management',
     reports: [
       { id: 'vacancy', name: 'Vacancy Report', icon: Home, desc: 'Unit occupancy', color: 'text-amber-600', bgColor: 'bg-amber-50 dark:bg-amber-900/30' },
-      { id: 'rent-roll', name: 'Rent Roll', icon: Building2, desc: 'Active leases', color: 'text-rose-600', bgColor: 'bg-rose-50 dark:bg-rose-900/30' },
       { id: 'rent-rollover', name: 'Rent Rollover', icon: ArrowRight, desc: 'Balance rollover', color: 'text-orange-600', bgColor: 'bg-orange-50 dark:bg-orange-900/30' },
       { id: 'tenant-account', name: 'Tenant Account', icon: Users, desc: 'Tenant transactions', color: 'text-sky-600', bgColor: 'bg-sky-50 dark:bg-sky-900/30' },
       { id: 'landlord-account', name: 'Landlord Account', icon: PiBuildingApartmentLight, desc: 'Landlord statement', color: 'text-violet-600', bgColor: 'bg-violet-50 dark:bg-violet-900/30' },
@@ -362,7 +361,6 @@ const reportNames: Record<ReportType, string> = {
   'cash-flow': 'Cash Flow Statement',
   'aged-analysis': 'Aged Analysis',
   'vacancy': 'Vacancy Report',
-  'rent-roll': 'Rent Roll',
   'rent-rollover': 'Rent Rollover',
   'tenant-account': 'Tenant Account',
   'landlord-account': 'Landlord Account',
@@ -911,7 +909,7 @@ export default function Reports() {
     printElement('report-content', {
       title: reportNames[activeReport],
       subtitle: `Generated on ${formatDate(new Date())}`,
-      orientation: ['rent-roll', 'rent-rollover', 'receipts-listing', 'bank-to-income', 'income-expenditure'].includes(activeReport) ? 'landscape' : 'portrait',
+      orientation: ['rent-rollover', 'receipts-listing', 'bank-to-income', 'income-expenditure'].includes(activeReport) ? 'landscape' : 'portrait',
     })
   }
 
@@ -937,7 +935,7 @@ export default function Reports() {
     printElement('report-content', {
       title: reportNames[activeReport],
       subtitle: `Generated on ${formatDate(new Date())}`,
-      orientation: ['rent-roll', 'rent-rollover', 'receipts-listing', 'bank-to-income', 'income-expenditure'].includes(activeReport) ? 'landscape' : 'portrait',
+      orientation: ['rent-rollover', 'receipts-listing', 'bank-to-income', 'income-expenditure'].includes(activeReport) ? 'landscape' : 'portrait',
     })
     toast.success('Pick "Save as PDF" in the print dialog')
   }
@@ -1069,7 +1067,6 @@ export default function Reports() {
               {activeReport === 'cash-flow' && <CashFlowReport />}
               {activeReport === 'aged-analysis' && <AgedAnalysisReport />}
               {activeReport === 'vacancy' && <VacancyReport />}
-              {activeReport === 'rent-roll' && <RentRollReport />}
               {activeReport === 'rent-rollover' && <RentRolloverReport />}
               {activeReport === 'tenant-account' && <TenantAccountReport />}
               {activeReport === 'landlord-account' && <LandlordAccountReport />}
@@ -2915,204 +2912,6 @@ function VacancyReport() {
           <Home className="w-12 h-12 mx-auto text-gray-300 mb-4" />
           <p className="font-medium">No properties found</p>
           <p className="text-sm mt-1">Add properties and units to see the vacancy report</p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function RentRollReport() {
-  const navigate = useNavigate()
-  const { data, isLoading } = useQuery({
-    queryKey: ['rent-roll'],
-    queryFn: () => reportsApi.rentRoll().then(r => r.data),
-    placeholderData: keepPreviousData,
-  })
-
-  // Store data for export
-  if (data) currentReportData = data
-
-  const [searchQuery, setSearchQuery] = useState('')
-  const [currentPage, setCurrentPage] = useState(1)
-  const pageSize = 25
-
-  const allLeases = data?.leases || []
-  const filteredLeases = useMemo(() => {
-    if (!searchQuery) return allLeases
-    const q = searchQuery.toLowerCase()
-    return allLeases.filter((lease: any) =>
-      lease.tenant?.toLowerCase().includes(q) ||
-      lease.property?.toLowerCase().includes(q) ||
-      lease.unit?.toLowerCase().includes(q) ||
-      lease.lease_number?.toLowerCase().includes(q)
-    )
-  }, [allLeases, searchQuery])
-
-  const totalPages = Math.ceil(filteredLeases.length / pageSize)
-  const paginatedLeases = useMemo(() => {
-    const start = (currentPage - 1) * pageSize
-    return filteredLeases.slice(start, start + pageSize)
-  }, [filteredLeases, currentPage])
-
-  useEffect(() => { setCurrentPage(1) }, [searchQuery])
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-      <div className="p-6 border-b border-gray-100">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-rose-50 dark:bg-rose-900/30 flex items-center justify-center">
-              <Building2 className="w-5 h-5 text-rose-600" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Rent Roll</h2>
-              {isLoading ? (
-                <div className="h-4 w-24 bg-gray-200 rounded animate-pulse mt-1" />
-              ) : (
-                <p className="text-sm text-gray-500">
-                  {data?.summary?.total_leases || 0} active leases
-                </p>
-              )}
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-500">Total Monthly Rent</p>
-            {isLoading ? (
-              <div className="h-8 w-32 bg-gray-200 rounded animate-pulse mt-1" />
-            ) : (
-              <p className="text-2xl font-bold text-primary-600">{formatCurrency(data?.summary?.total_monthly_rent || 0)}</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Rent Distribution Chart */}
-      {!isLoading && data?.leases?.length > 0 && (() => {
-        const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316']
-        const propertyRentMap: Record<string, number> = {}
-        data.leases.forEach((l: any) => {
-          propertyRentMap[l.property] = (propertyRentMap[l.property] || 0) + (l.monthly_rent || 0)
-        })
-        const pieData = Object.entries(propertyRentMap).map(([name, value]) => ({ name, value }))
-        return (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 border-b border-gray-100">
-            <p className="text-sm font-medium text-gray-500 mb-4">Rent Distribution by Property</p>
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={pieData} innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value" label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`} labelLine={false} fontSize={11}>
-                    {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </motion.div>
-        )
-      })()}
-
-      {isLoading ? (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Lease #</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Property</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit</th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Monthly Rent</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">End Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i} className="animate-pulse">
-                  <td className="px-6 py-4"><div className="h-4 w-20 bg-gray-200 rounded" /></td>
-                  <td className="px-6 py-4"><div className="h-4 w-28 bg-gray-200 rounded" /></td>
-                  <td className="px-6 py-4"><div className="h-4 w-32 bg-gray-200 rounded" /></td>
-                  <td className="px-6 py-4"><div className="h-4 w-16 bg-gray-200 rounded" /></td>
-                  <td className="px-6 py-4 text-right"><div className="h-4 w-20 bg-gray-200 rounded ml-auto" /></td>
-                  <td className="px-6 py-4"><div className="h-4 w-24 bg-gray-200 rounded" /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : allLeases.length > 0 ? (
-        <>
-        <TableFilter searchPlaceholder="Search by tenant, property, unit, or lease#..." searchValue={searchQuery} onSearchChange={setSearchQuery} resultCount={filteredLeases.length} />
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Lease #</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Property</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Unit</th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Monthly Rent</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">End Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {paginatedLeases.map((lease: any, idx: number) => (
-                <motion.tr
-                  key={idx}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: idx * 0.02 }}
-                  className="hover:bg-gray-50 transition-colors"
-                >
-                  <td className="px-6 py-4">
-                    {lease.lease_id ? (
-                      <button onClick={() => navigate(`/dashboard/leases/${lease.lease_id}`)} className="font-mono text-sm font-semibold text-primary-600 hover:text-primary-700 hover:underline">{lease.lease_number}</button>
-                    ) : (
-                      <span className="font-mono text-sm font-semibold text-primary-600">{lease.lease_number}</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 font-medium">
-                    {lease.tenant_id ? (
-                      <button onClick={() => navigate(`/dashboard/tenants/${lease.tenant_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{lease.tenant}</button>
-                    ) : (
-                      <span className="text-gray-900">{lease.tenant}</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    {lease.property_id ? (
-                      <button onClick={() => navigate(`/dashboard/properties/${lease.property_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{lease.property}</button>
-                    ) : (
-                      <span className="text-gray-600">{lease.property}</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    {lease.unit_id ? (
-                      <button onClick={() => navigate(`/dashboard/units/${lease.unit_id}`)} className="text-primary-600 hover:text-primary-700 hover:underline">{lease.unit}</button>
-                    ) : (
-                      <span className="text-gray-600">{lease.unit}</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-right font-semibold text-gray-900 tabular-nums">{formatCurrency(lease.monthly_rent)}</td>
-                  <td className="px-6 py-4">
-                    <span className={cn(
-                      'text-sm',
-                      new Date(lease.end_date) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
-                        ? 'text-amber-600 font-medium'
-                        : 'text-gray-600'
-                    )}>
-                      {lease.end_date}
-                    </span>
-                  </td>
-                </motion.tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <Pagination currentPage={currentPage} totalPages={totalPages} totalItems={filteredLeases.length} pageSize={pageSize} onPageChange={setCurrentPage} showPageSize={false} />
-        </>
-      ) : (
-        <div className="p-12 text-center text-gray-500">
-          <Building2 className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-          <p className="font-medium">No active leases found</p>
-          <p className="text-sm mt-1">Create leases to see the rent roll</p>
         </div>
       )}
     </div>
