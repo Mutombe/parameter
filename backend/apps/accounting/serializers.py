@@ -252,6 +252,14 @@ class BankAccountSerializer(serializers.ModelSerializer):
     gl_account_name = serializers.CharField(source='gl_account.name', read_only=True)
     gl_account_code = serializers.CharField(source='gl_account.code', read_only=True)
     unreconciled_difference = serializers.ReadOnlyField()
+    # The model FK limits choices to account_subtype='cash', but real bank
+    # GL accounts are usually subtype 'bank'. That restriction made existing
+    # accounts un-editable ("selected gl account was not found" on any save).
+    # Accept any asset account, matching the UI's dropdown.
+    gl_account = serializers.PrimaryKeyRelatedField(
+        queryset=ChartOfAccount.objects.filter(account_type='asset'),
+        required=False, allow_null=True,
+    )
     # Live figures aggregated from the receipts (deposits) and paid
     # expenses (withdrawals) that actually used this account. The stored
     # book_balance is a denormalised field that isn't maintained by
