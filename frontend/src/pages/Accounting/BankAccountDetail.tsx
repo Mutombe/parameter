@@ -71,7 +71,7 @@ export default function BankAccountDetail() {
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-          <Info label="Book Balance" value={formatCurrency(Number(account?.book_balance || 0))} />
+          <Info label="Balance" value={formatCurrency(Number(summary.net ?? account?.computed_balance ?? 0))} />
           <Info label="Bank Balance" value={formatCurrency(Number(account?.bank_balance || 0))} />
           <Info label="Deposits In" value={formatCurrency(Number(summary.total_inflow || 0))} />
           <Info label="Payments Out" value={formatCurrency(Number(summary.total_outflow || 0))} />

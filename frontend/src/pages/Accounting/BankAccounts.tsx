@@ -33,6 +33,11 @@ interface BankAccount {
   account_number: string
   currency: string
   current_balance: number
+  book_balance?: number
+  bank_balance?: number
+  total_inflow?: number
+  total_outflow?: number
+  computed_balance?: number
   gl_account: number
   gl_account_name: string
   is_active: boolean
@@ -373,8 +378,12 @@ export default function BankAccounts() {
                 <div className="mt-4 pt-4 border-t border-gray-100">
                   <p className="text-sm text-gray-500">Balance</p>
                   <p className="text-xl font-bold text-gray-900">
-                    {formatCurrency(account.current_balance || 0, account.currency)}
+                    {formatCurrency(account.computed_balance ?? account.book_balance ?? 0, account.currency)}
                   </p>
+                  <div className="mt-2 flex items-center justify-between text-xs">
+                    <span className="text-emerald-600">In {formatCurrency(account.total_inflow ?? 0, account.currency)}</span>
+                    <span className="text-rose-600">Out {formatCurrency(account.total_outflow ?? 0, account.currency)}</span>
+                  </div>
                 </div>
                 <div className="mt-2 flex items-center gap-2">
                   <Tooltip content={account.is_active ? "This account is active and available for transactions" : "This account is inactive and cannot be used for transactions"}>

@@ -390,6 +390,26 @@ class BankAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, view
     ordering_fields = ['name', 'book_balance', 'bank_balance']
     ordering = ['name']
 
+    def get_queryset(self):
+        """Annotate each account with the live money that flowed through it —
+        receipts in (deposits) and paid cash expenses out (withdrawals) — so
+        the list/detail show real figures instead of the un-maintained
+        stored book_balance. Independent Subqueries avoid join multiplication.
+        """
+        from django.db.models import OuterRef, Subquery, DecimalField
+        from django.db.models.functions import Coalesce
+        from apps.billing.models import Receipt, Expense
+        recv = (Receipt.objects.filter(bank_account=OuterRef('pk'))
+                .values('bank_account').annotate(t=Sum('amount')).values('t'))
+        exp = (Expense.objects.filter(bank_account=OuterRef('pk'), status='paid')
+               .exclude(expense_kind='non_cash')
+               .values('bank_account').annotate(t=Sum('amount')).values('t'))
+        dec = DecimalField(max_digits=18, decimal_places=2)
+        return super().get_queryset().annotate(
+            _total_in=Coalesce(Subquery(recv, output_field=dec), Decimal('0'), output_field=dec),
+            _total_out=Coalesce(Subquery(exp, output_field=dec), Decimal('0'), output_field=dec),
+        )
+
     @action(detail=False, methods=['get'])
     def by_currency(self, request):
         """Get bank accounts grouped by currency."""

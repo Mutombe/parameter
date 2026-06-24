@@ -252,6 +252,14 @@ class BankAccountSerializer(serializers.ModelSerializer):
     gl_account_name = serializers.CharField(source='gl_account.name', read_only=True)
     gl_account_code = serializers.CharField(source='gl_account.code', read_only=True)
     unreconciled_difference = serializers.ReadOnlyField()
+    # Live figures aggregated from the receipts (deposits) and paid
+    # expenses (withdrawals) that actually used this account. The stored
+    # book_balance is a denormalised field that isn't maintained by
+    # postings, so these are what the UI shows. Populated from queryset
+    # annotations (_total_in/_total_out) when present, else computed.
+    total_inflow = serializers.SerializerMethodField()
+    total_outflow = serializers.SerializerMethodField()
+    computed_balance = serializers.SerializerMethodField()
 
     class Meta:
         model = BankAccount
@@ -259,6 +267,7 @@ class BankAccountSerializer(serializers.ModelSerializer):
             'id', 'code', 'name', 'account_type', 'bank_name', 'branch',
             'account_number', 'swift_code', 'currency', 'gl_account',
             'gl_account_name', 'gl_account_code', 'book_balance', 'bank_balance',
+            'total_inflow', 'total_outflow', 'computed_balance',
             'last_reconciled_date', 'last_reconciled_balance',
             'unreconciled_difference', 'is_active', 'is_default',
             'created_at', 'updated_at'
@@ -266,6 +275,33 @@ class BankAccountSerializer(serializers.ModelSerializer):
         read_only_fields = ['code', 'book_balance', 'bank_balance',
                            'last_reconciled_date', 'last_reconciled_balance',
                            'created_at', 'updated_at']
+
+    def _inflow(self, obj):
+        from django.db.models import Sum
+        from apps.billing.models import Receipt
+        annotated = getattr(obj, '_total_in', None)
+        if annotated is not None:
+            return annotated
+        return Receipt.objects.filter(bank_account=obj).aggregate(t=Sum('amount'))['t'] or Decimal('0')
+
+    def _outflow(self, obj):
+        from django.db.models import Sum
+        from apps.billing.models import Expense
+        annotated = getattr(obj, '_total_out', None)
+        if annotated is not None:
+            return annotated
+        return (Expense.objects.filter(bank_account=obj, status='paid')
+                .exclude(expense_kind='non_cash')
+                .aggregate(t=Sum('amount'))['t'] or Decimal('0'))
+
+    def get_total_inflow(self, obj):
+        return self._inflow(obj)
+
+    def get_total_outflow(self, obj):
+        return self._outflow(obj)
+
+    def get_computed_balance(self, obj):
+        return self._inflow(obj) - self._outflow(obj)
 
 
 class BankTransactionSerializer(serializers.ModelSerializer):
