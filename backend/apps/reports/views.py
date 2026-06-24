@@ -2049,6 +2049,35 @@ class RentRolloverView(APIView):
             t=Coalesce(Sum('amount'), Decimal('0'))
         ).values_list('invoice__lease_id', 't'))
 
+        # Direct (invoice-less) payments don't carry a lease via the invoice,
+        # so the joins above miss them and amount_paid reads zero. Attribute
+        # them through the paying tenant to that tenant's lease. (A tenant with
+        # multiple active leases is rare; we attribute to their first.)
+        tenant_to_lease = {}
+        for l in lease_list:
+            tenant_to_lease.setdefault(l.tenant_id, l.id)
+        lease_tenant_ids = list(tenant_to_lease.keys())
+
+        direct_before = dict(Receipt.objects.filter(
+            tenant_id__in=lease_tenant_ids, invoice__isnull=True, date__lt=start_date
+        ).values('tenant_id').annotate(
+            t=Coalesce(Sum('amount'), Decimal('0'))
+        ).values_list('tenant_id', 't'))
+        direct_period = dict(Receipt.objects.filter(
+            tenant_id__in=lease_tenant_ids, invoice__isnull=True,
+            date__gte=start_date, date__lte=end_date
+        ).values('tenant_id').annotate(
+            t=Coalesce(Sum('amount'), Decimal('0'))
+        ).values_list('tenant_id', 't'))
+        for tid, amt in direct_before.items():
+            lid = tenant_to_lease.get(tid)
+            if lid:
+                rcpt_before[lid] = rcpt_before.get(lid, Decimal('0')) + amt
+        for tid, amt in direct_period.items():
+            lid = tenant_to_lease.get(tid)
+            if lid:
+                rcpt_period[lid] = rcpt_period.get(lid, Decimal('0')) + amt
+
         # Build per-lease rows
         lease_rows = []
         for lease in lease_list:
@@ -2791,9 +2820,41 @@ class AgedAnalysisView(APIView):
             tenant_summary[tenant_key][bucket_key] += balance
             tenant_summary[tenant_key]['total'] += balance
 
-        # Convert tenant summary to list and serialize
+        # Net DIRECT (invoice-less) payments against each tenant's
+        # outstanding, oldest buckets first (FIFO). These credits were never
+        # applied to a specific invoice, so they never reduced any
+        # invoice.balance — without this the tenant breakdown overstates what
+        # tenants still owe (a tenant who paid via a direct receipt would
+        # otherwise still show the full charge).
+        if tenant_summary:
+            credit_rows = Receipt.objects.filter(
+                invoice__isnull=True, date__lte=as_of_date,
+                tenant_id__in=list(tenant_summary.keys()),
+            ).values('tenant_id').annotate(t=Coalesce(Sum('amount'), Decimal('0')))
+            fifo_order = ['over_120', '91_120', '61_90', '31_60', 'current']
+            for row in credit_rows:
+                credit = row['t'] or Decimal('0')
+                ts = tenant_summary.get(row['tenant_id'])
+                if not ts or credit <= 0:
+                    continue
+                for bk in fifo_order:
+                    if credit <= 0:
+                        break
+                    applied = min(credit, ts[bk])
+                    if applied <= 0:
+                        continue
+                    ts[bk] -= applied
+                    ts['total'] -= applied
+                    buckets[bk]['amount'] -= applied
+                    total_outstanding -= applied
+                    credit -= applied
+
+        # Convert tenant summary to list and serialize. Tenants whose
+        # outstanding has been fully settled by direct payments drop off.
         tenant_list = []
         for ts in tenant_summary.values():
+            if ts['total'] <= Decimal('0.005'):
+                continue
             tenant_list.append({
                 'tenant_id': ts['tenant_id'],
                 'tenant_code': ts['tenant_code'],
@@ -4422,6 +4483,13 @@ class IncomeExpenditureReportView(APIView):
         unit_ids = list({l.unit_id for l in lease_list if l.unit_id})
         prop_ids_for_leases = list({l.property_id for l in lease_list if l.property_id and not l.unit_id})
 
+        # Tenant → lease key, for attributing DIRECT (invoice-less) payments
+        # that the invoice-joined queries below can't see. First lease wins
+        # when a tenant has several (rare).
+        tenant_to_lkey = {}
+        for l in lease_list:
+            tenant_to_lkey.setdefault(l.tenant_id, _lease_key(l))
+
         valid_statuses = ['sent', 'partial', 'overdue', 'paid']
 
         # ── Batch queries for unit-based leases ──
@@ -4478,6 +4546,15 @@ class IncomeExpenditureReportView(APIView):
             for r in prior_pay_prop_qs
         }
         prior_pay_map = {**prior_pay_unit_map, **prior_pay_prop_map}
+
+        # Prior DIRECT (invoice-less) payments — attributed by tenant.
+        for r in Receipt.objects.filter(
+            rct_currency_filter,
+            tenant_id__in=tenant_ids, invoice__isnull=True, date__lt=start_date,
+        ).values('tenant_id').annotate(total=Sum('amount')):
+            lk = tenant_to_lkey.get(r['tenant_id'])
+            if lk:
+                prior_pay_map[lk] = prior_pay_map.get(lk, Decimal('0')) + (r['total'] or Decimal('0'))
 
         # Period charges per (tenant, unit)
         period_inv_unit_qs = Invoice.objects.filter(
@@ -4537,7 +4614,11 @@ class IncomeExpenditureReportView(APIView):
                 elif r.invoice.property_id:
                     key = ('property', r.tenant_id, r.invoice.property_id)
                 else:
-                    continue
+                    key = tenant_to_lkey.get(r.tenant_id)
+            else:
+                # Direct payment (no invoice) — attribute via the tenant.
+                key = tenant_to_lkey.get(r.tenant_id)
+            if key:
                 receipt_paid_map[key] = receipt_paid_map.get(key, Decimal('0')) + r.amount
 
         income_summary_tenants = []
