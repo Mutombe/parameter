@@ -349,7 +349,7 @@ export default function BalanceSheetMovements() {
 
   if (isLoading) {
     return (
-      <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <PageHeader
           title="Account Transfers"
           subtitle="Non-cash account value transfers"
@@ -366,7 +366,7 @@ export default function BalanceSheetMovements() {
 
   if (error) {
     return (
-      <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <PageHeader
           title="Account Transfers"
           subtitle="Non-cash account value transfers"
@@ -391,7 +391,7 @@ export default function BalanceSheetMovements() {
   }
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+    <div className="max-w-7xl mx-auto">
       <PageHeader
         title="Account Transfers"
         subtitle={`${totalCount} total movements`}

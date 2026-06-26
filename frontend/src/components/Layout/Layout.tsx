@@ -120,7 +120,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
         <Sidebar />
@@ -152,11 +152,11 @@ export default function Layout() {
         )}
       </AnimatePresence>
 
-      <div className={`flex-1 flex flex-col transition-all duration-300 ${getMainMargin()}`}>
+      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${getMainMargin()}`}>
         <DemoExpiryBanner />
         <Header />
 
-        <main className="flex-1 overflow-auto p-4 md:p-6 pb-20 lg:pb-6">
+        <main className="flex-1 overflow-auto min-w-0 p-4 md:p-6 pb-20 lg:pb-6">
           <ErrorBoundary>
             <AnimatePresence mode="wait">
               <motion.div

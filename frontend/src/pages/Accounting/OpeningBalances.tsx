@@ -386,7 +386,7 @@ export default function OpeningBalances() {
 
   if (isLoading) {
     return (
-      <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <PageHeader
           title="Opening Balances"
           subtitle="Takeover opening balance entries"
@@ -403,7 +403,7 @@ export default function OpeningBalances() {
 
   if (error) {
     return (
-      <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <PageHeader
           title="Opening Balances"
           subtitle="Takeover opening balance entries"
@@ -428,7 +428,7 @@ export default function OpeningBalances() {
   }
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+    <div className="max-w-7xl mx-auto">
       <PageHeader
         title="Opening Balances"
         subtitle={`${totalCount} total entries`}
