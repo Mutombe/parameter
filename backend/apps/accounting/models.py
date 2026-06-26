@@ -380,18 +380,54 @@ class Journal(models.Model):
 
         self.validate_balance()
 
-        # Update account balances — lock rows to prevent concurrent balance corruption
-        entries = list(self.entries.select_related('account').all())
-        account_ids = [e.account_id for e in entries]
-        # Lock all affected accounts in consistent order to prevent deadlocks
+        # Update account balances — lock rows to prevent concurrent balance
+        # corruption. A line targets a GL account, a subsidiary sub-ledger
+        # account, or a bank account; each posts to its own book.
+        entries = list(
+            self.entries.select_related('account', 'subsidiary_account', 'bank_account').all()
+        )
+        gl_account_ids = [e.account_id for e in entries if e.account_id]
+        bank_account_ids = [e.bank_account_id for e in entries if e.bank_account_id]
+        # Lock all affected GL accounts in consistent order to prevent deadlocks.
         locked_accounts = {
             a.id: a for a in ChartOfAccount.objects.select_for_update().filter(
-                id__in=account_ids
+                id__in=gl_account_ids
+            ).order_by('id')
+        }
+        locked_banks = {
+            b.id: b for b in BankAccount.objects.select_for_update().filter(
+                id__in=bank_account_ids
             ).order_by('id')
         }
 
         gl_entries = []
         for entry in entries:
+            # --- Subsidiary sub-ledger line (landlord / tenant) ---
+            if entry.subsidiary_account_id:
+                # create_entry applies the correct sign for the entity type
+                # (tenant debit-normal, landlord credit-normal) and stamps a
+                # running balance, mirroring how receipts/charges post.
+                SubsidiaryTransaction.create_entry(
+                    account=entry.subsidiary_account,
+                    date=self.date,
+                    contra_account='JRN',
+                    reference=self.journal_number,
+                    description=entry.description or self.description,
+                    debit_amount=entry.debit_amount or None,
+                    credit_amount=entry.credit_amount or None,
+                    journal_entry=entry,
+                )
+                continue
+
+            # --- Bank account line ---
+            if entry.bank_account_id:
+                bank = locked_banks[entry.bank_account_id]
+                # Bank is a cash asset: debit increases, credit decreases.
+                bank.book_balance += (entry.debit_amount - entry.credit_amount)
+                bank.save(update_fields=['book_balance', 'updated_at'])
+                continue
+
+            # --- General Ledger line ---
             account = locked_accounts[entry.account_id]
             if entry.debit_amount:
                 if account.normal_balance == 'debit':
@@ -457,11 +493,14 @@ class Journal(models.Model):
             created_by=user or get_current_user()
         )
 
-        # Create reversed entries (swap debits and credits)
+        # Create reversed entries (swap debits and credits), preserving the
+        # original target whatever its kind (GL / subsidiary / bank).
         for entry in self.entries.all():
             JournalEntry.objects.create(
                 journal=reversal,
                 account=entry.account,
+                subsidiary_account=entry.subsidiary_account,
+                bank_account=entry.bank_account,
                 description=f'Reversal: {entry.description}',
                 debit_amount=entry.credit_amount,
                 credit_amount=entry.debit_amount
@@ -497,7 +536,22 @@ class JournalEntry(models.Model):
     Implements strict double-entry: each entry must have either debit OR credit.
     """
     journal = models.ForeignKey(Journal, on_delete=models.CASCADE, related_name='entries')
-    account = models.ForeignKey(ChartOfAccount, on_delete=models.PROTECT, related_name='entries')
+    # A journal line targets EXACTLY ONE of: a GL (Chart of Account), a
+    # subsidiary sub-ledger account (landlord/tenant), or a bank account.
+    # GL lines post to the General Ledger; subsidiary lines create a
+    # SubsidiaryTransaction; bank lines move the bank's book balance.
+    account = models.ForeignKey(
+        ChartOfAccount, on_delete=models.PROTECT, related_name='entries',
+        null=True, blank=True,
+    )
+    subsidiary_account = models.ForeignKey(
+        'SubsidiaryAccount', on_delete=models.PROTECT,
+        related_name='journal_entries', null=True, blank=True,
+    )
+    bank_account = models.ForeignKey(
+        'BankAccount', on_delete=models.PROTECT,
+        related_name='journal_entries', null=True, blank=True,
+    )
     description = models.CharField(max_length=500, blank=True)
 
     debit_amount = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('0.00'))
@@ -517,13 +571,26 @@ class JournalEntry(models.Model):
             models.Index(fields=['source_type', 'source_id']),
         ]
 
+    @property
+    def target(self):
+        """The account this line posts to, whatever its kind."""
+        return self.account or self.subsidiary_account or self.bank_account
+
     def __str__(self):
+        tgt = self.target
+        code = getattr(tgt, 'code', None) or (getattr(tgt, 'name', None) or '?')
         if self.debit_amount:
-            return f'Dr: {self.account.code} - {self.debit_amount}'
-        return f'Cr: {self.account.code} - {self.credit_amount}'
+            return f'Dr: {code} - {self.debit_amount}'
+        return f'Cr: {code} - {self.credit_amount}'
 
     def clean(self):
-        """Validate entry has either debit or credit, not both."""
+        """Validate entry targets exactly one account and has debit XOR credit."""
+        targets = [self.account_id, self.subsidiary_account_id, self.bank_account_id]
+        set_count = sum(1 for t in targets if t)
+        if set_count == 0:
+            raise ValidationError('Entry must target a GL, subsidiary, or bank account')
+        if set_count > 1:
+            raise ValidationError('Entry must target only one account')
         if self.debit_amount and self.credit_amount:
             raise ValidationError('Entry cannot have both debit and credit amounts')
         if not self.debit_amount and not self.credit_amount:

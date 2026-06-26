@@ -118,14 +118,36 @@ class ExchangeRateSerializer(serializers.ModelSerializer):
 class JournalEntrySerializer(serializers.ModelSerializer):
     account_code = serializers.CharField(source='account.code', read_only=True)
     account_name = serializers.CharField(source='account.name', read_only=True)
+    # Unified target fields so the UI can render a line whatever its kind
+    # (GL / subsidiary / bank) without branching on which FK is set.
+    target_kind = serializers.SerializerMethodField()
+    target_code = serializers.SerializerMethodField()
+    target_name = serializers.SerializerMethodField()
 
     class Meta:
         model = JournalEntry
         fields = [
             'id', 'account', 'account_code', 'account_name',
+            'subsidiary_account', 'bank_account',
+            'target_kind', 'target_code', 'target_name',
             'description', 'debit_amount', 'credit_amount',
             'source_type', 'source_id', 'created_at'
         ]
+
+    def get_target_kind(self, obj):
+        if obj.subsidiary_account_id:
+            return 'subsidiary'
+        if obj.bank_account_id:
+            return 'bank'
+        return 'gl'
+
+    def get_target_code(self, obj):
+        tgt = obj.target
+        return getattr(tgt, 'code', '') if tgt else ''
+
+    def get_target_name(self, obj):
+        tgt = obj.target
+        return getattr(tgt, 'name', '') if tgt else ''
 
 
 class JournalSerializer(serializers.ModelSerializer):
@@ -179,8 +201,15 @@ class JournalCreateSerializer(serializers.ModelSerializer):
         total_credit = Decimal('0')
 
         for entry in entries:
-            if not entry.get('account'):
-                raise serializers.ValidationError('Each entry must have an account')
+            targets = [entry.get('account'), entry.get('subsidiary_account'),
+                       entry.get('bank_account')]
+            set_count = sum(1 for t in targets if t)
+            if set_count == 0:
+                raise serializers.ValidationError(
+                    'Each entry must target a GL, subsidiary, or bank account')
+            if set_count > 1:
+                raise serializers.ValidationError(
+                    'Each entry must target only one account')
 
             debit = Decimal(str(entry.get('debit_amount', 0) or 0))
             credit = Decimal(str(entry.get('credit_amount', 0) or 0))
@@ -209,7 +238,9 @@ class JournalCreateSerializer(serializers.ModelSerializer):
         for entry_data in entries_data:
             JournalEntry.objects.create(
                 journal=journal,
-                account_id=entry_data['account'],
+                account_id=entry_data.get('account') or None,
+                subsidiary_account_id=entry_data.get('subsidiary_account') or None,
+                bank_account_id=entry_data.get('bank_account') or None,
                 description=entry_data.get('description', ''),
                 debit_amount=Decimal(str(entry_data.get('debit_amount', 0) or 0)),
                 credit_amount=Decimal(str(entry_data.get('credit_amount', 0) or 0)),
@@ -305,20 +336,28 @@ class BankAccountSerializer(serializers.ModelSerializer):
     def _inflow(self, obj):
         from django.db.models import Sum
         from apps.billing.models import Receipt
+        from apps.accounting.models import JournalEntry
         annotated = getattr(obj, '_total_in', None)
         if annotated is not None:
             return annotated
-        return Receipt.objects.filter(bank_account=obj).aggregate(t=Sum('amount'))['t'] or Decimal('0')
+        recv = Receipt.objects.filter(bank_account=obj).aggregate(t=Sum('amount'))['t'] or Decimal('0')
+        jrn = (JournalEntry.objects.filter(bank_account=obj, journal__status='posted')
+               .aggregate(t=Sum('debit_amount'))['t'] or Decimal('0'))
+        return recv + jrn
 
     def _outflow(self, obj):
         from django.db.models import Sum
         from apps.billing.models import Expense
+        from apps.accounting.models import JournalEntry
         annotated = getattr(obj, '_total_out', None)
         if annotated is not None:
             return annotated
-        return (Expense.objects.filter(bank_account=obj, status='paid')
-                .exclude(expense_kind='non_cash')
-                .aggregate(t=Sum('amount'))['t'] or Decimal('0'))
+        exp = (Expense.objects.filter(bank_account=obj, status='paid')
+               .exclude(expense_kind='non_cash')
+               .aggregate(t=Sum('amount'))['t'] or Decimal('0'))
+        jrn = (JournalEntry.objects.filter(bank_account=obj, journal__status='posted')
+               .aggregate(t=Sum('credit_amount'))['t'] or Decimal('0'))
+        return exp + jrn
 
     def get_total_inflow(self, obj):
         return self._inflow(obj)

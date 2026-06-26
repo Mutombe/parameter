@@ -453,6 +453,9 @@ export const accountApi = {
 export const journalApi = {
   list: (params?: object) => api.get('/accounting/journals/', { params }),
   get: (id: number) => api.get(`/accounting/journals/${id}/`),
+  // All postable targets grouped: GL accounts, bank accounts, and
+  // landlord/tenant subsidiary sub-accounts.
+  targets: () => api.get('/accounting/journals/targets/'),
   create: (data: object) => api.post('/accounting/journals/', data),
   post: (id: number) => api.post(`/accounting/journals/${id}/post_journal/`),
   reverse: (id: number, reason: string) =>

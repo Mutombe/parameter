@@ -178,11 +178,69 @@ class JournalViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if self.action == 'retrieve':
+        if self.action in ('retrieve', 'list'):
             qs = qs.select_related('posted_by', 'reversed_by').prefetch_related(
-                Prefetch('entries', queryset=JournalEntry.objects.select_related('account'))
+                Prefetch('entries', queryset=JournalEntry.objects.select_related(
+                    'account', 'subsidiary_account', 'bank_account'))
             )
         return qs
+
+    @action(detail=False, methods=['get'])
+    def targets(self, request):
+        """All accounts a journal line can post to, grouped for the picker:
+        every GL (Chart of Account), each landlord/tenant subsidiary
+        sub-account, and each bank account. Values are encoded as
+        "<kind>:<id>" (gl / subsidiary / bank) so the client can post the
+        right FK without a second lookup."""
+        groups = []
+
+        gl = (ChartOfAccount.objects.filter(is_active=True)
+              .order_by('code').values('id', 'code', 'name', 'account_type'))
+        groups.append({
+            'label': 'General Ledger',
+            'options': [{
+                'value': f'gl:{a["id"]}',
+                'kind': 'gl', 'id': a['id'],
+                'code': a['code'], 'name': a['name'],
+                'label': f'{a["code"]} - {a["name"]}',
+            } for a in gl],
+        })
+
+        banks = (BankAccount.objects.filter(is_active=True)
+                 .order_by('name').values('id', 'code', 'name', 'currency'))
+        groups.append({
+            'label': 'Bank Accounts',
+            'options': [{
+                'value': f'bank:{b["id"]}',
+                'kind': 'bank', 'id': b['id'],
+                'code': b['code'], 'name': b['name'],
+                'label': f'{b["name"]} ({b["currency"]})',
+            } for b in banks],
+        })
+
+        subs = (SubsidiaryAccount.objects.filter(is_active=True)
+                .order_by('entity_type', 'code')
+                .values('id', 'code', 'name', 'entity_type'))
+        entity_labels = {
+            'landlord': 'Landlord Sub-Accounts',
+            'tenant': 'Tenant Sub-Accounts',
+            'account_holder': 'Account-Holder Sub-Accounts',
+        }
+        by_entity = {}
+        for s in subs:
+            by_entity.setdefault(s['entity_type'], []).append({
+                'value': f'subsidiary:{s["id"]}',
+                'kind': 'subsidiary', 'id': s['id'],
+                'code': s['code'], 'name': s['name'],
+                'label': f'{s["code"]} - {s["name"]}',
+            })
+        for entity, opts in by_entity.items():
+            groups.append({
+                'label': entity_labels.get(entity, entity.title()),
+                'options': opts,
+            })
+
+        return Response({'groups': groups})
     permission_classes = [IsAuthenticated]
     filterset_fields = ['journal_type', 'status', 'date', 'currency']
     search_fields = ['journal_number', 'description', 'reference']
@@ -404,10 +462,20 @@ class BankAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, view
         exp = (Expense.objects.filter(bank_account=OuterRef('pk'), status='paid')
                .exclude(expense_kind='non_cash')
                .values('bank_account').annotate(t=Sum('amount')).values('t'))
+        # Posted manual journal lines also move the bank: debit = money in,
+        # credit = money out.
+        jrn_in = (JournalEntry.objects.filter(
+                    bank_account=OuterRef('pk'), journal__status='posted')
+                  .values('bank_account').annotate(t=Sum('debit_amount')).values('t'))
+        jrn_out = (JournalEntry.objects.filter(
+                    bank_account=OuterRef('pk'), journal__status='posted')
+                   .values('bank_account').annotate(t=Sum('credit_amount')).values('t'))
         dec = DecimalField(max_digits=18, decimal_places=2)
         return super().get_queryset().annotate(
-            _total_in=Coalesce(Subquery(recv, output_field=dec), Decimal('0'), output_field=dec),
-            _total_out=Coalesce(Subquery(exp, output_field=dec), Decimal('0'), output_field=dec),
+            _total_in=(Coalesce(Subquery(recv, output_field=dec), Decimal('0'), output_field=dec)
+                       + Coalesce(Subquery(jrn_in, output_field=dec), Decimal('0'), output_field=dec)),
+            _total_out=(Coalesce(Subquery(exp, output_field=dec), Decimal('0'), output_field=dec)
+                        + Coalesce(Subquery(jrn_out, output_field=dec), Decimal('0'), output_field=dec)),
         )
 
     @action(detail=False, methods=['get'])

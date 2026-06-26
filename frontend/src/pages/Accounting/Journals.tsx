@@ -25,7 +25,7 @@ import {
   Loader2,
   Download,
 } from 'lucide-react'
-import { journalApi, accountApi } from '../../services/api'
+import { journalApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton, Textarea, SelectionCheckbox, BulkActionsBar, TimeAgo, Tooltip, Pagination, DatePicker } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
@@ -38,9 +38,23 @@ const PAGE_SIZE = 25
 
 interface JournalEntry {
   id?: number
-  account: number
+  account?: number
   account_code?: string
   account_name?: string
+  // Unified target fields (GL / subsidiary / bank) returned by the API.
+  target_kind?: 'gl' | 'subsidiary' | 'bank'
+  target_code?: string
+  target_name?: string
+  description: string
+  debit_amount: number
+  credit_amount: number
+}
+
+// A line in the create form. `target` encodes the picked account as
+// "<kind>:<id>" (gl / subsidiary / bank); it's split into the right FK
+// when the journal is submitted.
+interface FormEntry {
+  target: string
   description: string
   debit_amount: number
   credit_amount: number
@@ -143,9 +157,9 @@ export default function Journals() {
     date: new Date().toISOString().split('T')[0],
     description: '',
     entries: [
-      { account: 0, description: '', debit_amount: 0, credit_amount: 0 },
-      { account: 0, description: '', debit_amount: 0, credit_amount: 0 },
-    ] as JournalEntry[],
+      { target: '', description: '', debit_amount: 0, credit_amount: 0 },
+      { target: '', description: '', debit_amount: 0, credit_amount: 0 },
+    ] as FormEntry[],
   })
 
   const { data: journalsData, isLoading } = useQuery({
@@ -167,11 +181,21 @@ export default function Journals() {
     setCurrentPage(1)
   }, [debouncedSearch, statusFilter])
 
-  const { data: accounts } = useQuery({
-    queryKey: ['accounts-list'],
-    queryFn: () => accountApi.list().then(r => r.data.results || r.data),
+  // All postable targets — GL accounts, bank accounts, and landlord/tenant
+  // subsidiary sub-accounts — grouped by the backend.
+  const { data: targetsData } = useQuery({
+    queryKey: ['journal-targets'],
+    queryFn: () => journalApi.targets().then(r => r.data),
     placeholderData: keepPreviousData,
   })
+
+  const targetOptions = (targetsData?.groups || []).flatMap((g: any) =>
+    (g.options || []).map((o: any) => ({
+      value: o.value,
+      label: o.label,
+      description: g.label,
+    }))
+  )
 
   const postMutation = useMutation({
     mutationFn: (id: number) => journalApi.post(id),
@@ -205,7 +229,7 @@ export default function Journals() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: typeof newJournal) => journalApi.create(data),
+    mutationFn: (data: any) => journalApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['journals'] })
       toast.success('Journal entry created')
@@ -214,8 +238,8 @@ export default function Journals() {
         date: new Date().toISOString().split('T')[0],
         description: '',
         entries: [
-          { account: 0, description: '', debit_amount: 0, credit_amount: 0 },
-          { account: 0, description: '', debit_amount: 0, credit_amount: 0 },
+          { target: '', description: '', debit_amount: 0, credit_amount: 0 },
+          { target: '', description: '', debit_amount: 0, credit_amount: 0 },
         ],
       })
     },
@@ -237,7 +261,7 @@ export default function Journals() {
   const addEntry = () => {
     setNewJournal({
       ...newJournal,
-      entries: [...newJournal.entries, { account: 0, description: '', debit_amount: 0, credit_amount: 0 }],
+      entries: [...newJournal.entries, { target: '', description: '', debit_amount: 0, credit_amount: 0 }],
     })
   }
 
@@ -553,9 +577,14 @@ export default function Journals() {
                                   >
                                     <td className="px-6 py-4">
                                       <div className="flex items-center gap-2">
-                                        <span className="font-mono text-sm text-primary-600 font-medium">{entry.account_code}</span>
+                                        <span className="font-mono text-sm text-primary-600 font-medium">{entry.target_code || entry.account_code}</span>
                                         <ArrowRight className="w-3 h-3 text-gray-300" />
-                                        <span className="text-gray-700">{entry.account_name}</span>
+                                        <span className="text-gray-700">{entry.target_name || entry.account_name}</span>
+                                        {entry.target_kind && entry.target_kind !== 'gl' && (
+                                          <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500 capitalize">
+                                            {entry.target_kind === 'subsidiary' ? 'Sub-Account' : 'Bank'}
+                                          </span>
+                                        )}
                                       </div>
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-600">{entry.description}</td>
@@ -662,7 +691,24 @@ export default function Journals() {
               toast.error('Journal must be balanced (debits = credits)')
               return
             }
-            createMutation.mutate(newJournal)
+            if (newJournal.entries.some(en => !en.target)) {
+              toast.error('Every line must have an account selected')
+              return
+            }
+            // Split each "<kind>:<id>" target into the right FK field.
+            const entries = newJournal.entries.map(en => {
+              const [kind, idStr] = en.target.split(':')
+              const id = Number(idStr)
+              const base = {
+                description: en.description,
+                debit_amount: en.debit_amount,
+                credit_amount: en.credit_amount,
+              }
+              if (kind === 'subsidiary') return { ...base, subsidiary_account: id }
+              if (kind === 'bank') return { ...base, bank_account: id }
+              return { ...base, account: id }
+            })
+            createMutation.mutate({ ...newJournal, entries })
           }}
           className="space-y-6"
         >
@@ -712,9 +758,9 @@ export default function Journals() {
                       <td className="px-4 py-2">
                         <AsyncSelect
                           placeholder="Select account..."
-                          value={entry.account || ''}
-                          onChange={(val) => updateEntry(index, 'account', Number(val))}
-                          options={accounts?.map((acc: any) => ({ value: acc.id, label: `${acc.code} - ${acc.name}` })) || []}
+                          value={entry.target || ''}
+                          onChange={(val) => updateEntry(index, 'target', String(val))}
+                          options={targetOptions}
                           searchable
                         />
                       </td>
