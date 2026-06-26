@@ -15,12 +15,15 @@ from .models import (
 class ChartOfAccountSerializer(serializers.ModelSerializer):
     children = serializers.SerializerMethodField()
     normal_balance = serializers.ReadOnlyField()
+    category = serializers.ReadOnlyField()
+    category_label = serializers.ReadOnlyField()
 
     class Meta:
         model = ChartOfAccount
         fields = [
             'id', 'code', 'name', 'account_type', 'account_subtype',
-            'balance_sheet_category', 'description', 'parent', 'is_active',
+            'balance_sheet_category', 'category', 'category_label',
+            'description', 'parent', 'is_active',
             'is_system', 'currency', 'current_balance', 'normal_balance',
             'children', 'created_at', 'updated_at'
         ]
@@ -72,18 +75,33 @@ class ChartOfAccountSerializer(serializers.ModelSerializer):
                     'balance_sheet_category':
                         'Selected sub-category is not a liability bucket.'
                 })
+
+        # Enforce the code-range → category reservations (Account categories
+        # spec) when CREATING a new account. Existing/system accounts and
+        # edits are left alone so the seeded chart (whose codes are wired
+        # into posting logic) and any prior data aren't broken.
+        if self.instance is None:
+            from .models import account_code_type_error
+            code = attrs.get('code')
+            if code and account_type:
+                err = account_code_type_error(code, account_type)
+                if err:
+                    raise serializers.ValidationError({'code': err})
         return attrs
 
 
 class ChartOfAccountListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list views — no recursive children."""
     normal_balance = serializers.ReadOnlyField()
+    category = serializers.ReadOnlyField()
+    category_label = serializers.ReadOnlyField()
 
     class Meta:
         model = ChartOfAccount
         fields = [
             'id', 'code', 'name', 'account_type', 'account_subtype',
-            'balance_sheet_category', 'parent', 'is_active', 'is_system',
+            'balance_sheet_category', 'category', 'category_label',
+            'parent', 'is_active', 'is_system',
             'currency', 'current_balance', 'normal_balance',
         ]
 

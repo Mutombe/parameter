@@ -37,6 +37,8 @@ interface Account {
   name: string
   account_type: string
   account_subtype: string
+  category?: string
+  category_label?: string
   normal_balance: 'debit' | 'credit'
   current_balance: number
   is_system: boolean
@@ -44,46 +46,45 @@ interface Account {
   children?: Account[]
 }
 
+// Keyed by the code-derived category (see "Account categories" spec). The
+// chart groups accounts by these rather than the raw account_type, so a
+// fixed asset mis-typed as an expense still lands under Fixed Assets.
 const accountTypeConfig: Record<string, { icon: any; color: string; bgColor: string; borderColor: string; label: string; tooltip: string }> = {
-  asset: {
-    icon: Wallet,
-    color: 'text-blue-600',
-    bgColor: 'bg-blue-50',
-    borderColor: 'border-blue-200',
-    label: 'Assets',
-    tooltip: 'Resources owned by the organization that have economic value',
+  current_asset: {
+    icon: Wallet, color: 'text-blue-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200',
+    label: 'Current Assets', tooltip: 'Cash and assets expected to be realised within a year (codes 4000)',
   },
-  liability: {
-    icon: CreditCard,
-    color: 'text-rose-600',
-    bgColor: 'bg-rose-50',
-    borderColor: 'border-rose-200',
-    label: 'Liabilities',
-    tooltip: 'Obligations or debts owed to external parties',
+  fixed_asset: {
+    icon: Wallet, color: 'text-sky-700', bgColor: 'bg-sky-50', borderColor: 'border-sky-200',
+    label: 'Fixed Assets', tooltip: 'Long-term tangible assets (codes 3000)',
+  },
+  current_liability: {
+    icon: CreditCard, color: 'text-rose-600', bgColor: 'bg-rose-50', borderColor: 'border-rose-200',
+    label: 'Current Liabilities', tooltip: 'Obligations due within a year (codes 6000)',
+  },
+  short_term_liability: {
+    icon: CreditCard, color: 'text-orange-600', bgColor: 'bg-orange-50', borderColor: 'border-orange-200',
+    label: 'Short-term Liabilities', tooltip: 'Short-term obligations (codes 6100)',
+  },
+  long_term_liability: {
+    icon: CreditCard, color: 'text-red-700', bgColor: 'bg-red-50', borderColor: 'border-red-200',
+    label: 'Long-term Liabilities', tooltip: 'Obligations due beyond a year (codes 7000)',
+  },
+  other_liability: {
+    icon: CreditCard, color: 'text-pink-600', bgColor: 'bg-pink-50', borderColor: 'border-pink-200',
+    label: 'Other Liabilities', tooltip: 'Other liabilities (codes 9000)',
   },
   equity: {
-    icon: Scale,
-    color: 'text-purple-600',
-    bgColor: 'bg-purple-50',
-    borderColor: 'border-purple-200',
-    label: 'Equity',
-    tooltip: 'Owner\'s residual interest in assets after deducting liabilities',
+    icon: Scale, color: 'text-purple-600', bgColor: 'bg-purple-50', borderColor: 'border-purple-200',
+    label: 'Equity', tooltip: "Owner's residual interest (codes 5000)",
   },
   revenue: {
-    icon: TrendingUp,
-    color: 'text-emerald-600',
-    bgColor: 'bg-emerald-50',
-    borderColor: 'border-emerald-200',
-    label: 'Revenue',
-    tooltip: 'Income earned from normal business operations',
+    icon: TrendingUp, color: 'text-emerald-600', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200',
+    label: 'Revenue', tooltip: 'Income earned from operations',
   },
   expense: {
-    icon: TrendingDown,
-    color: 'text-amber-600',
-    bgColor: 'bg-amber-50',
-    borderColor: 'border-amber-200',
-    label: 'Expenses',
-    tooltip: 'Costs incurred in the process of earning revenue',
+    icon: TrendingDown, color: 'text-amber-600', bgColor: 'bg-amber-50', borderColor: 'border-amber-200',
+    label: 'Expenses', tooltip: 'Costs incurred earning revenue (codes 2000–2300)',
   },
 }
 
@@ -131,7 +132,7 @@ export default function ChartOfAccounts() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('')
-  const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set(['asset', 'liability', 'equity', 'revenue', 'expense']))
+  const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set(Object.keys(accountTypeConfig)))
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newAccount, setNewAccount] = useState({
     code: '',
@@ -177,15 +178,17 @@ export default function ChartOfAccounts() {
     const matchesSearch = !search ||
       account.name.toLowerCase().includes(search.toLowerCase()) ||
       account.code.toLowerCase().includes(search.toLowerCase())
-    const matchesType = !typeFilter || account.account_type === typeFilter
+    const cat = account.category || account.account_type
+    const matchesType = !typeFilter || cat === typeFilter
     return matchesSearch && matchesType
   }) || []
 
   const groupedAccounts = filteredAccounts.reduce((acc: Record<string, Account[]>, account: Account) => {
-    if (!acc[account.account_type]) {
-      acc[account.account_type] = []
+    const cat = account.category || account.account_type
+    if (!acc[cat]) {
+      acc[cat] = []
     }
-    acc[account.account_type].push(account)
+    acc[cat].push(account)
     return acc
   }, {})
 
@@ -389,7 +392,7 @@ export default function ChartOfAccounts() {
           <div className="space-y-4">
             {Object.entries(accountTypeConfig).map(([type, config]) => {
               const typeAccounts = groupedAccounts[type] || []
-              if (typeAccounts.length === 0 && typeFilter && typeFilter !== type) return null
+              if (typeAccounts.length === 0) return null
 
               const TypeIcon = config.icon
               const isExpanded = expandedTypes.has(type)

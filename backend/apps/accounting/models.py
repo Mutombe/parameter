@@ -9,11 +9,131 @@ Activities:
 4. Commission/VAT - Tax handling
 5. Expense Payouts - Landlord payments (Dr: Accounts Payable, Cr: Cash)
 """
+import re
 from decimal import Decimal
 from django.db import models, transaction
 from django.core.exceptions import ValidationError
 from django.conf import settings
 from middleware.tenant_middleware import get_current_user
+
+
+# ── Account category by code (see "Account categories.docx" spec) ──────────
+# Code ranges are reserved per category. Categorisation is derived from the
+# code at read time (no stored field). Labels for the derived categories:
+ACCOUNT_CATEGORY_LABELS = {
+    'expense': 'Expenses',
+    'revenue': 'Revenue',
+    'equity': 'Equity',
+    'fixed_asset': 'Fixed Assets',
+    'current_asset': 'Current Assets',
+    'current_liability': 'Current Liabilities',
+    'short_term_liability': 'Short-term Liabilities',
+    'long_term_liability': 'Long-term Liabilities',
+    'other_liability': 'Other Liabilities',
+}
+
+
+def _parse_account_code(code):
+    """Return (prefix:int, suffix:int) from a code like '4000/005' or '2200'.
+    Non-numeric codes (e.g. 'TN/1', 'LD/00021/01') return (None, None)."""
+    if not code:
+        return (None, None)
+    s = str(code)
+    m = re.match(r'^(\d+)', s)
+    if not m:
+        return (None, None)
+    prefix = int(m.group(1))
+    suffix = 0
+    if '/' in s:
+        m2 = re.match(r'(\d+)', s.split('/', 1)[1])
+        if m2:
+            suffix = int(m2.group(1))
+    return (prefix, suffix)
+
+
+def reserved_category_for_code(code):
+    """The category a code is *reserved* for per the spec, or None if the
+    code falls outside every reserved range."""
+    prefix, suffix = _parse_account_code(code)
+    if prefix is None:
+        return None
+    # Expenses: 2000/001-999, 2100/000-999, 2200/000-999, 2300/000-099
+    if prefix == 2000 and 1 <= suffix <= 999:
+        return 'expense'
+    if prefix in (2100, 2200) and 0 <= suffix <= 999:
+        return 'expense'
+    if prefix == 2300 and 0 <= suffix <= 99:
+        return 'expense'
+    if prefix == 3000:
+        return 'fixed_asset'
+    if prefix == 4000:
+        return 'current_asset'
+    if prefix == 5000:
+        return 'equity'
+    if prefix == 6000:
+        return 'current_liability'
+    if prefix == 6100:
+        return 'short_term_liability'
+    if prefix == 7000:
+        return 'long_term_liability'
+    if prefix == 9000 and 1 <= suffix <= 999:
+        return 'other_liability'
+    return None
+
+
+def derive_account_category(code, account_type):
+    """Resolve the display/grouping category for an account from its code and
+    type. Per the spec the reclassification is one-directional: an account
+    currently typed as EXPENSE whose code sits in a non-expense reserved
+    range is moved to that category (fixes e.g. Land at 3000 mis-coded as an
+    expense). Otherwise the category follows the account_type, using the code
+    to split assets (Fixed vs Current) and liabilities (Current/Short/Long/
+    Other). Returns a category key from ACCOUNT_CATEGORY_LABELS."""
+    prefix, _ = _parse_account_code(code)
+    reserved = reserved_category_for_code(code)
+
+    if account_type == 'expense' and reserved and reserved != 'expense':
+        return reserved
+    if account_type == 'asset':
+        return 'fixed_asset' if prefix == 3000 else 'current_asset'
+    if account_type == 'liability':
+        if reserved in ('current_liability', 'short_term_liability',
+                        'long_term_liability', 'other_liability'):
+            return reserved
+        return 'current_liability'
+    if account_type == 'equity':
+        return 'equity'
+    if account_type == 'revenue':
+        return 'revenue'
+    return 'expense'
+
+
+def account_code_type_error(code, account_type):
+    """Return an error string if `code` is reserved for a category whose
+    account_type conflicts with `account_type` (used to validate NEW account
+    creation), else None. Non-numeric codes are unrestricted."""
+    prefix, _ = _parse_account_code(code)
+    if prefix is None:
+        return None
+    reserved = reserved_category_for_code(code)
+    if reserved == 'expense':
+        if account_type != 'expense':
+            return 'This code range is reserved for Expense accounts.'
+    elif reserved in ('fixed_asset', 'current_asset'):
+        if account_type != 'asset':
+            return f'This code range is reserved for {ACCOUNT_CATEGORY_LABELS[reserved]}.'
+    elif reserved == 'equity':
+        if account_type != 'equity':
+            return 'This code range (5000) is reserved for Equity accounts.'
+    elif reserved in ('current_liability', 'short_term_liability',
+                      'long_term_liability', 'other_liability'):
+        if account_type != 'liability':
+            return f'This code range is reserved for {ACCOUNT_CATEGORY_LABELS[reserved]}.'
+    else:
+        # Not reserved. Codes below 3000 may only be Expense or Revenue.
+        if prefix < 3000 and account_type not in ('expense', 'revenue'):
+            return 'Codes below 3000 can only be used for Expense or Revenue accounts.'
+    return None
 
 
 class ChartOfAccount(models.Model):
@@ -116,6 +236,15 @@ class ChartOfAccount(models.Model):
         if self.account_type in ['asset', 'expense']:
             return 'debit'
         return 'credit'
+
+    @property
+    def category(self):
+        """Code-derived category key (see derive_account_category)."""
+        return derive_account_category(self.code, self.account_type)
+
+    @property
+    def category_label(self):
+        return ACCOUNT_CATEGORY_LABELS.get(self.category, self.category)
 
 
 class ExchangeRate(models.Model):
