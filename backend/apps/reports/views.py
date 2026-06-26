@@ -328,6 +328,46 @@ def _resolve_commission_rate_pct(income_type, property_id=None):
     return Decimal(str(income_type.default_commission_rate or 0))
 
 
+def _make_commission_resolver():
+    """Return a callable(receipt) -> Decimal commission that matches what was
+    actually POSTED to the sub-ledger, with memoised property + rate lookups.
+
+    Why not the SQL ``_commission_expr``? That expression resolves the property
+    only via ``invoice__unit__property`` / ``invoice__property``. For invoice-
+    less direct payments (very common — payments are often made before invoices
+    are issued) the invoice is NULL, so the expression can't see the property
+    and silently falls back to the income-type default rate. When a per-property
+    commission override applies, that understates commission — which is why the
+    Balance Sheet Notes (trust composition) and Income Statement gross profit
+    diverged from the top "Funds Held in Trust" (which is sub-ledger derived).
+
+    This resolver uses ``Receipt._resolve_property_for_commission`` — the SAME
+    chain used when commission was posted — so the three figures agree. Property
+    resolution for invoice-less receipts hits the tenant's lease, so it is
+    memoised by tenant_id; rate lookups are memoised by (property, income_type).
+    """
+    from apps.billing.models import Receipt as _Receipt
+    _prop_by_tenant = {}
+    _rate_cache = {}
+
+    def commission(receipt):
+        if receipt.invoice_id:
+            prop_id = _Receipt._resolve_property_for_commission(receipt)
+        else:
+            tid = receipt.tenant_id
+            if tid in _prop_by_tenant:
+                prop_id = _prop_by_tenant[tid]
+            else:
+                prop_id = _Receipt._resolve_property_for_commission(receipt)
+                _prop_by_tenant[tid] = prop_id
+        rk = (prop_id, receipt.income_type_id)
+        if rk not in _rate_cache:
+            _rate_cache[rk] = _resolve_commission_rate_pct(receipt.income_type, prop_id)
+        return (receipt.amount or Decimal('0')) * _rate_cache[rk] / Decimal('100')
+
+    return commission
+
+
 def _comparative_receipt_qs(qs):
     """Attach the select_related / prefetch a Receipt needs for
     `_receipt_dims` to resolve property / unit / landlord / income-type
@@ -869,11 +909,27 @@ class IncomeStatementView(APIView):
                 total_revenue += other_income
 
             # --- Cost of Sales: commission deducted per revenue bucket. ---
+            # Computed per-receipt with the posting-time resolver (not the SQL
+            # _commission_expr) so gross profit reflects the commission actually
+            # charged — the SQL expr can't resolve the property for invoice-less
+            # receipts and understates per-property overrides. See
+            # _make_commission_resolver().
+            _commission_of = _make_commission_resolver()
             commission_by_type = {}
-            for row in scoped_receipts.annotate(_cat=_cat_expr).values('_cat').annotate(
-                c=Sum(_commission_expr())
+            for _r in scoped_receipts.select_related(
+                'income_type', 'tenant', 'invoice', 'invoice__unit', 'invoice__lease',
             ):
-                commission_by_type[row['_cat'] or 'other'] = row['c'] or Decimal('0')
+                _c = _commission_of(_r)
+                if not _c:
+                    continue
+                _inv = _r.invoice if _r.invoice_id else None
+                if _inv and _inv.invoice_type:
+                    _cat = _inv.invoice_type
+                elif _r.income_type and _r.income_type.code:
+                    _cat = _r.income_type.code.lower()
+                else:
+                    _cat = 'other'
+                commission_by_type[_cat] = commission_by_type.get(_cat, Decimal('0')) + _c
 
             for key, label in REVENUE_BUCKETS:
                 amt = commission_by_type.get(key, Decimal('0'))
@@ -1583,25 +1639,39 @@ class BalanceSheetView(APIView):
                     date__lte=as_of_date,
                 )
                 _rcpt_total = _all_receipts_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
-                _comm_total = _all_receipts_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
-                # Per-income-type split of trust commission so the note
-                # can show "Rent commission $X · Maintenance commission $Y
-                # · Parking commission $Z" beneath the rolled-up total.
-                _comm_by_type_qs = list(
-                    _all_receipts_qs.values(
-                        'income_type__id', 'income_type__name', 'income_type__code',
-                    ).annotate(commission=Sum(_commission_expr()))
-                    .order_by('income_type__name')
-                )
+                # Commission must match what was POSTED to the sub-ledger (the
+                # top "Funds Held in Trust" is sub-ledger derived). The SQL
+                # _commission_expr can't resolve the property for invoice-less
+                # receipts and understates per-property overrides, so compute it
+                # per-receipt with the same resolver that posting used.
+                _commission_of = _make_commission_resolver()
+                _comm_total = Decimal('0')
+                _comm_by_type_acc = {}
+                for _r in _all_receipts_qs.select_related(
+                    'income_type', 'tenant', 'invoice__unit', 'invoice__lease',
+                ):
+                    _c = _commission_of(_r)
+                    if not _c:
+                        continue
+                    _comm_total += _c
+                    # Per-income-type split of trust commission so the note can
+                    # show "Rent commission $X · Maintenance commission $Y · …".
+                    _it = _r.income_type
+                    _key = _r.income_type_id
+                    _acc = _comm_by_type_acc.setdefault(_key, {
+                        'income_type_id': _key,
+                        'income_type_name': (_it.name if _it else None) or 'Other',
+                        'income_type_code': (_it.code if _it else '') or '',
+                        'amount': Decimal('0'),
+                    })
+                    _acc['amount'] += _c
                 _comm_by_type = [
-                    {
-                        'income_type_id': r['income_type__id'],
-                        'income_type_name': r['income_type__name'] or 'Other',
-                        'income_type_code': r['income_type__code'] or '',
-                        'amount': float(r['commission'] or Decimal('0')),
-                    }
-                    for r in _comm_by_type_qs
-                    if (r['commission'] or Decimal('0')) != 0
+                    {**v, 'amount': float(v['amount'])}
+                    for v in sorted(
+                        _comm_by_type_acc.values(),
+                        key=lambda x: x['income_type_name'],
+                    )
+                    if v['amount'] != 0
                 ]
 
                 _operating_exp_total = Expense.objects.filter(
