@@ -1687,12 +1687,25 @@ function BalanceSheetReport() {
               the spec is landlord-specific. */}
           <div className="grid md:grid-cols-2 gap-6">
             {data?.assets?.sub_categories ? (
-              <SubCategorySection
-                title="Current Assets"
-                accent="blue"
-                buckets={data.assets.sub_categories}
-                total={data?.assets?.total || 0}
-              />
+              <div className="space-y-6">
+                <SubCategorySection
+                  title="Current Assets"
+                  accent="blue"
+                  buckets={data.assets.sub_categories}
+                  total={data?.assets?.current_total ?? data?.assets?.total ?? 0}
+                />
+                {Array.isArray(data?.assets?.non_current) &&
+                  data.assets.non_current.some(
+                    (b: any) => b.total !== 0 || (b.breakdown?.length ?? 0) > 0
+                  ) && (
+                    <SubCategorySection
+                      title="Non-Current Assets"
+                      accent="blue"
+                      buckets={data.assets.non_current}
+                      total={data?.assets?.non_current_total ?? 0}
+                    />
+                  )}
+              </div>
             ) : (
               <BalanceSheetSection
                 title="Assets"

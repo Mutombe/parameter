@@ -328,6 +328,21 @@ def _resolve_commission_rate_pct(income_type, property_id=None):
     return Decimal(str(income_type.default_commission_rate or 0))
 
 
+_IMMOVABLE_ASSET_KEYWORDS = (
+    'land', 'building', 'property', 'premises', 'estate', 'leasehold',
+    'freehold', 'structure', 'real estate', 'immovable',
+)
+
+
+def _is_immovable_asset(name):
+    """True when a fixed-asset account is immovable (land/buildings) rather
+    than movable (computers/equipment/furniture/vehicles). Classified by name
+    keyword; anything not matching an immovable keyword is treated as movable,
+    which is the safe default for the common movable fixed assets."""
+    n = (name or '').lower()
+    return any(kw in n for kw in _IMMOVABLE_ASSET_KEYWORDS)
+
+
 def _make_commission_resolver():
     """Return a callable(receipt) -> Decimal commission that matches what was
     actually POSTED to the sub-ledger, with memoised property + rate lookups.
@@ -1186,6 +1201,9 @@ class BalanceSheetView(APIView):
         # the frontend then falls back to the flat `accounts` list.
         sub_categories_assets: list | None = None
         sub_categories_liabilities: list | None = None
+        non_current_assets: list | None = None
+        current_assets_total: Decimal | None = None
+        non_current_assets_total: Decimal | None = None
 
         if scope_filter is None:
             # Agency-wide Balance Sheet — aggregate from GL up to as_of_date.
@@ -1447,11 +1465,18 @@ class BalanceSheetView(APIView):
                     'breakdown': [],
                     'description': 'Asset accounts classified as Other Current Assets at creation',
                 },
-                'fixed_asset': {
-                    'name': 'Fixed Assets',
+                # Non-current (fixed) assets split into immovable vs movable.
+                'immovable_assets': {
+                    'name': 'Immovable Assets',
                     'total': Decimal('0'),
                     'breakdown': [],
-                    'description': 'Capitalised assets — expenditures booked to fixed-asset accounts (codes 3000)',
+                    'description': 'Land, buildings & other immovable property',
+                },
+                'movable_assets': {
+                    'name': 'Movable Assets',
+                    'total': Decimal('0'),
+                    'breakdown': [],
+                    'description': 'Computers, equipment, furniture, vehicles & other movable assets',
                 },
             }
             liability_buckets = {
@@ -1503,10 +1528,13 @@ class BalanceSheetView(APIView):
                     # sub-account-derived Lessees Arrears — skip.
                     if subtype == 'accounts_receivable':
                         continue
-                    # Fixed assets (by code, e.g. 3000) get their own
-                    # section; otherwise honour the chosen bucket, else Other.
+                    # Fixed assets (by code, e.g. 3000) are non-current and
+                    # split into immovable (land/buildings) vs movable
+                    # (computers/equipment/furniture/vehicles). Otherwise
+                    # honour the chosen bucket, else Other Current Assets.
                     if derive_account_category(code, 'asset') == 'fixed_asset':
-                        bucket_key = 'fixed_asset'
+                        bucket_key = ('immovable_assets' if _is_immovable_asset(name)
+                                      else 'movable_assets')
                     else:
                         bucket_key = category if category in asset_buckets else 'other_current_assets'
                     asset_buckets[bucket_key]['total'] += bal
@@ -1547,9 +1575,23 @@ class BalanceSheetView(APIView):
                 _finalize(asset_buckets['funds_held_in_trust']),
                 _finalize(asset_buckets['lessees_arrears']),
                 _finalize(asset_buckets['prepayments']),
-                _finalize(asset_buckets['fixed_asset']),
                 _finalize(asset_buckets['other_current_assets']),
             ]
+            # Non-current (fixed) assets render as their own section,
+            # categorised into immovable vs movable.
+            non_current_assets = [
+                _finalize(asset_buckets['immovable_assets']),
+                _finalize(asset_buckets['movable_assets']),
+            ]
+            current_assets_total = sum(
+                (b['total'] for b in asset_buckets.values()
+                 if b['name'] not in ('Immovable Assets', 'Movable Assets')),
+                Decimal('0'),
+            )
+            non_current_assets_total = (
+                asset_buckets['immovable_assets']['total']
+                + asset_buckets['movable_assets']['total']
+            )
             sub_categories_liabilities = [
                 _finalize(liability_buckets['funds_owed_by_trust']),
                 _finalize(liability_buckets['lessees_prepayments']),
@@ -1561,7 +1603,7 @@ class BalanceSheetView(APIView):
             # `accounts` shape so the existing UI still has data to
             # render. The new `sections` field is what spec-compliant
             # UI should consume.
-            for sc in sub_categories_assets:
+            for sc in (sub_categories_assets + non_current_assets):
                 if sc['total'] != 0:
                     asset_list.append({
                         'code': '',
@@ -1954,6 +1996,14 @@ class BalanceSheetView(APIView):
                 # when present and render the 4 buckets unconditionally
                 # (even when totals are zero).
                 'sub_categories': sub_categories_assets,
+                # Non-current (fixed) assets, split Immovable vs Movable.
+                # Rendered as a separate section; `current_total` is the sum
+                # of the current sub_categories only.
+                'non_current': non_current_assets,
+                'current_total': (float(current_assets_total)
+                                  if current_assets_total is not None else None),
+                'non_current_total': (float(non_current_assets_total)
+                                      if non_current_assets_total is not None else None),
             },
             'liabilities': {
                 'accounts': liability_list,
