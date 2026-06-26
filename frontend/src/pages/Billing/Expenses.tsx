@@ -921,7 +921,7 @@ export default function Expenses() {
         actions={
           <Button onClick={() => setShowModal(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            New Expense
+            New Expenditure
           </Button>
         }
       />
@@ -1072,7 +1072,7 @@ export default function Expenses() {
           action={
             <Button onClick={() => setShowModal(true)}>
               <Plus className="h-4 w-4 mr-2" />
-              New Expense
+              New Expenditure
             </Button>
           }
         />

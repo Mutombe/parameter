@@ -198,7 +198,7 @@ export default function ExpenseDetail() {
             className="text-primary-600 hover:text-primary-700 text-sm font-medium flex items-center gap-1"
           >
             <Plus className="w-4 h-4" />
-            New Expense
+            New Expenditure
           </button>
           {expense?.status === 'pending' && (
             <Button onClick={() => setShowApproveConfirm(true)} className="gap-2">
