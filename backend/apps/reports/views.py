@@ -913,17 +913,27 @@ class IncomeStatementView(APIView):
 
             expense_list = []
             total_expenses = Decimal('0')
+            from apps.accounting.models import derive_account_category
             grouped = expense_qs.values(
-                'expense_category__name', 'expense_category__gl_account__code', 'expense_kind',
+                'expense_category__name', 'expense_category__gl_account__code',
+                'expense_category__gl_account__account_type', 'expense_kind',
             ).annotate(t=Sum('amount')).order_by('expense_category__name', 'expense_kind')
             for row in grouped:
                 amt = row['t'] or Decimal('0')
                 if amt == 0:
                     continue
+                # Skip capital / balance-sheet expenditures — anything booked
+                # to a GL account that resolves (by its code) to an asset or
+                # liability belongs on the Balance Sheet, not the P&L
+                # (e.g. Computer Equipment 3000, Mortgage 7000).
+                gl_code = row['expense_category__gl_account__code']
+                gl_type = row['expense_category__gl_account__account_type']
+                if gl_code and derive_account_category(gl_code, gl_type) != 'expense':
+                    continue
                 base_name = row['expense_category__name'] or 'Other Expense'
                 suffix = ' (accrued)' if row['expense_kind'] == 'non_cash' else ''
                 expense_list.append({
-                    'code': row['expense_category__gl_account__code'] or '',
+                    'code': gl_code or '',
                     'name': f'{base_name}{suffix}',
                     'balance': float(amt),
                 })
@@ -1215,7 +1225,7 @@ class BalanceSheetView(APIView):
             #                              filtered by _is_agent_liability.
             # ============================================================
             from apps.accounting.models import (
-                SubsidiaryAccount, AccruedExpense,
+                SubsidiaryAccount, AccruedExpense, derive_account_category,
             )
 
             sub_categories_assets = []
@@ -1381,6 +1391,12 @@ class BalanceSheetView(APIView):
                     'breakdown': [],
                     'description': 'Asset accounts classified as Other Current Assets at creation',
                 },
+                'fixed_asset': {
+                    'name': 'Fixed Assets',
+                    'total': Decimal('0'),
+                    'breakdown': [],
+                    'description': 'Capitalised assets — expenditures booked to fixed-asset accounts (codes 3000)',
+                },
             }
             liability_buckets = {
                 'funds_owed_by_trust': {
@@ -1431,8 +1447,12 @@ class BalanceSheetView(APIView):
                     # sub-account-derived Lessees Arrears — skip.
                     if subtype == 'accounts_receivable':
                         continue
-                    # Strict placement: use the chosen bucket, else Other.
-                    bucket_key = category if category in asset_buckets else 'other_current_assets'
+                    # Fixed assets (by code, e.g. 3000) get their own
+                    # section; otherwise honour the chosen bucket, else Other.
+                    if derive_account_category(code, 'asset') == 'fixed_asset':
+                        bucket_key = 'fixed_asset'
+                    else:
+                        bucket_key = category if category in asset_buckets else 'other_current_assets'
                     asset_buckets[bucket_key]['total'] += bal
                     asset_buckets[bucket_key]['breakdown'].append({
                         'code': code, 'name': name,
@@ -1471,6 +1491,7 @@ class BalanceSheetView(APIView):
                 _finalize(asset_buckets['funds_held_in_trust']),
                 _finalize(asset_buckets['lessees_arrears']),
                 _finalize(asset_buckets['prepayments']),
+                _finalize(asset_buckets['fixed_asset']),
                 _finalize(asset_buckets['other_current_assets']),
             ]
             sub_categories_liabilities = [

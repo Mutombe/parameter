@@ -82,4 +82,7 @@ python manage.py setup_billing_schedules || true
 echo "Self-healing: posting any invoices stuck in DRAFT (failed auto-post)..."
 python manage.py post_draft_invoices --all-tenants || true
 
+echo "Correcting account types to match their code category (assets/liabilities mis-typed as expense)..."
+python manage.py fix_account_types_by_code --all-tenants || true
+
 echo "Build completed successfully!"

@@ -44,6 +44,7 @@ interface GLAccount {
   code: string
   name: string
   account_type: string
+  category_label?: string
 }
 
 const emptyForm = {
@@ -74,9 +75,12 @@ export default function ExpenseCategories() {
     placeholderData: keepPreviousData,
   })
 
+  // All GL accounts (not just expense): an expenditure may capitalise to an
+  // asset (e.g. Computer Equipment), pay down a liability (a loan), etc.,
+  // so the category can map to any account.
   const { data: glAccounts } = useQuery({
-    queryKey: ['gl-accounts-expense'],
-    queryFn: () => accountApi.list({ account_type: 'expense' }).then(r => r.data.results || r.data),
+    queryKey: ['gl-accounts-all'],
+    queryFn: () => accountApi.list({ page_size: 500 }).then(r => r.data.results || r.data),
     placeholderData: keepPreviousData,
   })
 
@@ -471,7 +475,7 @@ export default function ExpenseCategories() {
               placeholder="— Select GL Account —"
               value={form.gl_account}
               onChange={(val) => setForm({ ...form, gl_account: val ? Number(val) : '' })}
-              options={expenseAccounts.map((acc) => ({ value: acc.id, label: `${acc.code} — ${acc.name}` }))}
+              options={expenseAccounts.map((acc) => ({ value: acc.id, label: `${acc.code} — ${acc.name}${acc.category_label ? ` · ${acc.category_label}` : ''}` }))}
               searchable
               clearable
             />
