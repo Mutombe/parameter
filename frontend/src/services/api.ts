@@ -462,6 +462,11 @@ export const journalApi = {
     api.post(`/accounting/journals/${id}/reverse_journal/`, { reason }),
 }
 
+// Flat ledger of individual journal lines (debit/credit) across all journals.
+export const journalEntryApi = {
+  list: (params?: object) => api.get('/accounting/journal-entries/', { params }),
+}
+
 export const glApi = {
   list: (params?: object) => api.get('/accounting/general-ledger/', { params }),
   accountStatement: (params: { account: number; start_date?: string; end_date?: string }) =>

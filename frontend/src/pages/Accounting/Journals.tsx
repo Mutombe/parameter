@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -24,8 +25,10 @@ import {
   ArrowDownLeft,
   Loader2,
   Download,
+  LayoutGrid,
+  List,
 } from 'lucide-react'
-import { journalApi } from '../../services/api'
+import { journalApi, journalEntryApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton, Textarea, SelectionCheckbox, BulkActionsBar, TimeAgo, Tooltip, Pagination, DatePicker } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
@@ -141,10 +144,14 @@ function SkeletonJournals() {
 
 export default function Journals() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  // 'journals' = grouped card view; 'entries' = flat ledger of every line.
+  const [viewMode, setViewMode] = useState<'journals' | 'entries'>('journals')
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [currentPage, setCurrentPage] = useState(1)
+  const [entriesPage, setEntriesPage] = useState(1)
   const [expandedJournals, setExpandedJournals] = useState<Set<number>>(new Set())
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [postingId, setPostingId] = useState<number | null>(null)
@@ -177,8 +184,25 @@ export default function Journals() {
   const totalCount = journalsData?.count || journals.length
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
+  // Flat ledger of every journal line — only fetched in 'entries' view.
+  const { data: entriesData, isLoading: entriesLoading } = useQuery({
+    queryKey: ['journal-entries', debouncedSearch, statusFilter, entriesPage],
+    queryFn: () => {
+      const params: any = { page: entriesPage, page_size: PAGE_SIZE }
+      if (debouncedSearch) params.search = debouncedSearch
+      if (statusFilter) params.journal__status = statusFilter
+      return journalEntryApi.list(params).then(r => r.data)
+    },
+    placeholderData: keepPreviousData,
+    enabled: viewMode === 'entries',
+  })
+  const entries = entriesData?.results || entriesData || []
+  const entriesTotal = entriesData?.count || entries.length
+  const entriesPages = Math.ceil(entriesTotal / PAGE_SIZE)
+
   useEffect(() => {
     setCurrentPage(1)
+    setEntriesPage(1)
   }, [debouncedSearch, statusFilter])
 
   // All postable targets — GL accounts, bank accounts, and landlord/tenant
@@ -394,16 +418,35 @@ export default function Journals() {
 
       {/* Search and Filter */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-center gap-4">
-        <SelectionCheckbox
-          checked={selection.isAllPageSelected(pageIds)}
-          indeterminate={selection.isPartialPageSelected(pageIds)}
-          onChange={() => selection.selectPage(pageIds)}
-        />
+        {viewMode === 'journals' && (
+          <SelectionCheckbox
+            checked={selection.isAllPageSelected(pageIds)}
+            indeterminate={selection.isPartialPageSelected(pageIds)}
+            onChange={() => selection.selectPage(pageIds)}
+          />
+        )}
+        {/* View toggle: grouped journals vs flat ledger of all lines. */}
+        <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+          <button
+            onClick={() => setViewMode('journals')}
+            className={cn('flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors',
+              viewMode === 'journals' ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50')}
+          >
+            <LayoutGrid className="w-4 h-4" /> Journals
+          </button>
+          <button
+            onClick={() => setViewMode('entries')}
+            className={cn('flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors',
+              viewMode === 'entries' ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50')}
+          >
+            <List className="w-4 h-4" /> All Entries
+          </button>
+        </div>
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Search by journal number or description..."
+            placeholder={viewMode === 'journals' ? 'Search by journal number or description...' : 'Search by account, journal #, or description...'}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white focus:border-transparent transition-all dark:bg-slate-900 dark:text-slate-200 dark:border-slate-600 dark:placeholder:text-slate-500"
@@ -423,16 +466,82 @@ export default function Journals() {
         />
 
         <div className="ml-auto text-sm text-gray-500">
-          {isLoading ? (
+          {(viewMode === 'journals' ? isLoading : entriesLoading) ? (
             <div className="h-4 w-16 bg-gray-200 rounded animate-pulse" />
           ) : (
-            <>{totalCount} entries</>
+            <>{viewMode === 'journals' ? `${totalCount} journals` : `${entriesTotal} entries`}</>
           )}
         </div>
       </div>
 
+      {/* Flat ledger of all journal lines */}
+      {viewMode === 'entries' && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          {entriesLoading ? (
+            <div className="p-6 space-y-3">
+              {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+            </div>
+          ) : !entries.length ? (
+            <EmptyState icon={List} title="No journal lines" description="No entries match the current filters." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Journal #</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Account</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Debit</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Credit</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {entries.map((e: any) => (
+                    <tr
+                      key={e.id}
+                      onClick={() => navigate(`/dashboard/journals/${e.journal}`)}
+                      className="hover:bg-primary-50/40 cursor-pointer transition-colors"
+                    >
+                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{formatDate(e.journal_date)}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-primary-600 whitespace-nowrap">{e.journal_number}</td>
+                      <td className="px-4 py-3 text-sm">
+                        <span className="font-mono text-gray-500 mr-1.5">{e.target_code}</span>
+                        <span className="text-gray-800">{e.target_name}</span>
+                        {e.target_kind && e.target_kind !== 'gl' && (
+                          <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500">
+                            {e.target_kind === 'subsidiary' ? 'Sub' : 'Bank'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{e.description}</td>
+                      <td className="px-4 py-3 text-right text-sm tabular-nums">
+                        {Number(e.debit_amount) > 0 ? <span className="font-semibold text-blue-600">{formatCurrency(e.debit_amount)}</span> : <span className="text-gray-300">-</span>}
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm tabular-nums">
+                        {Number(e.credit_amount) > 0 ? <span className="font-semibold text-rose-600">{formatCurrency(e.credit_amount)}</span> : <span className="text-gray-300">-</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {entriesPages > 1 && (
+            <Pagination
+              currentPage={entriesPage}
+              totalPages={entriesPages}
+              totalItems={entriesTotal}
+              pageSize={PAGE_SIZE}
+              onPageChange={setEntriesPage}
+              showPageSize={false}
+            />
+          )}
+        </div>
+      )}
+
       {/* Journal List */}
-      {isLoading ? (
+      {viewMode === 'journals' && (isLoading ? (
         <div className="space-y-4">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -505,7 +614,12 @@ export default function Journals() {
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-3">
-                          <h3 className="font-semibold text-gray-900">{journal.journal_number}</h3>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/journals/${journal.id}`) }}
+                            className="font-semibold text-gray-900 hover:text-primary-600 hover:underline"
+                          >
+                            {journal.journal_number}
+                          </button>
                           <span className={cn(
                             'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
                             config.bgColor, config.color
@@ -674,7 +788,7 @@ export default function Journals() {
                 )
               })}
             </div>
-      )}
+      ))}
 
       {/* Create Journal Modal */}
       <Modal
@@ -927,7 +1041,7 @@ export default function Journals() {
         </form>
       </Modal>
 
-      {totalPages > 1 && (
+      {viewMode === 'journals' && totalPages > 1 && (
         <div className="card overflow-hidden">
           <Pagination
             currentPage={currentPage}

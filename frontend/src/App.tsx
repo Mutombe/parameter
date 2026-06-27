@@ -36,6 +36,7 @@ const Expenses = lazy(() => import('./pages/Billing/Expenses'))
 const ExpenseDetail = lazy(() => import('./pages/Billing/ExpenseDetail'))
 const ChartOfAccounts = lazy(() => import('./pages/Accounting/ChartOfAccounts'))
 const Journals = lazy(() => import('./pages/Accounting/Journals'))
+const JournalDetail = lazy(() => import('./pages/Accounting/JournalDetail'))
 const BankAccounts = lazy(() => import('./pages/Accounting/BankAccounts'))
 const IncomeTypes = lazy(() => import('./pages/Accounting/IncomeTypes'))
 const IncomeTypeDetail = lazy(() => import('./pages/Accounting/IncomeTypeDetail'))
@@ -211,6 +212,7 @@ export default function App() {
         <Route path="expenses/:id" element={<LazyPage><ExpenseDetail /></LazyPage>} />
         <Route path="chart-of-accounts" element={<LazyPage><ChartOfAccounts /></LazyPage>} />
         <Route path="journals" element={<LazyPage><Journals /></LazyPage>} />
+        <Route path="journals/:id" element={<LazyPage><JournalDetail /></LazyPage>} />
         <Route path="bank-accounts" element={<LazyPage><BankAccounts /></LazyPage>} />
         <Route path="bank-accounts/:id" element={<LazyPage><BankAccountDetail /></LazyPage>} />
         <Route path="income-types" element={<LazyPage><IncomeTypes /></LazyPage>} />

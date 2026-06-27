@@ -36,6 +36,7 @@ from .models import (
 from .serializers import (
     ChartOfAccountSerializer, ExchangeRateSerializer,
     JournalSerializer, JournalCreateSerializer, JournalEntrySerializer,
+    JournalEntryLineSerializer,
     GeneralLedgerSerializer, AuditTrailSerializer, FiscalPeriodSerializer,
     TrialBalanceSerializer, BankAccountSerializer, BankTransactionSerializer,
     BankTransactionUploadSerializer, BankReconciliationSerializer,
@@ -283,6 +284,36 @@ class JournalViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
             })
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class JournalEntryViewSet(viewsets.ReadOnlyModelViewSet):
+    """Flat ledger of every journal line (debit/credit) across all journals —
+    powers the "All Entries" view. Paginated, searchable, filterable by
+    status/kind, newest first."""
+    serializer_class = JournalEntryLineSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['journal__status', 'journal']
+    search_fields = [
+        'description', 'journal__journal_number',
+        'account__code', 'account__name',
+        'subsidiary_account__code', 'subsidiary_account__name',
+        'bank_account__name',
+    ]
+    ordering_fields = ['journal__date', 'journal__journal_number', 'id']
+    ordering = ['-journal__date', '-id']
+
+    def get_queryset(self):
+        qs = (JournalEntry.objects
+              .select_related('journal', 'account', 'subsidiary_account', 'bank_account'))
+        # Optional ?kind=gl|subsidiary|bank filter.
+        kind = self.request.query_params.get('kind')
+        if kind == 'gl':
+            qs = qs.filter(account__isnull=False)
+        elif kind == 'subsidiary':
+            qs = qs.filter(subsidiary_account__isnull=False)
+        elif kind == 'bank':
+            qs = qs.filter(bank_account__isnull=False)
+        return qs
 
 
 class GeneralLedgerViewSet(viewsets.ReadOnlyModelViewSet):

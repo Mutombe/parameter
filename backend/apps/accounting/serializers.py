@@ -150,6 +150,41 @@ class JournalEntrySerializer(serializers.ModelSerializer):
         return getattr(tgt, 'name', '') if tgt else ''
 
 
+class JournalEntryLineSerializer(serializers.ModelSerializer):
+    """Flat-ledger view of a single journal line, carrying its parent
+    journal's number/date/status so the line stands on its own in a table."""
+    target_kind = serializers.SerializerMethodField()
+    target_code = serializers.SerializerMethodField()
+    target_name = serializers.SerializerMethodField()
+    journal = serializers.IntegerField(source='journal_id', read_only=True)
+    journal_number = serializers.CharField(source='journal.journal_number', read_only=True)
+    journal_date = serializers.DateField(source='journal.date', read_only=True)
+    journal_status = serializers.CharField(source='journal.status', read_only=True)
+
+    class Meta:
+        model = JournalEntry
+        fields = [
+            'id', 'journal', 'journal_number', 'journal_date', 'journal_status',
+            'target_kind', 'target_code', 'target_name',
+            'description', 'debit_amount', 'credit_amount',
+        ]
+
+    def get_target_kind(self, obj):
+        if obj.subsidiary_account_id:
+            return 'subsidiary'
+        if obj.bank_account_id:
+            return 'bank'
+        return 'gl'
+
+    def get_target_code(self, obj):
+        tgt = obj.target
+        return getattr(tgt, 'code', '') if tgt else ''
+
+    def get_target_name(self, obj):
+        tgt = obj.target
+        return getattr(tgt, 'name', '') if tgt else ''
+
+
 class JournalSerializer(serializers.ModelSerializer):
     entries = JournalEntrySerializer(many=True, read_only=True)
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
