@@ -123,7 +123,7 @@ export default function ExpenseDetail() {
     mutationFn: (id: number) => expenseApi.approve(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expense', expenseId] })
-      showToast.success('Expense approved successfully')
+      showToast.success('Expenditure approved successfully')
       setShowApproveConfirm(false)
     },
     onError: (err) => showToast.error(parseApiError(err)),
@@ -133,7 +133,7 @@ export default function ExpenseDetail() {
     mutationFn: (id: number) => expenseApi.pay(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expense', expenseId] })
-      showToast.success('Expense paid and posted to ledger')
+      showToast.success('Expenditure paid and posted to ledger')
       setShowPayConfirm(false)
     },
     onError: (err) => showToast.error(parseApiError(err)),
@@ -148,7 +148,7 @@ export default function ExpenseDetail() {
       <nav className="flex items-center gap-2 text-sm text-gray-500 mb-4">
         <button onClick={() => navigate('/dashboard')} className="hover:text-gray-900 transition-colors">Dashboard</button>
         <span>/</span>
-        <button onClick={() => navigate('/dashboard/expenses')} className="hover:text-gray-900 transition-colors">Expenses</button>
+        <button onClick={() => navigate('/dashboard/expenses')} className="hover:text-gray-900 transition-colors">Expenditure</button>
         <span>/</span>
         <span className="text-gray-900 font-medium">{expense?.expense_number || '...'}</span>
       </nav>
@@ -168,7 +168,7 @@ export default function ExpenseDetail() {
               <div className="h-8 w-48 bg-gray-200 rounded animate-pulse" />
             ) : (
               <>
-                <h1 className="text-xl md:text-2xl font-bold text-gray-900">Expense {expense?.expense_number}</h1>
+                <h1 className="text-xl md:text-2xl font-bold text-gray-900">Expenditure {expense?.expense_number}</h1>
                 <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium', config.bgColor, config.color)}>
                   <StatusIcon className="w-3 h-3" />
                   {config.label}
@@ -423,7 +423,7 @@ export default function ExpenseDetail() {
         transition={{ delay: 0.2 }}
         className="bg-white rounded-xl border border-gray-200 p-6"
       >
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Expense Details</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Expenditure Details</h3>
 
         {isLoading ? (
           <div className="space-y-3 animate-pulse">
@@ -448,7 +448,7 @@ export default function ExpenseDetail() {
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-4 border-t border-gray-100">
               <div>
-                <p className="text-xs text-gray-500">Expense Number</p>
+                <p className="text-xs text-gray-500">Expenditure Number</p>
                 <p className="text-sm font-medium text-gray-900">{expense?.expense_number}</p>
               </div>
               <div>

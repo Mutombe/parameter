@@ -546,7 +546,7 @@ export default function Expenses() {
       return { previousData }
     },
     onSuccess: () => {
-      showToast.success('Expense created successfully')
+      showToast.success('Expenditure recorded successfully')
       queryClient.invalidateQueries({ queryKey: ['expenses'] })
     },
     onError: (err: any, _, context) => {
@@ -612,7 +612,7 @@ export default function Expenses() {
       return { previousData }
     },
     onSuccess: () => {
-      showToast.success('Expense approved successfully')
+      showToast.success('Expenditure approved successfully')
       queryClient.invalidateQueries({ queryKey: ['expenses'] })
     },
     onError: (err, _, context) => {
@@ -642,7 +642,7 @@ export default function Expenses() {
       return { previousData }
     },
     onSuccess: () => {
-      showToast.success('Expense paid and posted to ledger')
+      showToast.success('Expenditure paid and posted to ledger')
       queryClient.invalidateQueries({ queryKey: ['expenses'] })
     },
     onError: (err, _, context) => {
@@ -857,7 +857,7 @@ export default function Expenses() {
       <div className="space-y-6">
         <PageHeader
           title="Expenditure"
-          subtitle="Manage expenses and payouts"
+          subtitle="Manage expenditure and payouts"
           icon={Receipt}
           breadcrumbs={[
             { label: 'Dashboard', href: '/dashboard' },
@@ -874,7 +874,7 @@ export default function Expenses() {
       <div className="space-y-6">
         <PageHeader
           title="Expenditure"
-          subtitle="Manage expenses and payouts"
+          subtitle="Manage expenditure and payouts"
           icon={Receipt}
           breadcrumbs={[
             { label: 'Dashboard', href: '/dashboard' },
@@ -912,7 +912,7 @@ export default function Expenses() {
     <div>
       <PageHeader
         title="Expenditure"
-        subtitle={`${totalCount} total expenses`}
+        subtitle={`${totalCount} total expenditure items`}
         icon={Receipt}
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
@@ -1228,7 +1228,7 @@ export default function Expenses() {
       <Modal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        title={expenseMode === 'batch' ? 'Record Expense Batch' : 'Record Expense'}
+        title={expenseMode === 'batch' ? 'Record Expenditure Batch' : 'Record Expenditure'}
       >
         {/* Two toggles side-by-side: Single vs Batch and Cash vs Non-Cash. */}
         <div className="flex items-center gap-3 mb-4 flex-wrap">
@@ -1334,7 +1334,7 @@ export default function Expenses() {
 
             {/* Line rows */}
             <div className="space-y-2">
-              <div className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Expense lines</div>
+              <div className="text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Expenditure lines</div>
               {batchLines.map((line, idx) => {
                 const cat = expenseCategories.find((c: any) => String(c.id) === line.expense_category)
                 return (
@@ -1495,7 +1495,7 @@ export default function Expenses() {
 
           {/* Step 3 — Expense category */}
           <AsyncSelect
-            label="Expense Category"
+            label="Expenditure Category"
             placeholder="What is this expense for?"
             value={expenseForm.expense_category}
             onChange={(val) => setExpenseForm({ ...expenseForm, expense_category: String(val) })}
@@ -1693,7 +1693,7 @@ export default function Expenses() {
       <Modal
         isOpen={!!showDetail}
         onClose={() => setShowDetail(null)}
-        title="Expense Details"
+        title="Expenditure Details"
       >
         {showDetail && (
           <div className="space-y-6">
@@ -1921,7 +1921,7 @@ export default function Expenses() {
             rows={2}
           />
           <AsyncSelect
-            label="Default Expense Category (optional)"
+            label="Default Expenditure Category (optional)"
             placeholder="Auto-fills the category when this supplier is picked"
             value={quickSupplier.default_expense_category}
             onChange={(val) => setQuickSupplier({ ...quickSupplier, default_expense_category: String(val) })}
