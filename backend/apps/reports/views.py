@@ -1111,15 +1111,15 @@ def _is_agent_liability(name):
 def _bs_display_name(name, subtype):
     """Display name override for report account rows.
 
-    The COA migration (0016) renames the commission-VAT liability from
-    "VAT Payable (Commission)" to "Commission Payable (Commission)".
-    This helper is a safety net for tenants where the migration hasn't
-    landed yet — it does the same rename at display time. The plain
-    "VAT Payable" account (code 2100) is left untouched.
+    Account 2110 holds the VAT charged on the agent's commission — it is a
+    VAT liability, not a commission account. An earlier migration mislabelled
+    it "Commission Payable (Commission)"; relabel any lingering rows back to
+    "VAT Payable (Commission)" at display time. The agent's commission income
+    lives in 4100 (Agent Commission).
     """
     name = (name or '').strip()
-    if name == 'VAT Payable (Commission)':
-        return 'Commission Payable (Commission)'
+    if name == 'Commission Payable (Commission)':
+        return 'VAT Payable (Commission)'
     # `subtype` arg kept for API stability; not consulted now that the
     # DB is the source of truth for the rename.
     _ = subtype

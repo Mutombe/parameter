@@ -246,19 +246,27 @@ class Command(BaseCommand):
                             VALUES
                                 ('2300', 'Landlord Trust Payable', 'liability', 'accounts_payable',
                                  true, true, 'USD', 0, '', now(), now()),
-                                ('2110', 'Commission Payable (Commission)', 'liability', 'vat_payable',
+                                ('2110', 'VAT Payable (Commission)', 'liability', 'vat_payable',
                                  true, true, 'USD', 0, '', now(), now())
                             ON CONFLICT (code) DO NOTHING
                         """)
-                        # Rename pre-existing rows that still carry the old
-                        # "VAT Payable (Commission)" label. Without this the
-                        # seed-then-ON-CONFLICT path leaves the old name in
-                        # place on every tenant created before the rename.
+                        # Account 2110 holds VAT charged on the agent's
+                        # commission — it is a VAT account, not a commission
+                        # account. Earlier it was mislabelled "Commission
+                        # Payable (Commission)"; relabel it back to VAT. The
+                        # agent's commission income lives in 4100, which we
+                        # also relabel to the clearer "Agent Commission".
                         cursor.execute("""
                             UPDATE accounting_chartofaccount
-                            SET name = 'Commission Payable (Commission)'
+                            SET name = 'VAT Payable (Commission)'
                             WHERE code = '2110'
-                              AND name = 'VAT Payable (Commission)'
+                              AND name = 'Commission Payable (Commission)'
+                        """)
+                        cursor.execute("""
+                            UPDATE accounting_chartofaccount
+                            SET name = 'Agent Commission'
+                            WHERE code = '4100'
+                              AND name = 'Commission Revenue'
                         """)
                         self.stdout.write("  - Added/verified subsidiary ledger tables and trust GL accounts")
 

@@ -675,7 +675,7 @@ class Receipt(SoftDeleteModel):
             '2300', 'Landlord Trust Payable', 'liability', 'accounts_payable'
         )
         commission_revenue_account = get_or_create_account(
-            '4100', 'Commission Revenue', 'revenue', 'commission_income'
+            '4100', 'Agent Commission', 'revenue', 'commission_income'
         )
         vat_payable_account = get_or_create_account(
             '2110', 'VAT Payable', 'liability', 'vat_payable'
