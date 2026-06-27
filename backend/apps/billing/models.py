@@ -997,6 +997,15 @@ class Expense(SoftDeleteModel):
         help_text="Which of the landlord's trust pockets to deduct from"
     )
 
+    # Supplier Payment (Clearing Debt): when true this expense settles an
+    # outstanding payable to the supplier rather than booking a new cost —
+    # post_to_ledger debits Accounts Payable (2000) instead of an expense GL
+    # and skips the landlord trust sub-account. No expense_category required.
+    clears_payable = models.BooleanField(
+        default=False,
+        help_text='Settles an outstanding supplier payable (Dr Accounts Payable, Cr Cash)'
+    )
+
     # GL Reference
     journal = models.ForeignKey(
         Journal, on_delete=models.SET_NULL, null=True, blank=True,
@@ -1077,11 +1086,24 @@ class Expense(SoftDeleteModel):
         if self.journal:
             return self.journal
 
-        is_non_cash = self.expense_kind == self.ExpenseKind.NON_CASH
+        # Supplier-debt settlements are always cash (you pay to clear a
+        # payable); never treat them as accruals.
+        is_non_cash = self.expense_kind == self.ExpenseKind.NON_CASH and not self.clears_payable
 
-        # Expense GL account — pick USD or ZWG variant per currency.
+        # Debit account. For a supplier-debt settlement this is Accounts
+        # Payable (the liability being reduced); otherwise the expense GL.
         cat = self.expense_category
-        if cat and cat.gl_account:
+        if self.clears_payable:
+            expense_account, _ = ChartOfAccount.objects.get_or_create(
+                code='2000',
+                defaults={
+                    'name': 'Accounts Payable',
+                    'account_type': 'liability',
+                    'account_subtype': 'accounts_payable',
+                    'is_system': True,
+                },
+            )
+        elif cat and cat.gl_account:
             if self.currency == 'ZWG' and cat.gl_account_zwg_id:
                 expense_account = cat.gl_account_zwg
             else:
@@ -1166,7 +1188,7 @@ class Expense(SoftDeleteModel):
             from apps.masterfile.models import Landlord
             landlord_obj = Landlord.objects.filter(id=self.payee_id).first()
 
-        if landlord_obj and not is_non_cash:
+        if landlord_obj and not is_non_cash and not self.clears_payable:
             # Explicit pick on the expense wins over the category default,
             # so users can override which trust pocket is deducted (e.g. a
             # maintenance expense funded out of the deposit pocket).

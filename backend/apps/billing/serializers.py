@@ -197,6 +197,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
             'landlord', 'landlord_name', 'landlord_code',
             'supplier', 'supplier_name', 'supplier_code',
             'sub_account_category', 'sub_account_category_display',
+            'clears_payable',
             'journal', 'journal_number',
             'approved_by', 'approved_at', 'created_by', 'created_at', 'updated_at'
         ]

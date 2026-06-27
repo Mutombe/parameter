@@ -167,6 +167,8 @@ export default function Expenses() {
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [typeFilter, setTypeFilter] = useState<string>('')
   const [kindFilter, setKindFilter] = useState<string>('')
+  const [startDate, setStartDate] = useState<string>('')
+  const [endDate, setEndDate] = useState<string>('')
   // Category scope — deep-linked from a click on a category label (here or
   // on the expense detail page). Drives ?expense_category=<id> on the list.
   const categoryFilter = searchParams.get('category') || ''
@@ -223,6 +225,9 @@ export default function Expenses() {
     payee_type: recentPayeeType.values[0] || 'landlord',
     expense_type: recentExpenseType.values[0] || 'other',
     income_type: '',
+    // Supplier Payment (Clearing Debt): settles an outstanding supplier
+    // payable (Dr Accounts Payable, Cr Cash) instead of a category expense.
+    clears_payable: false,
   })
 
   // Mode toggle: 'single' uses expenseForm above; 'batch' uses batchLines
@@ -266,7 +271,7 @@ export default function Expenses() {
 
   // Fetch expenses
   const { data: expensesData, isLoading, error } = useQuery({
-    queryKey: ['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage, categoryFilter],
+    queryKey: ['expenses', statusFilter, typeFilter, kindFilter, debouncedSearch, currentPage, categoryFilter, startDate, endDate],
     queryFn: async () => {
       const params: Record<string, string | number> = { page: currentPage, page_size: PAGE_SIZE }
       if (statusFilter) params.status = statusFilter
@@ -274,6 +279,8 @@ export default function Expenses() {
       if (kindFilter) params.expense_kind = kindFilter
       if (debouncedSearch) params.search = debouncedSearch
       if (categoryFilter) params.expense_category = categoryFilter
+      if (startDate) params.start_date = startDate
+      if (endDate) params.end_date = endDate
       try {
         const response = await expenseApi.list(params)
         return response.data
@@ -308,7 +315,7 @@ export default function Expenses() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [debouncedSearch, statusFilter, typeFilter, kindFilter, categoryFilter])
+  }, [debouncedSearch, statusFilter, typeFilter, kindFilter, categoryFilter, startDate, endDate])
 
   // Fetch landlords for payee selection
   const { data: landlords = [] } = useQuery({
@@ -722,7 +729,12 @@ export default function Expenses() {
     if (expenseKind === 'cash' && !expenseForm.bank_account) {
       showToast.error('Pick a bank account first.'); return
     }
-    if (!expenseForm.expense_category) { showToast.error('Pick an expense category.'); return }
+    // Supplier-debt settlement needs a supplier instead of a category.
+    if (expenseForm.clears_payable) {
+      if (!expenseForm.supplier) { showToast.error('Pick the supplier whose debt is being cleared.'); return }
+    } else if (!expenseForm.expense_category) {
+      showToast.error('Pick an expenditure category.'); return
+    }
     if (!expenseForm.amount) { showToast.error('Enter an amount.'); return }
 
     recentExpenseType.add(expenseForm.expense_type)
@@ -764,7 +776,12 @@ export default function Expenses() {
       bank_account: expenseKind === 'cash' && expenseForm.bank_account
         ? Number(expenseForm.bank_account)
         : null,
-      expense_category: Number(expenseForm.expense_category),
+      // A supplier-debt settlement has no expense category — it debits
+      // Accounts Payable, not an expense GL.
+      expense_category: expenseForm.clears_payable || !expenseForm.expense_category
+        ? null
+        : Number(expenseForm.expense_category),
+      clears_payable: expenseForm.clears_payable,
       landlord: expenseForm.landlord ? Number(expenseForm.landlord) : null,
       // Empty string = "no override; use category's funding_category".
       // Sent verbatim so the backend can clear an existing override too.
@@ -791,6 +808,7 @@ export default function Expenses() {
       payee_type: recentPayeeType.values[0] || 'landlord',
       expense_type: recentExpenseType.values[0] || 'other',
       income_type: '',
+      clears_payable: false,
     })
     lastAutoDescriptionRef.current = ''
     lastAutoSubAccountRef.current = ''
@@ -1049,6 +1067,13 @@ export default function Expenses() {
             { value: 'non_cash', label: 'Non-Cash only' },
           ]}
         />
+        <DatePicker value={startDate} onChange={setStartDate} placeholder="From date" />
+        <DatePicker value={endDate} onChange={setEndDate} placeholder="To date" />
+        {(startDate || endDate) && (
+          <Button variant="ghost" size="sm" onClick={() => { setStartDate(''); setEndDate('') }}>
+            Clear dates
+          </Button>
+        )}
         <div className="flex items-center gap-3 ml-auto">
           {selectableItems.length > 0 && (
             <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-500">
@@ -1493,21 +1518,41 @@ export default function Expenses() {
             </p>
           )}
 
-          {/* Step 3 — Expense category */}
-          <AsyncSelect
-            label="Expenditure Category"
-            placeholder="What is this expense for?"
-            value={expenseForm.expense_category}
-            onChange={(val) => setExpenseForm({ ...expenseForm, expense_category: String(val) })}
-            options={expenseCategories.map((c: any) => ({
-              value: c.id,
-              label: c.name,
-              description: `${c.gl_account_code}${c.gl_account_zwg_code ? ` / ${c.gl_account_zwg_code}` : ''} · ${fundingCategoryLabel[c.funding_category] || c.funding_category}`,
-            }))}
-            required
-            searchable
-            emptyMessage="No expense categories yet. Run seed_expense_categories to populate the standard set."
-          />
+          {/* Step 3 — Expenditure category, or a supplier-debt settlement.
+              "Supplier Payment (Clearing Debt)" pays down what's owed to a
+              supplier (Dr Accounts Payable, Cr Cash) — no category needed. */}
+          <label className="flex items-start gap-2.5 rounded-lg border border-gray-200 p-3 cursor-pointer hover:bg-gray-50">
+            <input
+              type="checkbox"
+              checked={expenseForm.clears_payable}
+              onChange={(e) => setExpenseForm({ ...expenseForm, clears_payable: e.target.checked })}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-sm">
+              <span className="font-medium text-gray-800">Supplier Payment (Clearing Debt)</span>
+              <span className="block text-xs text-gray-500">
+                Settle an outstanding amount owed to a supplier instead of booking a new cost.
+                Pick the supplier below; this debits Accounts Payable.
+              </span>
+            </span>
+          </label>
+
+          {!expenseForm.clears_payable && (
+            <AsyncSelect
+              label="Expenditure Category"
+              placeholder="What is this expense for?"
+              value={expenseForm.expense_category}
+              onChange={(val) => setExpenseForm({ ...expenseForm, expense_category: String(val) })}
+              options={expenseCategories.map((c: any) => ({
+                value: c.id,
+                label: c.name,
+                description: `${c.gl_account_code}${c.gl_account_zwg_code ? ` / ${c.gl_account_zwg_code}` : ''} · ${fundingCategoryLabel[c.funding_category] || c.funding_category}`,
+              }))}
+              required
+              searchable
+              emptyMessage="No expenditure categories yet. Run seed_expense_categories to populate the standard set."
+            />
+          )}
 
           {/* Step 5 — Landlord (skipping step 4 funding source per spec) */}
           <AsyncSelect
