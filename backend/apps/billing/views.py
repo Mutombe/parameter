@@ -969,10 +969,24 @@ class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
     filterset_fields = [
         'expense_type', 'expense_kind', 'status', 'date', 'currency', 'payee_type',
         'expense_category', 'bank_account', 'landlord', 'sub_account_category',
+        'supplier',
     ]
     search_fields = ['expense_number', 'payee_name', 'description', 'reference']
     ordering_fields = ['date', 'amount', 'created_at', 'expense_number', 'status']
     ordering = ['-date', '-created_at']
+
+    def get_queryset(self):
+        """Adds inclusive start_date/end_date range filtering on top of the
+        exact `date` filter, used by the expenditure list and account
+        drill-downs."""
+        qs = super().get_queryset()
+        start = self.request.query_params.get('start_date')
+        end = self.request.query_params.get('end_date')
+        if start:
+            qs = qs.filter(date__gte=start)
+        if end:
+            qs = qs.filter(date__lte=end)
+        return qs
 
     def perform_create(self, serializer):
         """Save the expense; optionally auto-post to ledger when the form

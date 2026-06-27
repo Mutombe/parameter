@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import {
@@ -78,6 +78,7 @@ function AccountsList({
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
+  const [currency, setCurrency] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<any | null>(null)
   const [form, setForm] = useState({
@@ -93,7 +94,16 @@ function AccountsList({
     staleTime: 30000,
   })
 
+  // The currency column isn't reliably maintained on ZWG variants (they
+  // carry "(ZWG)" in the name but currency='USD'), so derive it from the
+  // name/code as a fallback.
+  const currencyOf = (a: any) => {
+    const n = (a.name || '').toLowerCase()
+    if ((a.currency || '').toUpperCase() === 'ZWG' || n.includes('(zwg)') || n.includes('(zig)')) return 'ZWG'
+    return 'USD'
+  }
   const filtered = (accounts as any[]).filter((a: any) => {
+    if (currency && currencyOf(a) !== currency) return false
     if (!debouncedSearch) return true
     const q = debouncedSearch.toLowerCase()
     return (
@@ -101,6 +111,24 @@ function AccountsList({
       (a.name || '').toLowerCase().includes(q)
     )
   })
+
+  // Assets are grouped into Non-Current (split Immovable vs Movable) and
+  // Current. Computer equipment, furniture, vehicles etc. are movable
+  // assets; land/buildings are immovable. Liabilities stay a single list.
+  const IMMOVABLE_KW = ['land', 'building', 'property', 'premises', 'estate',
+    'leasehold', 'freehold', 'structure', 'immovable']
+  const assetGroupOf = (a: any) => {
+    const isFixed = a.category === 'fixed_asset' || a.account_subtype === 'fixed_asset'
+    if (!isFixed) return 'Current Assets'
+    const n = (a.name || '').toLowerCase()
+    return IMMOVABLE_KW.some(k => n.includes(k)) ? 'Immovable Assets' : 'Movable Assets'
+  }
+  const assetGroupOrder = ['Immovable Assets', 'Movable Assets', 'Current Assets']
+  const groupedAssets: Array<[string, any[]]> = accountType === 'asset'
+    ? assetGroupOrder
+        .map((g) => [g, filtered.filter((a) => assetGroupOf(a) === g)] as [string, any[]])
+        .filter(([, rows]) => rows.length > 0)
+    : [['', filtered]]
 
   const saveMutation = useMutation({
     mutationFn: (data: any) =>
@@ -175,10 +203,21 @@ function AccountsList({
             className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           />
         </div>
-        <Button onClick={() => setShowForm(true)} className="gap-2">
-          <Plus className="w-4 h-4" />
-          New {accountType === 'asset' ? 'Asset' : 'Liability'}
-        </Button>
+        <div className="flex items-center gap-3">
+          <Select
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+            options={[
+              { value: '', label: 'All currencies' },
+              { value: 'USD', label: 'USD' },
+              { value: 'ZWG', label: 'ZWG' },
+            ]}
+          />
+          <Button onClick={() => setShowForm(true)} className="gap-2">
+            <Plus className="w-4 h-4" />
+            New {accountType === 'asset' ? 'Asset' : 'Liability'}
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -211,43 +250,59 @@ function AccountsList({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {filtered.map((a: any) => (
-              <tr
-                key={a.id}
-                onClick={() => navigate(`/dashboard/global-accounts/${a.id}`)}
-                className="hover:bg-gray-50/40 cursor-pointer"
-              >
-                <td className="px-6 py-3 font-mono text-xs text-primary-600">{a.code}</td>
-                <td className="px-6 py-3 font-medium text-gray-900">{a.name}</td>
-                <td className="px-6 py-3 text-gray-500 text-xs">
-                  {(a.account_subtype || '—').replace(/_/g, ' ')}
-                </td>
-                <td className="px-6 py-3 text-right tabular-nums text-gray-700">
-                  {Number(a.current_balance || 0).toFixed(2)}
-                </td>
-                <td className="px-6 py-3 text-right">
-                  <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => startEdit(a)}
-                      className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
-                      title="Edit"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    {!a.is_system && (
-                      <button
-                        onClick={() => {
-                          if (window.confirm(`Delete "${a.name}"?`)) deleteMutation.mutate(a.id)
-                        }}
-                        className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
+            {groupedAssets.map(([groupName, rows]) => (
+              <Fragment key={groupName || 'all'}>
+                {groupName && (
+                  <tr className="bg-gray-50/70">
+                    <td colSpan={5} className="px-6 py-2 text-xs font-bold uppercase tracking-wider text-gray-500">
+                      {groupName} <span className="text-gray-400 font-normal">· {rows.length}</span>
+                    </td>
+                  </tr>
+                )}
+                {rows.map((a: any) => (
+                  <tr
+                    key={a.id}
+                    onClick={() => navigate(`/dashboard/global-accounts/${a.id}`)}
+                    className="hover:bg-gray-50/40 cursor-pointer"
+                  >
+                    <td className="px-6 py-3 font-mono text-xs text-primary-600">{a.code}</td>
+                    <td className="px-6 py-3 font-medium text-gray-900">
+                      {a.name}
+                      {currencyOf(a) === 'ZWG' && (
+                        <span className="ml-1.5 text-[10px] text-gray-400">ZWG</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-3 text-gray-500 text-xs">
+                      {(a.account_subtype || '—').replace(/_/g, ' ')}
+                    </td>
+                    <td className="px-6 py-3 text-right tabular-nums text-gray-700">
+                      {Number(a.current_balance || 0).toFixed(2)}
+                    </td>
+                    <td className="px-6 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => startEdit(a)}
+                          className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+                          title="Edit"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        {!a.is_system && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Delete "${a.name}"?`)) deleteMutation.mutate(a.id)
+                            }}
+                            className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -307,6 +362,7 @@ function AccountsList({
 // --------------------------------------------------------------------------
 function SuppliersList() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [showForm, setShowForm] = useState(false)
@@ -425,7 +481,11 @@ function SuppliersList() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {filtered.map((s: any) => (
-              <tr key={s.id} className="hover:bg-gray-50/40">
+              <tr
+                key={s.id}
+                onClick={() => navigate(`/dashboard/suppliers/${s.id}`)}
+                className="hover:bg-gray-50/40 cursor-pointer"
+              >
                 <td className="px-6 py-3 font-mono text-xs text-gray-500">{s.code}</td>
                 <td className="px-6 py-3 font-medium text-gray-900">{s.name}</td>
                 <td className="px-6 py-3 text-gray-600 text-xs">
@@ -434,7 +494,7 @@ function SuppliersList() {
                 </td>
                 <td className="px-6 py-3 text-gray-500 text-xs">{s.tax_id || '—'}</td>
                 <td className="px-6 py-3 text-right">
-                  <div className="flex items-center justify-end gap-1">
+                  <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => startEdit(s)}
                       className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
