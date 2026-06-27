@@ -2513,6 +2513,11 @@ function CashFlowReport() {
     queryFn: () => bankAccountApi.list({ page_size: 200 }).then(r => r.data.results || r.data),
     enabled: withdrawModal,
   })
+  const { data: cfLandlord } = useQuery({
+    queryKey: ['cashflow-landlord', landlordId],
+    queryFn: () => landlordApi.get(Number(landlordId)).then(r => r.data),
+    enabled: withdrawModal && !!landlordId,
+  })
   const withdrawMutation = useMutation({
     mutationFn: (payload: any) => expenseApi.create(payload),
     onSuccess: () => {
@@ -2533,6 +2538,7 @@ function CashFlowReport() {
       expense_kind: 'cash',
       payee_type: 'landlord',
       payee_id: Number(landlordId),
+      payee_name: cfLandlord?.name || "Landlord remittance",
       landlord: Number(landlordId),
       amount: amt,
       date: withdrawForm.date,
