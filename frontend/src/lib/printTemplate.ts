@@ -564,6 +564,9 @@ interface FinancialReportPrintOptions {
   reportType: FinancialReportType
   reportName: string
   data: any
+  /** Balance Sheet only: when true, print the full breakdown (sub-category
+   *  line items, as shown on screen) instead of the summarised totals. */
+  detail?: boolean
   scope?: {
     landlordName?: string
     propertyName?: string
@@ -915,7 +918,7 @@ function buildIncomeStatementBody(data: any, currency: string): string {
   `
 }
 
-function buildBalanceSheetBody(data: any, currency: string): string {
+function buildBalanceSheetBody(data: any, currency: string, detail = false): string {
   const assets = data?.assets?.accounts || []
   const liabs = data?.liabilities?.accounts || []
   const equity = data?.equity?.accounts || []
@@ -940,6 +943,37 @@ function buildBalanceSheetBody(data: any, currency: string): string {
       </tr>
     </tbody></table>
   `
+
+  // Detailed asset rendering: each sub-category as a sub-header with its
+  // individual line items beneath, mirroring the on-screen accordions.
+  // Used only when the landlord-scoped `sub_categories` structure is present.
+  const subCat = data?.assets?.sub_categories
+  const nonCurrent = Array.isArray(data?.assets?.non_current)
+    ? data.assets.non_current.filter((b: any) => b.total !== 0 || (b.breakdown?.length ?? 0) > 0)
+    : []
+  const bucketRows = (buckets: any[]) => buckets.map((b: any) => `
+    <tr class="subhead"><td colspan="2" style="font-weight:600;padding-top:5pt;">${b.name}</td>
+        <td class="num" style="font-weight:600;">${fmtMoney(b.total || 0, currency, false)}</td></tr>
+    ${(b.breakdown || []).length
+      ? b.breakdown.map((r: any) => `
+        <tr>
+          ${r.code ? `<td class="code" style="width:70pt;padding-left:10pt;">${r.code}</td>` : `<td style="width:70pt"></td>`}
+          <td class="grow" style="padding-left:10pt;">${r.name || r.tenant_name || '—'}</td>
+          <td class="num" style="width:110pt">${fmtMoney(r.balance ?? 0, currency, false)}</td>
+        </tr>`).join('')
+      : `<tr><td colspan="3" class="muted" style="text-align:center;padding:3pt 0;font-size:8pt;">No items</td></tr>`}
+  `).join('')
+  const detailedAssetsBlock = `
+    <table class="ftbl"><tbody>
+      ${nonCurrent.length ? `<tr class="grouphead"><td colspan="3" style="font-weight:700;text-transform:uppercase;font-size:8.5pt;letter-spacing:0.05em;color:#475569;">Non-Current Assets</td></tr>${bucketRows(nonCurrent)}` : ''}
+      <tr class="grouphead"><td colspan="3" style="font-weight:700;text-transform:uppercase;font-size:8.5pt;letter-spacing:0.05em;color:#475569;padding-top:6pt;">Current Assets</td></tr>
+      ${bucketRows(subCat || [])}
+      <tr class="total"><td colspan="2">Total Assets</td><td class="num">${fmtMoney(totalA, currency, false)}</td></tr>
+    </tbody></table>
+  `
+  const assetsSectionInner = (detail && Array.isArray(subCat))
+    ? detailedAssetsBlock
+    : block(assets, 'Total Assets', totalA)
 
   // ---- Notes (supporting schedules) -------------------------------------
   // Composed in landlord-statement style: each breakdown is a numbered note
@@ -1205,9 +1239,9 @@ function buildBalanceSheetBody(data: any, currency: string): string {
     <div class="sec">
       <div class="sec-h">
         <div class="sec-h-title">Assets</div>
-        <div class="sec-h-meta">What the entity owns</div>
+        <div class="sec-h-meta">What the entity owns${detail && Array.isArray(subCat) ? ' · detailed' : ''}</div>
       </div>
-      ${block(assets, 'Total Assets', totalA)}
+      ${assetsSectionInner}
     </div>
 
     <div class="sec">
@@ -1396,7 +1430,7 @@ export function printFinancialReport(opts: FinancialReportPrintOptions): void {
   switch (opts.reportType) {
     case 'trial-balance':       body = buildTrialBalanceBody(opts.data, currency); break
     case 'income-statement':    body = buildIncomeStatementBody(opts.data, currency); break
-    case 'balance-sheet':       body = buildBalanceSheetBody(opts.data, currency); break
+    case 'balance-sheet':       body = buildBalanceSheetBody(opts.data, currency, opts.detail); break
     case 'cash-flow':           body = buildCashFlowBody(opts.data, currency); break
     case 'income-expenditure':  body = buildIncomeExpenditureBody(opts.data, currency); break
   }
