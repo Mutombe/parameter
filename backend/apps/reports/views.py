@@ -383,6 +383,44 @@ def _make_commission_resolver():
     return commission
 
 
+def _commission_total(receipts_qs):
+    """Total commission for a receipts queryset, computed per-receipt with the
+    posting-time resolver so it matches what was posted (and the Balance Sheet
+    / Income Statement). Use instead of ``qs.aggregate(Sum(_commission_expr()))``
+    whenever the queryset may include invoice-less receipts."""
+    f = _make_commission_resolver()
+    total = Decimal('0')
+    for r in receipts_qs.select_related(
+        'income_type', 'tenant', 'invoice__unit', 'invoice__lease',
+    ):
+        total += f(r)
+    return total
+
+
+def _commission_by_income_type(receipts_qs):
+    """Commission grouped by income type, using the posting-time resolver.
+    Returns a list of {income_type_id, income_type_name, income_type_code,
+    amount(Decimal)} sorted by name, excluding zero rows."""
+    f = _make_commission_resolver()
+    acc = {}
+    for r in receipts_qs.select_related(
+        'income_type', 'tenant', 'invoice__unit', 'invoice__lease',
+    ):
+        c = f(r)
+        if not c:
+            continue
+        it = r.income_type
+        row = acc.setdefault(r.income_type_id, {
+            'income_type_id': r.income_type_id,
+            'income_type_name': (it.name if it else None) or 'Other',
+            'income_type_code': (it.code if it else '') or '',
+            'amount': Decimal('0'),
+        })
+        row['amount'] += c
+    return [v for v in sorted(acc.values(), key=lambda x: x['income_type_name'])
+            if v['amount'] != 0]
+
+
 def _comparative_receipt_qs(qs):
     """Attach the select_related / prefetch a Receipt needs for
     `_receipt_dims` to resolve property / unit / landlord / income-type
@@ -1754,7 +1792,7 @@ class BalanceSheetView(APIView):
                             date__lte=as_of_date,
                         )
                         _prop_rcpt = _prop_rcpt_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
-                        _prop_comm = _prop_rcpt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
+                        _prop_comm = _commission_total(_prop_rcpt_qs)
                         # Expense is landlord-LEVEL — has no unit / property
                         # FK on the model itself. Per-property expense split
                         # isn't possible from the DB; we leave these at 0
@@ -1850,7 +1888,7 @@ class BalanceSheetView(APIView):
                     date__lte=_opening_cutoff,
                 )
                 _open_rcpt = _open_rcpt_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
-                _open_comm = _open_rcpt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
+                _open_comm = _commission_total(_open_rcpt_qs)
                 _open_exp = Expense.objects.filter(
                     landlord_id=landlord_obj.id,
                     status='paid',
@@ -1869,7 +1907,7 @@ class BalanceSheetView(APIView):
                 _period_rcpt_qs = _scoped_receipt_qs(_unit_id_list, _property_id_list).filter(
                     date__gte=_period_start, date__lte=as_of_date,
                 )
-                _period_comm = _period_rcpt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
+                _period_comm = _commission_total(_period_rcpt_qs)
 
                 _period_expenses = Expense.objects.filter(
                     landlord_id=landlord_obj.id,
@@ -2666,29 +2704,29 @@ class CashFlowStatementView(APIView):
                 # Group commission per income type so the Cash Flow line
                 # "Cash paid to managing agent" can split into per-sub-account
                 # rows: rent commission, maintenance commission, parking
-                # commission, etc. Different income types can carry
-                # different rates per (property, income_type).
-                by_type = list(
-                    receipt_qs.values(
-                        'income_type__id', 'income_type__name', 'income_type__code',
-                    ).annotate(commission=Sum(_commission_expr()))
-                    .order_by('income_type__name')
-                )
-                for row in by_type:
-                    amt = row['commission'] or Decimal('0')
-                    if amt == 0:
-                        continue
+                # commission, etc. Computed per-receipt with the posting-time
+                # resolver so it matches the Income Statement and Balance Sheet
+                # (the SQL _commission_expr understates per-property overrides
+                # on invoice-less receipts).
+                for row in _commission_by_income_type(receipt_qs):
+                    amt = row['amount']
                     agent_commission += amt
                     agent_commission_by_type.append({
-                        'income_type_id': row['income_type__id'],
-                        'income_type_name': row['income_type__name'] or 'Other',
-                        'income_type_code': row['income_type__code'] or '',
+                        'income_type_id': row['income_type_id'],
+                        'income_type_name': row['income_type_name'],
+                        'income_type_code': row['income_type_code'],
                         'amount': float(amt),
                     })
 
-        # Calculate Operating Cash Flow
+        # Calculate Operating Cash Flow. Remittances to the landlord are
+        # drawings (an owner withdrawal shown under Financing), NOT an
+        # operating cost — but only when scoped to a landlord, where "owner"
+        # is well-defined and the Balance Sheet equity reconciliation treats
+        # them the same way. Agency-wide they stay in operating.
+        scoped_to_landlord = scope_filter is not None and landlord_id
+        operating_landlord_payments = Decimal('0') if scoped_to_landlord else landlord_payments
         operating_inflows = tenant_receipts
-        operating_outflows = expense_payments + agent_commission + landlord_payments
+        operating_outflows = expense_payments + agent_commission + operating_landlord_payments
         net_operating = operating_inflows - operating_outflows
 
         # Investing Activities
@@ -2704,7 +2742,12 @@ class CashFlowStatementView(APIView):
         # decompose per landlord at the agency level).
         if scope_filter is not None:
             asset_purchases = {'purchases': Decimal('0'), 'sales': Decimal('0')}
-            equity_transactions = {'contributions': Decimal('0'), 'withdrawals': Decimal('0')}
+            # Owner withdrawals under landlord scope = remittances paid to the
+            # landlord (drawings), matching the BS equity reconciliation.
+            equity_transactions = {
+                'contributions': Decimal('0'),
+                'withdrawals': landlord_payments,
+            }
         else:
             asset_purchases = GeneralLedger.objects.filter(
                 date_filter,
@@ -2748,7 +2791,7 @@ class CashFlowStatementView(APIView):
             if _ll:
                 # ending_cash = funds held in trust as of end_date
                 end_receipts = receipt_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
-                end_commission = receipt_qs.aggregate(t=Sum(_commission_expr()))['t'] or Decimal('0')
+                end_commission = _commission_total(receipt_qs)
                 _gl_exp_to_end = GeneralLedger.objects.filter(
                     Q(date__lte=end_date),
                     account__in=expense_accounts,
@@ -2814,10 +2857,10 @@ class CashFlowStatementView(APIView):
                     # used by Income Statement and Income & Expenditure.
                     'agent_commission_by_type': agent_commission_by_type,
                     # Cash actually paid to the landlord (Expense.expense_type
-                    # = 'landlord_payment'). Will be 0 until you record a
-                    # remittance — distinct from agent commission, which
-                    # used to be lumped in here.
-                    'landlord_payments': float(landlord_payments),
+                    # = 'landlord_payment'). Under landlord scope this moves to
+                    # Financing as an owner withdrawal, so it reads 0 here to
+                    # avoid double-counting; agency-wide it stays operating.
+                    'landlord_payments': float(operating_landlord_payments),
                     # Legacy alias for clients that read `commission_paid`.
                     'commission_paid': float(agent_commission),
                     'total': float(operating_outflows)
