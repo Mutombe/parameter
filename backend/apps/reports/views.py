@@ -2781,12 +2781,31 @@ class CashFlowStatementView(APIView):
         # Investing & financing activities — when scoped to a landlord we
         # zero them out (asset purchases & equity contributions don't
         # decompose per landlord at the agency level).
+        # Owner contributions (funds the owner injected) — OCT credits posted
+        # into the landlord's sub-accounts. Period figure feeds Financing;
+        # the to-date figure feeds ending cash so it ties to BS Funds Held.
+        owner_contributions_period = Decimal('0')
+        owner_contributions_to_end = Decimal('0')
+        if landlord_id:
+            from apps.accounting.models import SubsidiaryTransaction as _ST
+            _oct_qs = _ST.objects.filter(
+                account__landlord_id=landlord_id, account__entity_type='landlord',
+                reference__startswith='OCT',
+            )
+            owner_contributions_to_end = (
+                _oct_qs.filter(date__lte=end_date).aggregate(t=Sum('credit_amount'))['t'] or Decimal('0'))
+            _oct_period_qs = _oct_qs.filter(date__lte=end_date)
+            if start_date:
+                _oct_period_qs = _oct_period_qs.filter(date__gte=start_date)
+            owner_contributions_period = (
+                _oct_period_qs.aggregate(t=Sum('credit_amount'))['t'] or Decimal('0'))
+
         if scope_filter is not None:
             asset_purchases = {'purchases': Decimal('0'), 'sales': Decimal('0')}
             # Owner withdrawals under landlord scope = remittances paid to the
-            # landlord (drawings), matching the BS equity reconciliation.
+            # landlord (drawings); contributions = OCT injections.
             equity_transactions = {
-                'contributions': Decimal('0'),
+                'contributions': owner_contributions_period,
                 'withdrawals': landlord_payments,
             }
         else:
@@ -2841,7 +2860,8 @@ class CashFlowStatementView(APIView):
                 if non_cash_exclusion is not None:
                     _gl_exp_to_end = _gl_exp_to_end.exclude(non_cash_exclusion)
                 end_cash_exp = _gl_exp_to_end.aggregate(t=Sum('debit_amount'))['t'] or Decimal('0')
-                ending_cash = end_receipts - end_commission - end_cash_exp
+                # Owner contributions raised the trust cash too.
+                ending_cash = end_receipts - end_commission - end_cash_exp + owner_contributions_to_end
                 beginning_cash = ending_cash - net_change
             else:
                 ending_cash = Decimal('0')

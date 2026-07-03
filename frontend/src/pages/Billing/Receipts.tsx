@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Search, CreditCard, Plus, Send, Loader2, Eye, X, User, Download, Printer, BookOpen } from 'lucide-react'
-import { receiptApi, tenantApi, invoiceApi, leaseApi, bankAccountApi } from '../../services/api'
+import { receiptApi, tenantApi, invoiceApi, leaseApi, bankAccountApi, landlordApi } from '../../services/api'
 import { formatCurrency, formatDate, useDebounce, cn } from '../../lib/utils'
 import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination, DatePicker } from '../../components/ui'
 import { PayerSelect } from '../../components/PayerSelect'
@@ -57,6 +57,11 @@ export default function Receipts() {
   const debouncedSearch = useDebounce(search, 300)
   const [currentPage, setCurrentPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
+  // Owner (landlord) contribution — funds injected into the trust account.
+  const [showContribution, setShowContribution] = useState(false)
+  const [contributionForm, setContributionForm] = useState({
+    landlord: '', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '',
+  })
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null)
   const [postingId, setPostingId] = useState<number | null>(null)
@@ -116,6 +121,34 @@ export default function Receipts() {
     queryFn: () => bankAccountApi.list({ is_active: true, page_size: 200 }).then((r: any) => r.data.results || r.data),
     placeholderData: keepPreviousData,
   })
+
+  const { data: contribLandlords = [] } = useQuery({
+    queryKey: ['landlords-for-contribution'],
+    queryFn: () => landlordApi.list({ page_size: 500 }).then((r: any) => r.data.results || r.data),
+    enabled: showContribution,
+  })
+  const contributionMutation = useMutation({
+    mutationFn: (payload: any) => receiptApi.ownerContribution(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['receipts'] })
+      showToast.success('Owner contribution recorded')
+      setShowContribution(false)
+      setContributionForm({ landlord: '', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '' })
+    },
+    onError: (err: any) => showToast.error(parseApiError(err, 'Failed to record contribution')),
+  })
+  const submitContribution = () => {
+    if (!contributionForm.landlord) { showToast.error('Pick the landlord.'); return }
+    const amt = Number(contributionForm.amount)
+    if (!amt || amt <= 0) { showToast.error('Enter a valid amount.'); return }
+    contributionMutation.mutate({
+      landlord: Number(contributionForm.landlord),
+      amount: amt,
+      date: contributionForm.date,
+      description: contributionForm.description || undefined,
+      ...(contributionForm.bank_account ? { bank_account: Number(contributionForm.bank_account) } : {}),
+    })
+  }
 
   const { data: tenants, isLoading: tenantsLoading } = useQuery({
     queryKey: ['tenants-select'],
@@ -357,10 +390,16 @@ export default function Receipts() {
           { label: 'Receipts' },
         ]}
         actions={
-          <Button onClick={() => setShowForm(true)} className="gap-2">
-            <Plus className="w-4 h-4" />
-            Record Receipt
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setShowContribution(true)} className="gap-2">
+              <Plus className="w-4 h-4" />
+              Owner Contribution
+            </Button>
+            <Button onClick={() => setShowForm(true)} className="gap-2">
+              <Plus className="w-4 h-4" />
+              Record Receipt
+            </Button>
+          </div>
         }
       />
 
@@ -744,6 +783,69 @@ export default function Receipts() {
               disabled={createMutation.isPending || tenantsLoading}
             >
               {createMutation.isPending ? 'Recording...' : 'Record Receipt'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Owner Contribution Modal */}
+      <Modal
+        isOpen={showContribution}
+        onClose={() => setShowContribution(false)}
+        title="Record Owner Contribution"
+        size="md"
+      >
+        <form onSubmit={(e) => { e.preventDefault(); submitContribution() }} className="space-y-4">
+          <p className="text-sm text-gray-500">
+            Records funds the owner injects into their trust account (Dr Bank,
+            Cr Landlord Trust). It raises Funds Held in Trust on the Balance Sheet
+            and shows as an owner contribution on the Cash Flow.
+          </p>
+          <AsyncSelect
+            label="Landlord (contributing)"
+            placeholder="Pick the landlord"
+            value={contributionForm.landlord}
+            onChange={(val) => setContributionForm({ ...contributionForm, landlord: String(val) })}
+            options={(contribLandlords as any[]).map((l: any) => ({ value: l.id, label: l.name, description: l.code || '' }))}
+            searchable
+            required
+          />
+          <Input
+            label="Amount"
+            type="number"
+            min="0"
+            step="0.01"
+            value={contributionForm.amount}
+            onChange={(e) => setContributionForm({ ...contributionForm, amount: e.target.value })}
+            required
+          />
+          <DatePicker
+            label="Date"
+            value={contributionForm.date}
+            onChange={(v) => setContributionForm({ ...contributionForm, date: v })}
+            required
+          />
+          <Select
+            label="Bank Account (optional)"
+            value={contributionForm.bank_account}
+            onChange={(e) => setContributionForm({ ...contributionForm, bank_account: e.target.value })}
+            options={[
+              { value: '', label: 'No bank account' },
+              ...((bankAccounts as any[] || []).map((b: any) => ({ value: String(b.id), label: `${b.name} (${b.currency})` }))),
+            ]}
+          />
+          <Input
+            label="Description (optional)"
+            value={contributionForm.description}
+            onChange={(e) => setContributionForm({ ...contributionForm, description: e.target.value })}
+            placeholder="Owner contribution"
+          />
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowContribution(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" className="flex-1" disabled={contributionMutation.isPending}>
+              {contributionMutation.isPending ? 'Recording…' : 'Record Contribution'}
             </Button>
           </div>
         </form>

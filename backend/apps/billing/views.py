@@ -765,6 +765,83 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=False, methods=['post'])
+    def owner_contribution(self, request):
+        """Record an owner (landlord) contribution — the owner injects funds
+        into their trust account. Credits the landlord's sub-account (raising
+        Funds Held in Trust) and posts a matching GL entry (Dr Bank, Cr
+        Landlord Trust Payable). Marked 'OCT' so the Cash Flow can surface it
+        as a financing inflow. This is the mirror image of a Post Withdrawal.
+        """
+        from decimal import Decimal as _D
+        from django.utils import timezone as _tz
+        from apps.masterfile.models import Landlord
+        from apps.accounting.models import (
+            SubsidiaryAccount, SubsidiaryTransaction, ChartOfAccount,
+            Journal, JournalEntry, BankAccount,
+        )
+        landlord_id = request.data.get('landlord')
+        raw_amount = request.data.get('amount')
+        if not landlord_id:
+            return Response({'error': 'landlord is required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            amount = _D(str(raw_amount))
+        except Exception:
+            amount = _D('0')
+        if amount <= 0:
+            return Response({'error': 'A positive amount is required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            landlord = Landlord.objects.get(id=landlord_id)
+        except Landlord.DoesNotExist:
+            return Response({'error': 'Landlord not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        dt = request.data.get('date') or _tz.now().date()
+        currency = (request.data.get('currency') or 'USD').upper()
+        description = request.data.get('description') or f'Owner contribution — {landlord.name}'
+
+        # Resolve the cash/bank GL account (chosen bank → its GL, else 1100).
+        bank_gl = None
+        bank_account_id = request.data.get('bank_account')
+        if bank_account_id:
+            ba = BankAccount.objects.filter(id=bank_account_id).select_related('gl_account').first()
+            if ba and ba.gl_account_id:
+                bank_gl = ba.gl_account
+        if bank_gl is None:
+            bank_gl, _ = ChartOfAccount.objects.get_or_create(
+                code='1100', defaults={'name': 'Bank Account', 'account_type': 'asset',
+                                       'account_subtype': 'bank', 'is_system': True})
+        trust_gl, _ = ChartOfAccount.objects.get_or_create(
+            code='2300', defaults={'name': 'Landlord Trust Payable', 'account_type': 'liability',
+                                   'account_subtype': 'accounts_payable', 'is_system': True})
+
+        # GL: Dr Bank, Cr Landlord Trust Payable (cash in, trust liability up).
+        journal = Journal.objects.create(
+            journal_type=Journal.JournalType.RECEIPTS, date=dt,
+            description=description, reference='OCT', currency=currency,
+            created_by=request.user,
+        )
+        je_dr = JournalEntry.objects.create(
+            journal=journal, account=bank_gl, description=description, debit_amount=amount)
+        JournalEntry.objects.create(
+            journal=journal, account=trust_gl, description=description, credit_amount=amount)
+        journal.post(request.user)
+
+        # Sub-ledger: credit the landlord's rent pocket → raises Funds Held.
+        sub = SubsidiaryAccount.get_or_create_for_landlord_category(
+            landlord, category='rent', currency=currency)
+        txn = SubsidiaryTransaction.create_entry(
+            account=sub, date=dt, contra_account='OCT',
+            reference=f'OCT-{journal.journal_number}', description=description,
+            credit_amount=amount, journal_entry=je_dr,
+        )
+        return Response({
+            'message': 'Owner contribution recorded',
+            'journal_number': journal.journal_number,
+            'landlord': landlord.name,
+            'amount': float(amount),
+            'transaction_id': txn.id,
+        }, status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['post'])
     def post_to_ledger(self, request, pk=None):
         """Post receipt to General Ledger."""

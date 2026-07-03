@@ -413,6 +413,8 @@ export const receiptApi = {
   summary: () => api.get('/billing/receipts/summary/'),
   reverse: (id: number, data: { reason?: string }) =>
     api.post(`/billing/receipts/${id}/reverse/`, data),
+  // Record an owner (landlord) contribution — funds injected into trust.
+  ownerContribution: (data: object) => api.post('/billing/receipts/owner_contribution/', data),
 }
 
 export const expenseApi = {
