@@ -16,7 +16,20 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
 } from 'lucide-react'
-import { openingBalanceApi, accountApi, landlordApi, subsidiaryApi, supplierApi } from '../../services/api'
+import { openingBalanceApi, accountApi, landlordApi, subsidiaryApi, supplierApi, bankAccountApi } from '../../services/api'
+
+// Balance-sheet sub-category "representation" accounts — these roll up a
+// collection of real accounts and must NOT be targetable for opening balances
+// or transfers. Real accounts (specific fixed assets, banks, supplier/loan
+// liabilities) are the valid targets. Codes: Cash on Hand 1000, Bank 1100,
+// Accounts Receivable 1200, Accounts Payable 2000, plus the trust/system
+// roll-ups and the Opening Balances contra 9000.
+export const REPRESENTATION_ACCOUNT_CODES = new Set([
+  '1000', '1100', '1200', '2000', '2100', '2110', '2200', '2300', '2400', '9000',
+])
+export function isSelectableRealAccount(a: any): boolean {
+  return !REPRESENTATION_ACCOUNT_CODES.has(String(a?.code || ''))
+}
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import {
   PageHeader, Modal, Button, Input, Select, Badge, EmptyState,
@@ -198,8 +211,18 @@ export default function OpeningBalances() {
 
   // Fetch accounts
   const { data: accounts = [] } = useQuery({
-    queryKey: ['accounts-list'],
-    queryFn: () => accountApi.list().then((r: any) => r.data.results || r.data),
+    queryKey: ['accounts-list-all'],
+    queryFn: () => accountApi.list({ page_size: 500 }).then((r: any) => r.data.results || r.data),
+    staleTime: 60000,
+    placeholderData: keepPreviousData,
+  })
+
+  // Actual bank accounts (real cash accounts you can hold a balance in),
+  // shown alongside fixed assets since the generic Bank sub-category (1100)
+  // is excluded from the target list.
+  const { data: bankAccounts = [] } = useQuery({
+    queryKey: ['bank-accounts-for-ob'],
+    queryFn: () => bankAccountApi.list({ is_active: true, page_size: 200 }).then((r: any) => r.data.results || r.data),
     staleTime: 60000,
     placeholderData: keepPreviousData,
   })
@@ -337,9 +360,16 @@ export default function OpeningBalances() {
   }
 
   const handleConfirmSubmit = () => {
+    // A "bank:<id>" selection maps to that bank's underlying GL account.
+    let targetAccountId = parseInt(form.target_account)
+    if (String(form.target_account).startsWith('bank:')) {
+      const bankId = Number(String(form.target_account).slice(5))
+      const bank = (bankAccounts as any[]).find((b: any) => Number(b.id) === bankId)
+      targetAccountId = Number(bank?.gl_account)
+    }
     const data: Record<string, unknown> = {
       date: form.date,
-      target_account: parseInt(form.target_account),
+      target_account: targetAccountId,
       direction: form.direction,
       category: form.category,
       landlord: parseInt(form.landlord),
@@ -745,14 +775,26 @@ export default function OpeningBalances() {
             onChange={(e) => setForm({ ...form, target_account: e.target.value })}
             placeholder="Select an Asset or Liability account..."
             options={[
+              // Real asset accounts (movable/immovable), excluding the
+              // sub-category roll-ups (Cash 1000, Bank 1100, AR 1200).
               ...accounts
-                .filter((a: any) => a.account_type === 'asset')
+                .filter((a: any) => a.account_type === 'asset' && isSelectableRealAccount(a))
                 .map((a: any) => ({
                   value: String(a.id),
                   label: `Asset · ${a.code} - ${a.name}`,
                 })),
+              // Actual bank accounts (mapped to their GL account on submit).
+              ...(bankAccounts as any[])
+                .filter((b: any) => b.gl_account)
+                .map((b: any) => ({
+                  value: `bank:${b.id}`,
+                  label: `Bank · ${b.name}${b.currency ? ` (${b.currency})` : ''}`,
+                })),
+              // Real liability accounts (supplier / Accounts-Payable-category,
+              // loans, mortgages), excluding the AP 2000 roll-up and trust
+              // representation accounts.
               ...accounts
-                .filter((a: any) => a.account_type === 'liability')
+                .filter((a: any) => a.account_type === 'liability' && isSelectableRealAccount(a))
                 .map((a: any) => ({
                   value: String(a.id),
                   label: `Liability · ${a.code} - ${a.name}`,

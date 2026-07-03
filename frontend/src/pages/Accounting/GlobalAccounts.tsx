@@ -118,12 +118,15 @@ function AccountsList({
   const IMMOVABLE_KW = ['land', 'building', 'property', 'premises', 'estate',
     'leasehold', 'freehold', 'structure', 'immovable']
   const assetGroupOf = (a: any) => {
-    const isFixed = a.category === 'fixed_asset' || a.account_subtype === 'fixed_asset'
+    const sub = a.account_subtype || ''
+    if (sub === 'investment') return 'Investments'
+    if (sub === 'movable_asset') return 'Movable Assets'
+    const isFixed = a.category === 'fixed_asset' || sub === 'fixed_asset'
     if (!isFixed) return 'Current Assets'
     const n = (a.name || '').toLowerCase()
     return IMMOVABLE_KW.some(k => n.includes(k)) ? 'Immovable Assets' : 'Movable Assets'
   }
-  const assetGroupOrder = ['Immovable Assets', 'Movable Assets', 'Current Assets']
+  const assetGroupOrder = ['Immovable Assets', 'Movable Assets', 'Investments', 'Current Assets']
   const groupedAssets: Array<[string, any[]]> = accountType === 'asset'
     ? assetGroupOrder
         .map((g) => [g, filtered.filter((a) => assetGroupOf(a) === g)] as [string, any[]])
@@ -178,8 +181,9 @@ function AccountsList({
           { value: 'bank', label: 'Bank' },
           { value: 'cash', label: 'Cash' },
           { value: 'accounts_receivable', label: 'Accounts Receivable' },
-          { value: 'fixed_asset', label: 'Fixed Asset' },
-          { value: 'inventory', label: 'Inventory' },
+          { value: 'fixed_asset', label: 'Fixed Asset (Immovable)' },
+          { value: 'movable_asset', label: 'Movable Asset' },
+          { value: 'investment', label: 'Investments' },
         ]
       : [
           { value: '', label: '—' },

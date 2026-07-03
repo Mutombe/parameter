@@ -152,6 +152,8 @@ class ChartOfAccount(models.Model):
         ACCOUNTS_RECEIVABLE = 'accounts_receivable', 'Accounts Receivable'
         PREPAID = 'prepaid', 'Prepaid Expenses'
         FIXED_ASSET = 'fixed_asset', 'Fixed Assets'
+        MOVABLE_ASSET = 'movable_asset', 'Movable Asset'
+        INVESTMENT = 'investment', 'Investments'
         # Liabilities
         ACCOUNTS_PAYABLE = 'accounts_payable', 'Accounts Payable'
         VAT_PAYABLE = 'vat_payable', 'VAT Payable'

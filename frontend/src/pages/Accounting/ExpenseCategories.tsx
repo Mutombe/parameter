@@ -85,7 +85,11 @@ export default function ExpenseCategories() {
   })
 
   const categories: ExpenseCategory[] = data || []
-  const expenseAccounts: GLAccount[] = glAccounts || []
+  // Expense Accounts may only map to accounts that are expenses by their code
+  // category — never a liability, asset, revenue, bank/cash or any other type.
+  const expenseAccounts: GLAccount[] = (glAccounts || []).filter(
+    (a: any) => (a.category || a.account_type) === 'expense'
+  )
 
   const filteredCategories = categories.filter(cat =>
     cat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||

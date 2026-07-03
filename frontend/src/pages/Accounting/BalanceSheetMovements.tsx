@@ -16,7 +16,16 @@ import {
   Download,
   XCircle,
 } from 'lucide-react'
-import { bsMovementApi, accountApi, landlordApi, subsidiaryApi } from '../../services/api'
+import { bsMovementApi, accountApi, landlordApi, subsidiaryApi, bankAccountApi } from '../../services/api'
+
+// Balance-sheet sub-category roll-up accounts — not real accounts, so they
+// can't be a transfer's debit/credit side. Cash 1000, Bank 1100, AR 1200,
+// AP 2000, trust/system roll-ups, and the Opening Balances contra 9000.
+const REPRESENTATION_ACCOUNT_CODES = new Set([
+  '1000', '1100', '1200', '2000', '2100', '2110', '2200', '2300', '2400', '9000',
+])
+const isSelectableRealAccount = (a: any): boolean =>
+  !REPRESENTATION_ACCOUNT_CODES.has(String(a?.code || ''))
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import {
   PageHeader, Modal, Button, Input, Select, Badge, EmptyState,
@@ -189,8 +198,17 @@ export default function BalanceSheetMovements() {
 
   // Fetch accounts
   const { data: accounts = [] } = useQuery({
-    queryKey: ['accounts-list'],
-    queryFn: () => accountApi.list().then((r: any) => r.data.results || r.data),
+    queryKey: ['accounts-list-all'],
+    queryFn: () => accountApi.list({ page_size: 500 }).then((r: any) => r.data.results || r.data),
+    staleTime: 60000,
+    placeholderData: keepPreviousData,
+  })
+
+  // Actual bank accounts — selectable transfer sides (mapped to their GL
+  // account on submit) since the generic Bank sub-category (1100) is excluded.
+  const { data: bankAccounts = [] } = useQuery({
+    queryKey: ['bank-accounts-for-transfer'],
+    queryFn: () => bankAccountApi.list({ is_active: true, page_size: 200 }).then((r: any) => r.data.results || r.data),
     staleTime: 60000,
     placeholderData: keepPreviousData,
   })
@@ -302,11 +320,21 @@ export default function BalanceSheetMovements() {
     setShowConfirm(true)
   }
 
+  // A "bank:<id>" selection maps to that bank's underlying GL account.
+  const resolveAccountId = (val: string): number => {
+    if (String(val).startsWith('bank:')) {
+      const bankId = Number(String(val).slice(5))
+      const bank = (bankAccounts as any[]).find((b: any) => Number(b.id) === bankId)
+      return Number(bank?.gl_account)
+    }
+    return parseInt(val)
+  }
+
   const handleConfirmSubmit = () => {
     const data: Record<string, unknown> = {
       date: form.date,
-      debit_account: parseInt(form.debit_account),
-      credit_account: parseInt(form.credit_account),
+      debit_account: resolveAccountId(form.debit_account),
+      credit_account: resolveAccountId(form.credit_account),
       category: form.category,
       landlord: parseInt(form.landlord),
       description: form.description,
@@ -343,9 +371,20 @@ export default function BalanceSheetMovements() {
   }
 
   // BS accounts (asset + liability)
-  const bsAccounts = accounts.filter((a: any) =>
-    a.account_type === 'asset' || a.account_type === 'liability'
-  )
+  // Valid transfer sides: real asset accounts (movable/immovable), actual
+  // bank accounts, and real liability accounts (supplier / AP-category, loans)
+  // — never the balance-sheet sub-category roll-ups.
+  const transferAccountOptions = [
+    ...accounts
+      .filter((a: any) => a.account_type === 'asset' && isSelectableRealAccount(a))
+      .map((a: any) => ({ value: String(a.id), label: `Asset · ${a.code} - ${a.name}` })),
+    ...(bankAccounts as any[])
+      .filter((b: any) => b.gl_account)
+      .map((b: any) => ({ value: `bank:${b.id}`, label: `Bank · ${b.name}${b.currency ? ` (${b.currency})` : ''}` })),
+    ...accounts
+      .filter((a: any) => a.account_type === 'liability' && isSelectableRealAccount(a))
+      .map((a: any) => ({ value: String(a.id), label: `Liability · ${a.code} - ${a.name}` })),
+  ]
 
   if (isLoading) {
     return (
@@ -688,14 +727,7 @@ export default function BalanceSheetMovements() {
             value={form.debit_account}
             onChange={(e) => setForm({ ...form, debit_account: e.target.value })}
             placeholder="Select asset or liability to DEBIT..."
-            options={[
-              ...bsAccounts
-                .filter((a: any) => a.account_type === 'asset')
-                .map((a: any) => ({ value: String(a.id), label: `Asset · ${a.code} - ${a.name}` })),
-              ...bsAccounts
-                .filter((a: any) => a.account_type === 'liability')
-                .map((a: any) => ({ value: String(a.id), label: `Liability · ${a.code} - ${a.name}` })),
-            ]}
+            options={transferAccountOptions}
             hint="The side gaining value (asset increased OR liability decreased)"
             required
           />
@@ -706,14 +738,7 @@ export default function BalanceSheetMovements() {
             value={form.credit_account}
             onChange={(e) => setForm({ ...form, credit_account: e.target.value })}
             placeholder="Select asset or liability to CREDIT..."
-            options={[
-              ...bsAccounts
-                .filter((a: any) => a.account_type === 'asset')
-                .map((a: any) => ({ value: String(a.id), label: `Asset · ${a.code} - ${a.name}` })),
-              ...bsAccounts
-                .filter((a: any) => a.account_type === 'liability')
-                .map((a: any) => ({ value: String(a.id), label: `Liability · ${a.code} - ${a.name}` })),
-            ]}
+            options={transferAccountOptions}
             hint="The side giving up value (asset decreased OR liability increased)"
             required
           />
