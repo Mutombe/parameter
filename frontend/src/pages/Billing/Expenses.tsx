@@ -182,6 +182,11 @@ export default function Expenses() {
   const [showDetail, setShowDetail] = useState<Expense | null>(null)
   const [showApproveConfirm, setShowApproveConfirm] = useState<Expense | null>(null)
   const [showPayConfirm, setShowPayConfirm] = useState<Expense | null>(null)
+  // Post Owner's Withdrawal — a cash remittance paid to a landlord (drawings).
+  const [showWithdraw, setShowWithdraw] = useState(false)
+  const [withdrawForm, setWithdrawForm] = useState({
+    landlord: '', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '',
+  })
 
   const debouncedSearch = useDebounce(searchQuery, 300)
   const [currentPage, setCurrentPage] = useState(1)
@@ -571,6 +576,39 @@ export default function Expenses() {
     }
   })
 
+  // Post Owner's Withdrawal — records a paid landlord_payment remittance
+  // (Dr landlord trust sub-account, Cr cash), which shows as an owner
+  // withdrawal on the Cash Flow and as Drawings on the Balance Sheet.
+  const withdrawMutation = useMutation({
+    mutationFn: (payload: any) => expenseApi.create(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] })
+      showToast.success("Owner's withdrawal posted")
+      setShowWithdraw(false)
+      setWithdrawForm({ landlord: '', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '' })
+    },
+    onError: (err: any) => showToast.error(parseApiError(err, 'Failed to post withdrawal')),
+  })
+  const submitWithdrawal = () => {
+    if (!withdrawForm.landlord) { showToast.error('Pick the landlord being paid.'); return }
+    const amt = Number(withdrawForm.amount)
+    if (!amt || amt <= 0) { showToast.error('Enter a valid amount.'); return }
+    const ll = landlords.find((l: any) => String(l.id) === String(withdrawForm.landlord))
+    withdrawMutation.mutate({
+      expense_type: 'landlord_payment',
+      expense_kind: 'cash',
+      payee_type: 'landlord',
+      payee_id: Number(withdrawForm.landlord),
+      payee_name: ll?.name || 'Landlord remittance',
+      landlord: Number(withdrawForm.landlord),
+      amount: amt,
+      date: withdrawForm.date,
+      description: withdrawForm.description || "Owner's withdrawal (remittance)",
+      ...(withdrawForm.bank_account ? { bank_account: Number(withdrawForm.bank_account) } : {}),
+      auto_post: true,
+    })
+  }
+
   // Batch create — posts N expense rows sharing date + bank account.
   const bulkCreateMutation = useMutation({
     mutationFn: (payload: any) => expenseApi.bulkCreate(payload).then(r => r.data),
@@ -937,10 +975,16 @@ export default function Expenses() {
           { label: 'Expenditure' },
         ]}
         actions={
-          <Button onClick={() => setShowModal(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Expenditure
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setShowWithdraw(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Post withdrawal
+            </Button>
+            <Button onClick={() => setShowModal(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Expenditure
+            </Button>
+          </div>
         }
       />
 
@@ -1532,7 +1576,7 @@ export default function Expenses() {
               <span className="font-medium text-gray-800">Supplier Payment (Clearing Debt)</span>
               <span className="block text-xs text-gray-500">
                 Settle an outstanding amount owed to a supplier instead of booking a new cost.
-                Pick the supplier below; this debits Accounts Payable.
+                Pick the supplier below; this debits the Supplier Account.
               </span>
             </span>
           </label>
@@ -1732,6 +1776,69 @@ export default function Expenses() {
           </div>
         </form>
         )}
+      </Modal>
+
+      {/* Post Owner's Withdrawal Modal */}
+      <Modal
+        isOpen={showWithdraw}
+        onClose={() => setShowWithdraw(false)}
+        title="Post Owner's Withdrawal"
+        size="md"
+      >
+        <form onSubmit={(e) => { e.preventDefault(); submitWithdrawal() }} className="space-y-4">
+          <p className="text-sm text-gray-500">
+            Records a cash remittance paid to the landlord (Dr the landlord's trust
+            sub-account, Cr cash). It posts immediately and appears as an owner
+            withdrawal on the Cash Flow and as Drawings on the Balance Sheet.
+          </p>
+          <AsyncSelect
+            label="Landlord (being paid)"
+            placeholder="Pick the landlord"
+            value={withdrawForm.landlord}
+            onChange={(val) => setWithdrawForm({ ...withdrawForm, landlord: String(val) })}
+            options={landlords.map((l: any) => ({ value: l.id, label: l.name, description: l.code || '' }))}
+            searchable
+            required
+          />
+          <Input
+            label="Amount"
+            type="number"
+            min="0"
+            step="0.01"
+            value={withdrawForm.amount}
+            onChange={(e) => setWithdrawForm({ ...withdrawForm, amount: e.target.value })}
+            required
+          />
+          <DatePicker
+            label="Date"
+            value={withdrawForm.date}
+            onChange={(v) => setWithdrawForm({ ...withdrawForm, date: v })}
+            required
+          />
+          <Select
+            label="Bank Account (optional)"
+            value={withdrawForm.bank_account}
+            onChange={(e) => setWithdrawForm({ ...withdrawForm, bank_account: e.target.value })}
+            options={[
+              { value: '', label: 'No bank account' },
+              ...bankAccounts.map((b: any) => ({ value: String(b.id), label: `${b.name} (${b.currency})` })),
+            ]}
+          />
+          <Input
+            label="Description (optional)"
+            value={withdrawForm.description}
+            onChange={(e) => setWithdrawForm({ ...withdrawForm, description: e.target.value })}
+            placeholder="Owner's withdrawal (remittance)"
+          />
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowWithdraw(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" className="flex-1" disabled={withdrawMutation.isPending}>
+              {withdrawMutation.isPending ? 'Posting…' : 'Post Withdrawal'}
+            </Button>
+          </div>
+        </form>
       </Modal>
 
       {/* Detail Modal */}

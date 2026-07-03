@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, createContext, useContext, Fragment, type ReactNode } from 'react'
-import { useQuery, useMutation, useQueryClient, useIsFetching, keepPreviousData } from '@tanstack/react-query'
+import { useQuery, useIsFetching, keepPreviousData } from '@tanstack/react-query'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -53,11 +53,11 @@ import {
   ComposedChart,
   Line,
 } from 'recharts'
-import { reportsApi, tenantApi, landlordApi, propertyApi, expenseApi, bankAccountApi } from '../../services/api'
+import { reportsApi, tenantApi, landlordApi, propertyApi } from '../../services/api'
 import { formatCurrency, formatPercent, formatDate, cn } from '../../lib/utils'
 import { printElement, printFinancialReport, type FinancialReportType } from '../../lib/printTemplate'
 import { exportReport } from '../../lib/export'
-import { PageHeader, Button, Badge, Skeleton, EmptyState, TableFilter, Pagination, Tooltip as UITooltip, DatePicker, Accordion, SplitButton, Modal, Input, Select } from '../../components/ui'
+import { PageHeader, Button, Badge, Skeleton, EmptyState, TableFilter, Pagination, Tooltip as UITooltip, DatePicker, Accordion, SplitButton, Select } from '../../components/ui'
 import {
   groupAssets, groupLiabilities, groupRevenue, groupExpenses,
   groupTrialBalance, sumRows,
@@ -683,6 +683,23 @@ function FinancialReportProgressStrip() {
   )
 }
 
+/* These four statements are landlord-specific — the agency-wide variant has
+ * been retired, so a landlord must be picked before they render. */
+function SelectLandlordPrompt({ reportName }: { reportName: string }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+      <div className="w-14 h-14 rounded-2xl bg-primary-50 flex items-center justify-center mx-auto mb-4">
+        <Building2 className="w-7 h-7 text-primary-600" />
+      </div>
+      <h3 className="text-lg font-semibold text-gray-900">Select a landlord</h3>
+      <p className="text-sm text-gray-500 mt-1.5 max-w-md mx-auto">
+        The {reportName} is prepared per landlord. Pick a landlord in the filter bar
+        above to generate it.
+      </p>
+    </div>
+  )
+}
+
 /* ─── Global Landlord + Property filter bar ─── */
 function ReportFilterBar() {
   const { landlordId, propertyId, setLandlordId, setPropertyId } = useReportFilters()
@@ -727,7 +744,7 @@ function ReportFilterBar() {
         <Filter className="w-4 h-4 text-gray-400 mb-3" />
         <AsyncSelect
           label="Landlord"
-          placeholder="All landlords (agency-wide)"
+          placeholder="Select a landlord…"
           value={landlordId}
           onChange={(val) => {
             setLandlordId(String(val))
@@ -1076,10 +1093,10 @@ export default function Reports() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {activeReport === 'trial-balance' && <TrialBalanceReport />}
-              {activeReport === 'income-statement' && <IncomeStatementReport />}
-              {activeReport === 'balance-sheet' && <BalanceSheetReport />}
-              {activeReport === 'cash-flow' && <CashFlowReport />}
+              {activeReport === 'trial-balance' && (landlordId ? <TrialBalanceReport /> : <SelectLandlordPrompt reportName="Trial Balance" />)}
+              {activeReport === 'income-statement' && (landlordId ? <IncomeStatementReport /> : <SelectLandlordPrompt reportName="Income Statement" />)}
+              {activeReport === 'balance-sheet' && (landlordId ? <BalanceSheetReport /> : <SelectLandlordPrompt reportName="Balance Sheet" />)}
+              {activeReport === 'cash-flow' && (landlordId ? <CashFlowReport /> : <SelectLandlordPrompt reportName="Cash Flow Statement" />)}
               {activeReport === 'aged-analysis' && <AgedAnalysisReport />}
               {activeReport === 'vacancy' && <VacancyReport />}
               {activeReport === 'rent-rollover' && <RentRolloverReport />}
@@ -2482,7 +2499,6 @@ function BalanceSheetNote({ number, title, meta, children }: {
 
 function CashFlowReport() {
   const { landlordId, propertyId, periodStart, periodEnd } = useReportFilters()
-  const queryClient = useQueryClient()
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['cash-flow', landlordId, propertyId, periodStart, periodEnd],
     queryFn: () => reportsApi.cashFlow({
@@ -2499,54 +2515,6 @@ function CashFlowReport() {
 
   const netChange = data?.summary?.net_change_in_cash || 0
   const isPositive = netChange >= 0
-
-  // --- Post Owner's Withdrawal (remittance to landlord) ---
-  // Available only when the report is scoped to a single landlord — that's
-  // the "owner" being paid. Records a paid landlord_payment expense, which
-  // shows up as the Financing > Owner withdrawals line.
-  const [withdrawModal, setWithdrawModal] = useState(false)
-  const [withdrawForm, setWithdrawForm] = useState({
-    amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '',
-  })
-  const { data: cfBankAccounts } = useQuery({
-    queryKey: ['cashflow-bank-accounts'],
-    queryFn: () => bankAccountApi.list({ page_size: 200 }).then(r => r.data.results || r.data),
-    enabled: withdrawModal,
-  })
-  const { data: cfLandlord } = useQuery({
-    queryKey: ['cashflow-landlord', landlordId],
-    queryFn: () => landlordApi.get(Number(landlordId)).then(r => r.data),
-    enabled: withdrawModal && !!landlordId,
-  })
-  const withdrawMutation = useMutation({
-    mutationFn: (payload: any) => expenseApi.create(payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['cash-flow'] })
-      queryClient.invalidateQueries({ queryKey: ['balance-sheet'] })
-      toast.success("Owner's withdrawal posted")
-      setWithdrawModal(false)
-      setWithdrawForm({ amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '' })
-      refetch()
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.detail || "Failed to post withdrawal"),
-  })
-  const submitWithdrawal = () => {
-    const amt = Number(withdrawForm.amount)
-    if (!amt || amt <= 0) { toast.error('Enter a valid amount'); return }
-    withdrawMutation.mutate({
-      expense_type: 'landlord_payment',
-      expense_kind: 'cash',
-      payee_type: 'landlord',
-      payee_id: Number(landlordId),
-      payee_name: cfLandlord?.name || "Landlord remittance",
-      landlord: Number(landlordId),
-      amount: amt,
-      date: withdrawForm.date,
-      description: withdrawForm.description || "Owner's withdrawal (remittance)",
-      ...(withdrawForm.bank_account ? { bank_account: Number(withdrawForm.bank_account) } : {}),
-      auto_post: true,
-    })
-  }
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
@@ -2763,21 +2731,13 @@ function CashFlowReport() {
                 <ArrowDownLeft className="w-4 h-4 text-rose-500" />
                 Owner withdrawals
               </span>
-              <div className="flex items-center gap-3">
-                {landlordId && (
-                  <Button size="sm" variant="outline" className="gap-1.5 !py-1" onClick={() => setWithdrawModal(true)}>
-                    <Plus className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Post withdrawal</span>
-                  </Button>
-                )}
-                {isLoading ? (
-                  <div className="h-5 w-24 bg-rose-100 rounded animate-pulse" />
-                ) : (
-                  <span className="font-semibold text-rose-700 tabular-nums">
-                    ({formatCurrency(data?.financing_activities?.outflows?.owner_withdrawals || 0)})
-                  </span>
-                )}
-              </div>
+              {isLoading ? (
+                <div className="h-5 w-24 bg-rose-100 rounded animate-pulse" />
+              ) : (
+                <span className="font-semibold text-rose-700 tabular-nums">
+                  ({formatCurrency(data?.financing_activities?.outflows?.owner_withdrawals || 0)})
+                </span>
+              )}
             </div>
           </div>
           <div className="px-5 py-4 bg-purple-100 flex justify-between font-bold text-purple-800">
@@ -2830,59 +2790,6 @@ function CashFlowReport() {
           </div>
         </div>
       </div>
-
-      <Modal
-        open={withdrawModal}
-        onClose={() => setWithdrawModal(false)}
-        title="Post Owner's Withdrawal"
-        icon={ArrowDownLeft}
-      >
-        <form onSubmit={(e) => { e.preventDefault(); submitWithdrawal() }} className="space-y-4">
-          <p className="text-sm text-gray-500">
-            Records a cash remittance paid to the landlord. It posts immediately and
-            appears here under Financing → Owner withdrawals, and as Drawings on the
-            Balance Sheet equity reconciliation.
-          </p>
-          <Input
-            label="Amount"
-            type="number"
-            min="0"
-            step="0.01"
-            value={withdrawForm.amount}
-            onChange={(e) => setWithdrawForm({ ...withdrawForm, amount: e.target.value })}
-            required
-          />
-          <DatePicker
-            label="Date"
-            value={withdrawForm.date}
-            onChange={(v) => setWithdrawForm({ ...withdrawForm, date: v })}
-            required
-          />
-          <Select
-            label="Bank Account (optional)"
-            value={withdrawForm.bank_account}
-            onChange={(e) => setWithdrawForm({ ...withdrawForm, bank_account: e.target.value })}
-            options={[
-              { value: '', label: 'No bank account' },
-              ...((cfBankAccounts || []).map((b: any) => ({ value: String(b.id), label: `${b.name} (${b.currency})` }))),
-            ]}
-          />
-          <Input
-            label="Description (optional)"
-            value={withdrawForm.description}
-            onChange={(e) => setWithdrawForm({ ...withdrawForm, description: e.target.value })}
-            placeholder="Owner's withdrawal (remittance)"
-          />
-          <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setWithdrawModal(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" className="flex-1" disabled={withdrawMutation.isPending}>
-              {withdrawMutation.isPending ? 'Posting…' : 'Post Withdrawal'}
-            </Button>
-          </div>
-        </form>
-      </Modal>
     </div>
   )
 }
