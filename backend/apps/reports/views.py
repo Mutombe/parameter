@@ -1026,15 +1026,21 @@ class IncomeStatementView(APIView):
             grouped = expense_qs.values(
                 'expense_category__name', 'expense_category__gl_account__code',
                 'expense_category__gl_account__account_type', 'expense_kind',
+                'expense_type', 'clears_payable',
             ).annotate(t=Sum('amount')).order_by('expense_category__name', 'expense_kind')
             for row in grouped:
                 amt = row['t'] or Decimal('0')
                 if amt == 0:
                     continue
-                # Skip capital / balance-sheet expenditures — anything booked
-                # to a GL account that resolves (by its code) to an asset or
-                # liability belongs on the Balance Sheet, not the P&L
-                # (e.g. Computer Equipment 3000, Mortgage 7000).
+                # Only true EXPENSES land on the Income Statement. Expenditures
+                # that are balance-sheet movements are excluded here (they still
+                # appear on Income & Expenditure as cash outflows):
+                #   • owner payments / remittances (landlord_payment) — drawings
+                #   • supplier-debt settlements (clears_payable) — reduce a payable
+                #   • capital / asset & liability GL accounts (e.g. Computer
+                #     Equipment 3000, Mortgage 7000) by code category
+                if row['expense_type'] == 'landlord_payment' or row['clears_payable']:
+                    continue
                 gl_code = row['expense_category__gl_account__code']
                 gl_type = row['expense_category__gl_account__account_type']
                 if gl_code and derive_account_category(gl_code, gl_type) != 'expense':
@@ -2430,7 +2436,7 @@ class LandlordStatementView(APIView):
         # landlord's trust pocket, so they don't belong on this ledger.
         # Accruals show on the P&L (Income Statement) instead.
         prior_expense_qs = Expense.objects.filter(
-            payee_type='landlord', payee_id=landlord.id,
+            Q(landlord_id=landlord.id) | Q(payee_type='landlord', payee_id=landlord.id),
             status='paid', date__lt=start_date,
         ).exclude(expense_kind='non_cash')
         if currency:
@@ -2448,7 +2454,7 @@ class LandlordStatementView(APIView):
         ).order_by('date')
 
         expense_qs = Expense.objects.filter(
-            payee_type='landlord', payee_id=landlord.id,
+            Q(landlord_id=landlord.id) | Q(payee_type='landlord', payee_id=landlord.id),
             status='paid',
             date__gte=start_date, date__lte=end_date,
         ).exclude(expense_kind='non_cash')
@@ -4433,7 +4439,7 @@ class IncomeExpenditureReportView(APIView):
         # opening-balance and period totals so reported expenditure reflects
         # actual cash movements out of the landlord's funds.
         prior_expense_qs = Expense.objects.filter(
-            payee_type='landlord', payee_id=landlord.id,
+            Q(landlord_id=landlord.id) | Q(payee_type='landlord', payee_id=landlord.id),
             status='paid', date__lt=start_date,
         ).exclude(expense_kind='non_cash')
         if currency:
@@ -4453,7 +4459,7 @@ class IncomeExpenditureReportView(APIView):
         period_receipts = list(period_receipt_qs)
 
         period_expense_qs = Expense.objects.filter(
-            payee_type='landlord', payee_id=landlord.id,
+            Q(landlord_id=landlord.id) | Q(payee_type='landlord', payee_id=landlord.id),
             status='paid',
             date__gte=start_date, date__lte=end_date,
         ).exclude(expense_kind='non_cash')

@@ -1188,7 +1188,7 @@ class Expense(SoftDeleteModel):
             from apps.masterfile.models import Landlord
             landlord_obj = Landlord.objects.filter(id=self.payee_id).first()
 
-        if landlord_obj and not is_non_cash and not self.clears_payable:
+        if landlord_obj and not is_non_cash:
             # Explicit pick on the expense wins over the category default,
             # so users can override which trust pocket is deducted (e.g. a
             # maintenance expense funded out of the deposit pocket).
