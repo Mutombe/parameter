@@ -1542,6 +1542,12 @@ class BalanceSheetView(APIView):
                     'breakdown': [],
                     'description': 'Accrued expenses awaiting payment',
                 },
+                'accounts_payable': {
+                    'name': 'Accounts Payable',
+                    'total': Decimal('0'),
+                    'breakdown': [],
+                    'description': 'Amounts owed to suppliers (unpaid supplier expenditure)',
+                },
                 'other_current_liabilities': {
                     'name': 'Other Current Liabilities',
                     'total': Decimal('0'),
@@ -1549,6 +1555,34 @@ class BalanceSheetView(APIView):
                     'description': 'Liability accounts classified as Other Current Liabilities at creation',
                 },
             }
+
+            # --- Accounts Payable: per-supplier balances owed ---
+            # A supplier's balance is the expenditure recorded against them
+            # (billed) that this landlord's funds have not yet paid — i.e.
+            # unpaid (pending/approved) expenses tied to a supplier. Scoped to
+            # the landlord whose funds settle them.
+            if landlord_id:
+                _ap_rows = (
+                    Expense.objects.filter(
+                        Q(landlord_id=landlord_id) | Q(payee_type='landlord', payee_id=landlord_id),
+                        supplier__isnull=False,
+                        status__in=['pending', 'approved'],
+                        date__lte=as_of_date,
+                    )
+                    .values('supplier__code', 'supplier__name')
+                    .annotate(t=Sum('amount'))
+                    .order_by('supplier__name')
+                )
+                for _r in _ap_rows:
+                    _amt = _r['t'] or Decimal('0')
+                    if _amt == 0:
+                        continue
+                    liability_buckets['accounts_payable']['total'] += _amt
+                    liability_buckets['accounts_payable']['breakdown'].append({
+                        'code': _r['supplier__code'] or '',
+                        'name': _r['supplier__name'] or 'Supplier',
+                        'balance': float(_amt),
+                    })
 
             for row in agg:
                 acct_type = row['account__account_type']
@@ -1640,6 +1674,7 @@ class BalanceSheetView(APIView):
                 _finalize(liability_buckets['funds_owed_by_trust']),
                 _finalize(liability_buckets['lessees_prepayments']),
                 _finalize(liability_buckets['accruals']),
+                _finalize(liability_buckets['accounts_payable']),
                 _finalize(liability_buckets['other_current_liabilities']),
             ]
 
