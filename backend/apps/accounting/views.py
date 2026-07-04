@@ -1638,7 +1638,7 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
         txn_qs = account.transactions.filter(date__gte=start, date__lte=end)
         if view_mode == 'consolidated':
             txn_qs = txn_qs.filter(is_consolidated=False)
-        txn_qs = txn_qs.order_by('date', 'transaction_number', 'id')
+        txn_qs = txn_qs.select_related('journal_entry').order_by('date', 'transaction_number', 'id')
 
         totals = txn_qs.aggregate(
             total_debits=Sum('debit_amount'),
@@ -1656,6 +1656,42 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
                 else (txn.credit_amount - txn.debit_amount)
             running += delta
             row['balance'] = str(running.quantize(Decimal('0.01')))
+
+        # --- Resolve the CONTRA account for each row (name + clickable link).
+        # For an expenditure out of a landlord pocket, the contra is where the
+        # cash went. When the source expense has a supplier, show the supplier
+        # (linked to its detail page); otherwise resolve the contra CODE to its
+        # GL/ledger account. Raw tags (JRN, OCT, …) are shown as-is.
+        from apps.billing.models import Expense as _Expense
+        _contra_codes = {t.contra_account for t in transactions if t.contra_account}
+        _coa_map = ({a.code: a for a in ChartOfAccount.objects.filter(code__in=_contra_codes)}
+                    if _contra_codes else {})
+        _src_ids = [
+            t.journal_entry.source_id for t in transactions
+            if t.journal_entry_id and t.journal_entry
+            and t.journal_entry.source_type == 'expense' and t.journal_entry.source_id
+        ]
+        _exp_map = ({e.id: e for e in _Expense.objects.filter(id__in=_src_ids)
+                     .select_related('supplier')} if _src_ids else {})
+        for txn, row in zip(transactions, txn_rows):
+            contra = txn.contra_account or ''
+            display, kind, link_id = '', '', None
+            supplier = None
+            je = txn.journal_entry
+            if je and je.source_type == 'expense' and je.source_id:
+                exp = _exp_map.get(je.source_id)
+                if exp and exp.supplier_id:
+                    supplier = exp.supplier
+            if supplier:
+                display, kind, link_id = supplier.name, 'supplier', supplier.id
+            elif contra in _coa_map:
+                _a = _coa_map[contra]
+                display, kind, link_id = _a.name, 'account', _a.id
+            else:
+                display = contra
+            row['contra_display'] = display
+            row['contra_kind'] = kind
+            row['contra_id'] = link_id
 
         # Closing balance = opening + every period movement = the running
         # balance after the last (latest-dated) transaction.

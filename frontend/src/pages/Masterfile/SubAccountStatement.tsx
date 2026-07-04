@@ -163,6 +163,7 @@ export default function SubAccountStatement() {
                   <tr className="bg-gray-50">
                     <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-[0.1em] px-6 py-3">Date</th>
                     <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-[0.1em] px-6 py-3">Ref</th>
+                    <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-[0.1em] px-6 py-3">Contra</th>
                     <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-[0.1em] px-6 py-3">Description</th>
                     <th className="text-right text-[10px] font-semibold text-sky-700 uppercase tracking-[0.1em] px-6 py-3">Debit</th>
                     <th className="text-right text-[10px] font-semibold text-emerald-700 uppercase tracking-[0.1em] px-6 py-3">Credit</th>
@@ -178,6 +179,20 @@ export default function SubAccountStatement() {
                       <tr key={idx} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-3 text-sm text-gray-600 tabular-nums">{txn.date || '—'}</td>
                         <td className="px-6 py-3 text-xs text-gray-500 font-mono">{txn.reference || txn.ref || '—'}</td>
+                        <td className="px-6 py-3 text-sm">
+                          {/* Contra shows where an expenditure went; blank for income (credits). */}
+                          {dr > 0 && txn.contra_display ? (
+                            txn.contra_kind === 'supplier' ? (
+                              <button onClick={() => navigate(`/dashboard/suppliers/${txn.contra_id}`)} className="text-primary-600 hover:underline text-left">{txn.contra_display}</button>
+                            ) : txn.contra_kind === 'account' ? (
+                              <button onClick={() => navigate(`/dashboard/global-accounts/${txn.contra_id}`)} className="text-primary-600 hover:underline text-left">{txn.contra_display}</button>
+                            ) : (
+                              <span className="text-gray-600">{txn.contra_display}</span>
+                            )
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </td>
                         <td className="px-6 py-3 text-sm text-gray-900">
                           <span className="flex items-center gap-1.5">
                             {txn.description || txn.narration || '—'}
@@ -199,20 +214,27 @@ export default function SubAccountStatement() {
                     )
                   })}
                 </tbody>
+                <tfoot>
+                  {/* Closing balance row — carries the debit/credit column
+                      totals alongside the closing balance, all in green. */}
+                  <tr className="bg-emerald-50 border-t-2 border-emerald-200 font-bold">
+                    <td colSpan={4} className="px-6 py-3 text-sm text-gray-700">Closing Balance</td>
+                    <td className="px-6 py-3 text-sm text-right tabular-nums text-emerald-700">
+                      {formatCurrency(Number(statement?.total_debits || 0))}
+                    </td>
+                    <td className="px-6 py-3 text-sm text-right tabular-nums text-emerald-700">
+                      {formatCurrency(Number(statement?.total_credits || 0))}
+                    </td>
+                    <td className={cn('px-6 py-3 text-sm text-right tabular-nums',
+                      Number(closingBalance) >= 0 ? 'text-emerald-700' : 'text-red-600')}>
+                      {formatCurrency(Number(closingBalance))}
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </>
           )}
         </div>
-
-        {/* Closing balance */}
-        {statement && (
-          <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
-            <span className="text-sm font-medium text-gray-600">Closing Balance</span>
-            <span className={cn('text-sm font-bold tabular-nums', Number(closingBalance) >= 0 ? 'text-emerald-600' : 'text-red-600')}>
-              {formatCurrency(Number(closingBalance))}
-            </span>
-          </div>
-        )}
       </div>
     </div>
   )
