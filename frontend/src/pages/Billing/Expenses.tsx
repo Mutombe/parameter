@@ -185,7 +185,7 @@ export default function Expenses() {
   // Post Owner's Withdrawal — a cash remittance paid to a landlord (drawings).
   const [showWithdraw, setShowWithdraw] = useState(false)
   const [withdrawForm, setWithdrawForm] = useState({
-    landlord: '', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '',
+    landlord: '', sub_account_category: 'rent', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '',
   })
 
   const debouncedSearch = useDebounce(searchQuery, 300)
@@ -585,12 +585,13 @@ export default function Expenses() {
       queryClient.invalidateQueries({ queryKey: ['expenses'] })
       showToast.success("Owner's withdrawal posted")
       setShowWithdraw(false)
-      setWithdrawForm({ landlord: '', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '' })
+      setWithdrawForm({ landlord: '', sub_account_category: 'rent', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '' })
     },
     onError: (err: any) => showToast.error(parseApiError(err, 'Failed to post withdrawal')),
   })
   const submitWithdrawal = () => {
     if (!withdrawForm.landlord) { showToast.error('Pick the landlord being paid.'); return }
+    if (!withdrawForm.sub_account_category) { showToast.error('Pick the sub-account pocket to deduct from.'); return }
     const amt = Number(withdrawForm.amount)
     if (!amt || amt <= 0) { showToast.error('Enter a valid amount.'); return }
     const ll = landlords.find((l: any) => String(l.id) === String(withdrawForm.landlord))
@@ -601,6 +602,8 @@ export default function Expenses() {
       payee_id: Number(withdrawForm.landlord),
       payee_name: ll?.name || 'Landlord remittance',
       landlord: Number(withdrawForm.landlord),
+      // The trust pocket the remittance is drawn from.
+      sub_account_category: withdrawForm.sub_account_category,
       amount: amt,
       date: withdrawForm.date,
       description: withdrawForm.description || "Owner's withdrawal (remittance)",
@@ -1798,6 +1801,14 @@ export default function Expenses() {
             onChange={(val) => setWithdrawForm({ ...withdrawForm, landlord: String(val) })}
             options={landlords.map((l: any) => ({ value: l.id, label: l.name, description: l.code || '' }))}
             searchable
+            required
+          />
+          <Select
+            label="Sub-account pocket (deducted from)"
+            value={withdrawForm.sub_account_category}
+            onChange={(e) => setWithdrawForm({ ...withdrawForm, sub_account_category: e.target.value })}
+            options={subAccountCategoryOptions}
+            hint="Which of the landlord's trust pockets the remittance is drawn from"
             required
           />
           <Input
