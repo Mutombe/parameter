@@ -7,10 +7,6 @@ import { supplierApi, expenseApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { PageHeader, Button, Skeleton, EmptyState, Badge } from '../../components/ui'
 
-const statusBadge: Record<string, any> = {
-  paid: 'success', approved: 'info', pending: 'warning', cancelled: 'danger',
-}
-
 export default function SupplierDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -30,10 +26,21 @@ export default function SupplierDetail() {
 
   const sum = (pred: (e: any) => boolean) =>
     expenses.filter(pred).reduce((t, e) => t + Number(e.amount || 0), 0)
-  const totalPaid = sum(e => e.status === 'paid')
-  // Money owed to the supplier — recorded but not yet paid.
-  const outstanding = sum(e => e.status === 'pending' || e.status === 'approved')
-  const totalBilled = sum(e => e.status !== 'cancelled')
+  const notCancelled = (e: any) => e.status !== 'cancelled'
+  // Non-cash entries are invoices raised (amounts owed); cash entries are
+  // actual payments made from cash/bank.
+  const totalBilled = sum(e => notCancelled(e) && e.expense_kind === 'non_cash')
+  const totalPaid = sum(e => notCancelled(e) && e.expense_kind !== 'non_cash')
+  const outstanding = totalBilled - totalPaid
+
+  // Display helpers: an invoice raised via non-cash reads "Owed"; a cash
+  // settlement reads "Paid". METHOD shows how it was settled.
+  const rowStatus = (e: any) =>
+    e.status === 'cancelled' ? 'Cancelled' : (e.expense_kind === 'non_cash' ? 'Owed' : 'Paid')
+  const rowStatusVariant = (e: any) =>
+    e.status === 'cancelled' ? 'danger' : (e.expense_kind === 'non_cash' ? 'warning' : 'success')
+  const rowMethod = (e: any) =>
+    e.expense_kind === 'non_cash' ? 'Non-cash' : (e.bank_account_name || 'Cash')
 
   return (
     <div className="space-y-6">
@@ -89,7 +96,8 @@ export default function SupplierDetail() {
               <Detail icon={Mail} label="Email" value={supplier.email} />
               <Detail icon={Phone} label="Phone" value={supplier.phone} />
               <Detail icon={MapPin} label="Address" value={supplier.address} />
-              <Detail icon={FileText} label="Tax ID / VAT" value={supplier.tax_id} />
+              <Detail icon={FileText} label="VAT Number" value={supplier.tax_id} />
+              <Detail icon={FileText} label="TIN Number" value={supplier.tin_number} />
               <Detail icon={Wallet} label="Default Expenditure Category" value={supplier.default_expense_category_name} />
             </div>
             {supplier.notes && (
@@ -120,6 +128,7 @@ export default function SupplierDetail() {
                       <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Number</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Method</th>
                       <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
                     </tr>
                   </thead>
@@ -133,9 +142,10 @@ export default function SupplierDetail() {
                         <td className="px-5 py-3 text-gray-600 whitespace-nowrap">{formatDate(e.date)}</td>
                         <td className="px-5 py-3 font-medium text-primary-600 whitespace-nowrap">{e.expense_number}</td>
                         <td className="px-5 py-3 text-gray-600 max-w-xs truncate">{e.description || e.expense_category_name || '—'}</td>
-                        <td className="px-5 py-3"><Badge variant={statusBadge[e.status] || 'default'} className="capitalize">{e.status}</Badge></td>
+                        <td className="px-5 py-3"><Badge variant={rowStatusVariant(e)}>{rowStatus(e)}</Badge></td>
+                        <td className="px-5 py-3 text-gray-600 whitespace-nowrap">{rowMethod(e)}</td>
                         <td className={cn('px-5 py-3 text-right tabular-nums font-semibold',
-                          e.status === 'paid' ? 'text-gray-900' : 'text-rose-600')}>
+                          e.expense_kind === 'non_cash' ? 'text-rose-600' : 'text-gray-900')}>
                           {formatCurrency(e.amount)}
                         </td>
                       </tr>

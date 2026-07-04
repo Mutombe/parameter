@@ -39,7 +39,7 @@ class SupplierSerializer(serializers.ModelSerializer):
         model = Supplier
         fields = [
             'id', 'code', 'name', 'email', 'phone', 'address',
-            'tax_id', 'default_expense_category', 'default_expense_category_name',
+            'tax_id', 'tin_number', 'default_expense_category', 'default_expense_category_name',
             'is_active', 'notes', 'created_at', 'updated_at',
         ]
         read_only_fields = ['code', 'created_at', 'updated_at']

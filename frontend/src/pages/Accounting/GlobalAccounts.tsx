@@ -372,7 +372,7 @@ function SuppliersList() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<any | null>(null)
   const [form, setForm] = useState({
-    name: '', email: '', phone: '', address: '', tax_id: '', notes: '',
+    name: '', email: '', phone: '', address: '', tax_id: '', tin_number: '', notes: '',
   })
 
   const { data: suppliers = [], isLoading } = useQuery({
@@ -415,7 +415,7 @@ function SuppliersList() {
   const resetForm = () => {
     setShowForm(false)
     setEditing(null)
-    setForm({ name: '', email: '', phone: '', address: '', tax_id: '', notes: '' })
+    setForm({ name: '', email: '', phone: '', address: '', tax_id: '', tin_number: '', notes: '' })
   }
 
   const startEdit = (s: any) => {
@@ -426,6 +426,7 @@ function SuppliersList() {
       phone: s.phone || '',
       address: s.address || '',
       tax_id: s.tax_id || '',
+      tin_number: s.tin_number || '',
       notes: s.notes || '',
     })
     setShowForm(true)
@@ -479,7 +480,7 @@ function SuppliersList() {
               <th className="text-left px-6 py-3 font-medium text-gray-500 uppercase tracking-wider text-xs">Code</th>
               <th className="text-left px-6 py-3 font-medium text-gray-500 uppercase tracking-wider text-xs">Name</th>
               <th className="text-left px-6 py-3 font-medium text-gray-500 uppercase tracking-wider text-xs">Contact</th>
-              <th className="text-left px-6 py-3 font-medium text-gray-500 uppercase tracking-wider text-xs">Tax ID</th>
+              <th className="text-left px-6 py-3 font-medium text-gray-500 uppercase tracking-wider text-xs">VAT Number</th>
               <th className="px-6 py-3 w-24"></th>
             </tr>
           </thead>
@@ -558,11 +559,18 @@ function SuppliersList() {
             value={form.address}
             onChange={(e) => setForm({ ...form, address: e.target.value })}
           />
-          <Input
-            label="Tax ID / VAT (optional)"
-            value={form.tax_id}
-            onChange={(e) => setForm({ ...form, tax_id: e.target.value })}
-          />
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="VAT Number (optional)"
+              value={form.tax_id}
+              onChange={(e) => setForm({ ...form, tax_id: e.target.value })}
+            />
+            <Input
+              label="TIN Number (optional)"
+              value={form.tin_number}
+              onChange={(e) => setForm({ ...form, tin_number: e.target.value })}
+            />
+          </div>
           <div className="flex justify-end gap-3 pt-4 border-t">
             <Button type="button" variant="ghost" onClick={resetForm}>Cancel</Button>
             <Button type="submit" disabled={saveMutation.isPending}>

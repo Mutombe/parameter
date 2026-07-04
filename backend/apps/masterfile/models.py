@@ -716,9 +716,10 @@ class Supplier(SoftDeleteModel):
     phone = models.CharField(max_length=20, blank=True)
     address = models.TextField(blank=True)
 
-    # Tax info — VAT / TIN / etc., free-form so users can put whatever
-    # identifier their jurisdiction requires.
+    # Tax info. `tax_id` holds the VAT number; `tin_number` holds the Tax
+    # Identifier Number. Both free-form per jurisdiction.
     tax_id = models.CharField(max_length=50, blank=True)
+    tin_number = models.CharField(max_length=50, blank=True)
 
     # When set, picking this supplier in the expense modal pre-fills the
     # category. e.g. City of Harare → 'Rates'.
