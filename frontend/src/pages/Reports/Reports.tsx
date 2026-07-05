@@ -4974,6 +4974,8 @@ function IncomeExpenditureReport() {
     const d = new Date(); return `${d.getFullYear()}-01-01`
   })
   const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10))
+  // Whether the "Supplier Payments" line is expanded to show each supplier.
+  const [supplierPaymentsOpen, setSupplierPaymentsOpen] = useState(false)
 
   // Seed the global filter from ?landlord_id=… on first mount (deep-link
   // from LandlordDetail). Won't override if the global filter already has
@@ -5003,6 +5005,8 @@ function IncomeExpenditureReport() {
   const managementType: string = data?.management_type || 'rental'
   const incomeCategoryLabels: any[] = data?.income_category_labels || []
   const expenseCategoryLabels: any[] = data?.expense_category_labels || []
+  const supplierPaymentsKey: string = data?.supplier_payments_key || 'Supplier Payments'
+  const supplierPaymentsBreakdown: any[] = data?.supplier_payments_breakdown || []
   const incomeSummary: any = data?.income_summary || {}
   const workingCapital: any = data?.working_capital || {}
   const tenants: any[] = incomeSummary?.tenants || []
@@ -5167,15 +5171,42 @@ function IncomeExpenditureReport() {
                     <td colSpan={months.length + 2} className="px-4 py-2 text-xs font-bold text-red-800 uppercase tracking-wider">Expenditure</td>
                   </tr>
                   {/* Expense category rows */}
-                  {expenseCategoryLabels.map(cat => (
-                    <tr key={cat.key} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 text-gray-700 sticky left-0 bg-white pl-8">{cat.label}</td>
-                      {months.map(m => (
-                        <td key={m.month} className="px-4 py-2.5 text-right tabular-nums text-gray-900">{fmtNum(m.expenditure_categories?.[cat.key])}</td>
-                      ))}
-                      <td className="px-4 py-2.5 text-right tabular-nums bg-gray-50 font-bold text-gray-900">{fmtNum(consolidated.expenditure_categories?.[cat.key])}</td>
-                    </tr>
-                  ))}
+                  {expenseCategoryLabels.map(cat => {
+                    // "Supplier Payments" collapses/expands to reveal each
+                    // supplier that was paid; other categories are plain rows.
+                    const isSupplierPayments = cat.key === supplierPaymentsKey && supplierPaymentsBreakdown.length > 0
+                    return (
+                      <Fragment key={cat.key}>
+                        <tr className={cn('hover:bg-gray-50', isSupplierPayments && 'cursor-pointer')}
+                          onClick={isSupplierPayments ? () => setSupplierPaymentsOpen(o => !o) : undefined}>
+                          <td className="px-4 py-2.5 text-gray-700 sticky left-0 bg-white pl-8">
+                            {isSupplierPayments ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                <ChevronRight className={cn('w-3.5 h-3.5 text-gray-400 transition-transform', supplierPaymentsOpen && 'rotate-90')} />
+                                {cat.label}
+                                <span className="text-[10px] text-gray-400">({supplierPaymentsBreakdown.length})</span>
+                              </span>
+                            ) : cat.label}
+                          </td>
+                          {months.map(m => (
+                            <td key={m.month} className="px-4 py-2.5 text-right tabular-nums text-gray-900">{fmtNum(m.expenditure_categories?.[cat.key])}</td>
+                          ))}
+                          <td className="px-4 py-2.5 text-right tabular-nums bg-gray-50 font-bold text-gray-900">{fmtNum(consolidated.expenditure_categories?.[cat.key])}</td>
+                        </tr>
+                        {isSupplierPayments && supplierPaymentsOpen && supplierPaymentsBreakdown.map((s: any) => (
+                          <tr key={`sup-${s.supplier}`} className="hover:bg-gray-50">
+                            <td className="px-4 py-1.5 text-gray-500 text-xs sticky left-0 bg-white pl-12">
+                              <span className="text-gray-300 mr-2">·</span>{s.supplier}
+                            </td>
+                            {months.map(m => (
+                              <td key={m.month} className="px-4 py-1.5 text-right tabular-nums text-gray-300 text-xs">—</td>
+                            ))}
+                            <td className="px-4 py-1.5 text-right tabular-nums bg-gray-50/60 text-gray-700 text-xs font-medium">{fmtNum(s.amount)}</td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    )
+                  })}
                   {/* Management Commission — aggregate row */}
                   <tr className="hover:bg-gray-50">
                     <td className="px-4 py-2.5 text-gray-700 sticky left-0 bg-white pl-8">Management Commission (inc VAT)</td>

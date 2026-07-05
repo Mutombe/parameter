@@ -222,13 +222,13 @@ export default function ExpenseCategories() {
       <nav className="flex items-center gap-2 text-sm text-gray-500 mb-4">
         <button onClick={() => navigate('/dashboard')} className="hover:text-gray-900 transition-colors">Dashboard</button>
         <span>/</span>
-        <span className="text-gray-900 font-medium">Expense Accounts</span>
+        <span className="text-gray-900 font-medium">Expenditure Accounts</span>
       </nav>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Expense Accounts</h1>
-          <p className="text-gray-500 mt-1">Manage expense categories for tracking costs</p>
+          <h1 className="text-2xl font-bold text-gray-900">Expenditure Accounts</h1>
+          <p className="text-gray-500 mt-1">Manage expenditure categories for tracking costs</p>
         </div>
         <button
           onClick={() => { setEditingCategory(null); setShowModal(true) }}

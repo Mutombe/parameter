@@ -4521,8 +4521,20 @@ class IncomeExpenditureReportView(APIView):
         if currency:
             period_expense_qs = period_expense_qs.filter(currency=currency)
         period_expenses = list(
-            period_expense_qs.select_related('expense_category').order_by('date')
+            period_expense_qs.select_related('expense_category', 'supplier').order_by('date')
         )
+
+        # Supplier-debt settlements (clears_payable) are grouped under a single
+        # "Supplier Payments" expenditure line, with a per-supplier breakdown so
+        # the report can expand to show exactly who was paid.
+        SUPPLIER_PAYMENTS_KEY = 'Supplier Payments'
+        supplier_payments_breakdown: dict = {}
+        for e in period_expenses:
+            if getattr(e, 'clears_payable', False):
+                sname = (e.supplier.name if e.supplier_id and e.supplier
+                         else (e.payee_name or 'Supplier'))
+                supplier_payments_breakdown[sname] = (
+                    supplier_payments_breakdown.get(sname, Decimal('0')) + (e.amount or Decimal('0')))
 
         # ── 3. Build per-month data ─────────────────────────────────
         months = []
@@ -4533,8 +4545,12 @@ class IncomeExpenditureReportView(APIView):
         all_commission_types: set = set()
 
         def _get_expense_key(e):
-            """Return a stable category key for an expense, preferring
-            expense_category.name if set, falling back to expense_type."""
+            """Return a stable category key for an expense. Supplier-debt
+            settlements collapse to one "Supplier Payments" line (broken down
+            per-supplier separately); otherwise prefer the expense_category
+            name, falling back to expense_type."""
+            if getattr(e, 'clears_payable', False):
+                return SUPPLIER_PAYMENTS_KEY
             if e.expense_category_id and e.expense_category:
                 return e.expense_category.name
             return e.expense_type
@@ -5007,6 +5023,15 @@ class IncomeExpenditureReportView(APIView):
             'commission_rate': commission_rate,
             'income_category_labels': income_category_labels,
             'expense_category_labels': expense_category_labels,
+            # Per-supplier split of the "Supplier Payments" expenditure line,
+            # so the UI can expand it to show each supplier that was paid.
+            'supplier_payments_key': SUPPLIER_PAYMENTS_KEY,
+            'supplier_payments_breakdown': [
+                {'supplier': name, 'amount': float(amt)}
+                for name, amt in sorted(supplier_payments_breakdown.items(),
+                                        key=lambda kv: -kv[1])
+                if amt
+            ],
             'months': months,
             'consolidated': consolidated,
             'income_summary': income_summary,

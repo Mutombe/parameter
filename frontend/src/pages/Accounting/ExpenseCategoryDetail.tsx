@@ -36,13 +36,13 @@ export default function ExpenseCategoryDetail() {
       <nav className="flex items-center gap-2 text-sm text-gray-500">
         <button onClick={() => navigate('/dashboard')} className="hover:text-gray-900">Dashboard</button>
         <span>/</span>
-        <button onClick={() => navigate('/dashboard/expense-categories')} className="hover:text-gray-900">Expense Accounts</button>
+        <button onClick={() => navigate('/dashboard/expense-categories')} className="hover:text-gray-900">Expenditure Accounts</button>
         <span>/</span>
         <span className="text-gray-900 font-medium">{category?.name || '…'}</span>
       </nav>
 
       <button onClick={() => navigate('/dashboard/expense-categories')} className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900">
-        <ArrowLeft className="w-4 h-4" /> Back to Expense Accounts
+        <ArrowLeft className="w-4 h-4" /> Back to Expenditure Accounts
       </button>
 
       {/* Header / config */}
