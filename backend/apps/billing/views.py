@@ -1065,6 +1065,18 @@ class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
             qs = qs.filter(date__lte=end)
         return qs
 
+    def perform_destroy(self, instance):
+        """Reverse the expense's ledger footprint before (soft-)deleting it, so
+        a deleted expense never leaves a phantom balance on the landlord's
+        statement or in the GL."""
+        try:
+            instance.reverse_postings(user=self.request.user)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                'Failed to reverse postings for expense %s on delete', instance.pk)
+        super().perform_destroy(instance)
+
     def perform_create(self, serializer):
         """Save the expense; optionally auto-post to ledger when the form
         passed `auto_post=true`. Auto-posting takes the expense straight

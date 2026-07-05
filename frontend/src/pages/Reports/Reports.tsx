@@ -196,8 +196,8 @@ const reportCategories: ReportCategory[] = [
     reports: [
       { id: 'vacancy', name: 'Vacancy Report', icon: Home, desc: 'Unit occupancy', color: 'text-amber-600', bgColor: 'bg-amber-50 dark:bg-amber-900/30' },
       { id: 'rent-rollover', name: 'Rent Rollover', icon: ArrowRight, desc: 'Balance rollover', color: 'text-orange-600', bgColor: 'bg-orange-50 dark:bg-orange-900/30' },
-      { id: 'tenant-account', name: 'Tenant Account', icon: Users, desc: 'Tenant transactions', color: 'text-sky-600', bgColor: 'bg-sky-50 dark:bg-sky-900/30' },
-      { id: 'landlord-account', name: 'Landlord Account', icon: PiBuildingApartmentLight, desc: 'Landlord statement', color: 'text-violet-600', bgColor: 'bg-violet-50 dark:bg-violet-900/30' },
+      // Tenant Account & Landlord Account statements are reached directly from
+      // the tenant/landlord detail pages, so they're not duplicated here.
       { id: 'income-expenditure', name: 'Income & Expenditure', icon: BarChart3, desc: 'Monthly income vs expenses', color: 'text-green-600', bgColor: 'bg-green-50 dark:bg-green-900/30' },
     ],
   },
@@ -1100,8 +1100,7 @@ export default function Reports() {
               {activeReport === 'aged-analysis' && <AgedAnalysisReport />}
               {activeReport === 'vacancy' && <VacancyReport />}
               {activeReport === 'rent-rollover' && <RentRolloverReport />}
-              {activeReport === 'tenant-account' && <TenantAccountReport />}
-              {activeReport === 'landlord-account' && <LandlordAccountReport />}
+              {/* Tenant/Landlord Account statements live on their detail pages. */}
               {activeReport === 'commission-property' && <CommissionByPropertyReport />}
               {activeReport === 'commission-income' && <CommissionByIncomeReport />}
               {activeReport === 'bank-to-income' && <BankToIncomeReport />}

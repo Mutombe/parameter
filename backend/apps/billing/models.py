@@ -831,9 +831,12 @@ class Receipt(SoftDeleteModel):
                 cma_ref = f'{cma_prefix}{cma_num:04d}'
 
                 # Activity 4 Txn 9: Dr Landlord Account (gross commission deducted)
+                # Contra is the commission account (Agent Commission, 4100) —
+                # NOT the per-type payable code (2000/0x0), which collided with
+                # unrelated user accounts and mislabelled the statement.
                 SubsidiaryTransaction.create_entry(
                     account=landlord_sub, date=self.date,
-                    contra_account=commission_expense_contra,
+                    contra_account=commission_revenue_account.code,
                     reference=cma_ref,
                     description=f'Rent Commission-{base_desc}',
                     debit_amount=gross_commission,
@@ -1214,6 +1217,42 @@ class Expense(SoftDeleteModel):
         self.save()
 
         return journal
+
+    def reverse_postings(self, user=None):
+        """Undo this expense's ledger footprint — the GL journal AND the
+        landlord sub-account transaction(s) it created. Called when a posted
+        expense is deleted so it doesn't leave phantom balances on the
+        landlord's statement. Idempotent: a journal already reversed, or a
+        sub-transaction already reversed, is skipped.
+        """
+        from apps.accounting.models import SubsidiaryTransaction, Journal
+        from django.utils import timezone
+        journal = self.journal
+        if not journal or journal.status != Journal.Status.POSTED:
+            return
+        # Compensate each sub-ledger entry this journal drove (swap Dr/Cr).
+        subs = SubsidiaryTransaction.objects.filter(
+            journal_entry__journal=journal, is_reversal=False,
+        )
+        for st in subs:
+            if SubsidiaryTransaction.objects.filter(reversed_transaction=st).exists():
+                continue
+            rev = SubsidiaryTransaction.create_entry(
+                account=st.account, date=timezone.now().date(),
+                contra_account=st.contra_account,
+                reference=f'REV-{st.reference}'[:50],
+                description=f'Reversal — deleted expense {self.expense_number}',
+                debit_amount=st.credit_amount or None,
+                credit_amount=st.debit_amount or None,
+            )
+            rev.is_reversal = True
+            rev.reversed_transaction = st
+            rev.save(update_fields=['is_reversal', 'reversed_transaction'])
+        # Reverse the GL side.
+        try:
+            journal.reverse(f'Source expense {self.expense_number} deleted', user=user)
+        except Exception:
+            pass
 
 
 class LatePenaltyConfig(models.Model):

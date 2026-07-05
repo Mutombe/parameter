@@ -1673,10 +1673,24 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
         ]
         _exp_map = ({e.id: e for e in _Expense.objects.filter(id__in=_src_ids)
                      .select_related('supplier')} if _src_ids else {})
+        # Commission (CMA) rows always contra to the commission account — older
+        # rows stored a per-type payable code (2000/0x0) that collided with
+        # unrelated accounts. Resolve to the semantic commission account
+        # (subtype commission_income) when one exists, else a plain label.
+        _comm_acct = ChartOfAccount.objects.filter(account_subtype='commission_income').first()
         for txn, row in zip(transactions, txn_rows):
             contra = txn.contra_account or ''
             display, kind, link_id = '', '', None
             supplier = None
+            if (txn.reference or '').startswith('CMA'):
+                if _comm_acct:
+                    display, kind, link_id = _comm_acct.name, 'account', _comm_acct.id
+                else:
+                    display = 'Agent Commission'
+                row['contra_display'] = display
+                row['contra_kind'] = kind
+                row['contra_id'] = link_id
+                continue
             je = txn.journal_entry
             if je and je.source_type == 'expense' and je.source_id:
                 exp = _exp_map.get(je.source_id)
