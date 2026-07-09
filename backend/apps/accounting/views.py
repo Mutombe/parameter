@@ -1707,6 +1707,36 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
             row['contra_kind'] = kind
             row['contra_id'] = link_id
 
+        # --- Reversal pairing (for the presentation-layer "cloaking" engine) ---
+        # A reversal transaction (is_reversal + reversed_transaction) cancels its
+        # original. Tag both rows with a shared group id and a "cloaked" flag
+        # when they net to zero (same account/currency, mirror Dr/Cr). The
+        # ledger and balances are untouched — this is metadata only, so the UI
+        # can hide/collapse the pair for ordinary users while auditors expand it.
+        _by_id = {t.id: (t, row) for t, row in zip(transactions, txn_rows)}
+        for row in txn_rows:
+            row['reversal_group'] = None
+            row['reversal_role'] = None
+            row['reversal_cloaked'] = False
+        for t, row in zip(transactions, txn_rows):
+            if not (t.is_reversal and t.reversed_transaction_id):
+                continue
+            pair = _by_id.get(t.reversed_transaction_id)
+            if not pair:
+                continue  # original outside the window — can't cloak, show alone
+            orig_t, orig_row = pair
+            net_zero = (orig_t.debit_amount == t.credit_amount
+                        and orig_t.credit_amount == t.debit_amount)
+            group_id = f'rev-{orig_t.id}'
+            orig_row['reversal_group'] = group_id
+            orig_row['reversal_role'] = 'original'
+            orig_row['reversal_cloaked'] = net_zero
+            orig_row['reversed_by_id'] = t.id
+            row['reversal_group'] = group_id
+            row['reversal_role'] = 'reversal'
+            row['reversal_cloaked'] = net_zero
+            row['reversal_of_id'] = orig_t.id
+
         # Closing balance = opening + every period movement = the running
         # balance after the last (latest-dated) transaction.
         closing_balance = running

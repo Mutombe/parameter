@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useMemo, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { ArrowLeft, Download, Loader2 } from 'lucide-react'
+import { ArrowLeft, Download, Loader2, ChevronRight, EyeOff } from 'lucide-react'
 import { subsidiaryApi } from '../../services/api'
 import { formatCurrency, cn } from '../../lib/utils'
 import { Badge, SkeletonTable, DatePicker } from '../../components/ui'
@@ -28,6 +28,17 @@ export default function SubAccountStatement() {
     period_end: new Date().toISOString().split('T')[0],
   })
   const [view, setView] = useState<'consolidated' | 'audit'>('consolidated')
+  // Red Reversal Cloaking — how reversal pairs (an entry + its net-zero
+  // reversal) are presented. 'hidden' = drop them (normal users), 'grouped' =
+  // one collapsible group per pair (accountants), 'full' = show every row
+  // (audit). The ledger is never altered — this is presentation only.
+  const [reversalMode, setReversalMode] = useState<'hidden' | 'grouped' | 'full'>('hidden')
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  const toggleGroup = (g: string) => setExpandedGroups(prev => {
+    const next = new Set(prev)
+    next.has(g) ? next.delete(g) : next.add(g)
+    return next
+  })
 
   const { data: account } = useQuery({
     queryKey: ['subaccount', accountId],
@@ -47,6 +58,49 @@ export default function SubAccountStatement() {
   })
 
   const txns: any[] = statement?.transactions || statement?.entries || []
+
+  // Build the display list, applying the reversal-cloaking rules. A cloaked
+  // group is emitted once at the position of its original entry; the reversal
+  // row is absorbed into the group. Non-cloaked rows pass through untouched.
+  const { displayItems, hiddenGroupCount } = useMemo(() => {
+    const groups = new Map<string, { original?: any; reversal?: any }>()
+    for (const t of txns) {
+      if (t.reversal_cloaked && t.reversal_group) {
+        const g = groups.get(t.reversal_group) || {}
+        if (t.reversal_role === 'reversal') g.reversal = t
+        else g.original = t
+        groups.set(t.reversal_group, g)
+      }
+    }
+    const emitted = new Set<string>()
+    const items: any[] = []
+    let hidden = 0
+    for (const t of txns) {
+      if (t.reversal_cloaked && t.reversal_group) {
+        if (reversalMode === 'full') { items.push({ kind: 'txn', txn: t }); continue }
+        if (!emitted.has(t.reversal_group)) {
+          emitted.add(t.reversal_group)
+          if (reversalMode === 'grouped') {
+            const g = groups.get(t.reversal_group)!
+            items.push({ kind: 'group', group: t.reversal_group, original: g.original, reversal: g.reversal })
+          } else {
+            hidden += 1 // 'hidden' mode — drop entirely, just count
+          }
+        }
+        continue
+      }
+      items.push({ kind: 'txn', txn: t })
+    }
+    return { displayItems: items, hiddenGroupCount: hidden }
+  }, [txns, reversalMode])
+
+  // Footer column totals. Cloaked pairs net to zero, so excluding them keeps
+  // the closing balance identical while matching the rows actually shown
+  // (except in 'full' mode, which lists every entry).
+  const cloakedDr = txns.reduce((s, t) => s + (t.reversal_cloaked ? Number(t.debit_amount || 0) : 0), 0)
+  const cloakedCr = txns.reduce((s, t) => s + (t.reversal_cloaked ? Number(t.credit_amount || 0) : 0), 0)
+  const shownDebits = Number(statement?.total_debits || 0) - (reversalMode === 'full' ? 0 : cloakedDr)
+  const shownCredits = Number(statement?.total_credits || 0) - (reversalMode === 'full' ? 0 : cloakedCr)
 
   const exportStatement = async (fmt: 'csv' | 'pdf') => {
     try {
@@ -118,6 +172,21 @@ export default function SubAccountStatement() {
                 </button>
               ))}
             </div>
+            {/* Reversal cloaking mode. */}
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5" title="How reversed (cancelled) transactions are shown">
+              {([['hidden', 'Reversals: Hidden'], ['grouped', 'Grouped'], ['full', 'Full']] as const).map(([v, label]) => (
+                <button
+                  key={v}
+                  onClick={() => setReversalMode(v)}
+                  className={cn(
+                    'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
+                    reversalMode === v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="relative group">
               <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">
                 <Download className="w-3.5 h-3.5" /> Export
@@ -171,12 +240,70 @@ export default function SubAccountStatement() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {txns.map((txn: any, idx: number) => {
+                  {reversalMode === 'hidden' && hiddenGroupCount > 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-2 bg-gray-50/60 text-xs text-gray-500">
+                        <span className="inline-flex items-center gap-1.5">
+                          <EyeOff className="w-3.5 h-3.5 text-gray-400" />
+                          {hiddenGroupCount} reversed transaction{hiddenGroupCount === 1 ? '' : 's'} hidden (net zero).
+                          <button onClick={() => setReversalMode('grouped')} className="text-primary-600 hover:underline">Show</button>
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+                  {displayItems.map((item: any, idx: number) => {
+                    // --- Cloaked reversal group (grouped mode) ---
+                    if (item.kind === 'group') {
+                      const open = expandedGroups.has(item.group)
+                      const amt = Number(item.original?.debit_amount || item.original?.credit_amount || 0)
+                      const netBal = Number(item.reversal?.balance ?? item.original?.balance ?? 0)
+                      return (
+                        <Fragment key={`g-${item.group}`}>
+                          <tr className="bg-rose-50/30 hover:bg-rose-50/50 cursor-pointer" onClick={() => toggleGroup(item.group)}>
+                            <td colSpan={4} className="px-6 py-3 text-sm">
+                              <span className="inline-flex items-center gap-1.5">
+                                <ChevronRight className={cn('w-3.5 h-3.5 text-rose-400 transition-transform', open && 'rotate-90')} />
+                                <span className="text-rose-700 font-medium">Reversed Transaction</span>
+                                <span className="text-[10px] text-gray-400">(2 entries · net 0)</span>
+                              </span>
+                            </td>
+                            <td className="px-6 py-3 text-right text-gray-300">—</td>
+                            <td className="px-6 py-3 text-right text-gray-300">—</td>
+                            <td className="px-6 py-3 text-sm font-medium text-right tabular-nums text-gray-900">{formatCurrency(netBal)}</td>
+                          </tr>
+                          {open && (
+                            <>
+                              {[['original', item.original, -amt, 'Expense'], ['reversal', item.reversal, amt, 'Reversal']].map(([role, r, signed]: any) => (
+                                <tr key={role} className="bg-rose-50/10 text-xs">
+                                  <td className="px-6 py-2 pl-12 text-gray-500 tabular-nums">{r?.date || '—'}</td>
+                                  <td className="px-6 py-2 text-gray-400 font-mono">{r?.reference || '—'}</td>
+                                  <td colSpan={2} className="px-6 py-2 text-gray-600">{r?.description || (role === 'reversal' ? 'Reversal' : 'Expense')}</td>
+                                  <td colSpan={2} className="px-6 py-2 text-right tabular-nums text-rose-600 font-semibold">
+                                    {signed < 0 ? '-' : '+'}{formatCurrency(Math.abs(signed))}
+                                  </td>
+                                  <td className="px-6 py-2 text-right tabular-nums text-gray-400">{formatCurrency(Number(r?.balance ?? 0))}</td>
+                                </tr>
+                              ))}
+                              <tr className="bg-rose-50/30 text-xs font-semibold">
+                                <td colSpan={4} className="px-6 py-2 pl-12 text-gray-600">Net effect</td>
+                                <td colSpan={2} className="px-6 py-2 text-right tabular-nums text-gray-700">{formatCurrency(0)}</td>
+                                <td className="px-6 py-2"></td>
+                              </tr>
+                            </>
+                          )}
+                        </Fragment>
+                      )
+                    }
+
+                    // --- Normal transaction row ---
+                    const txn = item.txn
                     const dr = Number(txn.debit_amount ?? txn.debit ?? 0)
                     const cr = Number(txn.credit_amount ?? txn.credit ?? 0)
                     const bal = Number(txn.balance ?? txn.running_balance ?? 0)
+                    // In 'full' mode a cloaked row shows its cancelled amount in red.
+                    const cloaked = txn.reversal_cloaked
                     return (
-                      <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                      <tr key={idx} className={cn('hover:bg-gray-50 transition-colors', cloaked && 'bg-rose-50/20')}>
                         <td className="px-6 py-3 text-sm text-gray-600 tabular-nums">{txn.date || '—'}</td>
                         <td className="px-6 py-3 text-xs text-gray-500 font-mono">{txn.reference || txn.ref || '—'}</td>
                         <td className="px-6 py-3 text-sm">
@@ -196,16 +323,21 @@ export default function SubAccountStatement() {
                         <td className="px-6 py-3 text-sm text-gray-900">
                           <span className="flex items-center gap-1.5">
                             {txn.description || txn.narration || '—'}
+                            {cloaked && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-600 text-[10px] font-medium" title={txn.reversal_role === 'reversal' ? 'Reversal entry' : 'Reversed (cancelled) entry'}>
+                                {txn.reversal_role === 'reversal' ? 'Reversal' : 'Reversed'}
+                              </span>
+                            )}
                             {txn.is_consolidated && (
                               <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-100 text-blue-600 text-[10px] font-bold" title="Consolidated entry">C</span>
                             )}
                           </span>
                         </td>
-                        <td className={cn('px-6 py-3 text-sm text-right tabular-nums', dr > 0 ? 'text-sky-700 font-semibold' : 'text-gray-300')}>
-                          {dr > 0 ? formatCurrency(dr) : '—'}
+                        <td className={cn('px-6 py-3 text-sm text-right tabular-nums', cloaked ? 'text-rose-600 font-semibold' : dr > 0 ? 'text-sky-700 font-semibold' : 'text-gray-300')}>
+                          {dr > 0 ? (cloaked ? `-${formatCurrency(dr)}` : formatCurrency(dr)) : '—'}
                         </td>
-                        <td className={cn('px-6 py-3 text-sm text-right tabular-nums', cr > 0 ? 'text-emerald-700 font-semibold' : 'text-gray-300')}>
-                          {cr > 0 ? formatCurrency(cr) : '—'}
+                        <td className={cn('px-6 py-3 text-sm text-right tabular-nums', cloaked ? 'text-rose-600 font-semibold' : cr > 0 ? 'text-emerald-700 font-semibold' : 'text-gray-300')}>
+                          {cr > 0 ? (cloaked ? `+${formatCurrency(cr)}` : formatCurrency(cr)) : '—'}
                         </td>
                         <td className="px-6 py-3 text-sm font-medium text-right tabular-nums">
                           <span className={bal < 0 ? 'text-red-600' : 'text-gray-900'}>{formatCurrency(bal)}</span>
@@ -220,10 +352,10 @@ export default function SubAccountStatement() {
                   <tr className="bg-emerald-50 border-t-2 border-emerald-200 font-bold">
                     <td colSpan={4} className="px-6 py-3 text-sm text-gray-700">Closing Balance</td>
                     <td className="px-6 py-3 text-sm text-right tabular-nums text-emerald-700">
-                      {formatCurrency(Number(statement?.total_debits || 0))}
+                      {formatCurrency(shownDebits)}
                     </td>
                     <td className="px-6 py-3 text-sm text-right tabular-nums text-emerald-700">
-                      {formatCurrency(Number(statement?.total_credits || 0))}
+                      {formatCurrency(shownCredits)}
                     </td>
                     <td className={cn('px-6 py-3 text-sm text-right tabular-nums',
                       Number(closingBalance) >= 0 ? 'text-emerald-700' : 'text-red-600')}>
