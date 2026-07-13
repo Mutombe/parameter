@@ -1,11 +1,12 @@
 import { useState, useMemo, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { ArrowLeft, Download, Loader2, ChevronRight, EyeOff } from 'lucide-react'
+import { ArrowLeft, Download, Loader2, ChevronRight, EyeOff, Printer } from 'lucide-react'
 import { subsidiaryApi } from '../../services/api'
 import { formatCurrency, cn } from '../../lib/utils'
 import { Badge, SkeletonTable, DatePicker } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
+import { openBrandedPrintWindow } from '../../lib/printTemplate'
 
 const ENTITY_LABELS: Record<string, string> = {
   landlord: 'Landlord', tenant: 'Tenant', account_holder: 'Account Holder',
@@ -126,6 +127,63 @@ export default function SubAccountStatement() {
   const openingBalance = statement?.opening_balance ?? statement?.balance_bf ?? 0
   const closingBalance = statement?.closing_balance ?? statement?.balance_cf ?? 0
 
+  // Branded print (letterhead + statement table), like the financial reports.
+  // Reflects the current reversal-cloaking mode.
+  const handlePrint = () => {
+    const money = (v: any) => formatCurrency(Number(v || 0))
+    const rowsHtml = displayItems.map((item: any) => {
+      if (item.kind === 'group') {
+        const bal = money(item.reversal?.balance ?? item.original?.balance ?? 0)
+        return `<tr><td colspan="4"><em>Reversed Transaction (net 0)</em></td>
+          <td class="num">—</td><td class="num">—</td><td class="num">${bal}</td></tr>`
+      }
+      const t = item.txn
+      const dr = Number(t.debit_amount ?? t.debit ?? 0)
+      const cr = Number(t.credit_amount ?? t.credit ?? 0)
+      return `<tr>
+        <td>${t.date || '—'}</td>
+        <td>${t.reference || t.ref || '—'}</td>
+        <td>${(dr > 0 && t.contra_display) ? t.contra_display : '—'}</td>
+        <td>${(t.description || t.narration || '—')}</td>
+        <td class="num">${dr > 0 ? money(dr) : '—'}</td>
+        <td class="num">${cr > 0 ? money(cr) : '—'}</td>
+        <td class="num">${money(t.balance ?? t.running_balance ?? 0)}</td>
+      </tr>`
+    }).join('')
+    const body = `
+      <div style="margin-bottom:10px">
+        <div style="font-size:15pt;font-weight:700">${account?.name || 'Account Statement'}</div>
+        <div style="color:#555;font-size:9pt">${account?.code || ''}${account?.currency ? ' · ' + account.currency : ''} · ${range.period_start} to ${range.period_end}</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:9pt">
+        <thead><tr style="background:#f3f4f6;text-align:left">
+          <th style="padding:5px">Date</th><th style="padding:5px">Ref</th>
+          <th style="padding:5px">Contra</th><th style="padding:5px">Description</th>
+          <th style="padding:5px;text-align:right">Debit</th>
+          <th style="padding:5px;text-align:right">Credit</th>
+          <th style="padding:5px;text-align:right">Balance</th>
+        </tr></thead>
+        <tbody>
+          <tr style="font-weight:600"><td colspan="6" style="padding:5px">Opening Balance</td>
+            <td class="num" style="padding:5px;text-align:right">${money(openingBalance)}</td></tr>
+          ${rowsHtml}
+          <tr style="font-weight:700;background:#ecfdf5;border-top:2px solid #a7f3d0">
+            <td colspan="4" style="padding:5px">Closing Balance</td>
+            <td class="num" style="padding:5px;text-align:right">${money(shownDebits)}</td>
+            <td class="num" style="padding:5px;text-align:right">${money(shownCredits)}</td>
+            <td class="num" style="padding:5px;text-align:right">${money(closingBalance)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <style>td.num{text-align:right} table td,table th{border-bottom:1px solid #eee}</style>
+    `
+    openBrandedPrintWindow(body, {
+      title: `${account?.name || 'Account'} — Statement`,
+      subtitle: `${range.period_start} to ${range.period_end}`,
+      orientation: 'portrait',
+    })
+  }
+
   return (
     <div className="space-y-6">
       <nav className="flex items-center gap-2 text-sm text-gray-500">
@@ -187,6 +245,9 @@ export default function SubAccountStatement() {
                 </button>
               ))}
             </div>
+            <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">
+              <Printer className="w-3.5 h-3.5" /> Print
+            </button>
             <div className="relative group">
               <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">
                 <Download className="w-3.5 h-3.5" /> Export

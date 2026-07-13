@@ -110,11 +110,15 @@ export default function BankAccountDetail() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
+                <tr className="bg-gray-50/60 font-medium">
+                  <td colSpan={6} className="px-4 py-3 text-gray-600">Opening Balance{range.start_date ? ` (b/f as at ${range.start_date})` : ''}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-gray-900">{formatCurrency(Number(data?.opening_balance ?? summary.opening_balance ?? 0))}</td>
+                </tr>
                 {rows.map((t, idx) => (
                   <tr
                     key={`${t.type}-${t.id}-${idx}`}
                     className="hover:bg-gray-50 cursor-pointer"
-                    onClick={() => navigate(t.type === 'receipt' ? `/dashboard/receipts/${t.id}` : `/dashboard/expenses/${t.id}`)}
+                    onClick={() => navigate(t.type === 'receipt' ? `/dashboard/receipts/${t.id}` : t.type === 'journal' ? `/dashboard/journals/${t.id}` : `/dashboard/expenses/${t.id}`)}
                   >
                     <td className="px-4 py-3 text-gray-600 tabular-nums whitespace-nowrap">{t.date}</td>
                     <td className="px-4 py-3 font-mono text-xs text-primary-600">{t.reference || '—'}</td>
@@ -128,10 +132,10 @@ export default function BankAccountDetail() {
               </tbody>
               <tfoot className="bg-gray-50 border-t-2 border-gray-300">
                 <tr className="font-bold">
-                  <td colSpan={4} className="px-4 py-3 text-gray-900">Totals</td>
+                  <td colSpan={4} className="px-4 py-3 text-gray-900">Closing Balance</td>
                   <td className="px-4 py-3 text-right tabular-nums text-emerald-700">{formatCurrency(Number(summary.total_inflow || 0))}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-rose-700">{formatCurrency(Number(summary.total_outflow || 0))}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-gray-900">{formatCurrency(Number(summary.net || 0))}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-gray-900">{formatCurrency(Number(summary.closing_balance ?? summary.net ?? 0))}</td>
                 </tr>
               </tfoot>
             </table>

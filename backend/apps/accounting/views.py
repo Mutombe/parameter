@@ -559,19 +559,42 @@ class BankAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, view
         """
         account = self.get_object()
         from apps.billing.models import Receipt, Expense
+        from apps.accounting.models import JournalEntry
         start = request.query_params.get('start_date')
         end = request.query_params.get('end_date')
 
-        receipts = Receipt.objects.filter(bank_account=account).select_related('tenant')
-        expenses = Expense.objects.filter(
+        # Every per-bank movement: receipts in, paid cash expenses out, and
+        # posted journal lines that target this bank (opening balances,
+        # transfers, adjustments). Journal debit = money in, credit = money out.
+        receipts_all = Receipt.objects.filter(bank_account=account).select_related('tenant')
+        expenses_all = Expense.objects.filter(
             bank_account=account, status='paid',
         ).exclude(expense_kind='non_cash').select_related('expense_category')
+        journal_all = JournalEntry.objects.filter(
+            bank_account=account, journal__status='posted',
+        ).select_related('journal')
+
+        # Opening balance brought forward = net of EVERY movement dated before
+        # the window start. Without this the running balance wrongly restarts at
+        # zero for a date-filtered statement.
+        opening = Decimal('0')
+        if start:
+            oi = receipts_all.filter(date__lt=start).aggregate(t=Sum('amount'))['t'] or Decimal('0')
+            oo = expenses_all.filter(date__lt=start).aggregate(t=Sum('amount'))['t'] or Decimal('0')
+            oj = journal_all.filter(journal__date__lt=start).aggregate(
+                d=Sum('debit_amount'), c=Sum('credit_amount'))
+            opening = (Decimal(oi) - Decimal(oo)
+                       + (oj['d'] or Decimal('0')) - (oj['c'] or Decimal('0')))
+
+        receipts, expenses, journal = receipts_all, expenses_all, journal_all
         if start:
             receipts = receipts.filter(date__gte=start)
             expenses = expenses.filter(date__gte=start)
+            journal = journal.filter(journal__date__gte=start)
         if end:
             receipts = receipts.filter(date__lte=end)
             expenses = expenses.filter(date__lte=end)
+            journal = journal.filter(journal__date__lte=end)
 
         rows = []
         for r in receipts:
@@ -593,10 +616,19 @@ class BankAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, view
                 'inflow': 0.0, 'outflow': float(e.amount),
                 'currency': getattr(e, 'currency', None) or 'USD',
             })
+        for je in journal:
+            rows.append({
+                'type': 'journal', 'id': je.id, 'date': str(je.journal.date),
+                'reference': je.journal.journal_number,
+                'description': je.description or je.journal.description or 'Journal',
+                'party': '',
+                'inflow': float(je.debit_amount or 0), 'outflow': float(je.credit_amount or 0),
+                'currency': getattr(je.journal, 'currency', None) or 'USD',
+            })
         # Date order; same-day deposits before withdrawals for a stable run.
-        rows.sort(key=lambda x: (x['date'], 0 if x['type'] == 'receipt' else 1))
+        rows.sort(key=lambda x: (x['date'], 0 if x['inflow'] else 1))
 
-        running = Decimal('0')
+        running = opening
         total_in = Decimal('0')
         total_out = Decimal('0')
         for row in rows:
@@ -607,11 +639,14 @@ class BankAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, view
 
         return Response({
             'account': BankAccountSerializer(account).data,
+            'opening_balance': float(opening),
             'transactions': rows,
             'summary': {
+                'opening_balance': float(opening),
                 'total_inflow': float(total_in),
                 'total_outflow': float(total_out),
                 'net': float(total_in - total_out),
+                'closing_balance': float(opening + total_in - total_out),
                 'count': len(rows),
             },
         })

@@ -60,7 +60,7 @@ export default function Receipts() {
   // Owner (landlord) contribution — funds injected into the trust account.
   const [showContribution, setShowContribution] = useState(false)
   const [contributionForm, setContributionForm] = useState({
-    landlord: '', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '',
+    landlord: '', sub_account_category: 'rent', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '',
   })
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null)
@@ -133,16 +133,18 @@ export default function Receipts() {
       queryClient.invalidateQueries({ queryKey: ['receipts'] })
       showToast.success('Owner contribution recorded')
       setShowContribution(false)
-      setContributionForm({ landlord: '', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '' })
+      setContributionForm({ landlord: '', sub_account_category: 'rent', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '' })
     },
     onError: (err: any) => showToast.error(parseApiError(err, 'Failed to record contribution')),
   })
   const submitContribution = () => {
     if (!contributionForm.landlord) { showToast.error('Pick the landlord.'); return }
+    if (!contributionForm.sub_account_category) { showToast.error('Pick the sub-account pocket.'); return }
     const amt = Number(contributionForm.amount)
     if (!amt || amt <= 0) { showToast.error('Enter a valid amount.'); return }
     contributionMutation.mutate({
       landlord: Number(contributionForm.landlord),
+      sub_account_category: contributionForm.sub_account_category,
       amount: amt,
       date: contributionForm.date,
       description: contributionForm.description || undefined,
@@ -808,6 +810,23 @@ export default function Receipts() {
             onChange={(val) => setContributionForm({ ...contributionForm, landlord: String(val) })}
             options={(contribLandlords as any[]).map((l: any) => ({ value: l.id, label: l.name, description: l.code || '' }))}
             searchable
+            required
+          />
+          <Select
+            label="Sub-account pocket (funds injected into)"
+            value={contributionForm.sub_account_category}
+            onChange={(e) => setContributionForm({ ...contributionForm, sub_account_category: e.target.value })}
+            options={[
+              { value: 'rent', label: 'Rent' },
+              { value: 'levy', label: 'Levy' },
+              { value: 'special_levy', label: 'Special Levy' },
+              { value: 'maintenance', label: 'Maintenance' },
+              { value: 'parking', label: 'Parking' },
+              { value: 'rates', label: 'Rates' },
+              { value: 'vat', label: 'VAT' },
+              { value: 'deposit', label: 'Deposit' },
+              { value: 'general', label: 'General' },
+            ]}
             required
           />
           <Input

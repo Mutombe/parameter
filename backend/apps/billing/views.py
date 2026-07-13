@@ -826,9 +826,10 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
             journal=journal, account=trust_gl, description=description, credit_amount=amount)
         journal.post(request.user)
 
-        # Sub-ledger: credit the landlord's rent pocket → raises Funds Held.
+        # Sub-ledger: credit the chosen landlord pocket → raises Funds Held.
+        pocket = (request.data.get('sub_account_category') or 'rent').lower()
         sub = SubsidiaryAccount.get_or_create_for_landlord_category(
-            landlord, category='rent', currency=currency)
+            landlord, category=pocket, currency=currency)
         txn = SubsidiaryTransaction.create_entry(
             account=sub, date=dt, contra_account='OCT',
             reference=f'OCT-{journal.journal_number}', description=description,
