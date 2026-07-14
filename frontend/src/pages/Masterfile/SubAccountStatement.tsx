@@ -189,8 +189,6 @@ export default function SubAccountStatement() {
       <nav className="flex items-center gap-2 text-sm text-gray-500">
         <button onClick={() => navigate('/dashboard')} className="hover:text-gray-900">Dashboard</button>
         <span>/</span>
-        <button onClick={() => navigate('/dashboard/subsidiary-ledger')} className="hover:text-gray-900">Subsidiary Ledger</button>
-        <span>/</span>
         <span className="text-gray-900 font-medium">{account?.name || '…'}</span>
       </nav>
 

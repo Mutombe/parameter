@@ -47,7 +47,6 @@ const BankAccountDetail = lazy(() => import('./pages/Accounting/BankAccountDetai
 const Reports = lazy(() => import('./pages/Reports/Reports'))
 // AgedAnalysis now lives inside Reports.tsx — old route redirects there
 const BankReconciliation = lazy(() => import('./pages/Accounting/BankReconciliation'))
-const SubsidiaryLedger = lazy(() => import('./pages/Accounting/SubsidiaryLedger'))
 const AuditTrail = lazy(() => import('./pages/Admin/AuditTrail'))
 const TeamManagement = lazy(() => import('./pages/Admin/TeamManagement'))
 const SuperAdminDashboard = lazy(() => import('./pages/Admin/SuperAdminDashboard'))
@@ -221,7 +220,6 @@ export default function App() {
         <Route path="expense-categories" element={<LazyPage><ExpenseCategories /></LazyPage>} />
         <Route path="expense-categories/:id" element={<LazyPage><ExpenseCategoryDetail /></LazyPage>} />
         <Route path="bank-reconciliation" element={<LazyPage><BankReconciliation /></LazyPage>} />
-        <Route path="subsidiary-ledger" element={<LazyPage><SubsidiaryLedger /></LazyPage>} />
         <Route path="subaccounts/:id" element={<LazyPage><SubAccountStatement /></LazyPage>} />
         <Route path="bs-movements" element={<LazyPage><BalanceSheetMovements /></LazyPage>} />
         <Route path="opening-balances" element={<LazyPage><OpeningBalances /></LazyPage>} />

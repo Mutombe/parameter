@@ -331,12 +331,6 @@ export default function Dashboard() {
             <h2 className="text-lg font-semibold text-gray-900">Trust Account Summary</h2>
             <p className="text-sm text-gray-500">Subsidiary account balances across all landlords</p>
           </div>
-          <button
-            onClick={() => navigate('/dashboard/subsidiary-ledger')}
-            className="text-sm text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
-          >
-            View Full Ledger <ArrowRight className="w-3.5 h-3.5" />
-          </button>
         </div>
 
         {/* Financial KPI Cards */}

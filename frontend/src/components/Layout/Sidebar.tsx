@@ -96,7 +96,6 @@ const navigation: NavSection[] = [
       { name: 'Journals', href: '/dashboard/journals', icon: FileSpreadsheet },
       { name: 'Bank Accounts', href: '/dashboard/bank-accounts', icon: Landmark },
       { name: 'Bank Reconciliation', href: '/dashboard/bank-reconciliation', icon: Scale },
-      { name: 'Subsidiary Ledger', href: '/dashboard/subsidiary-ledger', icon: Wallet },
     ],
   },
   {
