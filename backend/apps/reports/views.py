@@ -4492,6 +4492,7 @@ class IncomeExpenditureReportView(APIView):
 
     # ── main handler ─────────────────────────────────────────────────
 
+    @_cache_report('income_expenditure', ttl=300)
     def get(self, request):
         landlord_id = request.query_params.get('landlord_id')
         property_id = request.query_params.get('property_id')
