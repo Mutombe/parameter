@@ -363,11 +363,18 @@ def _make_commission_resolver():
     """
     from apps.billing.models import Receipt as _Receipt
     _prop_by_tenant = {}
+    _prop_by_invoice = {}
     _rate_cache = {}
 
     def commission(receipt):
         if receipt.invoice_id:
-            prop_id = _Receipt._resolve_property_for_commission(receipt)
+            # Memoised per invoice — several receipts against the same
+            # invoice resolve the property once, not once per receipt.
+            if receipt.invoice_id in _prop_by_invoice:
+                prop_id = _prop_by_invoice[receipt.invoice_id]
+            else:
+                prop_id = _Receipt._resolve_property_for_commission(receipt)
+                _prop_by_invoice[receipt.invoice_id] = prop_id
         else:
             tid = receipt.tenant_id
             if tid in _prop_by_tenant:
@@ -380,6 +387,33 @@ def _make_commission_resolver():
             _rate_cache[rk] = _resolve_commission_rate_pct(receipt.income_type, prop_id)
         return (receipt.amount or Decimal('0')) * _rate_cache[rk] / Decimal('100')
 
+    def warm(receipts):
+        """Bulk pre-resolve the tenant-lease fallback for a batch of receipts
+        in ONE query, instead of one LeaseAgreement lookup per tenant inside
+        the per-receipt loop. Invoice-path traversals are already free when
+        the caller select_related's invoice__unit / invoice__lease__unit."""
+        from apps.masterfile.models import LeaseAgreement
+        tids = {
+            r.tenant_id for r in receipts
+            if not r.invoice_id and r.tenant_id and r.tenant_id not in _prop_by_tenant
+        }
+        if not tids:
+            return
+        # Same resolution as Receipt._resolve_property_for_commission's
+        # fallback: the tenant's first active lease (model default ordering).
+        for la in LeaseAgreement.objects.filter(
+            tenant_id__in=tids, status='active',
+        ).select_related('unit'):
+            if la.tenant_id in _prop_by_tenant:
+                continue  # first lease wins, matching .first()
+            if la.unit_id and la.unit and la.unit.property_id:
+                _prop_by_tenant[la.tenant_id] = la.unit.property_id
+            else:
+                _prop_by_tenant[la.tenant_id] = la.property_id
+        for tid in tids:
+            _prop_by_tenant.setdefault(tid, None)
+
+    commission.warm = warm
     return commission
 
 
@@ -389,10 +423,12 @@ def _commission_total(receipts_qs):
     / Income Statement). Use instead of ``qs.aggregate(Sum(_commission_expr()))``
     whenever the queryset may include invoice-less receipts."""
     f = _make_commission_resolver()
+    receipts = list(receipts_qs.select_related(
+        'income_type', 'tenant', 'invoice__unit', 'invoice__lease__unit',
+    ))
+    f.warm(receipts)
     total = Decimal('0')
-    for r in receipts_qs.select_related(
-        'income_type', 'tenant', 'invoice__unit', 'invoice__lease',
-    ):
+    for r in receipts:
         total += f(r)
     return total
 
@@ -402,10 +438,12 @@ def _commission_by_income_type(receipts_qs):
     Returns a list of {income_type_id, income_type_name, income_type_code,
     amount(Decimal)} sorted by name, excluding zero rows."""
     f = _make_commission_resolver()
+    receipts = list(receipts_qs.select_related(
+        'income_type', 'tenant', 'invoice__unit', 'invoice__lease__unit',
+    ))
+    f.warm(receipts)
     acc = {}
-    for r in receipts_qs.select_related(
-        'income_type', 'tenant', 'invoice__unit', 'invoice__lease',
-    ):
+    for r in receipts:
         c = f(r)
         if not c:
             continue
@@ -558,6 +596,28 @@ def _sub_account_balance_as_of(sub, as_of_date):
     if sub.entity_type in ('tenant', 'account_holder'):
         return debit - credit
     return credit - debit
+
+
+def _sub_account_balances_as_of(subs, as_of_date):
+    """Batch version of `_sub_account_balance_as_of` — one GROUP BY query for
+    the whole set instead of one aggregate per account (the Balance Sheet was
+    firing 40+ of those per request). Returns {sub_id: Decimal balance} with
+    the same period rule and sign convention as the single-account helper;
+    accounts with no movements map to 0."""
+    from apps.accounting.models import SubsidiaryTransaction
+    subs = list(subs)
+    if not subs:
+        return {}
+    rows = SubsidiaryTransaction.objects.filter(
+        account_id__in=[s.id for s in subs],
+        date__lte=as_of_date, is_consolidated=False,
+    ).values('account_id').annotate(d=Sum('debit_amount'), c=Sum('credit_amount'))
+    agg = {r['account_id']: (r['d'] or Decimal('0'), r['c'] or Decimal('0')) for r in rows}
+    out = {}
+    for s in subs:
+        d, c = agg.get(s.id, (Decimal('0'), Decimal('0')))
+        out[s.id] = (d - c) if s.entity_type in ('tenant', 'account_holder') else (c - d)
+    return out
 
 
 def _cache_report(cache_key, ttl=60):
@@ -969,9 +1029,11 @@ class IncomeStatementView(APIView):
             # _make_commission_resolver().
             _commission_of = _make_commission_resolver()
             commission_by_type = {}
-            for _r in scoped_receipts.select_related(
-                'income_type', 'tenant', 'invoice', 'invoice__unit', 'invoice__lease',
-            ):
+            _cos_receipts = list(scoped_receipts.select_related(
+                'income_type', 'tenant', 'invoice', 'invoice__unit', 'invoice__lease__unit',
+            ))
+            _commission_of.warm(_cos_receipts)
+            for _r in _cos_receipts:
                 _c = _commission_of(_r)
                 if not _c:
                     continue
@@ -1361,11 +1423,14 @@ class BalanceSheetView(APIView):
             funds_owed_total = Decimal('0')
             funds_held_breakdown = []
             funds_owed_breakdown = []
+            landlord_subs = list(landlord_subs)
+            _ll_balances = _sub_account_balances_as_of(landlord_subs, as_of_date)
             for sub in landlord_subs:
                 # Strict period rule: closing balance as at the report date,
                 # summed from every movement dated on/before as_of_date so
-                # nothing is dropped by posting order.
-                bal = _sub_account_balance_as_of(sub, as_of_date)
+                # nothing is dropped by posting order. (Batched: one GROUP BY
+                # for all pockets instead of one aggregate per pocket.)
+                bal = _ll_balances[sub.id]
                 # Landlord accounts are credit-normal: positive balance
                 # = credit balance = agent holds cash for landlord.
                 if bal > 0:
@@ -1413,14 +1478,17 @@ class BalanceSheetView(APIView):
             lessees_prepayments_total = Decimal('0')
             arrears_breakdown = []
             prepayments_breakdown = []
+            tenant_subs = list(tenant_subs)
+            _tn_balances = _sub_account_balances_as_of(tenant_subs, as_of_date)
             for sub in tenant_subs:
                 # Strict period rule: the tenant's CLOSING balance as at the
                 # report date — summed from every charge and payment dated
                 # on/before as_of_date. Reading the latest transaction's
                 # stored balance would silently drop a charge dated in-period
                 # but posted after a later-dated payment; summing the
-                # movements keeps every charge in the figure.
-                bal = _sub_account_balance_as_of(sub, as_of_date)
+                # movements keeps every charge in the figure. (Batched: one
+                # GROUP BY for all tenant subs instead of one query each.)
+                bal = _tn_balances[sub.id]
                 # Tenant/account_holder accounts are debit-normal:
                 # positive = tenant owes us (arrears), negative = prepaid.
                 if bal > 0:
@@ -1768,9 +1836,11 @@ class BalanceSheetView(APIView):
                 _commission_of = _make_commission_resolver()
                 _comm_total = Decimal('0')
                 _comm_by_type_acc = {}
-                for _r in _all_receipts_qs.select_related(
-                    'income_type', 'tenant', 'invoice__unit', 'invoice__lease',
-                ):
+                _tc_receipts = list(_all_receipts_qs.select_related(
+                    'income_type', 'tenant', 'invoice__unit', 'invoice__lease__unit',
+                ))
+                _commission_of.warm(_tc_receipts)
+                for _r in _tc_receipts:
                     _c = _commission_of(_r)
                     if not _c:
                         continue
@@ -2481,12 +2551,18 @@ class LandlordStatementView(APIView):
         opening_balance = prior_receipts_total - prior_commissions_total - prior_expenses_total
 
         # ── Period transactions ──
-        receipts = self._receipt_base_qs(unit_id_list, property_id_list, currency).filter(
+        receipts = list(self._receipt_base_qs(unit_id_list, property_id_list, currency).filter(
             date__gte=start_date, date__lte=end_date,
         ).select_related(
             'tenant', 'invoice', 'invoice__unit', 'invoice__unit__property',
-            'invoice__lease', 'income_type',
-        ).order_by('date')
+            'invoice__lease__unit', 'income_type',
+        ).order_by('date'))
+
+        # Shared memoised commission resolver (full posting-time resolution
+        # chain, incl. lease/tenant fallbacks) — replaces the per-receipt rate
+        # lookups and keeps this statement consistent with IS/BS/CF.
+        _commission_of = _make_commission_resolver()
+        _commission_of.warm(receipts)
 
         expense_qs = Expense.objects.filter(
             Q(landlord_id=landlord.id) | Q(payee_type='landlord', payee_id=landlord.id),
@@ -2522,7 +2598,7 @@ class LandlordStatementView(APIView):
             total_receipts += rcpt.amount
 
             # Debit: commission for this receipt
-            commission_amt = self._compute_commission(rcpt, landlord)
+            commission_amt = _commission_of(rcpt)
             if commission_amt > 0:
                 income_type_name = rcpt.income_type.name if rcpt.income_type else 'Levy'
                 txn_id += 1
@@ -2851,7 +2927,10 @@ class CashFlowStatementView(APIView):
             if _ll:
                 # ending_cash = funds held in trust as of end_date
                 end_receipts = receipt_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
-                end_commission = _commission_total(receipt_qs)
+                # Same queryset the Operating section already resolved —
+                # agent_commission IS _commission_total(receipt_qs), so reuse
+                # it instead of re-listing every receipt a second time.
+                end_commission = agent_commission
                 _gl_exp_to_end = GeneralLedger.objects.filter(
                     Q(date__lte=end_date),
                     account__in=expense_accounts,
@@ -4508,10 +4587,16 @@ class IncomeExpenditureReportView(APIView):
             date__gte=start_date, date__lte=end_date,
         ).select_related(
             'income_type', 'tenant', 'invoice', 'invoice__unit',
-            'invoice__unit__property',
+            'invoice__unit__property', 'invoice__lease__unit',
         ).order_by('date')
 
         period_receipts = list(period_receipt_qs)
+
+        # One memoised commission resolver for the whole period, bulk-warmed —
+        # the old per-receipt _compute_commission_amount fired a property
+        # resolution AND a rate lookup per receipt (2 queries each).
+        _commission_of = _make_commission_resolver()
+        _commission_of.warm(period_receipts)
 
         period_expense_qs = Expense.objects.filter(
             Q(landlord_id=landlord.id) | Q(payee_type='landlord', payee_id=landlord.id),
@@ -4597,7 +4682,9 @@ class IncomeExpenditureReportView(APIView):
             mgmt_commission = Decimal('0')
             mgmt_by_type: dict = {}
             for r in m_receipts:
-                amt = self._compute_commission_amount(r, landlord)
+                # Shared memoised resolver (warmed above) — same figures as
+                # _compute_commission_amount, without the per-receipt queries.
+                amt = _commission_of(r)
                 if amt == 0:
                     continue
                 mgmt_commission += amt
