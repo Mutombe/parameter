@@ -994,16 +994,28 @@ class IncomeStatementView(APIView):
             # Prefer the invoice_type when present, else fall back to the
             # income_type code — otherwise invoice-less receipts collapse to
             # "Other" and the named buckets read zero.
-            from django.db.models.functions import Lower
-            _cat_expr = Coalesce(
-                'invoice__invoice_type', Lower('income_type__code'),
-                output_field=CharField(),
-            )
+            # One list serves BOTH the revenue grouping and the cost-of-sales
+            # loop below (previously a separate GROUP BY query).
+            _cos_receipts = list(scoped_receipts.select_related(
+                'income_type', 'tenant', 'invoice', 'invoice__unit', 'invoice__lease__unit',
+            ))
+
+            def _revenue_cat(r):
+                # Mirrors the old SQL Coalesce(invoice__invoice_type,
+                # Lower(income_type__code)) → 'other' semantics.
+                if r.invoice_id and r.invoice and r.invoice.invoice_type is not None:
+                    cat = r.invoice.invoice_type
+                elif r.income_type and r.income_type.code:
+                    cat = r.income_type.code.lower()
+                else:
+                    cat = None
+                return cat or 'other'
 
             # --- Revenue: gross receipts grouped by category. ---
             gross_by_type = {}
-            for row in scoped_receipts.annotate(_cat=_cat_expr).values('_cat').annotate(g=Sum('amount')):
-                gross_by_type[row['_cat'] or 'other'] = row['g'] or Decimal('0')
+            for _r in _cos_receipts:
+                _cat = _revenue_cat(_r)
+                gross_by_type[_cat] = gross_by_type.get(_cat, Decimal('0')) + (_r.amount or Decimal('0'))
 
             revenue_list = []
             total_revenue = Decimal('0')
@@ -1029,9 +1041,6 @@ class IncomeStatementView(APIView):
             # _make_commission_resolver().
             _commission_of = _make_commission_resolver()
             commission_by_type = {}
-            _cos_receipts = list(scoped_receipts.select_related(
-                'income_type', 'tenant', 'invoice', 'invoice__unit', 'invoice__lease__unit',
-            ))
             _commission_of.warm(_cos_receipts)
             for _r in _cos_receipts:
                 _c = _commission_of(_r)
@@ -1827,12 +1836,14 @@ class BalanceSheetView(APIView):
                 _all_receipts_qs = _scoped_receipt_qs(_unit_id_list, _property_id_list).filter(
                     date__lte=as_of_date,
                 )
-                _rcpt_total = _all_receipts_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
                 # Commission must match what was POSTED to the sub-ledger (the
                 # top "Funds Held in Trust" is sub-ledger derived). The SQL
                 # _commission_expr can't resolve the property for invoice-less
                 # receipts and understates per-property overrides, so compute it
                 # per-receipt with the same resolver that posting used.
+                # This ONE list (inception → as_of) also feeds the receipt
+                # total, the equity reconciliation and the per-property note
+                # below — no further receipt queries in this block.
                 _commission_of = _make_commission_resolver()
                 _comm_total = Decimal('0')
                 _comm_by_type_acc = {}
@@ -1840,6 +1851,7 @@ class BalanceSheetView(APIView):
                     'income_type', 'tenant', 'invoice__unit', 'invoice__lease__unit',
                 ))
                 _commission_of.warm(_tc_receipts)
+                _rcpt_total = sum((r.amount or Decimal('0')) for r in _tc_receipts) or Decimal('0')
                 for _r in _tc_receipts:
                     _c = _commission_of(_r)
                     if not _c:
@@ -1895,15 +1907,24 @@ class BalanceSheetView(APIView):
                 # Only build when the landlord has 2+ properties in scope.
                 if len(_properties) >= 2:
                     pp_rows = []
+                    # One unit→property map for the whole loop (was a
+                    # values_list query per property), and receipts/commission
+                    # filtered from the already-listed _tc_receipts in Python
+                    # (was an aggregate + a full re-list per property).
+                    _unit_prop = dict(_units_qs.values_list('id', 'property_id'))
                     for prop in _properties:
-                        _prop_units = list(_units_qs.filter(property_id=prop.id).values_list('id', flat=True))
-                        _prop_rcpt_qs = Receipt.objects.filter(
-                            Q(invoice__unit_id__in=_prop_units) |
-                            Q(invoice__property_id=prop.id),
-                            date__lte=as_of_date,
-                        )
-                        _prop_rcpt = _prop_rcpt_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
-                        _prop_comm = _commission_total(_prop_rcpt_qs)
+                        _prop_unit_ids = {uid for uid, pid in _unit_prop.items() if pid == prop.id}
+                        # Same linkage the old queryset used: invoice→unit in
+                        # this property, or invoice→property directly.
+                        _prop_receipts = [
+                            r for r in _tc_receipts
+                            if r.invoice_id and r.invoice and (
+                                (r.invoice.unit_id and r.invoice.unit_id in _prop_unit_ids)
+                                or r.invoice.property_id == prop.id
+                            )
+                        ]
+                        _prop_rcpt = sum((r.amount or Decimal('0')) for r in _prop_receipts) or Decimal('0')
+                        _prop_comm = sum((_commission_of(r) for r in _prop_receipts), Decimal('0'))
                         # Expense is landlord-LEVEL — has no unit / property
                         # FK on the model itself. Per-property expense split
                         # isn't possible from the DB; we leave these at 0
@@ -1995,11 +2016,12 @@ class BalanceSheetView(APIView):
                 _period_start = _as_of.replace(month=1, day=1)
                 _opening_cutoff = _period_start - timedelta(days=1)
 
-                _open_rcpt_qs = _scoped_receipt_qs(_unit_id_list, _property_id_list).filter(
-                    date__lte=_opening_cutoff,
-                )
-                _open_rcpt = _open_rcpt_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
-                _open_comm = _commission_total(_open_rcpt_qs)
+                # Opening slice = the already-listed _tc_receipts dated on or
+                # before the cutoff — same scope, no extra queries (the
+                # resolver is memoised, so re-asking commission is dict hits).
+                _open_receipts = [r for r in _tc_receipts if r.date <= _opening_cutoff]
+                _open_rcpt = sum((r.amount or Decimal('0')) for r in _open_receipts) or Decimal('0')
+                _open_comm = sum((_commission_of(r) for r in _open_receipts), Decimal('0'))
                 _open_exp = Expense.objects.filter(
                     landlord_id=landlord_obj.id,
                     status='paid',
@@ -2015,10 +2037,12 @@ class BalanceSheetView(APIView):
                     date__lte=as_of_date,
                 ).aggregate(t=Sum('amount'))['t'] or Decimal('0')
 
-                _period_rcpt_qs = _scoped_receipt_qs(_unit_id_list, _property_id_list).filter(
-                    date__gte=_period_start, date__lte=as_of_date,
+                # Period slice from the same in-memory list (dates within
+                # [period_start, as_of] — _tc_receipts is already ≤ as_of).
+                _period_comm = sum(
+                    (_commission_of(r) for r in _tc_receipts if r.date >= _period_start),
+                    Decimal('0'),
                 )
-                _period_comm = _commission_total(_period_rcpt_qs)
 
                 _period_expenses = Expense.objects.filter(
                     landlord_id=landlord_obj.id,
@@ -2925,8 +2949,10 @@ class CashFlowStatementView(APIView):
             except Landlord.DoesNotExist:
                 _ll = None
             if _ll:
-                # ending_cash = funds held in trust as of end_date
-                end_receipts = receipt_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
+                # ending_cash = funds held in trust as of end_date.
+                # tenant_receipts already aggregated this same queryset for
+                # the Operating section — reuse it.
+                end_receipts = tenant_receipts
                 # Same queryset the Operating section already resolved —
                 # agent_commission IS _commission_total(receipt_qs), so reuse
                 # it instead of re-listing every receipt a second time.
