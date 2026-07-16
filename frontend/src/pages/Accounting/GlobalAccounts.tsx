@@ -67,7 +67,7 @@ export default function GlobalAccounts() {
 // --------------------------------------------------------------------------
 // Assets / Liabilities (ChartOfAccount)
 // --------------------------------------------------------------------------
-function AccountsList({
+export function AccountsList({
   accountType,
   emptyHint,
 }: {
@@ -217,10 +217,9 @@ function AccountsList({
               { value: 'ZWG', label: 'ZWG' },
             ]}
           />
-          <Button onClick={() => setShowForm(true)} className="gap-2">
-            <Plus className="w-4 h-4" />
-            New {accountType === 'asset' ? 'Asset' : 'Liability'}
-          </Button>
+          {/* Creation happens via Chart of Accounts' "New Account" button —
+              the one place all GL accounts (assets, liabilities, expenses,
+              ...) are created. */}
         </div>
       </div>
 
@@ -235,12 +234,6 @@ function AccountsList({
           icon={accountType === 'asset' ? Wallet : Banknote}
           title={debouncedSearch ? 'No matches' : `No ${accountType} accounts`}
           description={debouncedSearch ? 'Try a different search term.' : emptyHint}
-          action={!debouncedSearch ? (
-            <Button onClick={() => setShowForm(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add the first one
-            </Button>
-          ) : undefined}
         />
       ) : (
         <table className="w-full text-sm">
@@ -364,7 +357,7 @@ function AccountsList({
 // --------------------------------------------------------------------------
 // Suppliers
 // --------------------------------------------------------------------------
-function SuppliersList() {
+export function SuppliersList() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')

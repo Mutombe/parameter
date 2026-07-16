@@ -22,10 +22,13 @@ import {
   ArrowDownLeft,
   Sparkles,
   Download,
+  Building2,
+  Banknote,
 } from 'lucide-react'
 import { accountApi } from '../../services/api'
+import { AccountsList, SuppliersList } from './GlobalAccounts'
 import { formatCurrency, cn } from '../../lib/utils'
-import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton, Tooltip } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton, Tooltip, Tabs, TabsList, TabsTrigger, TabsContent } from '../../components/ui'
 import toast from 'react-hot-toast'
 import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
@@ -138,8 +141,8 @@ export default function ChartOfAccounts() {
     code: '',
     name: '',
     account_type: 'asset',
-    account_subtype: 'current_asset',
-    balance_sheet_category: 'other_current_assets',
+    account_subtype: 'bank',
+    balance_sheet_category: 'current_assets',
   })
 
   const selection = useSelection<number>({ clearOnChange: [search, typeFilter] })
@@ -167,7 +170,7 @@ export default function ChartOfAccounts() {
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
       toast.success('Account created successfully')
       setShowCreateModal(false)
-      setNewAccount({ code: '', name: '', account_type: 'asset', account_subtype: 'current_asset', balance_sheet_category: 'other_current_assets' })
+      setNewAccount({ code: '', name: '', account_type: 'asset', account_subtype: 'bank', balance_sheet_category: 'current_assets' })
     },
     onError: () => {
       toast.error('Failed to create account')
@@ -207,12 +210,38 @@ export default function ChartOfAccounts() {
     setExpandedTypes(newExpanded)
   }
 
-  const subtypeOptions: Record<string, string[]> = {
-    asset: ['current_asset', 'non_current_asset', 'bank', 'receivable'],
-    liability: ['current_liability', 'non_current_liability', 'payable'],
-    equity: ['capital', 'retained_earnings'],
-    revenue: ['operating_revenue', 'other_income'],
-    expense: ['operating_expense', 'cost_of_sales', 'other_expense'],
+  // Sub-type values match the backend AccountSubType enum. Assets carry the
+  // six canonical kinds; the label is what the user sees.
+  const subtypeOptions: Record<string, { value: string; label: string }[]> = {
+    asset: [
+      { value: 'bank', label: 'Bank' },
+      { value: 'cash', label: 'Cash' },
+      { value: 'accounts_receivable', label: 'Receivables' },
+      { value: 'fixed_asset', label: 'Fixed Assets (Immovable)' },
+      { value: 'movable_asset', label: 'Movable' },
+      { value: 'investment', label: 'Investments' },
+    ],
+    liability: [
+      { value: 'accounts_payable', label: 'Accounts Payable' },
+      { value: 'accrued_liabilities', label: 'Accrued Liabilities' },
+      { value: 'vat_payable', label: 'VAT Payable' },
+      { value: 'tenant_deposits', label: 'Tenant Deposits' },
+    ],
+    equity: [
+      { value: 'capital', label: 'Capital' },
+      { value: 'retained_earnings', label: 'Retained Earnings' },
+    ],
+    revenue: [
+      { value: 'rental_income', label: 'Rental Income' },
+      { value: 'commission_income', label: 'Commission Income' },
+      { value: 'other_income', label: 'Other Income' },
+    ],
+    expense: [
+      { value: 'operating_expense', label: 'Operating Expense' },
+      { value: 'maintenance', label: 'Maintenance & Repairs' },
+      { value: 'utilities', label: 'Utilities' },
+      { value: 'custom_expense', label: 'Custom Expense' },
+    ],
   }
 
   // Mandatory landlord Balance Sheet sub-category for asset/liability
@@ -220,10 +249,11 @@ export default function ChartOfAccounts() {
   // chosen here, so it must be selected at creation.
   const bsCategoryOptions: Record<string, { value: string; label: string }[]> = {
     asset: [
-      { value: 'funds_held_in_trust', label: 'Funds Held in Trust' },
-      { value: 'lessees_arrears', label: 'Lessees Arrears' },
-      { value: 'prepayments', label: 'Prepayments' },
-      { value: 'other_current_assets', label: 'Other Current Assets' },
+      { value: 'non_current_assets', label: 'Non-Current Assets' },
+      { value: 'current_assets', label: 'Current Assets' },
+      { value: 'accounts_receivable', label: 'Accounts Receivables' },
+      { value: 'investments', label: 'Investments' },
+      { value: 'funds_held_in_trust', label: 'Funds Held In Trust' },
     ],
     liability: [
       { value: 'funds_owed_by_trust', label: 'Funds Owed by Trust' },
@@ -233,7 +263,7 @@ export default function ChartOfAccounts() {
     ],
   }
   const defaultBsCategory: Record<string, string> = {
-    asset: 'other_current_assets',
+    asset: 'current_assets',
     liability: 'other_current_liabilities',
   }
   const needsBsCategory = newAccount.account_type === 'asset' || newAccount.account_type === 'liability'
@@ -282,6 +312,19 @@ export default function ChartOfAccounts() {
         }
       />
 
+      {/* The Assets & Liabilities and Suppliers registers live here now
+          (moved from the retired Assets & Liabilities page) — grouping
+          unchanged. All GL accounts are created via the single "New
+          Account" button above. */}
+      <Tabs defaultValue="chart" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="chart" icon={BookOpen}>Chart of Accounts</TabsTrigger>
+          <TabsTrigger value="assets" icon={Wallet}>Assets</TabsTrigger>
+          <TabsTrigger value="liabilities" icon={Banknote}>Liabilities</TabsTrigger>
+          <TabsTrigger value="suppliers" icon={Building2}>Suppliers</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="chart" className="space-y-6">
       {isLoading ? (
         <SkeletonChartOfAccounts />
       ) : !accounts?.length ? (
@@ -539,6 +582,18 @@ export default function ChartOfAccounts() {
           </div>
         </>
       )}
+        </TabsContent>
+
+        <TabsContent value="assets">
+          <AccountsList accountType="asset" emptyHint='No asset accounts yet — create one with the "New Account" button above.' />
+        </TabsContent>
+        <TabsContent value="liabilities">
+          <AccountsList accountType="liability" emptyHint='No liability accounts yet — create one with the "New Account" button above.' />
+        </TabsContent>
+        <TabsContent value="suppliers">
+          <SuppliersList />
+        </TabsContent>
+      </Tabs>
 
       {/* Create Account Modal */}
       <Modal
@@ -568,7 +623,7 @@ export default function ChartOfAccounts() {
               onChange={(e) => setNewAccount({
                 ...newAccount,
                 account_type: e.target.value,
-                account_subtype: subtypeOptions[e.target.value][0],
+                account_subtype: subtypeOptions[e.target.value][0].value,
                 balance_sheet_category: defaultBsCategory[e.target.value] || '',
               })}
             >
@@ -594,8 +649,8 @@ export default function ChartOfAccounts() {
             onChange={(e) => setNewAccount({ ...newAccount, account_subtype: e.target.value })}
           >
             {subtypeOptions[newAccount.account_type]?.map((subtype) => (
-              <option key={subtype} value={subtype}>
-                {subtype.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              <option key={subtype.value} value={subtype.value}>
+                {subtype.label}
               </option>
             ))}
           </Select>

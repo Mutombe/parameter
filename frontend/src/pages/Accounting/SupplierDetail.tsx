@@ -50,11 +50,11 @@ export default function SupplierDetail() {
         icon={Building2}
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
-          { label: 'Assets & Liabilities', href: '/dashboard/global-accounts' },
+          { label: 'Chart of Accounts', href: '/dashboard/chart-of-accounts' },
           { label: supplier?.name || '…' },
         ]}
         actions={
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => navigate('/dashboard/global-accounts')}>
+          <Button variant="outline" size="sm" className="gap-2" onClick={() => navigate('/dashboard/chart-of-accounts')}>
             <ArrowLeft className="w-4 h-4" />
             Back
           </Button>

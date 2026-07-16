@@ -188,8 +188,13 @@ class ChartOfAccount(models.Model):
         here — no name/subtype guessing. Unset (legacy) accounts fall into
         the matching 'Other Current ...' bucket on the report.
         """
-        # Current Asset buckets
+        # Asset buckets — the five offered at creation…
+        NON_CURRENT_ASSETS = 'non_current_assets', 'Non-Current Assets'
+        CURRENT_ASSETS = 'current_assets', 'Current Assets'
+        ACCOUNTS_RECEIVABLE = 'accounts_receivable', 'Accounts Receivables'
+        INVESTMENTS = 'investments', 'Investments'
         FUNDS_HELD_IN_TRUST = 'funds_held_in_trust', 'Funds Held in Trust'
+        # …plus legacy asset buckets still carried by existing accounts.
         LESSEES_ARREARS = 'lessees_arrears', 'Lessees Arrears'
         PREPAYMENTS = 'prepayments', 'Prepayments'
         OTHER_CURRENT_ASSETS = 'other_current_assets', 'Other Current Assets'

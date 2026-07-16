@@ -58,8 +58,11 @@ class ChartOfAccountSerializer(serializers.ModelSerializer):
         # bucket (and vice-versa) — that would scramble the report.
         if bs_category:
             ASSET_BUCKETS = {
-                'funds_held_in_trust', 'lessees_arrears',
-                'prepayments', 'other_current_assets',
+                # The five offered at creation…
+                'non_current_assets', 'current_assets', 'accounts_receivable',
+                'investments', 'funds_held_in_trust',
+                # …plus legacy buckets still carried by existing accounts.
+                'lessees_arrears', 'prepayments', 'other_current_assets',
             }
             LIABILITY_BUCKETS = {
                 'funds_owed_by_trust', 'lessees_prepayments',

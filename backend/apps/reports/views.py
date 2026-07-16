@@ -1599,6 +1599,12 @@ class BalanceSheetView(APIView):
                     'breakdown': [],
                     'description': 'Computers, equipment, furniture, vehicles & other movable assets',
                 },
+                'investments': {
+                    'name': 'Investments',
+                    'total': Decimal('0'),
+                    'breakdown': [],
+                    'description': 'Long-term investment holdings',
+                },
             }
             liability_buckets = {
                 'funds_owed_by_trust': {
@@ -1687,9 +1693,23 @@ class BalanceSheetView(APIView):
                     # split into immovable (land/buildings) vs movable
                     # (computers/equipment/furniture/vehicles). Otherwise
                     # honour the chosen bucket, else Other Current Assets.
-                    if derive_account_category(code, 'asset') == 'fixed_asset':
-                        bucket_key = ('immovable_assets' if _is_immovable_asset(name)
+                    # New creation-time categories map onto the report buckets:
+                    #   investments          → Investments (non-current)
+                    #   non_current_assets   → Immovable/Movable by subtype+name
+                    #   accounts_receivable  → Lessees Arrears (receivables)
+                    #   current_assets       → Other Current Assets grouping
+                    if subtype == 'investment' or category == 'investments':
+                        bucket_key = 'investments'
+                    elif (category == 'non_current_assets'
+                          or subtype in ('fixed_asset', 'movable_asset')
+                          or derive_account_category(code, 'asset') == 'fixed_asset'):
+                        bucket_key = ('movable_assets' if subtype == 'movable_asset'
+                                      else 'immovable_assets' if _is_immovable_asset(name)
                                       else 'movable_assets')
+                    elif category == 'accounts_receivable':
+                        bucket_key = 'lessees_arrears'
+                    elif category == 'current_assets':
+                        bucket_key = 'other_current_assets'
                     else:
                         bucket_key = category if category in asset_buckets else 'other_current_assets'
                     asset_buckets[bucket_key]['total'] += bal
@@ -1737,15 +1757,18 @@ class BalanceSheetView(APIView):
             non_current_assets = [
                 _finalize(asset_buckets['immovable_assets']),
                 _finalize(asset_buckets['movable_assets']),
+                _finalize(asset_buckets['investments']),
             ]
+            _NON_CURRENT_NAMES = ('Immovable Assets', 'Movable Assets', 'Investments')
             current_assets_total = sum(
                 (b['total'] for b in asset_buckets.values()
-                 if b['name'] not in ('Immovable Assets', 'Movable Assets')),
+                 if b['name'] not in _NON_CURRENT_NAMES),
                 Decimal('0'),
             )
             non_current_assets_total = (
                 asset_buckets['immovable_assets']['total']
                 + asset_buckets['movable_assets']['total']
+                + asset_buckets['investments']['total']
             )
             sub_categories_liabilities = [
                 _finalize(liability_buckets['funds_owed_by_trust']),
@@ -2831,6 +2854,37 @@ class CashFlowStatementView(APIView):
             )
         expense_payments = gl_expenses.aggregate(total=Sum('debit_amount'))['total'] or Decimal('0')
 
+        # Cash paid to suppliers + capital purchases. These leave the
+        # landlord's sub-account like any other cash payment but the GL
+        # expense-account walk above can't see them — a supplier-debt
+        # settlement debits Accounts Payable and a capital purchase debits an
+        # asset GL, not an expense GL. Every cash payment recorded in the
+        # landlord's sub-accounts must appear on the statement: settlements
+        # under Operating ("Cash paid to suppliers"), capital purchases under
+        # Investing ("Purchase of assets").
+        from apps.accounting.models import derive_account_category as _dac
+        _pocket_exp_qs = Expense.objects.filter(
+            date_filter, status='paid',
+        ).exclude(expense_kind='non_cash').exclude(expense_type='landlord_payment')
+        if landlord_id:
+            _pocket_exp_qs = _pocket_exp_qs.filter(
+                Q(landlord_id=landlord_id) | Q(payee_type='landlord', payee_id=landlord_id)
+            )
+        supplier_payments = _pocket_exp_qs.filter(clears_payable=True).aggregate(
+            t=Sum('amount'))['t'] or Decimal('0')
+        capex_payments = Decimal('0')
+        _cap_rows = (
+            _pocket_exp_qs.filter(clears_payable=False,
+                                  expense_category__gl_account__isnull=False)
+            .values('expense_category__gl_account__code',
+                    'expense_category__gl_account__account_type')
+            .annotate(t=Sum('amount'))
+        )
+        for _r in _cap_rows:
+            _code = _r['expense_category__gl_account__code']
+            if _code and _dac(_code, _r['expense_category__gl_account__account_type']) != 'expense':
+                capex_payments += _r['t'] or Decimal('0')
+
         # Agent commission — only meaningful under landlord scope (the
         # agency-wide view doesn't decompose per landlord, and the agent
         # IS the agency anyway). Zero out otherwise.
@@ -2867,7 +2921,8 @@ class CashFlowStatementView(APIView):
         scoped_to_landlord = scope_filter is not None and landlord_id
         operating_landlord_payments = Decimal('0') if scoped_to_landlord else landlord_payments
         operating_inflows = tenant_receipts
-        operating_outflows = expense_payments + agent_commission + operating_landlord_payments
+        operating_outflows = (expense_payments + agent_commission
+                              + operating_landlord_payments + supplier_payments)
         net_operating = operating_inflows - operating_outflows
 
         # Investing Activities
@@ -2901,7 +2956,9 @@ class CashFlowStatementView(APIView):
                 _oct_period_qs.aggregate(t=Sum('credit_amount'))['t'] or Decimal('0'))
 
         if scope_filter is not None:
-            asset_purchases = {'purchases': Decimal('0'), 'sales': Decimal('0')}
+            # Capital purchases funded from the landlord's pocket (expenses
+            # whose category GL resolves to an asset) are investing outflows.
+            asset_purchases = {'purchases': capex_payments, 'sales': Decimal('0')}
             # Owner withdrawals under landlord scope = remittances paid to the
             # landlord (drawings); contributions = OCT injections.
             equity_transactions = {
@@ -2957,14 +3014,15 @@ class CashFlowStatementView(APIView):
                 # agent_commission IS _commission_total(receipt_qs), so reuse
                 # it instead of re-listing every receipt a second time.
                 end_commission = agent_commission
-                _gl_exp_to_end = GeneralLedger.objects.filter(
-                    Q(date__lte=end_date),
-                    account__in=expense_accounts,
-                    journal_entry__source_type='expense',
-                ).filter(scope_filter)
-                if non_cash_exclusion is not None:
-                    _gl_exp_to_end = _gl_exp_to_end.exclude(non_cash_exclusion)
-                end_cash_exp = _gl_exp_to_end.aggregate(t=Sum('debit_amount'))['t'] or Decimal('0')
+                # EVERY cash payment out of the landlord's pocket reduces the
+                # trust cash — operating expenses, supplier settlements,
+                # capital purchases AND remittances — so ending cash sums them
+                # all from the Expense book (the GL expense-account walk missed
+                # settlements/capex, which debit AP / asset GLs).
+                end_cash_exp = Expense.objects.filter(
+                    Q(landlord_id=landlord_id) | Q(payee_type='landlord', payee_id=landlord_id),
+                    status='paid', date__lte=end_date,
+                ).exclude(expense_kind='non_cash').aggregate(t=Sum('amount'))['t'] or Decimal('0')
                 # Owner contributions raised the trust cash too.
                 ending_cash = end_receipts - end_commission - end_cash_exp + owner_contributions_to_end
                 beginning_cash = ending_cash - net_change
@@ -3016,6 +3074,9 @@ class CashFlowStatementView(APIView):
                 },
                 'outflows': {
                     'expense_payments': float(expense_payments),
+                    # Cash paid to suppliers — settlements of outstanding
+                    # supplier payables (clears_payable) out of the pocket.
+                    'supplier_payments': float(supplier_payments),
                     'agent_commission': float(agent_commission),
                     # Per-income-type breakdown of the agent commission
                     # so the cash-flow line can split into rent / parking

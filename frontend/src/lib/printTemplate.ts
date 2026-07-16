@@ -1289,6 +1289,7 @@ function buildCashFlowBody(data: any, currency: string): string {
       <table class="ftbl"><tbody>
         <tr><td class="grow">Cash receipts from tenants</td><td class="num">${fmtMoney(opIn.tenant_receipts || 0, currency, false)}</td></tr>
         <tr><td class="grow">Cash paid for expenses</td><td class="num neg">(${fmtMoney(opOut.expense_payments || 0, currency, false)})</td></tr>
+        <tr><td class="grow">Cash paid to suppliers</td><td class="num neg">(${fmtMoney(opOut.supplier_payments || 0, currency, false)})</td></tr>
         <tr><td class="grow">Cash paid to managing agent</td><td class="num neg">(${fmtMoney(opOut.agent_commission || 0, currency, false)})</td></tr>
         ${Array.isArray(opOut.agent_commission_by_type) && opOut.agent_commission_by_type.length
           ? opOut.agent_commission_by_type.map((row: any) => `

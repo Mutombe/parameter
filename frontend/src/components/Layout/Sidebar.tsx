@@ -105,7 +105,6 @@ const navigation: NavSection[] = [
       { name: 'Chart of Accounts', href: '/dashboard/chart-of-accounts', icon: BookOpen },
       { name: 'Revenue', href: '/dashboard/income-types', icon: DollarSign },
       { name: 'Expenditure Accounts', href: '/dashboard/expense-categories', icon: GitCompare },
-      { name: 'Assets & Liabilities', href: '/dashboard/global-accounts', icon: Wallet },
     ],
   },
   {

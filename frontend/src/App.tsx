@@ -223,7 +223,8 @@ export default function App() {
         <Route path="subaccounts/:id" element={<LazyPage><SubAccountStatement /></LazyPage>} />
         <Route path="bs-movements" element={<LazyPage><BalanceSheetMovements /></LazyPage>} />
         <Route path="opening-balances" element={<LazyPage><OpeningBalances /></LazyPage>} />
-        <Route path="global-accounts" element={<LazyPage><GlobalAccounts /></LazyPage>} />
+        {/* Assets & Liabilities moved into Chart of Accounts — keep old links working. */}
+        <Route path="global-accounts" element={<Navigate to="/dashboard/chart-of-accounts" replace />} />
         <Route path="global-accounts/:id" element={<LazyPage><AccountDetail /></LazyPage>} />
         <Route path="suppliers/:id" element={<LazyPage><SupplierDetail /></LazyPage>} />
         <Route path="reports" element={<LazyPage><Reports /></LazyPage>} />

@@ -161,6 +161,19 @@ function CashFlowReport() {
             <div className="px-5 py-3 flex justify-between hover:bg-emerald-50/50">
               <span className="text-gray-700 flex items-center gap-2">
                 <ArrowDownLeft className="w-4 h-4 text-rose-500" />
+                Cash paid to suppliers
+              </span>
+              {isLoading ? (
+                <div className="h-5 w-24 bg-rose-100 rounded animate-pulse" />
+              ) : (
+                <span className="font-semibold text-rose-700 tabular-nums">
+                  ({formatCurrency(data?.operating_activities?.outflows?.supplier_payments || 0)})
+                </span>
+              )}
+            </div>
+            <div className="px-5 py-3 flex justify-between hover:bg-emerald-50/50">
+              <span className="text-gray-700 flex items-center gap-2">
+                <ArrowDownLeft className="w-4 h-4 text-rose-500" />
                 Cash paid to managing agent
               </span>
               {isLoading ? (
