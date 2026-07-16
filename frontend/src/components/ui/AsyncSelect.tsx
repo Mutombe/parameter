@@ -29,6 +29,12 @@ interface AsyncSelectProps {
   createNewLabel?: string
   recentItems?: Option[]
   recentLabel?: string
+  /** Wrap long option labels onto as many lines as needed instead of
+   *  truncating with an ellipsis. Words are never hyphenated — a break only
+   *  happens at spaces (or mid-"word" when a single token exceeds the line).
+   *  Use where the full name is needed to verify the pick, e.g. the journal
+   *  account selector with 120+-character sub-account names. */
+  wrap?: boolean
 }
 
 export function AsyncSelect({
@@ -50,6 +56,7 @@ export function AsyncSelect({
   createNewLabel = '+ Create new...',
   recentItems,
   recentLabel = 'Recently used',
+  wrap = false,
 }: AsyncSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -183,9 +190,9 @@ export function AsyncSelect({
           error && 'border-red-300 focus:ring-red-100'
         )}
       >
-        <span className={cn('truncate', !selectedOption && 'text-gray-400')}>
+        <span className={cn(wrap ? 'whitespace-normal break-words min-w-0' : 'truncate', !selectedOption && 'text-gray-400')}>
           {selectedOption ? (
-            <span className="flex items-center gap-2">
+            <span className={cn('flex gap-2', wrap ? 'items-start' : 'items-center')}>
               {selectedOption.icon}
               {selectedOption.label}
             </span>
@@ -303,9 +310,12 @@ export function AsyncSelect({
                       </span>
                     )}
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{option.label}</div>
+                      {/* wrap: show the FULL label across as many lines as it
+                          needs (no ellipsis, no hyphenation) so long
+                          sub-account names can be verified before posting. */}
+                      <div className={cn('font-medium', wrap ? 'whitespace-normal break-words' : 'truncate')}>{option.label}</div>
                       {option.description && (
-                        <div className="text-xs text-gray-500 truncate">{option.description}</div>
+                        <div className={cn('text-xs text-gray-500', wrap ? 'whitespace-normal break-words' : 'truncate')}>{option.description}</div>
                       )}
                     </div>
                     {String(option.value) === String(value) && (

@@ -12,7 +12,7 @@ interface ModalProps {
   title: string
   description?: string
   children: ReactNode
-  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | '6xl' | 'full'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | '6xl' | 'full' | 'wide'
   showClose?: boolean
   icon?: IconComponent
 }
@@ -32,6 +32,10 @@ const sizeClasses = {
   '5xl': 'max-w-5xl', // 1024px — fits a 6-col commissions grid comfortably
   '6xl': 'max-w-6xl', // 1152px
   full: 'max-w-4xl',  // legacy alias — kept for backwards compat
+  // Viewport-proportional: ≥75% of the screen on desktop so wide working
+  // surfaces (journal entry lines with long account names, descriptions and
+  // amounts) aren't squeezed. Near-full width on small screens.
+  wide: 'max-w-[95vw] lg:max-w-[80vw] xl:max-w-[75vw]',
 }
 
 export function Modal({

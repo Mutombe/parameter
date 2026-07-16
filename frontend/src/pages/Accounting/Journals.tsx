@@ -796,7 +796,7 @@ export default function Journals() {
         onClose={() => setShowCreateModal(false)}
         title="Create Journal Entry"
         icon={Plus}
-        size="lg"
+        size="wide"
       >
         <form
           onSubmit={(e) => {
@@ -876,6 +876,7 @@ export default function Journals() {
                           onChange={(val) => updateEntry(index, 'target', String(val))}
                           options={targetOptions}
                           searchable
+                          wrap
                         />
                       </td>
                       <td className="px-4 py-2">

@@ -195,8 +195,23 @@ class JournalViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
         right FK without a second lookup."""
         groups = []
 
-        gl = (ChartOfAccount.objects.filter(is_active=True)
-              .order_by('code').values('id', 'code', 'name', 'account_type'))
+        # The receipt data-flow's PRIMARY accounts must be postable no matter
+        # the situation — every receipt passes through one of them: Cash/Bank,
+        # the Unpaid* deferred-revenue accounts, Agent Commission and VAT.
+        # They're included even when deactivated, and sorted to the top of
+        # the General Ledger group so they're immediately reachable.
+        from django.db.models import Case, When, Value, IntegerField
+        primary_q = (
+            Q(account_subtype__in=['bank', 'cash', 'vat_payable', 'commission_income'])
+            | Q(name__icontains='unpaid')
+            | Q(name__icontains='agent commission')
+            | Q(code='4100')
+        )
+        gl = (ChartOfAccount.objects.filter(Q(is_active=True) | primary_q)
+              .annotate(_primary=Case(When(primary_q, then=Value(0)),
+                                      default=Value(1), output_field=IntegerField()))
+              .order_by('_primary', 'code')
+              .values('id', 'code', 'name', 'account_type'))
         groups.append({
             'label': 'General Ledger',
             'options': [{
@@ -207,7 +222,8 @@ class JournalViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
             } for a in gl],
         })
 
-        banks = (BankAccount.objects.filter(is_active=True)
+        # ALL bank/cash accounts — primary-flow, so no is_active filter.
+        banks = (BankAccount.objects.all()
                  .order_by('name').values('id', 'code', 'name', 'currency'))
         groups.append({
             'label': 'Bank Accounts',
@@ -219,7 +235,8 @@ class JournalViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
             } for b in banks],
         })
 
-        subs = (SubsidiaryAccount.objects.filter(is_active=True)
+        # ALL tenant + landlord sub-accounts — primary-flow, always postable.
+        subs = (SubsidiaryAccount.objects.all()
                 .order_by('entity_type', 'code')
                 .values('id', 'code', 'name', 'entity_type'))
         entity_labels = {
