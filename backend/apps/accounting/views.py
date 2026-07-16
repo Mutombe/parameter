@@ -358,7 +358,19 @@ class GeneralLedgerViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        account = ChartOfAccount.objects.get(id=account_id)
         queryset = self.get_queryset().filter(account_id=account_id)
+
+        # Opening balance brought forward = the net of every movement dated
+        # BEFORE the window start, signed by the account's normal balance —
+        # a date-filtered statement must not restart from zero.
+        sign = 1 if account.normal_balance == 'debit' else -1
+        opening = Decimal('0')
+        if start_date:
+            prior = GeneralLedger.objects.filter(
+                account_id=account_id, date__lt=start_date,
+            ).aggregate(d=Sum('debit_amount'), c=Sum('credit_amount'))
+            opening = sign * ((prior['d'] or Decimal('0')) - (prior['c'] or Decimal('0')))
 
         if start_date:
             queryset = queryset.filter(date__gte=start_date)
@@ -367,17 +379,27 @@ class GeneralLedgerViewSet(viewsets.ReadOnlyModelViewSet):
 
         queryset = queryset.order_by('date', 'created_at')
 
-        # Calculate running balance
+        # Recompute the running balance from the opening b/f in DATE order so
+        # the Balance column is coherent for the selected window.
         entries = list(queryset)
-        account = ChartOfAccount.objects.get(id=account_id)
+        rows = GeneralLedgerSerializer(entries, many=True).data
+        running = opening
+        for e, row in zip(entries, rows):
+            running += sign * (e.debit_amount - e.credit_amount)
+            row['balance'] = str(running.quantize(Decimal('0.01')))
+
+        total_debits = sum(e.debit_amount for e in entries)
+        total_credits = sum(e.credit_amount for e in entries)
 
         return Response({
             'account': ChartOfAccountSerializer(account).data,
-            'entries': GeneralLedgerSerializer(entries, many=True).data,
+            'opening_balance': float(opening),
+            'entries': rows,
             'summary': {
-                'total_debits': sum(e.debit_amount for e in entries),
-                'total_credits': sum(e.credit_amount for e in entries),
-                'closing_balance': account.current_balance
+                'opening_balance': float(opening),
+                'total_debits': total_debits,
+                'total_credits': total_credits,
+                'closing_balance': float(running),
             }
         })
 

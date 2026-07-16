@@ -11,12 +11,12 @@ from django.conf import settings
 from datetime import date, datetime
 from calendar import monthrange
 import logging
-from .models import Invoice, Receipt, Expense, LatePenaltyConfig, LatePenaltyExclusion
+from .models import Invoice, Receipt, Expense, LatePenaltyConfig, LatePenaltyExclusion, PaymentReminder
 from .serializers import (
     InvoiceSerializer, InvoiceCreateSerializer,
     ReceiptSerializer, ReceiptCreateSerializer,
     ExpenseSerializer, BulkInvoiceSerializer, BulkReceiptSerializer,
-    LatePenaltyConfigSerializer, LatePenaltyExclusionSerializer
+    LatePenaltyConfigSerializer, LatePenaltyExclusionSerializer, PaymentReminderSerializer,
 )
 from apps.masterfile.models import LeaseAgreement, Property, RentalTenant
 from apps.accounting.models import AuditTrail
@@ -1473,3 +1473,57 @@ class LatePenaltyExclusionViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(excluded_by=self.request.user)
+
+
+class PaymentReminderViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
+    """Scheduled payment reminders — include/exclude properties or tenants,
+    with a manually chosen send date. A daily dispatcher sends due runs;
+    send_now fires one immediately."""
+    queryset = PaymentReminder.objects.prefetch_related(
+        'properties', 'tenants', 'excluded_properties'
+    ).select_related('created_by').all()
+    serializer_class = PaymentReminderSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['status', 'send_date']
+    ordering_fields = ['send_date', 'created_at']
+    ordering = ['-send_date', '-created_at']
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    @action(detail=True, methods=['get'])
+    def preview_recipients(self, request, pk=None):
+        """Who would receive this reminder right now, with amounts owed."""
+        reminder = self.get_object()
+        recipients = reminder.resolve_recipients()
+        return Response({
+            'count': len(recipients),
+            'recipients': [
+                {'id': t.id, 'code': t.code, 'name': t.name, 'email': t.email,
+                 'outstanding': float(owed)}
+                for t, owed in recipients[:200]
+            ],
+        })
+
+    @action(detail=True, methods=['post'])
+    def send_now(self, request, pk=None):
+        """Send this reminder immediately instead of waiting for send_date."""
+        reminder = self.get_object()
+        if reminder.status != PaymentReminder.Status.SCHEDULED:
+            return Response({'error': 'Only scheduled reminders can be sent.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        tenant_org = getattr(request, 'tenant', None)
+        company = tenant_org.name if tenant_org else 'Property Management'
+        sent = reminder.send(company_name=company)
+        return Response({'message': f'Sent {sent} reminder(s)',
+                         'sent_count': sent})
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        reminder = self.get_object()
+        if reminder.status != PaymentReminder.Status.SCHEDULED:
+            return Response({'error': 'Only scheduled reminders can be cancelled.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        reminder.status = PaymentReminder.Status.CANCELLED
+        reminder.save(update_fields=['status', 'updated_at'])
+        return Response(PaymentReminderSerializer(reminder).data)

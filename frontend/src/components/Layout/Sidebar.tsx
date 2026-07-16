@@ -30,6 +30,7 @@ import {
   Trash2,
   ChevronDown,
   Wrench,
+  BellRing,
 } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useAuthStore } from '../../stores/authStore'
@@ -87,6 +88,7 @@ const navigation: NavSection[] = [
       { name: 'Receipts', href: '/dashboard/receipts', icon: CreditCard },
       { name: 'Expenditure', href: '/dashboard/expenses', icon: Wallet },
       { name: 'Late Penalties', href: '/dashboard/late-penalties', icon: AlertTriangle },
+      { name: 'Payment Reminders', href: '/dashboard/payment-reminders', icon: BellRing },
     ],
   },
   {

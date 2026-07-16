@@ -9,6 +9,7 @@ Implements Trust Accounting Activities:
 """
 from decimal import Decimal, ROUND_HALF_UP
 from django.db import models, transaction
+from django.db.models import Q, Sum
 from django.conf import settings
 from apps.masterfile.models import RentalTenant, Unit, LeaseAgreement, Property
 from apps.accounting.models import (
@@ -1253,6 +1254,132 @@ class Expense(SoftDeleteModel):
             journal.reverse(f'Source expense {self.expense_number} deleted', user=user)
         except Exception:
             pass
+
+
+class PaymentReminder(models.Model):
+    """A scheduled payment-reminder run.
+
+    Emails every in-scope tenant/account-holder who has an outstanding
+    balance, on a manually chosen date. Scope controls:
+      • send_all             — every active tenant with arrears, OR
+      • properties/tenants   — only the selected properties' tenants or the
+                               selected tenants themselves
+      • excluded_properties  — tenants of these properties are NEVER emailed,
+                               regardless of the include rules.
+    A daily dispatcher task sends reminders whose send_date has arrived;
+    "Send now" fires one immediately.
+    """
+
+    class Status(models.TextChoices):
+        SCHEDULED = 'scheduled', 'Scheduled'
+        SENT = 'sent', 'Sent'
+        CANCELLED = 'cancelled', 'Cancelled'
+
+    send_date = models.DateField(help_text='The manually chosen date to send on')
+    send_all = models.BooleanField(default=True)
+    properties = models.ManyToManyField(
+        Property, blank=True, related_name='payment_reminders',
+        help_text='Only tenants of these properties (when not send_all)')
+    tenants = models.ManyToManyField(
+        RentalTenant, blank=True, related_name='payment_reminders',
+        help_text='Only these tenants/account holders (when not send_all)')
+    excluded_properties = models.ManyToManyField(
+        Property, blank=True, related_name='excluded_payment_reminders',
+        help_text='Tenants of these properties are never sent reminders')
+
+    subject = models.CharField(max_length=255, blank=True)
+    message = models.TextField(
+        blank=True,
+        help_text='Optional extra text; the outstanding balance details are always included')
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.SCHEDULED)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    sent_count = models.PositiveIntegerField(default=0)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='payment_reminders')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Payment Reminder'
+        verbose_name_plural = 'Payment Reminders'
+        ordering = ['-send_date', '-created_at']
+
+    def __str__(self):
+        return f'Reminder {self.send_date} ({self.get_status_display()})'
+
+    def resolve_recipients(self):
+        """Tenants in scope with an outstanding balance and an email.
+        Outstanding = unpaid/partial invoice balances > 0."""
+        from apps.masterfile.models import LeaseAgreement
+        base = RentalTenant.objects.filter(
+            is_active=True, email__isnull=False,
+        ).exclude(email='')
+
+        if not self.send_all:
+            tenant_ids = set(self.tenants.values_list('id', flat=True))
+            prop_ids = list(self.properties.values_list('id', flat=True))
+            if prop_ids:
+                tenant_ids |= set(LeaseAgreement.objects.filter(
+                    Q(unit__property_id__in=prop_ids) | Q(property_id__in=prop_ids),
+                    status='active',
+                ).values_list('tenant_id', flat=True))
+            base = base.filter(id__in=tenant_ids)
+
+        excluded_ids = list(self.excluded_properties.values_list('id', flat=True))
+        if excluded_ids:
+            excluded_tenants = LeaseAgreement.objects.filter(
+                Q(unit__property_id__in=excluded_ids) | Q(property_id__in=excluded_ids),
+                status='active',
+            ).values_list('tenant_id', flat=True)
+            base = base.exclude(id__in=list(excluded_tenants))
+
+        # Only tenants who actually owe something.
+        owing = Invoice.objects.filter(
+            tenant_id__in=base.values_list('id', flat=True),
+            balance__gt=0, status__in=['sent', 'partial', 'overdue'],
+        ).values('tenant_id').annotate(total=Sum('balance'))
+        owed_by_tenant = {r['tenant_id']: r['total'] for r in owing}
+        return [(t, owed_by_tenant[t.id]) for t in base if t.id in owed_by_tenant]
+
+    def send(self, company_name='Property Management'):
+        """Send the reminder emails and mark this run as sent."""
+        from django.utils import timezone as _tz
+        from apps.notifications.utils import send_tenant_email
+        recipients = self.resolve_recipients()
+        sent = 0
+        for tenant, owed in recipients:
+            try:
+                extra = f'\n{self.message}\n' if self.message else ''
+                send_tenant_email(
+                    tenant,
+                    self.subject or f'Payment Reminder — Outstanding Balance',
+                    f"""Dear {tenant.name},
+
+This is a friendly reminder that your account has an outstanding balance.
+
+Amount outstanding: {owed:,.2f}
+{extra}
+Please arrange payment at your earliest convenience. If you have already
+paid, kindly disregard this notice.
+
+Thank you.
+
+Best regards,
+{company_name}
+Powered by Parameter.co.zw
+"""
+                )
+                sent += 1
+            except Exception:
+                pass
+        self.status = self.Status.SENT
+        self.sent_at = _tz.now()
+        self.sent_count = sent
+        self.save(update_fields=['status', 'sent_at', 'sent_count', 'updated_at'])
+        return sent
 
 
 class LatePenaltyConfig(models.Model):

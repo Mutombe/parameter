@@ -57,6 +57,7 @@ const Settings = lazy(() => import('./pages/Settings'))
 const Search = lazy(() => import('./pages/Search'))
 const Notifications = lazy(() => import('./pages/Notifications'))
 const LatePenalties = lazy(() => import('./pages/Billing/LatePenalties'))
+const PaymentReminders = lazy(() => import('./pages/Billing/PaymentReminders'))
 const Trash = lazy(() => import('./pages/Trash'))
 
 // Accounting
@@ -238,6 +239,7 @@ export default function App() {
         <Route path="settings" element={<LazyPage fallback={<SettingsSkeleton />}><Settings /></LazyPage>} />
         <Route path="search" element={<LazyPage><Search /></LazyPage>} />
         <Route path="notifications" element={<LazyPage><Notifications /></LazyPage>} />
+        <Route path="payment-reminders" element={<LazyPage><PaymentReminders /></LazyPage>} />
         <Route path="late-penalties" element={<LazyPage><LatePenalties /></LazyPage>} />
         <Route path="trash" element={<LazyPage><Trash /></LazyPage>} />
         <Route path="reports/property-performance" element={<LazyPage><PropertyPerformance /></LazyPage>} />

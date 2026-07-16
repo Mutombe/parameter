@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -132,6 +133,7 @@ function SkeletonChartOfAccounts() {
 }
 
 export default function ChartOfAccounts() {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('')
@@ -149,7 +151,9 @@ export default function ChartOfAccounts() {
 
   const { data: accounts, isLoading } = useQuery({
     queryKey: ['accounts'],
-    queryFn: () => accountApi.list().then(r => r.data.results || r.data),
+    // page_size 500: the default page (25) hid system accounts like the
+    // Unpaid* deferred-revenue set and Agent Commission from the chart.
+    queryFn: () => accountApi.list({ page_size: 500 }).then(r => r.data.results || r.data),
     placeholderData: keepPreviousData,
   })
 
@@ -504,12 +508,13 @@ export default function ChartOfAccounts() {
                                 initial={{ opacity: 0, x: -10 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: index * 0.02 }}
+                                onClick={() => navigate(`/dashboard/global-accounts/${account.id}`)}
                                 className={cn(
-                                  'hover:bg-gray-50 transition-colors group',
+                                  'hover:bg-gray-50 transition-colors group cursor-pointer',
                                   selection.isSelected(account.id) && 'bg-primary-50'
                                 )}
                               >
-                                <td className="w-10 px-3 py-4">
+                                <td className="w-10 px-3 py-4" onClick={(e) => e.stopPropagation()}>
                                   <SelectionCheckbox
                                     checked={selection.isSelected(account.id)}
                                     onChange={() => selection.toggle(account.id)}

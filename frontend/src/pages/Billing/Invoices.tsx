@@ -23,11 +23,12 @@ import {
   X,
   Trash2,
   BookOpen,
+  Mail,
 } from 'lucide-react'
 import { invoiceApi, tenantApi, unitApi, leaseApi, propertyApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { printInvoice } from '../../lib/printTemplate'
-import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination, DatePicker } from '../../components/ui'
+import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination, DatePicker, MultiCheckList } from '../../components/ui'
 import { PayerSelect } from '../../components/PayerSelect'
 import { PayerCell } from '../../components/PayerCell'
 import { SubAccountBadge } from '../../components/SubAccountBadge'
@@ -319,6 +320,51 @@ export default function Invoices() {
   const [currentPage, setCurrentPage] = useState(1)
   const [showForm, setShowForm] = useState(false)
   const [showGenerateModal, setShowGenerateModal] = useState(false)
+  // Email Invoices — outstanding invoices to all / selected properties /
+  // selected tenants & account holders.
+  const [showEmailModal, setShowEmailModal] = useState(false)
+  const [emailForm, setEmailForm] = useState({
+    mode: 'all' as 'all' | 'properties' | 'tenants',
+    properties: [] as Array<number | string>,
+    tenants: [] as Array<number | string>,
+  })
+
+  // Scope pickers for the Email Invoices modal.
+  const { data: emailProps } = useQuery({
+    queryKey: ['email-invoice-properties'],
+    queryFn: () => propertyApi.list({ page_size: 500 }).then((r: any) => r.data.results || r.data),
+    enabled: showEmailModal && emailForm.mode === 'properties',
+    staleTime: 60_000,
+  })
+  const { data: emailTenants } = useQuery({
+    queryKey: ['email-invoice-tenants'],
+    queryFn: () => tenantApi.list({ page_size: 500 }).then((r: any) => r.data.results || r.data),
+    enabled: showEmailModal && emailForm.mode === 'tenants',
+    staleTime: 60_000,
+  })
+  const emailInvoicesMutation = useMutation({
+    mutationFn: (payload: any) => invoiceApi.sendInvoices(payload),
+    onSuccess: (r: any) => {
+      showToast.success(r?.data?.message || 'Invoice emails queued')
+      setShowEmailModal(false)
+      setEmailForm({ mode: 'all', properties: [], tenants: [] })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
+    },
+    onError: (err) => showToast.error(parseApiError(err, 'Failed to queue invoice emails')),
+  })
+  const submitEmailInvoices = () => {
+    if (emailForm.mode === 'properties' && emailForm.properties.length === 0) {
+      showToast.error('Select at least one property.'); return
+    }
+    if (emailForm.mode === 'tenants' && emailForm.tenants.length === 0) {
+      showToast.error('Select at least one tenant or account holder.'); return
+    }
+    emailInvoicesMutation.mutate({
+      send_all: emailForm.mode === 'all',
+      ...(emailForm.mode === 'properties' ? { property_ids: emailForm.properties } : {}),
+      ...(emailForm.mode === 'tenants' ? { tenant_ids: emailForm.tenants } : {}),
+    })
+  }
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const [postingId, setPostingId] = useState<number | null>(null)
@@ -745,6 +791,10 @@ export default function Invoices() {
         ]}
         actions={
           <div className="flex items-center gap-2 sm:gap-3">
+            <Button variant="outline" onClick={() => setShowEmailModal(true)} className="gap-1.5 sm:gap-2 px-2.5 sm:px-4">
+              <Mail className="w-4 h-4" />
+              <span className="hidden sm:inline">Email Invoices</span>
+            </Button>
             <Button variant="outline" onClick={() => setShowGenerateModal(true)} className="gap-1.5 sm:gap-2 px-2.5 sm:px-4">
               <Zap className="w-4 h-4" />
               <span className="hidden sm:inline">Generate Monthly</span>
@@ -1511,6 +1561,60 @@ export default function Invoices() {
       </AnimatePresence>
 
       {/* Bulk Actions Bar */}
+      {/* Email Invoices Modal */}
+      <Modal
+        isOpen={showEmailModal}
+        onClose={() => setShowEmailModal(false)}
+        title="Email Invoices"
+        size="2xl"
+      >
+        <form onSubmit={(e) => { e.preventDefault(); submitEmailInvoices() }} className="space-y-4">
+          <p className="text-sm text-gray-500">
+            Emails each recipient their outstanding invoice(s). Choose all
+            properties, specific properties, or specific tenants / account
+            holders. Draft invoices are marked as sent.
+          </p>
+          <Select
+            label="Send to"
+            value={emailForm.mode}
+            onChange={(e) => setEmailForm({ ...emailForm, mode: e.target.value as any })}
+            options={[
+              { value: 'all', label: 'All properties (every tenant with an outstanding invoice)' },
+              { value: 'properties', label: 'Specific properties' },
+              { value: 'tenants', label: 'Specific tenants / account holders' },
+            ]}
+          />
+          {emailForm.mode === 'properties' && (
+            <MultiCheckList
+              label="Properties"
+              options={(Array.isArray(emailProps) ? emailProps : []).map((p: any) => ({ value: p.id, label: p.name, description: p.address || '' }))}
+              selected={emailForm.properties}
+              onChange={(next) => setEmailForm({ ...emailForm, properties: next })}
+            />
+          )}
+          {emailForm.mode === 'tenants' && (
+            <MultiCheckList
+              label="Tenants / Account Holders"
+              options={(Array.isArray(emailTenants) ? emailTenants : []).map((t: any) => ({
+                value: t.id,
+                label: t.name,
+                description: `${t.code || ''}${t.account_type ? ` · ${t.account_type === 'levy' ? 'Account holder' : 'Tenant'}` : ''}`,
+              }))}
+              selected={emailForm.tenants}
+              onChange={(next) => setEmailForm({ ...emailForm, tenants: next })}
+            />
+          )}
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowEmailModal(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" className="flex-1" disabled={emailInvoicesMutation.isPending}>
+              {emailInvoicesMutation.isPending ? 'Queuing…' : 'Send Invoice Emails'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
       <BulkActionsBar
         selectedCount={selection.selectedCount}
         onClearSelection={selection.clearSelection}

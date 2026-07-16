@@ -33,6 +33,14 @@ class Command(BaseCommand):
                 'repeats': -1,
             },
             {
+                # User-scheduled payment reminders (manual dates, with
+                # property/tenant include + exclude rules).
+                'name': 'Send Scheduled Payment Reminders',
+                'func': 'apps.billing.tasks.send_scheduled_payment_reminders_all_tenants',
+                'schedule_type': Schedule.DAILY,
+                'repeats': -1,
+            },
+            {
                 'name': 'Send Rental Due Reminders',
                 'func': 'apps.billing.tasks.send_rental_due_reminders_all_tenants',
                 'schedule_type': Schedule.DAILY,

@@ -796,3 +796,28 @@ def send_bulk_email_task(recipient_ids, subject, message, company_name, user_id)
 
     logger.info(f"Bulk email task complete: {sent} sent, {failed} failed")
     return {'sent': sent, 'failed': failed}
+
+
+def send_scheduled_payment_reminders_all_tenants():
+    """Dispatch user-scheduled PaymentReminder runs whose send_date has
+    arrived. Runs daily across every tenant schema."""
+    TenantModel = get_tenant_model()
+    tenants = TenantModel.objects.filter(is_active=True).exclude(schema_name='public')
+    total = 0
+    for tenant in tenants:
+        try:
+            with tenant_context(tenant):
+                from apps.billing.models import PaymentReminder
+                due = PaymentReminder.objects.filter(
+                    status=PaymentReminder.Status.SCHEDULED,
+                    send_date__lte=timezone.now().date(),
+                )
+                for reminder in due:
+                    try:
+                        total += reminder.send(company_name=tenant.name)
+                    except Exception as e:
+                        logger.error(f"Payment reminder {reminder.id} failed for {tenant.name}: {e}")
+        except Exception as e:
+            logger.error(f"Payment reminders failed for {tenant.name}: {e}")
+    logger.info(f"Sent {total} scheduled payment reminder email(s)")
+    return {'total_sent': total}

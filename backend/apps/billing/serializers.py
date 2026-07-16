@@ -1,6 +1,6 @@
 """Serializers for billing module."""
 from rest_framework import serializers
-from .models import Invoice, Receipt, Expense, LatePenaltyConfig, LatePenaltyExclusion
+from .models import Invoice, Receipt, Expense, LatePenaltyConfig, LatePenaltyExclusion, PaymentReminder
 from apps.accounting.models import IncomeType, BankAccount
 
 
@@ -262,3 +262,32 @@ class LatePenaltyExclusionSerializer(serializers.ModelSerializer):
             'excluded_by_name', 'excluded_until', 'is_active', 'created_at'
         ]
         read_only_fields = ['excluded_by', 'created_at']
+
+
+class PaymentReminderSerializer(serializers.ModelSerializer):
+    """Scheduled payment-reminder runs, with readable scope summaries."""
+    property_names = serializers.SerializerMethodField()
+    tenant_names = serializers.SerializerMethodField()
+    excluded_property_names = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True, default=None)
+
+    class Meta:
+        model = PaymentReminder
+        fields = [
+            'id', 'send_date', 'send_all', 'properties', 'tenants',
+            'excluded_properties', 'subject', 'message', 'status',
+            'sent_at', 'sent_count', 'created_by', 'created_by_name',
+            'property_names', 'tenant_names', 'excluded_property_names',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['status', 'sent_at', 'sent_count', 'created_by',
+                            'created_at', 'updated_at']
+
+    def get_property_names(self, obj):
+        return list(obj.properties.values_list('name', flat=True))
+
+    def get_tenant_names(self, obj):
+        return list(obj.tenants.values_list('name', flat=True))
+
+    def get_excluded_property_names(self, obj):
+        return list(obj.excluded_properties.values_list('name', flat=True))

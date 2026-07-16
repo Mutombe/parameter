@@ -482,6 +482,17 @@ export const auditApi = {
 }
 
 // Bank Account API
+// Scheduled payment reminders (arrears emails) with include/exclude scope.
+export const paymentReminderApi = {
+  list: (params?: object) => api.get('/billing/payment-reminders/', { params }),
+  create: (data: object) => api.post('/billing/payment-reminders/', data),
+  update: (id: number, data: object) => api.patch(`/billing/payment-reminders/${id}/`, data),
+  delete: (id: number) => api.delete(`/billing/payment-reminders/${id}/`),
+  sendNow: (id: number) => api.post(`/billing/payment-reminders/${id}/send_now/`),
+  cancel: (id: number) => api.post(`/billing/payment-reminders/${id}/cancel/`),
+  previewRecipients: (id: number) => api.get(`/billing/payment-reminders/${id}/preview_recipients/`),
+}
+
 export const bankAccountApi = {
   list: (params?: object) => api.get('/accounting/bank-accounts/', { params }),
   get: (id: number) => api.get(`/accounting/bank-accounts/${id}/`),
