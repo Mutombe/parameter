@@ -1323,10 +1323,12 @@ class SubsidiaryAccount(models.Model):
     )
 
     # Polymorphic links — exactly one should be set
-    # Tenants: OneToOne (one account per tenant)
-    tenant = models.OneToOneField(
+    # Tenants/Account holders: ForeignKey (multiple category-specific
+    # pockets per tenant — Rent, Rates, Maintenance, Parking, … — exactly
+    # like landlords)
+    tenant = models.ForeignKey(
         'masterfile.RentalTenant', on_delete=models.CASCADE,
-        null=True, blank=True, related_name='subsidiary_account'
+        null=True, blank=True, related_name='subsidiary_accounts'
     )
     # Landlords: ForeignKey (multiple category-specific accounts per landlord)
     landlord = models.ForeignKey(
@@ -1356,9 +1358,12 @@ class SubsidiaryAccount(models.Model):
 
     @classmethod
     def get_or_create_for_tenant(cls, tenant):
-        """Get or create a subsidiary account for a rental tenant.
+        """Get or create the tenant's ORIGINAL (legacy/general) subsidiary
+        account. Rental tenants get TN/ prefix; levy tenants get AC/ prefix.
 
-        Rental tenants get TN/ prefix; levy tenants get AC/ prefix.
+        Tenants now carry multiple category pockets (see
+        get_or_create_for_tenant_category); this returns the earliest account
+        so pre-pocket history keeps resolving to the same statement.
         """
         # Determine prefix and entity type based on account type
         if tenant.account_type == 'levy':
@@ -1370,20 +1375,63 @@ class SubsidiaryAccount(models.Model):
 
         code = f'{prefix}/{tenant.code.replace("TN", "").lstrip("0") or "0"}'
 
-        account, created = cls.objects.get_or_create(
-            tenant=tenant,
-            defaults={
-                'code': code,
-                'name': tenant.name,
-                'entity_type': entity_type,
-                'currency': 'USD',
-            }
-        )
+        # tenant is a plain FK now — a tenant can hold several pockets, so
+        # get_or_create(tenant=...) would raise MultipleObjectsReturned.
+        account = cls.objects.filter(tenant=tenant).order_by('id').first()
+        if account is None:
+            account = cls.objects.create(
+                code=code,
+                name=tenant.name,
+                entity_type=entity_type,
+                tenant=tenant,
+                currency='USD',
+            )
         # Fix code format if account was previously created with wrong prefix
         if tenant.account_type == 'levy' and account.code.startswith('TN/'):
             account.code = f'AC/{tenant.code.replace("TN", "").lstrip("0") or "0"}'
             account.entity_type = cls.EntityType.ACCOUNT_HOLDER
             account.save(update_fields=['code', 'entity_type'])
+        return account
+
+    @classmethod
+    def get_or_create_for_tenant_category(cls, tenant, category='general', currency='USD'):
+        """Category-specific pocket for a tenant/account holder — the mirror
+        of get_or_create_for_landlord_category. A tenant billed rent, rates,
+        maintenance and parking gets a pocket per item: paying rent credits
+        the Rent pocket, paying parking credits the Parking pocket, etc.
+
+        Rental tenants: Rent, Rates, Maintenance, Parking, VAT, Deposit.
+        Account holders (levy): Levy, Special Levy, Maintenance, Parking, Rates.
+        Categories outside the map fall back to the General pocket.
+        """
+        if tenant.account_type == 'levy':
+            prefix = 'AC'
+            entity_type = cls.EntityType.ACCOUNT_HOLDER
+            type_map = cls.LEVY_SUFFIX_MAP
+        else:
+            prefix = 'TN'
+            entity_type = cls.EntityType.TENANT
+            type_map = cls.RENTAL_SUFFIX_MAP
+
+        suffix_map = cls.GENERAL_SUFFIX_MAP if category == 'general' else type_map
+        suffix = suffix_map.get((category, currency), '00')
+        code = f'{prefix}/{tenant.id:05d}/{suffix}'
+
+        category_label = dict(cls.AccountCategory.choices).get(
+            category, category.replace('_', ' ').title()
+        )
+        name = f'{tenant.name} - {category_label} ({currency})'
+
+        account, _created = cls.objects.get_or_create(
+            code=code,
+            defaults={
+                'name': name,
+                'entity_type': entity_type,
+                'tenant': tenant,
+                'category': category,
+                'currency': currency,
+            }
+        )
         return account
 
     @classmethod

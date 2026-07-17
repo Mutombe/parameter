@@ -280,8 +280,12 @@ class Invoice(SoftDeleteModel):
         journal.post(user)
 
         # === Subsidiary Ledger Entries ===
-        # Txn 1: Debit tenant's subsidiary account
-        tenant_sub = SubsidiaryAccount.get_or_create_for_tenant(self.tenant)
+        # Txn 1: Debit the tenant's CATEGORY pocket for this invoice item —
+        # a rent invoice debits the tenant's Rent pocket, a parking invoice
+        # the Parking pocket, etc. (mirrors the landlord pocket structure).
+        tenant_sub = SubsidiaryAccount.get_or_create_for_tenant_category(
+            self.tenant, category=self.invoice_type or 'rent', currency=self.currency,
+        )
         SubsidiaryTransaction.create_entry(
             account=tenant_sub,
             date=self.date,
@@ -776,14 +780,21 @@ class Receipt(SoftDeleteModel):
         journal.post(user)
 
         # === Subsidiary Ledger Entries ===
-        tenant_sub = SubsidiaryAccount.get_or_create_for_tenant(self.tenant)
         # The receipt's sub_account_category is the source of truth for which
-        # landlord sub-account this payment credits. If unset (e.g. legacy
-        # rows), fall back to the linked invoice's invoice_type, then 'rent'.
+        # pocket this payment moves. If unset (e.g. legacy rows), fall back to
+        # the linked invoice's invoice_type, then 'rent'.
         invoice_type = (
             self.sub_account_category
             or (self.invoice.invoice_type if self.invoice else None)
             or 'rent'
+        )
+        # CATEGORY LOCK: the ONE resolved category above drives BOTH sides of
+        # the receipt — the tenant/account-holder pocket credited here AND the
+        # landlord pocket credited below use the same `invoice_type` variable,
+        # so a maintenance payment can never credit the tenant's maintenance
+        # pocket but a different landlord pocket (or vice versa).
+        tenant_sub = SubsidiaryAccount.get_or_create_for_tenant_category(
+            self.tenant, category=invoice_type, currency=self.currency,
         )
         billing_contra = Invoice(invoice_type=invoice_type)._get_billing_contra_code()
         income_contra = Invoice(invoice_type=invoice_type)._get_income_contra_code()

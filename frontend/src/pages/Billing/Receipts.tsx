@@ -700,7 +700,7 @@ export default function Receipts() {
               { value: 'deposit', label: 'Deposit' },
               { value: 'general', label: 'General' },
             ]}
-            hint="Which landlord sub-account this payment credits"
+            hint="Category lock: this ONE pick credits the payer's pocket AND the landlord's pocket of the SAME category — no cross-category posting"
           />
 
           <div className="grid grid-cols-2 gap-4">

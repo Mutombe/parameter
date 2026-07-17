@@ -466,7 +466,11 @@ export default function AccountHolderDetail() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {subAccounts.map((acc: any) => (
-                    <tr key={acc.id} className="hover:bg-gray-50">
+                    <tr
+                      key={acc.id}
+                      onClick={() => navigate(`/dashboard/subaccounts/${acc.id}`)}
+                      className="hover:bg-gray-50 cursor-pointer"
+                    >
                       <td className="px-6 py-3 text-sm font-medium text-gray-900">{acc.code}</td>
                       <td className="px-6 py-3 text-sm text-gray-700">{acc.name}</td>
                       <td className="px-6 py-3 text-sm text-gray-600">{acc.currency}</td>

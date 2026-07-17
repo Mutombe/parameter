@@ -328,7 +328,13 @@ export default function TenantDetail() {
     placeholderData: keepPreviousData,
   })
 
-  const tenantSubAccount = normalizeList(subAccountsData)[0] || null
+  // A tenant now carries category pockets (Rent, Rates, Maintenance, …) just
+  // like a landlord — list them all and let the user pick which statement
+  // to view. Defaults to the first (the legacy/general account).
+  const tenantSubAccounts = normalizeList(subAccountsData)
+  const [selectedSubId, setSelectedSubId] = useState<number | null>(null)
+  const tenantSubAccount =
+    tenantSubAccounts.find((s: any) => s.id === selectedSubId) || tenantSubAccounts[0] || null
 
   // Fetch subsidiary account statement
   const { data: subAccountStatement, isLoading: loadingSubStatement } = useQuery({
@@ -1192,6 +1198,27 @@ export default function TenantDetail() {
 
         {statementSource === 'trust' && (
           <>
+            {/* Pocket picker — one chip per category sub-account. */}
+            {tenantSubAccounts.length > 1 && (
+              <div className="px-4 pt-4 flex flex-wrap gap-2">
+                {tenantSubAccounts.map((s: any) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setSelectedSubId(s.id)}
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
+                      tenantSubAccount?.id === s.id
+                        ? 'bg-primary-600 text-white border-primary-600'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
+                    )}
+                    title={s.code}
+                  >
+                    {s.name}
+                    <span className="ml-1.5 tabular-nums opacity-75">{formatCurrency(Number(s.current_balance || 0))}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="p-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-gray-400" />

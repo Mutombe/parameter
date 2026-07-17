@@ -307,14 +307,15 @@ def get_tenant_ledger(tenant, period_start=None, period_end=None):
             'payment_method': rct.payment_method,
         })
 
-    # Opening balance entries posted to this tenant's sub-account
+    # Opening balance entries posted to this tenant's sub-accounts
     # (rent arrears, rent in advance, etc.). These come from the
-    # Opening Layer via OpeningBalance.tenant_sub_account.
-    sub_account = getattr(tenant, 'subsidiary_account', None)
-    if sub_account is not None:
+    # Opening Layer via OpeningBalance.tenant_sub_account. Tenants now
+    # carry multiple category pockets, so scan them all.
+    sub_account_ids = list(tenant.subsidiary_accounts.values_list('id', flat=True))
+    if sub_account_ids:
         from apps.accounting.models import SubsidiaryTransaction
         ob_txns = SubsidiaryTransaction.objects.filter(
-            account=sub_account,
+            account_id__in=sub_account_ids,
             journal_entry__source_type='opening_balance',
         ).select_related('journal_entry')
         for tx in ob_txns:
