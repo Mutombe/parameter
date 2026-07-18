@@ -43,6 +43,11 @@ def seed_tenant_subsidiary_accounts(sender, instance, created, **kwargs):
     """
     from apps.accounting.models import SubsidiaryAccount
     try:
+        # Cheap short-circuit: if the payer already has a full slate, skip
+        # the 10-12 get_or_creates — keeps bulk imports/saves fast.
+        expected = 10 if instance.account_type == 'levy' else 12
+        if SubsidiaryAccount.objects.filter(tenant=instance).count() >= expected:
+            return
         SubsidiaryAccount.seed_for_tenant(instance)
     except Exception:
         # Don't block tenant save if seeding fails; a later save will retry.

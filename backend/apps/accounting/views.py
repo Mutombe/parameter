@@ -2302,36 +2302,37 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
         """
         from apps.masterfile.models import RentalTenant, Landlord
 
+        # Soft-delete uses deleted_at (is_deleted never existed → FieldError),
+        # and payers/landlords now hold MULTIPLE pocket accounts, so a
+        # get_or_create(tenant=...)/(landlord=...) would raise
+        # MultipleObjectsReturned. Prefetch who already has any account and
+        # delegate creation to the multi-account-safe helpers.
         created = 0
-        for tenant in RentalTenant.objects.filter(is_active=True, is_deleted=False):
-            _, was_created = SubsidiaryAccount.objects.get_or_create(
-                tenant=tenant,
-                defaults={
-                    'code': f'TN/{tenant.code.replace("TN", "").lstrip("0") or "0"}',
-                    'name': tenant.name,
-                    'entity_type': SubsidiaryAccount.EntityType.TENANT
-                    if tenant.account_type == 'rental'
-                    else SubsidiaryAccount.EntityType.ACCOUNT_HOLDER,
-                    'currency': 'USD',
-                }
-            )
-            if was_created:
-                created += 1
+        have_tenant_acct = set(
+            SubsidiaryAccount.objects.filter(tenant__isnull=False)
+            .values_list('tenant_id', flat=True)
+        )
+        for tenant in RentalTenant.objects.filter(
+            is_active=True, deleted_at__isnull=True,
+        ).only('id', 'code', 'name', 'account_type'):
+            if tenant.id in have_tenant_acct:
+                continue
+            SubsidiaryAccount.seed_for_tenant(tenant)
+            created += 1
 
-        for landlord in Landlord.objects.filter(is_active=True, is_deleted=False):
-            _, was_created = SubsidiaryAccount.objects.get_or_create(
-                landlord=landlord,
-                defaults={
-                    'code': f'LD/{landlord.code.replace("LL", "").lstrip("0") or "0"}',
-                    'name': landlord.name,
-                    'entity_type': SubsidiaryAccount.EntityType.LANDLORD,
-                    'currency': landlord.preferred_currency,
-                }
-            )
-            if was_created:
-                created += 1
+        have_landlord_acct = set(
+            SubsidiaryAccount.objects.filter(landlord__isnull=False)
+            .values_list('landlord_id', flat=True)
+        )
+        for landlord in Landlord.objects.filter(
+            is_active=True, deleted_at__isnull=True,
+        ).only('id', 'code', 'name'):
+            if landlord.id in have_landlord_acct:
+                continue
+            SubsidiaryAccount.get_or_create_for_landlord(landlord)
+            created += 1
 
-        return Response({'message': f'Synced subsidiary accounts. Created {created} new accounts.'})
+        return Response({'message': f'Synced subsidiary accounts. Created accounts for {created} new entities.'})
 
 
 class AccruedExpenseViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):

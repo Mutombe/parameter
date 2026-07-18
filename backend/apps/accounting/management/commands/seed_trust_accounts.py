@@ -165,22 +165,24 @@ class Command(BaseCommand):
     def _sync_subsidiary_accounts(self):
         created = 0
 
-        for tenant in RentalTenant.objects.filter(is_active=True, is_deleted=False):
-            _, was_created = SubsidiaryAccount.objects.get_or_create(
-                tenant=tenant,
-                defaults={
-                    'code': f'TN/{tenant.code.replace("TN", "").lstrip("0") or "0"}',
-                    'name': tenant.name,
-                    'entity_type': SubsidiaryAccount.EntityType.TENANT
-                    if tenant.account_type == 'rental'
-                    else SubsidiaryAccount.EntityType.ACCOUNT_HOLDER,
-                    'currency': 'USD',
-                }
-            )
-            if was_created:
-                created += 1
+        # Soft-delete uses deleted_at (there is no is_deleted field — the old
+        # filter crashed with FieldError on every deploy). Payers can now hold
+        # MULTIPLE pocket accounts, so get_or_create(tenant=...) would raise
+        # MultipleObjectsReturned; prefetch who already has any account and
+        # only create for payers with none (one query instead of one/tenant).
+        have_account = set(
+            SubsidiaryAccount.objects.filter(tenant__isnull=False)
+            .values_list('tenant_id', flat=True)
+        )
+        for tenant in RentalTenant.objects.filter(
+            is_active=True, deleted_at__isnull=True,
+        ).only('id', 'code', 'name', 'account_type'):
+            if tenant.id in have_account:
+                continue
+            SubsidiaryAccount.get_or_create_for_tenant(tenant)
+            created += 1
 
-        for landlord in Landlord.objects.filter(is_active=True, is_deleted=False):
+        for landlord in Landlord.objects.filter(is_active=True, deleted_at__isnull=True):
             account = SubsidiaryAccount.get_or_create_for_landlord(landlord)
             # Check if it was just created (no transactions yet)
             if not account.transactions.exists():
