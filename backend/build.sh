@@ -76,6 +76,9 @@ python manage.py seed_trust_accounts || true
 echo "Seeding standard expense categories from cash mapping spec..."
 python manage.py seed_expense_categories || true
 
+echo "Seeding category sub-account pockets for all tenants/account holders..."
+python manage.py seed_tenant_pockets --all-tenants || true
+
 echo "Registering recurring task schedules (Django-Q)..."
 python manage.py setup_billing_schedules || true
 

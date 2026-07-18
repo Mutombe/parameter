@@ -1,7 +1,7 @@
 """Signals for masterfile module."""
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from .models import Property
+from .models import Property, RentalTenant
 
 
 @receiver(post_save, sender=Property)
@@ -30,4 +30,20 @@ def seed_landlord_subsidiary_accounts(sender, instance, created, **kwargs):
         )
     except Exception:
         # Don't block property save if seeding fails; a later save will retry.
+        pass
+
+
+@receiver(post_save, sender=RentalTenant)
+def seed_tenant_subsidiary_accounts(sender, instance, created, **kwargs):
+    """Seed the full set of category pockets for a tenant/account holder —
+    the same slate a landlord gets (rental: 12, levy holder: 10).
+
+    Runs on every save so a corrected account_type still ends up with the
+    right slate; get_or_create inside seed_for_tenant keeps it idempotent.
+    """
+    from apps.accounting.models import SubsidiaryAccount
+    try:
+        SubsidiaryAccount.seed_for_tenant(instance)
+    except Exception:
+        # Don't block tenant save if seeding fails; a later save will retry.
         pass

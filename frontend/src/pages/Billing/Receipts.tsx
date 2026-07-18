@@ -173,12 +173,15 @@ export default function Receipts() {
     ['sent', 'partial', 'overdue'].includes(inv.status) && Number(inv.balance) > 0
   )
 
-  // Active leases for the selected payer — feeds the quick-invoice modal.
+  // Active leases for the selected payer — feeds the property-confirmation
+  // field under the payer picker AND the quick-invoice modal. Loaded as soon
+  // as a payer is picked so the cashier immediately sees which property
+  // (and landlord) the payment belongs to.
   const { data: payerLeases } = useQuery({
     queryKey: ['payer-active-leases', form.tenant],
     queryFn: () => leaseApi.list({ tenant: form.tenant, status: 'active', page_size: 50 })
       .then(r => r.data.results || r.data),
-    enabled: !!form.tenant && showQuickInvoice,
+    enabled: !!form.tenant,
     staleTime: 30000,
   })
   const activePayerLeases: any[] = Array.isArray(payerLeases) ? payerLeases : (payerLeases?.results || [])
@@ -665,6 +668,44 @@ export default function Receipts() {
             onChange={(val) => setForm({ ...form, tenant: String(val) })}
             required
           />
+
+          {/* Property confirmation — shows which property (and landlord) the
+              payer occupies so the cashier verifies the payment is going to
+              the right place BEFORE submitting. A payer can hold leases at
+              different properties under different landlords, so every active
+              lease is listed. */}
+          {form.tenant && (
+            <div className={cn(
+              'rounded-xl border px-4 py-3 -mt-1',
+              activePayerLeases.length === 0
+                ? 'border-amber-200 bg-amber-50'
+                : activePayerLeases.length > 1
+                  ? 'border-amber-200 bg-amber-50'
+                  : 'border-emerald-200 bg-emerald-50/60'
+            )}>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                Property (occupied by payer)
+              </p>
+              {activePayerLeases.length === 0 ? (
+                <p className="text-sm text-amber-700">No active lease found for this payer — verify before receipting.</p>
+              ) : (
+                <div className="space-y-1">
+                  {activePayerLeases.map((l: any) => (
+                    <p key={l.id} className="text-sm text-gray-800">
+                      <span className="font-semibold">{l.property_name || '—'}</span>
+                      {l.unit_display ? <span className="text-gray-600"> · {l.unit_display}</span> : null}
+                      {l.landlord_name ? <span className="text-gray-500"> · Landlord: {l.landlord_name}</span> : null}
+                    </p>
+                  ))}
+                  {activePayerLeases.length > 1 && (
+                    <p className="text-xs text-amber-700 pt-0.5">
+                      This payer occupies {activePayerLeases.length} properties — confirm which one this payment is for.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Invoice Select */}
           <AsyncSelect

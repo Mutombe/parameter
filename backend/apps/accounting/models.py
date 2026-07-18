@@ -1509,6 +1509,28 @@ class SubsidiaryAccount(models.Model):
             created_accounts.append(account)
         return created_accounts
 
+    @classmethod
+    def seed_for_tenant(cls, tenant):
+        """Pre-create the full set of category pockets for a tenant or
+        account holder — the mirror of seed_for_landlord, so every payer
+        carries their own slate of category-specific sub-accounts.
+
+        Rental tenant:        12 pockets (Rent, Rates, Maintenance, Parking,
+                              VAT, Deposit × USD/ZWG)
+        Account holder (levy): 10 pockets (Levy, Special Levy, Maintenance,
+                              Parking, Rates × USD/ZWG)
+
+        Idempotent — get_or_create on each (category, currency) pair.
+        Called from the RentalTenant post_save signal and the
+        seed_tenant_pockets backfill command.
+        """
+        suffix_map = (cls.LEVY_SUFFIX_MAP if tenant.account_type == 'levy'
+                      else cls.RENTAL_SUFFIX_MAP)
+        return [
+            cls.get_or_create_for_tenant_category(tenant, category=category, currency=currency)
+            for (category, currency) in suffix_map.keys()
+        ]
+
 
 class SubsidiaryTransaction(models.Model):
     """
