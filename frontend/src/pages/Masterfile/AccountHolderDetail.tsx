@@ -455,30 +455,71 @@ export default function AccountHolderDetail() {
                 No subsidiary account found for this account holder
               </div>
             ) : (
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="text-left text-xs font-medium text-gray-500 uppercase px-6 py-3">Code</th>
-                    <th className="text-left text-xs font-medium text-gray-500 uppercase px-6 py-3">Account</th>
-                    <th className="text-left text-xs font-medium text-gray-500 uppercase px-6 py-3">Currency</th>
-                    <th className="text-right text-xs font-medium text-gray-500 uppercase px-6 py-3">Balance</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {subAccounts.map((acc: any) => (
-                    <tr
-                      key={acc.id}
-                      onClick={() => navigate(`/dashboard/subaccounts/${acc.id}`)}
-                      className="hover:bg-gray-50 cursor-pointer"
-                    >
-                      <td className="px-6 py-3 text-sm font-medium text-gray-900">{acc.code}</td>
-                      <td className="px-6 py-3 text-sm text-gray-700">{acc.name}</td>
-                      <td className="px-6 py-3 text-sm text-gray-600">{acc.currency}</td>
-                      <td className="px-6 py-3 text-sm text-right font-semibold tabular-nums">{formatCurrency(acc.current_balance || 0)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              /* Landlord-style pocket cards, grouped by currency. Clicking a
+                 card opens that pocket's full statement. */
+              <div className="p-6">
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Subsidiary Accounts</h3>
+                  <p className="text-sm text-gray-500">Category-specific accounts for this account holder</p>
+                </div>
+                {(() => {
+                  const byCurrency: Record<string, any[]> = {}
+                  subAccounts.forEach((acc: any) => {
+                    const cur = (acc.currency || 'USD').toUpperCase()
+                    ;(byCurrency[cur] ||= []).push(acc)
+                  })
+                  const currencies = Object.keys(byCurrency).sort()
+                  const catLabel = (acc: any) => {
+                    const c = acc.category_name || acc.category
+                    if (!c || c === 'general') return acc.code?.includes('/00') ? 'General' : 'General (history)'
+                    return String(c).replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
+                  }
+                  return (
+                    <div className="space-y-4">
+                      {currencies.map((cur) => (
+                        <div key={cur}>
+                          {currencies.length > 1 && (
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-[0.1em]">{cur}</span>
+                              <div className="flex-1 h-px bg-gray-100" />
+                              <span className="text-[10px] text-gray-400">
+                                {byCurrency[cur].length} account{byCurrency[cur].length === 1 ? '' : 's'}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex flex-wrap gap-2">
+                            {byCurrency[cur].map((acc: any) => {
+                              const balance = Number(acc.balance ?? acc.current_balance ?? 0)
+                              return (
+                                <button
+                                  key={acc.id}
+                                  onClick={() => navigate(`/dashboard/subaccounts/${acc.id}`)}
+                                  className="w-[148px] px-3 py-2 border border-gray-200 rounded-lg text-left transition-all bg-white hover:border-primary-300 hover:shadow-sm"
+                                  title={acc.code}
+                                >
+                                  <div className="flex items-center justify-between mb-0.5">
+                                    <span className="text-[10px] font-mono text-gray-400 truncate">{acc.code || '-'}</span>
+                                    <span className="text-[10px] font-medium text-gray-400">{cur}</span>
+                                  </div>
+                                  <p className="text-[11px] font-medium text-gray-700 truncate leading-tight mb-1">
+                                    {catLabel(acc)}
+                                  </p>
+                                  <p className={cn(
+                                    'text-sm font-bold tabular-nums leading-tight',
+                                    balance > 0 ? 'text-emerald-600' : balance < 0 ? 'text-red-600' : 'text-gray-500'
+                                  )}>
+                                    {formatCurrency(Math.abs(balance))}
+                                  </p>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()}
+              </div>
             )}
           </div>
         </TabsContent>
