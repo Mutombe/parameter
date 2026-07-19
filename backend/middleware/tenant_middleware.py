@@ -203,6 +203,64 @@ class SafeTenantMiddleware(MiddlewareMixin):
             request.urlconf = getattr(settings, 'PUBLIC_SCHEMA_URLCONF', settings.ROOT_URLCONF)
 
 
+class TenantUserEnforcementMiddleware(MiddlewareMixin):
+    """
+    Pin every authenticated request to the user's OWN tenant schema.
+
+    Users live in the shared (public) schema, so a session cookie is valid
+    no matter which X-Tenant-Subdomain header the browser sends. Without
+    this guard, a stale header (browser previously logged into another
+    tenant) — or a deliberately edited one — routes an authenticated user
+    into a tenant they don't belong to and exposes that tenant's data.
+
+    If the authenticated user has a tenant_schema and the request resolved
+    to a different schema, the connection is switched to the user's tenant.
+    Superusers and users without a tenant_schema (platform/public accounts)
+    are left untouched.
+
+    MUST be placed AFTER AuthenticationMiddleware (needs request.user) and
+    BEFORE TenantContextMiddleware (so audit thread-locals see the final
+    tenant).
+    """
+
+    def process_request(self, request):
+        user = getattr(request, 'user', None)
+        if user is None or not user.is_authenticated:
+            return
+        if getattr(user, 'is_superuser', False):
+            return
+        schema = (getattr(user, 'tenant_schema', '') or '').strip()
+        if not schema or schema == 'public':
+            return
+        if db_connection.schema_name == schema:
+            return
+
+        tenant = _tenant_cache.get(schema)
+        if tenant is None:
+            try:
+                from django_tenants.utils import get_tenant_model
+                TenantModel = get_tenant_model()
+                tenant = TenantModel.objects.filter(schema_name=schema).first()
+                _tenant_cache[schema] = tenant or False
+            except Exception as e:
+                logger.error("Enforcement: error resolving tenant %s: %s", schema, e)
+                return
+        if not tenant:
+            logger.error("Enforcement: user %s has tenant_schema=%r but no such tenant",
+                         getattr(user, 'email', user.pk), schema)
+            return
+
+        logger.warning(
+            "Enforcement: request for user %s arrived on schema %r; pinning to %r",
+            getattr(user, 'email', user.pk), db_connection.schema_name, schema,
+        )
+        try:
+            db_connection.set_tenant(tenant)
+            request.tenant = tenant
+        except Exception as e:
+            logger.error("Enforcement: set_tenant(%s) failed: %s", schema, e)
+
+
 class TenantContextMiddleware(MiddlewareMixin):
     """Middleware to store tenant, user, and request metadata for audit trails."""
 

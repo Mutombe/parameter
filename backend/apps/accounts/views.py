@@ -83,11 +83,14 @@ class AuthViewSet(viewsets.ViewSet):
                 update_fields.append('tenant_schema')
             user.save(update_fields=update_fields)
 
-            # If login ran against public schema but user belongs to a specific
-            # tenant, resolve request.tenant so demo checks and serializer work
+            # The user's tenant_schema is AUTHORITATIVE — the login request
+            # may have ridden in on another tenant via a stale
+            # X-Tenant-Subdomain header. Always resolve request.tenant to
+            # the user's own tenant so demo checks and the serializer
+            # report the schema the user actually belongs to.
             tenant = getattr(request, 'tenant', None)
             if user.tenant_schema and user.tenant_schema != 'public':
-                if tenant is None or tenant.schema_name == 'public':
+                if tenant is None or tenant.schema_name != user.tenant_schema:
                     try:
                         from django_tenants.utils import get_tenant_model
                         TenantModel = get_tenant_model()

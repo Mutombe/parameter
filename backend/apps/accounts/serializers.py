@@ -73,11 +73,14 @@ class UserSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         tenant = getattr(request, 'tenant', None) if request else None
 
-        # If request resolved to public schema but user belongs to a specific
-        # tenant (common in production where frontend/backend are on different
-        # domains and no subdomain header is sent during login), look up the
-        # user's actual tenant so we return the correct schema_name.
-        if (tenant is None or tenant.schema_name == 'public') and getattr(obj, 'tenant_schema', '') and obj.tenant_schema != 'public':
+        # The user's tenant_schema is AUTHORITATIVE. The request may have
+        # ridden in on a different tenant via a stale X-Tenant-Subdomain
+        # header (e.g. a browser that previously logged into another
+        # tenant) — trusting request.tenant here once routed a brand-new
+        # tenant's admin into someone else's data. Always resolve the
+        # user's own tenant when they have one.
+        if (getattr(obj, 'tenant_schema', '') and obj.tenant_schema != 'public'
+                and (tenant is None or tenant.schema_name != obj.tenant_schema)):
             try:
                 from django_tenants.utils import get_tenant_model
                 TenantModel = get_tenant_model()

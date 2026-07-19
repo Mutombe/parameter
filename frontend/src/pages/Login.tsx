@@ -49,6 +49,12 @@ export default function Login() {
     e.preventDefault()
     setLoading(true)
 
+    // A previous session in this browser may have cached ANOTHER tenant's
+    // subdomain — if it rides along on the login request it can route this
+    // login into the wrong tenant. Start clean; the login response's
+    // schema_name repopulates it below.
+    sessionStorage.removeItem('tenant_subdomain')
+
     try {
       const response = await authApi.login(form)
       const loggedInUser = response.data.user
