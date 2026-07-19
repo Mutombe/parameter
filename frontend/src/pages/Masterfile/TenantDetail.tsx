@@ -900,6 +900,7 @@ export default function TenantDetail() {
       <Tabs defaultValue="statement" className="space-y-6" onChange={setActiveTab}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="statement" icon={FileText}>Statement</TabsTrigger>
+          <TabsTrigger value="sub-accounts" icon={Layers}>Sub Accounts</TabsTrigger>
           <TabsTrigger value="invoices" icon={FileText}>Invoices</TabsTrigger>
           <TabsTrigger value="payments" icon={Wallet}>Payments</TabsTrigger>
           <TabsTrigger value="leases" icon={Home}>Leases</TabsTrigger>
@@ -918,35 +919,9 @@ export default function TenantDetail() {
         <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Account Statement</h3>
-            <p className="text-sm text-gray-500">
-              {statementSource === 'operational'
-                ? 'Bank-statement style view with running balance. Select a date range to filter.'
-                : tenantSubAccount
-                  ? `${tenantSubAccount.account_code || tenantSubAccount.code || ''} - ${tenantSubAccount.category_name || tenantSubAccount.category || tenantSubAccount.name || 'Account'}`
-                  : 'Trust accounting sub-ledger view'}
-            </p>
+            <p className="text-sm text-gray-500">Bank-statement style view with running balance. Select a date range to filter.</p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-              <button
-                onClick={() => setStatementSource('operational')}
-                className={cn(
-                  'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
-                  statementSource === 'operational' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                )}
-              >
-                Operational
-              </button>
-              <button
-                onClick={() => setStatementSource('trust')}
-                className={cn(
-                  'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
-                  statementSource === 'trust' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                )}
-              >
-                Trust Accounting
-              </button>
-            </div>
             {statementSource === 'operational' && (
               <div ref={exportMenuRef} className="relative">
                 <button
@@ -1196,7 +1171,16 @@ export default function TenantDetail() {
         </>
         )}
 
-        {statementSource === 'trust' && (
+      </motion.div>
+        </TabsContent>
+
+        {/* ===== SUB ACCOUNTS TAB ===== */}
+        <TabsContent value="sub-accounts" className="space-y-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+          >
           <>
             {/* Subsidiary Accounts — landlord-style card grid, grouped by
                 currency. Clicking a card loads that pocket's statement below. */}
@@ -1359,8 +1343,7 @@ export default function TenantDetail() {
               </>
             )}
           </>
-        )}
-      </motion.div>
+          </motion.div>
         </TabsContent>
 
         {/* ===== INVOICES TAB ===== */}
