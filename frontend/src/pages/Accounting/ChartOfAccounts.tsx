@@ -182,6 +182,9 @@ export default function ChartOfAccounts() {
   })
 
   const filteredAccounts = accounts?.filter((account: Account) => {
+    // Deactivated accounts stay out of the chart — notably the retired
+    // legacy 2200 Unpaid Rent, relocated into the 6000/010–070 range.
+    if ((account as any).is_active === false) return false
     const matchesSearch = !search ||
       account.name.toLowerCase().includes(search.toLowerCase()) ||
       account.code.toLowerCase().includes(search.toLowerCase())

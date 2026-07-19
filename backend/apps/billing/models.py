@@ -19,6 +19,42 @@ from apps.accounting.models import (
 from apps.soft_delete import SoftDeleteModel
 
 
+# Deferred Revenue ("Unpaid") accounts — one per billing category, codes
+# 6000/010–6000/070 as laid out in the chart of accounts. Every invoice
+# credits the account matching its category (deferred revenue until payment)
+# and every receipt debits the SAME category's account (revenue recognised),
+# exactly the way Unpaid Rent behaves. The legacy single account at code
+# 2200 is retired by the relocate_unpaid_accounts command.
+UNPAID_ACCOUNT_MAP = {
+    'rent':         ('6000/010', 'Unpaid Rent USD'),
+    'levy':         ('6000/020', 'Unpaid Levy USD'),
+    'parking':      ('6000/030', 'Unpaid Parking USD'),
+    'special_levy': ('6000/040', 'Unpaid Special Levy USD'),
+    'maintenance':  ('6000/050', 'Unpaid Maintenance USD'),
+    'rates':        ('6000/060', 'Unpaid Rates USD'),
+    'vat':          ('6000/070', 'Unpaid VAT USD'),
+}
+
+
+def get_unpaid_account(category):
+    """Resolve the deferred-revenue account for a billing category.
+
+    Categories without their own account (deposit, penalty, utility, other)
+    fall back to Unpaid Rent (6000/010), mirroring _get_unpaid_contra_code.
+    """
+    code, name = UNPAID_ACCOUNT_MAP.get(category, UNPAID_ACCOUNT_MAP['rent'])
+    account, _ = ChartOfAccount.objects.get_or_create(
+        code=code,
+        defaults={
+            'name': name,
+            'account_type': 'liability',
+            'account_subtype': 'tenant_deposits',
+            'is_system': True,
+        },
+    )
+    return account
+
+
 class Invoice(SoftDeleteModel):
     """
     Rent Invoice - Activity 1: Debt Recognition.
@@ -205,7 +241,7 @@ class Invoice(SoftDeleteModel):
 
         GL entries (agent's books):
             Dr: Accounts Receivable (1200) — control account for tenant sub-ledgers
-            Cr: Unpaid Rent (2200) — deferred revenue until payment
+            Cr: Unpaid <Category> (6000/010–6000/070) — deferred revenue until payment
 
         Subsidiary entries (per-entity view):
             Txn 1: Dr Tenant Account (TN/xxx), contra: billing code (e.g., 2300/010)
@@ -217,16 +253,10 @@ class Invoice(SoftDeleteModel):
         if self.journal:
             return self.journal
 
-        # Get or create Unpaid Rent account (deferred revenue)
-        unpaid_rent_account, _ = ChartOfAccount.objects.get_or_create(
-            code='2200',
-            defaults={
-                'name': 'Unpaid Rent (Deferred Revenue)',
-                'account_type': 'liability',
-                'account_subtype': 'tenant_deposits',
-                'is_system': True
-            }
-        )
+        # Deferred-revenue account for THIS invoice's category (6000/0X0) —
+        # a levy invoice credits Unpaid Levy, a rates invoice Unpaid Rates,
+        # all behaving exactly like Unpaid Rent.
+        unpaid_account = get_unpaid_account(self.invoice_type or 'rent')
 
         ar_account, _ = ChartOfAccount.objects.get_or_create(
             code='1200',
@@ -267,10 +297,10 @@ class Invoice(SoftDeleteModel):
             source_id=self.id
         )
 
-        # GL Entry 2: Cr Unpaid Rent (deferred revenue)
+        # GL Entry 2: Cr Unpaid <Category> (deferred revenue)
         je_credit = JournalEntry.objects.create(
             journal=journal,
-            account=unpaid_rent_account,
+            account=unpaid_account,
             description=desc,
             credit_amount=self.total_amount,
             source_type='invoice',
@@ -662,6 +692,18 @@ class Receipt(SoftDeleteModel):
             )
             return account
 
+        # CATEGORY LOCK: resolve the receipt's ONE category up front. The
+        # receipt's sub_account_category is the source of truth; if unset
+        # (e.g. legacy rows) fall back to the linked invoice's invoice_type,
+        # then 'rent'. This single value drives the tenant/account-holder
+        # pocket, the landlord pocket, AND the Unpaid (deferred revenue)
+        # account debited below — no cross-category posting anywhere.
+        invoice_type = (
+            self.sub_account_category
+            or (self.invoice.invoice_type if self.invoice else None)
+            or 'rent'
+        )
+
         # === Resolve accounts ===
         cash_account = self._resolve_cash_account()
         ar_account, _ = ChartOfAccount.objects.get_or_create(
@@ -673,9 +715,9 @@ class Receipt(SoftDeleteModel):
                 'is_system': True,
             },
         )
-        unpaid_rent_account = get_or_create_account(
-            '2200', 'Unpaid Rent (Deferred Revenue)', 'liability', 'tenant_deposits'
-        )
+        # Deferred-revenue account for the locked category (6000/0X0): the
+        # receipt clears the SAME Unpaid account its invoice credited.
+        unpaid_account = get_unpaid_account(invoice_type)
         landlord_trust_account = get_or_create_account(
             '2300', 'Landlord Trust Payable', 'liability', 'accounts_payable'
         )
@@ -743,9 +785,9 @@ class Receipt(SoftDeleteModel):
         )
 
         # --- Activity 3: Transfer to Landlord ---
-        # GL: Dr Unpaid Rent (clear deferred revenue)
+        # GL: Dr Unpaid <Category> (clear deferred revenue)
         je_unpaid_dr = JournalEntry.objects.create(
-            journal=journal, account=unpaid_rent_account,
+            journal=journal, account=unpaid_account,
             description=base_desc, debit_amount=self.amount,
             source_type='receipt', source_id=self.id
         )
@@ -787,18 +829,10 @@ class Receipt(SoftDeleteModel):
         journal.post(user)
 
         # === Subsidiary Ledger Entries ===
-        # The receipt's sub_account_category is the source of truth for which
-        # pocket this payment moves. If unset (e.g. legacy rows), fall back to
-        # the linked invoice's invoice_type, then 'rent'.
-        invoice_type = (
-            self.sub_account_category
-            or (self.invoice.invoice_type if self.invoice else None)
-            or 'rent'
-        )
-        # CATEGORY LOCK: the ONE resolved category above drives BOTH sides of
-        # the receipt — the tenant/account-holder pocket credited here AND the
-        # landlord pocket credited below use the same `invoice_type` variable,
-        # so a maintenance payment can never credit the tenant's maintenance
+        # CATEGORY LOCK: `invoice_type` was resolved once at the top of this
+        # method — the tenant/account-holder pocket credited here AND the
+        # landlord pocket credited below use that same value, so a
+        # maintenance payment can never credit the tenant's maintenance
         # pocket but a different landlord pocket (or vice versa).
         tenant_sub = SubsidiaryAccount.get_or_create_for_tenant_category(
             self.tenant, category=invoice_type, currency=self.currency,

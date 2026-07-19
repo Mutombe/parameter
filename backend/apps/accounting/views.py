@@ -111,8 +111,16 @@ class ChartOfAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, v
             ('2000', 'Accounts Payable', 'liability', 'accounts_payable', True),
             ('2100', 'VAT Payable', 'liability', 'vat_payable', True),
             ('2110', 'VAT Payable (Commission)', 'liability', 'vat_payable', True),
-            ('2200', 'Unpaid Rent (Deferred Revenue)', 'liability', 'tenant_deposits', True),
             ('2300', 'Landlord Trust Payable', 'liability', 'accounts_payable', True),
+            # Deferred Revenue — Unpaid accounts (one per billing category,
+            # all behaving like Unpaid Rent; legacy 2200 retired)
+            ('6000/010', 'Unpaid Rent USD', 'liability', 'tenant_deposits', True),
+            ('6000/020', 'Unpaid Levy USD', 'liability', 'tenant_deposits', True),
+            ('6000/030', 'Unpaid Parking USD', 'liability', 'tenant_deposits', True),
+            ('6000/040', 'Unpaid Special Levy USD', 'liability', 'tenant_deposits', True),
+            ('6000/050', 'Unpaid Maintenance USD', 'liability', 'tenant_deposits', True),
+            ('6000/060', 'Unpaid Rates USD', 'liability', 'tenant_deposits', True),
+            ('6000/070', 'Unpaid VAT USD', 'liability', 'tenant_deposits', True),
             # Equity
             ('3000', 'Retained Earnings', 'equity', 'retained_earnings', True),
             ('3100', 'Capital', 'equity', 'capital', True),
@@ -207,7 +215,12 @@ class JournalViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
             | Q(name__icontains='agent commission')
             | Q(code='4100')
         )
-        gl = (ChartOfAccount.objects.filter(Q(is_active=True) | primary_q)
+        # Code 2200 is the RETIRED legacy Unpaid Rent account (relocated to
+        # 6000/010-070 by relocate_unpaid_accounts) — despite its "unpaid"
+        # name it must not resurface once deactivated.
+        gl = (ChartOfAccount.objects
+              .filter(Q(is_active=True) | primary_q)
+              .exclude(code='2200', is_active=False)
               .annotate(_primary=Case(When(primary_q, then=Value(0)),
                                       default=Value(1), output_field=IntegerField()))
               .order_by('_primary', 'code')
