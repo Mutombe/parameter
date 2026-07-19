@@ -351,6 +351,44 @@ export default function ChartOfAccounts() {
         />
       ) : (
         <>
+          {/* Agent Accounts — ALWAYS in plain sight. Credited on every
+              commission-charging receipt; click through for the statement
+              with opening/running balance. */}
+          {(() => {
+            const list: any[] = allAccounts || []
+            const commissionAcct = list.find((a: any) => a.account_subtype === 'commission_income')
+              || list.find((a: any) => /agent commission|commission revenue/i.test(a.name || ''))
+            const vatAcct = list.find((a: any) => a.code === '2110')
+              || list.find((a: any) => a.account_subtype === 'vat_payable')
+            const cards = [
+              commissionAcct && { acct: commissionAcct, label: 'Agent Commission', desc: 'Commission earned on every receipted income item (rent, levy, maintenance, parking, rates, …)' },
+              vatAcct && { acct: vatAcct, label: 'VAT Payable (Commission)', desc: 'VAT charged on the agent commission of every receipt' },
+            ].filter(Boolean) as Array<{ acct: any; label: string; desc: string }>
+            if (!cards.length) return null
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {cards.map(({ acct, label, desc }) => (
+                  <button
+                    key={acct.id}
+                    onClick={() => navigate(`/dashboard/global-accounts/${acct.id}`)}
+                    className="text-left rounded-xl border-2 border-primary-200 bg-primary-50/40 p-5 hover:border-primary-400 hover:shadow-sm transition-all"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-primary-700">{label}</p>
+                        <p className="text-[11px] text-gray-500 mt-0.5">{acct.code} · {acct.name}</p>
+                      </div>
+                      <TrendingUp className="w-5 h-5 text-primary-500 shrink-0" />
+                    </div>
+                    <p className="mt-2 text-2xl font-bold tabular-nums text-gray-900">{formatCurrency(Number(acct.current_balance || 0))}</p>
+                    <p className="mt-1 text-xs text-gray-500">{desc}</p>
+                    <p className="mt-2 text-xs font-medium text-primary-600">View statement (opening + running balance) →</p>
+                  </button>
+                ))}
+              </div>
+            )
+          })()}
+
           {/* Account Type Summary Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             {Object.entries(accountTypeConfig).map(([type, config]) => {

@@ -679,11 +679,18 @@ class Receipt(SoftDeleteModel):
         landlord_trust_account = get_or_create_account(
             '2300', 'Landlord Trust Payable', 'liability', 'accounts_payable'
         )
-        commission_revenue_account = get_or_create_account(
-            '4100', 'Agent Commission', 'revenue', 'commission_income'
-        )
+        # Resolve the Agent Commission account by its SUBTYPE first — code
+        # 4100 can be occupied by an unrelated account in some schemas, and
+        # get_or_create by code would silently credit commissions there
+        # (observed: a "Rental Income (USD)" account absorbing commissions).
+        commission_revenue_account = ChartOfAccount.objects.filter(
+            account_subtype='commission_income').order_by('id').first()
+        if commission_revenue_account is None:
+            commission_revenue_account = get_or_create_account(
+                '4100', 'Agent Commission', 'revenue', 'commission_income'
+            )
         vat_payable_account = get_or_create_account(
-            '2110', 'VAT Payable', 'liability', 'vat_payable'
+            '2110', 'VAT Payable (Commission)', 'liability', 'vat_payable'
         )
 
         # === Resolve entities ===
