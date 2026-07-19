@@ -463,8 +463,14 @@ export default function AccountHolderDetail() {
                   <p className="text-sm text-gray-500">Category-specific accounts for this account holder</p>
                 </div>
                 {(() => {
+                  // Hide the legacy "General (history)" account once its
+                  // transactions have been re-homed into the pockets.
+                  const visibleAccounts = subAccounts.filter((acc: any) =>
+                    acc.code?.split('/').length > 2 ||
+                    Number(acc.transaction_count || 0) > 0 ||
+                    Number(acc.current_balance || 0) !== 0)
                   const byCurrency: Record<string, any[]> = {}
-                  subAccounts.forEach((acc: any) => {
+                  visibleAccounts.forEach((acc: any) => {
                     const cur = (acc.currency || 'USD').toUpperCase()
                     ;(byCurrency[cur] ||= []).push(acc)
                   })

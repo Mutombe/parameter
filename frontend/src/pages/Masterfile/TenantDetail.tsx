@@ -1191,8 +1191,14 @@ export default function TenantDetail() {
                   <p className="text-sm text-gray-500">Category-specific accounts for this tenant</p>
                 </div>
                 {(() => {
+                  // Hide the legacy "General (history)" account once its
+                  // transactions have been re-homed into the pockets.
+                  const visibleAccounts = tenantSubAccounts.filter((acc: any) =>
+                    acc.code?.split('/').length > 2 ||
+                    Number(acc.transaction_count || 0) > 0 ||
+                    Number(acc.current_balance || 0) !== 0)
                   const byCurrency: Record<string, any[]> = {}
-                  tenantSubAccounts.forEach((acc: any) => {
+                  visibleAccounts.forEach((acc: any) => {
                     const cur = (acc.currency || 'USD').toUpperCase()
                     ;(byCurrency[cur] ||= []).push(acc)
                   })
