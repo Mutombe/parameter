@@ -568,6 +568,9 @@ export default function LeaseDetail() {
         <StatCard title="Days Remaining" value={lease?.status === 'active' ? daysRemaining : '-'} icon={Clock} color="orange" isLoading={loadingLease} valueClassName={lease?.status === 'active' ? daysColor : undefined} />
       </motion.div>
 
+      {/* Billing Charges — configurable recurring items */}
+      <LeaseChargesCard leaseId={leaseId} leaseType={lease?.lease_type} leaseCurrency={lease?.currency} />
+
       {/* Lease Document */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -1027,5 +1030,156 @@ export default function LeaseDetail() {
         </form>
       </Modal>
     </div>
+  )
+}
+
+
+/** Configurable recurring billing items for the lease — rent, levy, special
+ *  levy, maintenance, parking, rates, VAT. One invoice is generated per
+ *  active item each billing month. Amounts are editable at ANY time (e.g.
+ *  after a landlord review) and take effect from the next billing run,
+ *  irrespective of when the lease expires. */
+function LeaseChargesCard({ leaseId, leaseType, leaseCurrency }: {
+  leaseId: number
+  leaseType?: string
+  leaseCurrency?: string
+}) {
+  const queryClient = useQueryClient()
+  const isLevy = leaseType === 'levy'
+  const ITEMS: Array<{ type: string; label: string }> = isLevy
+    ? [
+        { type: 'levy', label: 'Levy' },
+        { type: 'special_levy', label: 'Special Levy' },
+        { type: 'maintenance', label: 'Maintenance' },
+        { type: 'parking', label: 'Parking' },
+        { type: 'rates', label: 'Rates' },
+        { type: 'vat', label: 'VAT' },
+      ]
+    : [
+        { type: 'rent', label: 'Rent' },
+        { type: 'maintenance', label: 'Maintenance' },
+        { type: 'parking', label: 'Parking' },
+        { type: 'rates', label: 'Rates' },
+        { type: 'vat', label: 'VAT' },
+      ]
+
+  const [rows, setRows] = useState<Record<string, { amount: string; is_active: boolean }>>({})
+  const [dirty, setDirty] = useState(false)
+
+  const { data: chargesData, isLoading } = useQuery({
+    queryKey: ['lease-charges', leaseId],
+    queryFn: () => leaseApi.getCharges(leaseId).then(r => r.data),
+    enabled: !!leaseId,
+  })
+
+  useEffect(() => {
+    if (!chargesData) return
+    const next: Record<string, { amount: string; is_active: boolean }> = {}
+    const existing: any[] = chargesData.charges || []
+    ITEMS.forEach(({ type }) => {
+      const row = existing.find((c: any) => c.charge_type === type)
+      if (row) {
+        next[type] = { amount: String(row.amount), is_active: !!row.is_active }
+      } else if ((type === 'rent' && !isLevy) || (type === 'levy' && isLevy)) {
+        // Bootstrap the headline item from the lease's monthly amount.
+        next[type] = { amount: String(chargesData.monthly_rent || '0'), is_active: true }
+      } else {
+        next[type] = { amount: '0', is_active: false }
+      }
+    })
+    setRows(next)
+    setDirty(false)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chargesData, leaseType])
+
+  const saveMutation = useMutation({
+    mutationFn: () => leaseApi.saveCharges(
+      leaseId,
+      ITEMS.map(({ type }) => ({
+        charge_type: type,
+        amount: Number(rows[type]?.amount || 0),
+        is_active: !!rows[type]?.is_active && Number(rows[type]?.amount || 0) > 0,
+        currency: leaseCurrency,
+      })),
+    ),
+    onSuccess: () => {
+      showToast.success('Charges updated — they apply from the next billing run')
+      queryClient.invalidateQueries({ queryKey: ['lease-charges', leaseId] })
+      queryClient.invalidateQueries({ queryKey: ['lease', leaseId] })
+    },
+    onError: (err) => showToast.error(parseApiError(err, 'Failed to save charges')),
+  })
+
+  const setRow = (type: string, patch: Partial<{ amount: string; is_active: boolean }>) => {
+    setRows(prev => ({ ...prev, [type]: { ...prev[type], ...patch } }))
+    setDirty(true)
+  }
+
+  const activeTotal = ITEMS.reduce((sum, { type }) =>
+    rows[type]?.is_active ? sum + (Number(rows[type]?.amount) || 0) : sum, 0)
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white rounded-xl border border-gray-200 overflow-hidden"
+    >
+      <div className="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">Billing Charges</h3>
+          <p className="text-sm text-gray-500">
+            Items billed each month — one invoice per active item. Editable at any
+            time; changes apply from the next billing run.
+          </p>
+        </div>
+        <Button
+          onClick={() => saveMutation.mutate()}
+          disabled={!dirty || saveMutation.isPending}
+        >
+          {saveMutation.isPending ? 'Saving…' : 'Save Charges'}
+        </Button>
+      </div>
+      {isLoading ? (
+        <div className="p-6 space-y-2">
+          {ITEMS.map(i => <div key={i.type} className="h-10 bg-gray-100 rounded-lg animate-pulse" />)}
+        </div>
+      ) : (
+        <div className="p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {ITEMS.map(({ type, label }) => (
+              <div
+                key={type}
+                className={cn(
+                  'rounded-xl border px-4 py-3 transition-colors',
+                  rows[type]?.is_active ? 'border-primary-200 bg-primary-50/30' : 'border-gray-200'
+                )}
+              >
+                <label className="flex items-center justify-between mb-2 cursor-pointer">
+                  <span className="text-sm font-medium text-gray-800">{label}</span>
+                  <input
+                    type="checkbox"
+                    checked={!!rows[type]?.is_active}
+                    onChange={(e) => setRow(type, { is_active: e.target.checked })}
+                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={rows[type]?.amount ?? '0'}
+                  onChange={(e) => setRow(type, { amount: e.target.value, is_active: Number(e.target.value) > 0 ? true : rows[type]?.is_active })}
+                  className="w-full px-3 py-2 text-sm text-right tabular-nums bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between text-sm font-semibold">
+            <span className="text-gray-600">Total monthly billing ({leaseCurrency || 'USD'})</span>
+            <span className="tabular-nums text-gray-900">{formatCurrency(activeTotal)}</span>
+          </div>
+        </div>
+      )}
+    </motion.div>
   )
 }

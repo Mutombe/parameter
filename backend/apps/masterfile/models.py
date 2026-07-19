@@ -663,6 +663,47 @@ class LeaseAgreement(SoftDeleteModel):
         self.save()
 
 
+class LeaseCharge(models.Model):
+    """A recurring billing item configured on a lease.
+
+    A tenant can be billed several items each month (e.g. rent, maintenance,
+    parking, VAT, rates) and an account holder theirs (levy, special levy,
+    maintenance, rates, parking). Each item is one row here; monthly billing
+    creates ONE invoice per active item. Amounts are editable at any time —
+    a landlord's review takes effect from the next billing run, irrespective
+    of the lease's expiry.
+    """
+
+    class ChargeType(models.TextChoices):
+        RENT = 'rent', 'Rent'
+        LEVY = 'levy', 'Levy'
+        SPECIAL_LEVY = 'special_levy', 'Special Levy'
+        MAINTENANCE = 'maintenance', 'Maintenance'
+        PARKING = 'parking', 'Parking'
+        RATES = 'rates', 'Rates'
+        VAT = 'vat', 'VAT'
+
+    lease = models.ForeignKey(
+        LeaseAgreement, on_delete=models.CASCADE, related_name='charges'
+    )
+    charge_type = models.CharField(max_length=20, choices=ChargeType.choices)
+    amount = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('0.00'))
+    currency = models.CharField(max_length=3, default='USD')
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Lease Charge'
+        verbose_name_plural = 'Lease Charges'
+        unique_together = ['lease', 'charge_type']
+        ordering = ['charge_type']
+
+    def __str__(self):
+        return f'{self.lease.lease_number} {self.get_charge_type_display()}: {self.amount}'
+
+
 class PropertyManager(models.Model):
     """Assignment of a staff user as manager of a property."""
 

@@ -330,6 +330,10 @@ export const leaseApi = {
   create: (data: object) => api.post('/masterfile/leases/', data),
   update: (id: number, data: object) => api.patch(`/masterfile/leases/${id}/`, data),
   activate: (id: number) => api.post(`/masterfile/leases/${id}/activate/`),
+  // Recurring billing items (rent, levy, maintenance, …) — editable anytime.
+  getCharges: (id: number) => api.get(`/masterfile/leases/${id}/charges/`),
+  saveCharges: (id: number, charges: object[]) =>
+    api.post(`/masterfile/leases/${id}/charges/`, { charges }),
   bulkActivate: (data: { property_id?: number; lease_ids?: number[] }) =>
     api.post('/masterfile/leases/bulk_activate/', data),
   terminate: (id: number, reason: string) =>

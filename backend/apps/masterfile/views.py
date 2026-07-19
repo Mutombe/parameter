@@ -24,14 +24,14 @@ class IgnoreFormatNegotiation(DefaultContentNegotiation):
         return renderers
 from .models import (
     Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager,
-    Supplier, PropertyIncomeCommission,
+    Supplier, PropertyIncomeCommission, LeaseCharge,
 )
 from .serializers import (
     LandlordSerializer, PropertySerializer, PropertyListSerializer,
     UnitSerializer, RentalTenantSerializer, RentalTenantListSerializer,
     LeaseAgreementSerializer,
     LeaseActivateSerializer, LeaseTerminateSerializer, PropertyManagerSerializer,
-    SupplierSerializer, PropertyIncomeCommissionSerializer,
+    SupplierSerializer, PropertyIncomeCommissionSerializer, LeaseChargeSerializer,
 )
 from .services import (
     send_lease_activation_emails, send_lease_termination_emails,
@@ -426,6 +426,62 @@ class AccountHolderViewSet(RentalTenantViewSet):
 
 class LeaseAgreementViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Lease Agreements."""
+
+    @action(detail=True, methods=['get', 'post'])
+    def charges(self, request, pk=None):
+        """The lease's recurring billing items (rent, levy, maintenance, …).
+
+        GET  → current charge schedule.
+        POST → upsert: {"charges": [{"charge_type", "amount", "is_active"}]}.
+               Amounts are editable at ANY time — reviewed charges apply from
+               the next billing run, irrespective of lease expiry. The rent
+               (rental) / levy (levy) amount is mirrored onto
+               lease.monthly_rent so legacy reports stay correct.
+        """
+        lease = self.get_object()
+        valid_types = {c[0] for c in LeaseCharge.ChargeType.choices}
+        if request.method == 'POST':
+            items = request.data.get('charges', [])
+            if not isinstance(items, list):
+                return Response({'error': 'charges must be a list'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            for item in items:
+                ctype = item.get('charge_type')
+                if ctype not in valid_types:
+                    return Response({'error': f'Invalid charge_type: {ctype}'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+                try:
+                    amount = Decimal(str(item.get('amount') or 0))
+                except Exception:
+                    return Response({'error': f'Invalid amount for {ctype}'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+                if amount < 0:
+                    return Response({'error': f'Amount for {ctype} cannot be negative'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+                LeaseCharge.objects.update_or_create(
+                    lease=lease, charge_type=ctype,
+                    defaults={
+                        'amount': amount,
+                        'currency': item.get('currency') or lease.currency,
+                        'is_active': bool(item.get('is_active', True)),
+                    },
+                )
+            # Mirror the headline amount so rent-roll style reports that read
+            # monthly_rent keep showing the reviewed figure.
+            headline_type = 'levy' if lease.lease_type == 'levy' else 'rent'
+            headline = lease.charges.filter(
+                charge_type=headline_type, is_active=True).first()
+            if headline and headline.amount and headline.amount != lease.monthly_rent:
+                lease.monthly_rent = headline.amount
+                lease.save(update_fields=['monthly_rent', 'updated_at'])
+        rows = lease.charges.order_by('charge_type')
+        return Response({
+            'lease': lease.id,
+            'lease_type': lease.lease_type,
+            'currency': lease.currency,
+            'monthly_rent': str(lease.monthly_rent),
+            'charges': LeaseChargeSerializer(rows, many=True).data,
+        })
     queryset = LeaseAgreement.objects.select_related(
         'tenant', 'unit', 'unit__property', 'property'
     ).all()

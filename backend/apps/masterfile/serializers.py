@@ -2,7 +2,7 @@
 from rest_framework import serializers
 from .models import (
     Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager,
-    Supplier, PropertyIncomeCommission,
+    Supplier, PropertyIncomeCommission, LeaseCharge,
 )
 
 
@@ -627,3 +627,14 @@ class LeaseActivateSerializer(serializers.Serializer):
 class LeaseTerminateSerializer(serializers.Serializer):
     """Serializer for lease termination."""
     reason = serializers.CharField(required=True)
+
+
+class LeaseChargeSerializer(serializers.ModelSerializer):
+    """One recurring billing item on a lease (rent, levy, maintenance, …)."""
+    charge_type_display = serializers.CharField(source='get_charge_type_display', read_only=True)
+
+    class Meta:
+        model = LeaseCharge
+        fields = ['id', 'lease', 'charge_type', 'charge_type_display',
+                  'amount', 'currency', 'is_active', 'updated_at']
+        read_only_fields = ['lease', 'updated_at']

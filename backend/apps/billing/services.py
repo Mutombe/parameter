@@ -20,7 +20,7 @@ def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, cre
 
     leases = LeaseAgreement.objects.filter(
         status='active'
-    ).select_related('tenant', 'unit', 'unit__property', 'property')
+    ).select_related('tenant', 'unit', 'unit__property', 'property').prefetch_related('charges')
 
     if lease_ids:
         leases = leases.filter(id__in=lease_ids)
@@ -43,63 +43,73 @@ def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, cre
         return [], []
 
     lease_id_list = [l.id for l in all_leases]
-    existing_lease_ids = set(
+    # A lease can carry MULTIPLE configured charge items (rent, maintenance,
+    # parking, …) — dedupe per (lease, item) so re-running the month only
+    # fills in items that haven't been billed yet.
+    existing_pairs = set(
         Invoice.objects.filter(
             lease_id__in=lease_id_list,
             period_start=period_start,
             period_end=period_end
-        ).values_list('lease_id', flat=True)
+        ).values_list('lease_id', 'invoice_type')
     )
 
-    unbilled_leases = [l for l in all_leases if l.id not in existing_lease_ids]
     invoices_to_create = []
     errors = []
 
-    if not unbilled_leases and all_leases:
-        errors.append(f'All {len(all_leases)} leases already billed for {period_start.strftime("%B %Y")}')
+    ITEM_LABELS = {
+        'rent': 'Rent', 'levy': 'Levy', 'special_levy': 'Special Levy',
+        'maintenance': 'Maintenance', 'parking': 'Parking',
+        'rates': 'Rates', 'vat': 'VAT',
+    }
 
-    for lease in unbilled_leases:
+    for lease in all_leases:
 
         # Skip vacant units for rental leases (levy always bills regardless)
         if lease.lease_type == 'rental' and lease.unit and not lease.unit.is_occupied:
             errors.append(f'Skipped {lease.lease_number}: rental unit {lease.unit} is vacant')
             continue
 
-        # Set invoice_type based on lease_type
-        if lease.lease_type == 'levy':
-            invoice_type = Invoice.InvoiceType.LEVY
-            desc_label = 'Levy'
+        # Billing items: the lease's configured charge schedule (one invoice
+        # per active item); leases without a schedule fall back to the single
+        # legacy rent/levy line from monthly_rent.
+        configured = [
+            c for c in lease.charges.all()
+            if c.is_active and c.amount and c.amount > 0
+        ]
+        if configured:
+            items = [(c.charge_type, c.amount, c.currency or lease.currency) for c in configured]
         else:
-            invoice_type = Invoice.InvoiceType.RENT
-            desc_label = 'Rent'
-
-        # Description: use unit for rental, property for levy
-        if lease.unit:
-            location = f'{lease.unit.property.name} - {lease.unit.unit_number}'
-        elif lease.property:
-            location = lease.property.name
-        else:
-            location = lease.tenant.name
+            default_type = (Invoice.InvoiceType.LEVY if lease.lease_type == 'levy'
+                            else Invoice.InvoiceType.RENT)
+            items = [(default_type, lease.monthly_rent, lease.currency)]
 
         # Resolve property for the invoice
         inv_property = lease.property or (lease.unit.property if lease.unit else None)
 
-        invoices_to_create.append(Invoice(
-            tenant=lease.tenant,
-            lease=lease,
-            unit=lease.unit,
-            property=inv_property,
-            invoice_type=invoice_type,
-            date=invoice_date,
-            due_date=due_date,
-            period_start=period_start,
-            period_end=period_end,
-            amount=lease.monthly_rent,
-            vat_amount=Decimal('0'),
-            currency=lease.currency,
-            description=f'{period_start.strftime("%B")} {desc_label} Charge',
-            created_by=created_by
-        ))
+        for charge_type, amount, currency in items:
+            if (lease.id, charge_type) in existing_pairs:
+                continue
+            desc_label = ITEM_LABELS.get(charge_type, str(charge_type).replace('_', ' ').title())
+            invoices_to_create.append(Invoice(
+                tenant=lease.tenant,
+                lease=lease,
+                unit=lease.unit,
+                property=inv_property,
+                invoice_type=charge_type,
+                date=invoice_date,
+                due_date=due_date,
+                period_start=period_start,
+                period_end=period_end,
+                amount=amount,
+                vat_amount=Decimal('0'),
+                currency=currency,
+                description=f'{period_start.strftime("%B")} {desc_label} Charge',
+                created_by=created_by
+            ))
+
+    if not invoices_to_create and all_leases and not errors:
+        errors.append(f'All {len(all_leases)} leases already billed for {period_start.strftime("%B %Y")}')
 
     # Bulk create for performance — skip signals (auto-post happens separately)
     if not invoices_to_create:
