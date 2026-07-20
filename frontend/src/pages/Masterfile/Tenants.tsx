@@ -505,7 +505,7 @@ export default function Tenants() {
               />
             </div>
           ) : (
-            <table className="w-full">
+            <table className="w-full min-w-[960px]">
               <thead className="sticky top-0 z-10 bg-gray-50/80 backdrop-blur-sm border-b-2 border-gray-100">
                 <tr>
                   <th className="w-10 px-3 py-3.5">
@@ -552,7 +552,7 @@ export default function Tenants() {
                           />
                         )}
                       </td>
-                      <td className="px-4 py-2">
+                      <td className="px-4 py-2 max-w-[240px]">
                         <div className="flex items-center gap-2 min-w-0">
                           <div className={cn(
                             'w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0',
@@ -586,36 +586,38 @@ export default function Tenants() {
                       </td>
                       <td className="px-4 py-2 text-sm text-gray-900 truncate max-w-[200px] hidden lg:table-cell">{tenant.email || '\u2014'}</td>
                       <td className="px-4 py-2 text-sm text-gray-900 hidden xl:table-cell">{tenant.phone || '\u2014'}</td>
-                      <td className="px-4 py-2 text-sm">
+                      <td className="px-4 py-2 text-sm max-w-[260px]">
                         {tenant.property_name || tenant.unit_name ? (
-                          <div className="flex items-center gap-1 flex-wrap">
+                          <div className="flex items-center gap-1 min-w-0">
                             {tenant.property_name && (
                               tenant.property_id ? (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/properties/${tenant.property_id}`) }}
                                   onMouseEnter={() => prefetch(`/dashboard/properties/${tenant.property_id}`)}
-                                  className="text-gray-600 text-xs hover:text-primary-600 hover:underline"
+                                  className="text-gray-600 text-xs hover:text-primary-600 hover:underline truncate max-w-[150px] text-left"
+                                  title={tenant.property_name}
                                 >
                                   {tenant.property_name}
                                 </button>
                               ) : (
-                                <span className="text-gray-500 text-xs">{tenant.property_name}</span>
+                                <span className="text-gray-500 text-xs truncate max-w-[150px]" title={tenant.property_name}>{tenant.property_name}</span>
                               )
                             )}
                             {tenant.property_name && tenant.unit_name && (
-                              <span className="text-gray-300 text-xs">&middot;</span>
+                              <span className="text-gray-300 text-xs flex-shrink-0">&middot;</span>
                             )}
                             {tenant.unit_name && (
                               tenant.unit_id ? (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/units/${tenant.unit_id}`) }}
                                   onMouseEnter={() => prefetch(`/dashboard/units/${tenant.unit_id}`)}
-                                  className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
+                                  className="font-medium text-primary-600 hover:text-primary-700 hover:underline truncate max-w-[100px] text-left"
+                                  title={tenant.unit_name}
                                 >
                                   {tenant.unit_name}
                                 </button>
                               ) : (
-                                <span className="text-gray-700">{tenant.unit_name}</span>
+                                <span className="text-gray-700 truncate max-w-[100px]" title={tenant.unit_name}>{tenant.unit_name}</span>
                               )
                             )}
                           </div>

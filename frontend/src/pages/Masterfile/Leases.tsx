@@ -680,7 +680,8 @@ export default function Leases() {
 
       {/* Leases Table - headers always visible */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <table className="w-full">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[920px]">
           <thead className="sticky top-0 z-10 bg-gray-50/80 backdrop-blur-sm border-b-2 border-gray-100">
             <tr>
               <th className="px-4 py-2 w-10">
@@ -748,15 +749,15 @@ export default function Leases() {
                         onChange={() => selection.toggle(lease.id)}
                       />
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-4 py-2 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-gray-900">{lease.lease_number}</span>
                         {lease.document && <Paperclip className="w-3.5 h-3.5 text-gray-400" />}
                       </div>
                     </td>
-                    <td className="px-4 py-2">
-                      <div className="flex items-start gap-2">
-                        <TbUserSquareRounded className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                    <td className="px-4 py-2 max-w-[280px]">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <TbUserSquareRounded className="w-4 h-4 text-gray-400 flex-shrink-0" />
                         {(() => {
                           const isLevy = (lease as any).payer_type === 'levy'
                           const route = isLevy
@@ -804,12 +805,12 @@ export default function Leases() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-4 py-2 whitespace-nowrap">
                       <span className="font-semibold text-gray-900 tabular-nums" title={`Monthly rent: ${lease.monthly_rent}`}>{formatCurrency(lease.monthly_rent || 0)}</span>
                     </td>
-                    <td className="px-4 py-2 hidden lg:table-cell">
+                    <td className="px-4 py-2 hidden lg:table-cell whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-gray-400" />
+                        <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
                         <span
                           className={cn(
                             'text-sm',
@@ -893,6 +894,7 @@ export default function Leases() {
               })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Create/Edit Modal */}

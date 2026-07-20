@@ -497,7 +497,8 @@ export default function Units() {
 
       {/* Units Table - headers always visible */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <table className="w-full">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[860px]">
           <thead className="sticky top-0 z-10 bg-gray-50/80 backdrop-blur-sm border-b-2 border-gray-100">
             <tr>
               <th className="px-4 py-2 w-10">
@@ -562,19 +563,20 @@ export default function Units() {
                         <span className="font-medium text-sm text-gray-900">{unit.unit_number}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-2">
-                      <div className="flex items-center gap-2">
-                        <PiBuildingApartmentLight className="w-4 h-4 text-gray-400" />
+                    <td className="px-4 py-2 max-w-[240px]">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <PiBuildingApartmentLight className="w-4 h-4 text-gray-400 flex-shrink-0" />
                         {unit.property ? (
                           <button
                             onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/properties/${unit.property}`) }}
                             onMouseEnter={() => prefetch(`/dashboard/properties/${unit.property}`)}
-                            className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
+                            className="font-medium text-primary-600 hover:text-primary-700 hover:underline truncate text-left"
+                            title={unit.property_name || ''}
                           >
                             {unit.property_name}
                           </button>
                         ) : (
-                          <span className="text-gray-600">{unit.property_name}</span>
+                          <span className="text-gray-600 truncate" title={unit.property_name || ''}>{unit.property_name}</span>
                         )}
                       </div>
                     </td>
@@ -608,14 +610,15 @@ export default function Units() {
                         </Tooltip>
                       )}
                     </td>
-                    <td className="px-4 py-2">
+                    <td className="px-4 py-2 max-w-[200px]">
                       {unit.current_tenant ? (
-                        <div className="flex items-center gap-2">
-                          <TbUserSquareRounded className="w-4 h-4 text-gray-400" />
+                        <div className="flex items-center gap-2 min-w-0">
+                          <TbUserSquareRounded className="w-4 h-4 text-gray-400 flex-shrink-0" />
                           <button
                             onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/tenants/${unit.current_tenant!.id}`) }}
                             onMouseEnter={() => prefetch(`/dashboard/tenants/${unit.current_tenant!.id}`)}
-                            className="font-medium text-primary-600 hover:text-primary-700 hover:underline"
+                            className="font-medium text-primary-600 hover:text-primary-700 hover:underline truncate text-left"
+                            title={unit.current_tenant.name}
                           >
                             {unit.current_tenant.name}
                           </button>
@@ -655,6 +658,7 @@ export default function Units() {
               })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {totalPages > 1 && (

@@ -855,8 +855,8 @@ export default function Journals() {
               </Button>
             </div>
 
-            <div className="border border-gray-200 rounded-xl overflow-hidden">
-              <table className="w-full">
+            <div className="border border-gray-200 rounded-xl overflow-hidden overflow-x-auto">
+              <table className="w-full min-w-[640px]">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Account</th>

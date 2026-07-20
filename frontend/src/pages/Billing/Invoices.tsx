@@ -243,7 +243,7 @@ function BillingStatusTable({ month, year, onBillProperty, onBillAll, isBilling 
       )}
 
       {/* Per-property table */}
-      <div className="max-h-[400px] overflow-y-auto border border-gray-200 rounded-lg">
+      <div className="max-h-[400px] overflow-y-auto overflow-x-auto border border-gray-200 rounded-lg">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 sticky top-0">
             <tr>

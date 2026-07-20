@@ -531,7 +531,8 @@ export default function ChartOfAccounts() {
                         exit={{ height: 0, opacity: 0 }}
                         transition={{ duration: 0.3 }}
                       >
-                        <table className="w-full">
+                        <div className="overflow-x-auto">
+                        <table className="w-full min-w-[820px]">
                           <thead className="bg-gray-50 border-y border-gray-200">
                             <tr>
                               <th className="w-10 px-3 py-3"></th>
@@ -613,6 +614,7 @@ export default function ChartOfAccounts() {
                             ))}
                           </tbody>
                         </table>
+                        </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
