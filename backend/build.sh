@@ -94,6 +94,9 @@ python manage.py ensure_agent_accounts --all-tenants || true
 echo "Relocating legacy 2200 deferred revenue into Unpaid 6000/010-070 range..."
 python manage.py relocate_unpaid_accounts --all-tenants || true
 
+echo "Relabelling engine control accounts seeded under colliding names..."
+python manage.py relabel_control_accounts --all-tenants || true
+
 echo "Correcting account types to match their code category (assets/liabilities mis-typed as expense)..."
 python manage.py fix_account_types_by_code --all-tenants || true
 

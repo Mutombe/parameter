@@ -198,11 +198,19 @@ class OnboardingService:
         # Format: (code, name, account_type, account_subtype, is_system, currency)
         accounts = [
             # Assets (1xxx)
+            # NOTE: codes 1100/1110/1200/2300 are ENGINE CONTROL ACCOUNTS —
+            # the posting engine books to them by code (bank, bank ZWG,
+            # accounts receivable, landlord trust payable). Seeding other
+            # concepts at these codes mislabelled real postings (tenant
+            # arrears showed as "Prepaid Expenses", trust payable as
+            # "Accrued Expenses"). Displaced concepts live at 1210/1250/2350.
             ('1000', 'Cash and Cash Equivalents', 'asset', 'cash', True, 'USD'),
             ('1010', 'Petty Cash', 'asset', 'cash', True, 'USD'),
-            ('1100', 'Accounts Receivable - Tenants', 'asset', 'accounts_receivable', True, 'USD'),
-            ('1110', 'Accounts Receivable - Other', 'asset', 'accounts_receivable', False, 'USD'),
-            ('1200', 'Prepaid Expenses', 'asset', 'prepaid', False, 'USD'),
+            ('1100', 'Bank Account', 'asset', 'bank', True, 'USD'),
+            ('1110', 'Bank Account (ZWG)', 'asset', 'bank', True, 'ZWG'),
+            ('1200', 'Accounts Receivable', 'asset', 'accounts_receivable', True, 'USD'),
+            ('1210', 'Accounts Receivable - Other', 'asset', 'accounts_receivable', False, 'USD'),
+            ('1250', 'Prepaid Expenses', 'asset', 'prepaid', False, 'USD'),
             ('1300', 'Security Deposits Held', 'asset', 'prepaid', False, 'USD'),
             ('1500', 'Property and Equipment', 'asset', 'fixed_asset', False, 'USD'),
             ('1510', 'Accumulated Depreciation', 'asset', 'fixed_asset', False, 'USD'),
@@ -211,7 +219,8 @@ class OnboardingService:
             ('2000', 'Accounts Payable', 'liability', 'accounts_payable', True, 'USD'),
             ('2100', 'Landlord Payables', 'liability', 'accounts_payable', True, 'USD'),
             ('2200', 'Tenant Deposits Liability', 'liability', 'tenant_deposits', True, 'USD'),
-            ('2300', 'Accrued Expenses', 'liability', 'accounts_payable', False, 'USD'),
+            ('2300', 'Landlord Trust Payable', 'liability', 'accounts_payable', True, 'USD'),
+            ('2350', 'Accrued Expenses', 'liability', 'accounts_payable', False, 'USD'),
             ('2400', 'VAT Payable', 'liability', 'vat_payable', True, 'USD'),
             ('2500', 'Deferred Revenue', 'liability', 'accounts_payable', False, 'USD'),
 
