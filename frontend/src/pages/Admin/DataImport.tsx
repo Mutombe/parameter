@@ -579,9 +579,17 @@ export default function DataImport() {
             className="bg-white rounded-xl border border-gray-200 overflow-hidden"
           >
             {jobsLoading ? (
-              <div className="p-12 text-center">
-                <Loader2 className="w-8 h-8 text-primary-500 animate-spin mx-auto mb-3" />
-                <p className="text-gray-500">Loading import history...</p>
+              <div className="p-6 space-y-3">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="flex items-center gap-4 animate-pulse">
+                    <div className="h-9 w-9 bg-gray-200 rounded-lg" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 w-1/3 bg-gray-200 rounded" />
+                      <div className="h-3 w-1/2 bg-gray-200 rounded" />
+                    </div>
+                    <div className="h-5 w-20 bg-gray-200 rounded-full" />
+                  </div>
+                ))}
               </div>
             ) : jobList.length === 0 ? (
               <div className="p-12 text-center">

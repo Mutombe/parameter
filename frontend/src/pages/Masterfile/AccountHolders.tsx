@@ -233,8 +233,19 @@ export default function AccountHolders() {
         </div>
 
         {isLoading ? (
-          <div className="p-12 text-center text-gray-400">
-            <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+          <div className="p-6 space-y-3">
+            {[...Array(8)].map((_, i) => (
+              <div key={i} className="flex gap-4 animate-pulse">
+                <div className="h-4 w-6 bg-gray-200 rounded" />
+                <div className="h-4 flex-[2] bg-gray-200 rounded" />
+                <div className="h-4 flex-1 bg-gray-200 rounded" />
+                <div className="h-4 flex-1 bg-gray-200 rounded" />
+                <div className="h-4 flex-1 bg-gray-200 rounded hidden lg:block" />
+                <div className="h-4 flex-1 bg-gray-200 rounded hidden xl:block" />
+                <div className="h-4 flex-1 bg-gray-200 rounded" />
+                <div className="h-4 w-20 bg-gray-200 rounded" />
+              </div>
+            ))}
           </div>
         ) : holders.length === 0 ? (
           <EmptyState

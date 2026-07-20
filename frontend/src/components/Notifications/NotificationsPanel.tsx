@@ -258,9 +258,16 @@ export default function NotificationsPanel({ open, onClose }: NotificationsPanel
             {/* Notifications List */}
             <div className="max-h-96 overflow-y-auto">
               {isLoading ? (
-                <div className="p-8 text-center">
-                  <div className="animate-spin w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full mx-auto" />
-                  <p className="text-sm text-gray-500 mt-2">Loading notifications...</p>
+                <div className="p-4 space-y-4">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="flex gap-3 animate-pulse">
+                      <div className="h-9 w-9 bg-gray-200 rounded-full shrink-0" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 w-2/3 bg-gray-200 rounded" />
+                        <div className="h-3 w-full bg-gray-200 rounded" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : notificationList.length === 0 ? (
                 <div className="p-8 text-center">

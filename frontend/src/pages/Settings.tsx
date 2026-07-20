@@ -296,9 +296,13 @@ export default function Settings() {
             className="bg-white rounded-xl border border-gray-200 p-6"
           >
             {settingsLoading && activeSection !== 'notifications' && activeSection !== 'security' ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-6 h-6 animate-spin text-primary-500" />
-                <span className="ml-2 text-sm text-gray-500">Loading settings...</span>
+              <div className="space-y-5">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="space-y-2 animate-pulse">
+                    <div className="h-3.5 w-32 bg-gray-200 rounded" />
+                    <div className="h-10 w-full bg-gray-200 rounded-lg" />
+                  </div>
+                ))}
               </div>
             ) : (
               <>
@@ -429,9 +433,16 @@ export default function Settings() {
                     </div>
 
                     {prefsLoading ? (
-                      <div className="flex items-center justify-center py-12">
-                        <Loader2 className="w-6 h-6 animate-spin text-primary-500" />
-                        <span className="ml-2 text-sm text-gray-500">Loading preferences...</span>
+                      <div className="space-y-4">
+                        {[...Array(5)].map((_, i) => (
+                          <div key={i} className="flex items-center justify-between animate-pulse">
+                            <div className="space-y-2">
+                              <div className="h-4 w-40 bg-gray-200 rounded" />
+                              <div className="h-3 w-56 bg-gray-200 rounded" />
+                            </div>
+                            <div className="h-6 w-11 bg-gray-200 rounded-full" />
+                          </div>
+                        ))}
                       </div>
                     ) : (
                       <>
