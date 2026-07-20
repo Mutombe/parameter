@@ -487,7 +487,8 @@ class LeaseAgreementViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewse
             'charges': LeaseChargeSerializer(rows, many=True).data,
         })
     queryset = LeaseAgreement.objects.select_related(
-        'tenant', 'unit', 'unit__property', 'property'
+        'tenant', 'unit', 'unit__property', 'unit__property__landlord',
+        'property', 'property__landlord',
     ).all()
     serializer_class = LeaseAgreementSerializer
     permission_classes = [IsAuthenticated]

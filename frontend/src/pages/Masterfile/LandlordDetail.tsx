@@ -217,6 +217,15 @@ export default function LandlordDetail() {
 
   // Lease creation modal
   const [showLeaseModal, setShowLeaseModal] = useState(false)
+  // Chained property→lease creation: set the moment the property form is
+  // submitted so the lease modal can rise immediately; `id` fills in when
+  // the server responds and the lease form resolves its Property field.
+  const [pendingProperty, setPendingProperty] = useState<{ name: string; id?: number; management_type?: string } | null>(null)
+  // Memoized so LeaseForm's initialValues effect doesn't churn every render.
+  const leaseInitialValues = useMemo(
+    () => (pendingProperty?.id ? { property: pendingProperty.id } : {}),
+    [pendingProperty?.id],
+  )
 
   // Auto-open the next modal in a creation chain (e.g. landlord → property).
   // Triggered via ?createNext=property|lease in the URL after a redirect.
@@ -372,32 +381,35 @@ export default function LandlordDetail() {
     },
   })
 
-  // Create property mutation
+  // Create property mutation — the lease modal rises IMMEDIATELY while the
+  // property is still saving server-side; its Property field shows an
+  // "Adding…" state and resolves itself when the id arrives. No page
+  // redirect in between, so the chain keeps pace with fast data entry.
   const createPropertyMutation = useMutation({
     mutationFn: (data: any) => propertyApi.create(data),
-    onMutate: () => {
-      // Close modal immediately + announce redirect so the wait feels intentional.
+    onMutate: (data: any) => {
       setShowPropertyModal(false)
-      showToast.info('Creating property — redirecting...')
+      setPendingProperty({ name: data?.name || 'property', management_type: data?.management_type })
+      setShowLeaseModal(true)
     },
     onSuccess: (response) => {
       const newProperty = response?.data
       if (newProperty?.id) {
-        // Seed the detail cache so PropertyDetail renders instantly on
-        // arrival — no second roundtrip to fetch what we just created.
+        // Seed the detail cache so PropertyDetail renders instantly later —
+        // no second roundtrip to fetch what we just created.
         queryClient.setQueryData(['property', newProperty.id], newProperty)
+        setPendingProperty({ name: newProperty.name || 'property', id: newProperty.id, management_type: newProperty.management_type })
       }
       queryClient.invalidateQueries({ predicate: (q) => {
         const key = q.queryKey[0] as string
-        return key.startsWith('landlord') || key.startsWith('propert')
+        return key.startsWith('landlord') || key.startsWith('propert') || key.startsWith('unit')
       }})
-      if (newProperty?.id) {
-        // Chain: open the lease modal automatically on the property detail page.
-        navigate(`/dashboard/properties/${newProperty.id}?createNext=lease`)
-      }
+      showToast.success('Property created')
     },
     onError: (error) => {
       showToast.error(parseApiError(error, 'Failed to create property'))
+      setPendingProperty(null)
+      setShowLeaseModal(false)
       setShowPropertyModal(true)
     },
   })
@@ -415,6 +427,7 @@ export default function LandlordDetail() {
     },
     onMutate: () => {
       setShowLeaseModal(false)
+      setPendingProperty(null)
       showToast.info('Creating lease — redirecting...')
     },
     onSuccess: (response) => {
@@ -1699,12 +1712,13 @@ export default function LandlordDetail() {
       {/* Create Lease Modal */}
       <Modal
         open={showLeaseModal}
-        onClose={() => setShowLeaseModal(false)}
+        onClose={() => { setShowLeaseModal(false); setPendingProperty(null) }}
         title="Add Lease"
         icon={Plus}
       >
         <LeaseForm
-          initialValues={{}}
+          initialValues={leaseInitialValues}
+          pendingProperty={pendingProperty}
           onSubmit={(data, doc) => {
             if (doc) {
               const formData: any = { ...data }
@@ -1715,7 +1729,7 @@ export default function LandlordDetail() {
             }
           }}
           isSubmitting={createLeaseMutation.isPending}
-          onCancel={() => setShowLeaseModal(false)}
+          onCancel={() => { setShowLeaseModal(false); setPendingProperty(null) }}
         />
       </Modal>
     </div>

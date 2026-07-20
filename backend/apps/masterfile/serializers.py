@@ -60,7 +60,8 @@ class LandlordSerializer(serializers.ModelSerializer):
         read_only_fields = ['code', 'created_at', 'updated_at']
 
     def get_property_count(self, obj):
-        return getattr(obj, '_property_count', obj.properties.count())
+        n = getattr(obj, '_property_count', None)
+        return obj.properties.count() if n is None else n
 
 
 class UnitSerializer(serializers.ModelSerializer):
@@ -139,7 +140,8 @@ class PropertySerializer(serializers.ModelSerializer):
         read_only_fields = ['code', 'created_at', 'updated_at']
 
     def get_unit_count(self, obj):
-        return getattr(obj, '_unit_count', obj.units.count())
+        n = getattr(obj, '_unit_count', None)
+        return obj.units.count() if n is None else n
 
     def get_defined_unit_count(self, obj):
         return obj.get_defined_unit_count()
@@ -195,7 +197,8 @@ class PropertyListSerializer(serializers.ModelSerializer):
         ]
 
     def get_unit_count(self, obj):
-        return getattr(obj, '_unit_count', obj.units.count())
+        n = getattr(obj, '_unit_count', None)
+        return obj.units.count() if n is None else n
 
     def get_defined_unit_count(self, obj):
         return obj.get_defined_unit_count()
@@ -289,7 +292,8 @@ class RentalTenantListSerializer(serializers.ModelSerializer):
         return getattr(obj, '_has_active_lease', 0) > 0
 
     def get_lease_count(self, obj):
-        return getattr(obj, '_lease_count', obj.leases.count())
+        n = getattr(obj, '_lease_count', None)
+        return obj.leases.count() if n is None else n
 
     def _resolve_property(self, obj):
         leases = getattr(obj, '_active_leases_list', None)
@@ -408,7 +412,8 @@ class RentalTenantSerializer(serializers.ModelSerializer):
         return getattr(obj, '_has_active_lease', 0) > 0
 
     def get_lease_count(self, obj):
-        return getattr(obj, '_lease_count', obj.leases.count())
+        n = getattr(obj, '_lease_count', None)
+        return obj.leases.count() if n is None else n
 
 
 class LeaseAgreementSerializer(serializers.ModelSerializer):

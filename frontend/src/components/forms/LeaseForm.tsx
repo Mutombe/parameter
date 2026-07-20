@@ -20,10 +20,14 @@ interface LeaseFormProps {
   isSubmitting?: boolean
   showButtons?: boolean
   onCancel?: () => void
+  /** Set while the chained property is still being created server-side:
+   *  the modal opens instantly and the Property field shows an animated
+   *  "Adding…" state; once `id` arrives the field resolves itself. */
+  pendingProperty?: { name: string; id?: number; management_type?: string } | null
 }
 
 const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
-  ({ initialValues, onSubmit, isSubmitting, showButtons = true, onCancel }, ref) => {
+  ({ initialValues, onSubmit, isSubmitting, showButtons = true, onCancel, pendingProperty }, ref) => {
     const [form, setForm] = useState({
       tenant: '',
       unit: '',
@@ -50,6 +54,9 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
     })
 
     const selectedProp = properties?.find((p: any) => String(p.id) === form.property)
+      // Fall back to the just-created chained property until the cached
+      // properties list refetches and contains it.
+      || (pendingProperty?.id && String(pendingProperty.id) === form.property ? pendingProperty : undefined)
     const selectedPropertyName = selectedProp?.name
     const isLevy = selectedProp?.management_type === 'levy'
 
@@ -99,13 +106,19 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
 
     useEffect(() => {
       if (initialValues) {
-        setForm((prev) => ({
-          ...prev,
-          ...initialValues,
-          tenant: initialValues.tenant ? String(initialValues.tenant) : prev.tenant,
-          property: initialValues.property ? String(initialValues.property) : prev.property,
-          unit: initialValues.unit ? String(initialValues.unit) : prev.unit,
-        }))
+        setForm((prev) => {
+          const next = {
+            ...prev,
+            ...initialValues,
+            tenant: initialValues.tenant ? String(initialValues.tenant) : prev.tenant,
+            property: initialValues.property ? String(initialValues.property) : prev.property,
+            unit: initialValues.unit ? String(initialValues.unit) : prev.unit,
+          }
+          // Callers often pass an inline object literal, giving this effect
+          // a fresh dep every render — bail out when nothing changed so we
+          // don't re-render the whole form in a loop.
+          return Object.keys(next).every(k => (next as any)[k] === (prev as any)[k]) ? prev : next
+        })
       }
     }, [initialValues])
 
@@ -130,6 +143,9 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
 
     const handleSubmit = (e?: React.FormEvent) => {
       e?.preventDefault()
+      // The chained property hasn't returned its id yet — the submit
+      // button is disabled in this state, but guard the ref path too.
+      if (pendingProperty && !pendingProperty.id && !form.property) return
 
       const data: any = {
         tenant: parseInt(form.tenant),
@@ -187,20 +203,46 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
             createNewLabel={isLevy ? '+ Create new account holder' : '+ Create new tenant'}
           />
 
-          <AsyncSelect
-            label="Property"
-            placeholder="Select Property"
-            value={form.property}
-            onChange={(val) =>
-              setForm({ ...form, property: String(val), unit: '', unit_number: '' })
-            }
-            options={properties?.map((p: any) => ({ value: p.id, label: p.name })) || []}
-            isLoading={propertiesLoading}
-            required
-            searchable
-            onCreateNew={() => startChain('landlord')}
-            createNewLabel="+ Create new property chain"
-          />
+          {pendingProperty && !pendingProperty.id ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Property</label>
+              <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border border-primary-200 bg-primary-50/50">
+                <span className="relative flex h-2.5 w-2.5 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary-500" />
+                </span>
+                <span className="text-sm text-primary-700 truncate">
+                  Adding <span className="font-semibold">{pendingProperty.name}</span>…
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Fill in the lease while the property finishes saving — it will attach automatically.
+              </p>
+            </div>
+          ) : (
+            <AsyncSelect
+              label="Property"
+              placeholder="Select Property"
+              value={form.property}
+              onChange={(val) =>
+                setForm({ ...form, property: String(val), unit: '', unit_number: '' })
+              }
+              options={(() => {
+                const opts = properties?.map((p: any) => ({ value: p.id, label: p.name })) || []
+                // A just-created property may not be in the cached list yet —
+                // inject it so the field shows its name instead of a blank.
+                if (pendingProperty?.id && !opts.some((o: any) => String(o.value) === String(pendingProperty.id))) {
+                  opts.unshift({ value: pendingProperty.id, label: pendingProperty.name })
+                }
+                return opts
+              })()}
+              isLoading={propertiesLoading}
+              required
+              searchable
+              onCreateNew={() => startChain('landlord')}
+              createNewLabel="+ Create new property chain"
+            />
+          )}
         </div>
 
         {/* Detect management type from selected property */}
@@ -386,8 +428,16 @@ const LeaseForm = forwardRef<LeaseFormRef, LeaseFormProps>(
             <button type="button" className="btn-secondary flex-1" onClick={onCancel}>
               Cancel
             </button>
-            <button type="submit" className="btn-primary flex-1" disabled={isSubmitting}>
-              {isSubmitting ? 'Saving...' : 'Save'}
+            <button
+              type="submit"
+              className="btn-primary flex-1"
+              disabled={isSubmitting || (!!pendingProperty && !pendingProperty.id && !form.property)}
+            >
+              {isSubmitting
+                ? 'Saving...'
+                : pendingProperty && !pendingProperty.id && !form.property
+                  ? 'Waiting for property…'
+                  : 'Save'}
             </button>
           </div>
         )}

@@ -13,7 +13,11 @@ const queryClient = new QueryClient({
       gcTime: 60 * 60 * 1000,  // 60 min: cache kept for 1 hour
       retry: 1,
       refetchOnWindowFocus: false, // No flash on tab-back
-      refetchOnMount: 'always',   // Always render cached data first, refetch silently if stale
+      // Refetch on mount only when the cache is older than staleTime.
+      // 'always' re-hit every endpoint on every page visit, so navigating
+      // felt slow even with fresh data; mutations invalidate their own
+      // keys, so a ≤10-min-old cache is safe to serve untouched.
+      refetchOnMount: true,
       refetchOnReconnect: false,
       structuralSharing: true,
     },
