@@ -1,4 +1,5 @@
 """Views for masterfile module."""
+from decimal import Decimal, InvalidOperation
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -451,8 +452,11 @@ class LeaseAgreementViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewse
                     return Response({'error': f'Invalid charge_type: {ctype}'},
                                     status=status.HTTP_400_BAD_REQUEST)
                 try:
-                    amount = Decimal(str(item.get('amount') or 0))
-                except Exception:
+                    # Tolerate formatted input like "1,100" or "$1 100".
+                    raw = str(item.get('amount') or 0)
+                    cleaned = raw.replace(',', '').replace('$', '').replace(' ', '')
+                    amount = Decimal(cleaned or '0')
+                except (InvalidOperation, ValueError, TypeError):
                     return Response({'error': f'Invalid amount for {ctype}'},
                                     status=status.HTTP_400_BAD_REQUEST)
                 if amount < 0:
