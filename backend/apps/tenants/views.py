@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.http import HttpResponse
+from django.views import View as DjangoView
 from django_tenants.utils import tenant_context
 from .models import Client, Domain, GlobalSettings, TenantInvitation
 from .serializers import (
@@ -450,28 +451,33 @@ class TenantDetailStatsView(APIView):
             return Response({'error': str(e)}, status=500)
 
 
-class PublicHealthCheckView(APIView):
+class PublicHealthCheckView(DjangoView):
     """
     Public health check endpoint for Render.com and monitoring.
-    Does not require authentication.
+
+    Deliberately a PLAIN Django view, not DRF: Render gates every deploy on
+    this endpoint, so it must not depend on DRF dispatch, authentication, or
+    the session backend — an outage in any of those (e.g. a session-cache
+    misconfiguration) would otherwise take the health check down with it and
+    wedge deploys.
     """
-    permission_classes = [AllowAny]
 
     def get(self, request):
+        from django.http import JsonResponse
         try:
             # Simple database connectivity check
             connection.ensure_connection()
-            return Response({
+            return JsonResponse({
                 'status': 'healthy',
                 'service': 'parameter-backend',
                 'timestamp': timezone.now().isoformat()
             })
         except Exception as e:
-            return Response({
+            return JsonResponse({
                 'status': 'unhealthy',
                 'error': str(e),
                 'timestamp': timezone.now().isoformat()
-            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            }, status=503)
 
 
 class SystemHealthView(APIView):
