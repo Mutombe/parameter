@@ -78,6 +78,7 @@ def get_tenant_url(subdomain):
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',  # django-cors-headers - must be first
+    'django.middleware.gzip.GZipMiddleware',  # Compress JSON responses (20-40KB lists shrink ~5-10x)
     'middleware.tenant_middleware.SubdomainHeaderMiddleware',  # Handle X-Tenant-Subdomain header
     'middleware.tenant_middleware.SafeTenantMiddleware',  # Safe wrapper around TenantMainMiddleware
     'django.middleware.security.SecurityMiddleware',
@@ -179,6 +180,17 @@ else:
             'TIMEOUT': 300,  # 5 minutes default
         }
     }
+
+# Sessions: cached_db keeps writes durable in the DB but serves reads from a
+# per-worker local cache — saving one cross-region DB round-trip on every
+# authenticated request after the first per worker.
+CACHES['sessions'] = {
+    'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+    'LOCATION': 'parameter-sessions',
+    'TIMEOUT': 60 * 60,
+}
+SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
+SESSION_CACHE_ALIAS = 'sessions'
 
 AUTH_USER_MODEL = 'accounts.User'
 

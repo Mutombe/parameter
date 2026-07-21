@@ -17,10 +17,12 @@ import { useHotkeys } from '../../hooks/useHotkeys'
 import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket'
 import { useThemeEffect } from '../../hooks/useThemeEffect'
 import { useNetworkStatus } from '../../hooks/useNetworkStatus'
+import { usePrefetchCoreData } from '../../hooks/usePrefetchCoreData'
 
 const MOBILE_BREAKPOINT = 1024 // lg breakpoint
 
 export default function Layout() {
+  usePrefetchCoreData()
   const {
     sidebarOpen,
     mobileSidebarOpen,

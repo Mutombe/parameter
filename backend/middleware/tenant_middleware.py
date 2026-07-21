@@ -163,6 +163,23 @@ class SafeTenantMiddleware(MiddlewareMixin):
     def process_request(self, request):
         from django_tenants.middleware.main import TenantMainMiddleware
 
+        # FAST PATH: SubdomainHeaderMiddleware already resolved the tenant
+        # (from its in-process cache — zero queries when warm). Running
+        # TenantMainMiddleware anyway would re-resolve the SAME tenant via a
+        # Domain-by-hostname query — one extra DB round-trip on EVERY API
+        # request, which is expensive when the DB is in another region.
+        existing = getattr(request, 'tenant', None)
+        if existing is not None:
+            try:
+                db_connection.set_tenant(existing)
+                request.urlconf = (
+                    getattr(settings, 'PUBLIC_SCHEMA_URLCONF', settings.ROOT_URLCONF)
+                    if existing.schema_name == 'public' else settings.ROOT_URLCONF
+                )
+                return
+            except Exception as e:
+                logger.warning("Fast-path set_tenant failed (%s); falling through", e)
+
         try:
             mw = TenantMainMiddleware(lambda r: None)
             mw.process_request(request)
