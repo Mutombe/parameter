@@ -112,12 +112,21 @@ LOGGING = {
 }
 
 # Cache configuration - use in-memory cache (no DB table needed, works with multi-tenancy)
+# NOTE: this REPLACES base.py's CACHES entirely, so every alias referenced by
+# settings (SESSION_CACHE_ALIAS -> 'sessions') MUST be re-declared here —
+# omitting it makes every session read raise InvalidCacheBackendError (500s
+# on login and all authenticated requests).
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         'LOCATION': 'parameter-cache',
         'TIMEOUT': 300,
-    }
+    },
+    'sessions': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'parameter-sessions',
+        'TIMEOUT': 60 * 60,
+    },
 }
 
 # Email configuration for production
