@@ -2334,11 +2334,18 @@ class RentRolloverView(APIView):
         if not start_date or not end_date:
             return Response({'error': 'start_date and end_date required'}, status=400)
 
+        # Rental leases hang off a unit; levy leases are PROPERTY-level with
+        # no unit at all — select and filter through both paths, otherwise a
+        # single levy lease crashes the report (lease.unit is None) and
+        # levy properties never appear.
         leases = LeaseAgreement.objects.filter(status='active').select_related(
-            'tenant', 'unit', 'unit__property', 'unit__property__landlord'
+            'tenant', 'unit', 'unit__property', 'unit__property__landlord',
+            'property', 'property__landlord',
         )
         if property_id:
-            leases = leases.filter(unit__property_id=property_id)
+            leases = leases.filter(
+                Q(unit__property_id=property_id) | Q(property_id=property_id)
+            )
 
         lease_list = list(leases)
         lease_ids = [l.id for l in lease_list]
@@ -2429,17 +2436,20 @@ class RentRolloverView(APIView):
             amount_paid = round(rp, 2)
             carried_forward = round(amount_due - amount_paid, 2)
 
+            prop = lease.unit.property if lease.unit_id and lease.unit else lease.property
+            if prop is None:
+                continue  # orphaned lease with neither unit nor property
             lease_rows.append({
                 'lease_id': lease.id,
                 'lease_number': lease.lease_number,
                 'tenant_id': lease.tenant_id,
                 'tenant_name': lease.tenant.name,
                 'unit_id': lease.unit_id,
-                'unit_number': lease.unit.unit_number,
-                'property_id': lease.unit.property_id,
-                'property_name': lease.unit.property.name,
-                'landlord_id': lease.unit.property.landlord_id,
-                'landlord_name': lease.unit.property.landlord.name if lease.unit.property.landlord else '',
+                'unit_number': lease.unit.unit_number if lease.unit_id and lease.unit else 'Property-level',
+                'property_id': prop.id,
+                'property_name': prop.name,
+                'landlord_id': prop.landlord_id,
+                'landlord_name': prop.landlord.name if prop.landlord_id else '',
                 'currency': lease.currency,
                 'balance_bf': balance_bf,
                 'amount_charged': amount_charged,
