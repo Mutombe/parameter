@@ -72,11 +72,12 @@ import { FINANCIAL_REPORTS, CASH_ONLY_REPORTS, PERIOD_REPORTS, derivePeriod, _ym
 import type { ReportType, PeriodMode } from '../shared'
 
 function TrialBalanceReport() {
-  const { landlordId, propertyId, periodEnd } = useReportFilters()
+  const { landlordId, propertyId, periodEnd, currency } = useReportFilters()
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['trial-balance', landlordId, propertyId, periodEnd],
+    queryKey: ['trial-balance', landlordId, propertyId, periodEnd, currency],
     queryFn: () => reportsApi.trialBalance({
       ...(landlordId ? { landlord_id: Number(landlordId) } : {}),
+      ...(currency ? { currency } : {}),
       ...(propertyId ? { property_id: Number(propertyId) } : {}),
       // Trial Balance is cumulative — balances "as at" the period end.
       ...(periodEnd ? { as_of_date: periodEnd } : {}),

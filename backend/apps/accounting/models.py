@@ -52,54 +52,46 @@ def _parse_account_code(code):
 
 
 def reserved_category_for_code(code):
-    """The category a code is *reserved* for per the spec, or None if the
-    code falls outside every reserved range."""
-    prefix, suffix = _parse_account_code(code)
+    """The category a code is *reserved* for under the hierarchical chart
+    (4-digit subclass ranges), or None for non-numeric codes.
+
+        0001-0999 Fixed Assets          5000-5999 Income
+        1000-1999 Current Assets        6000-6999 Cost of Sales
+        2000-2999 Current Liabilities   7000-7999 Operating Expenses
+        3000-3999 Equity                8000-8999 Tax Expense
+        4000-4999 Long-term Liabilities 9000-9999 Suspense/Opening
+    """
+    prefix, _suffix = _parse_account_code(code)
     if prefix is None:
         return None
-    # Expenses: 2000/001-999, 2100/000-999, 2200/000-999, 2300/000-099
-    if prefix == 2000 and 1 <= suffix <= 999:
-        return 'expense'
-    if prefix in (2100, 2200) and 0 <= suffix <= 999:
-        return 'expense'
-    if prefix == 2300 and 0 <= suffix <= 99:
-        return 'expense'
-    if prefix == 3000:
+    if prefix <= 999:
         return 'fixed_asset'
-    if prefix == 4000:
+    if prefix <= 1999:
         return 'current_asset'
-    if prefix == 5000:
-        return 'equity'
-    if prefix == 6000:
+    if prefix <= 2999:
         return 'current_liability'
-    if prefix == 6100:
-        return 'short_term_liability'
-    if prefix == 7000:
+    if prefix <= 3999:
+        return 'equity'
+    if prefix <= 4999:
         return 'long_term_liability'
-    if prefix == 9000 and 1 <= suffix <= 999:
-        return 'other_liability'
-    return None
+    if prefix <= 5999:
+        return 'revenue'
+    if prefix <= 8999:
+        return 'expense'
+    return 'equity'  # 9000-9999 suspense / opening balances
 
 
 def derive_account_category(code, account_type):
-    """Resolve the display/grouping category for an account from its code and
-    type. Per the spec the reclassification is one-directional: an account
-    currently typed as EXPENSE whose code sits in a non-expense reserved
-    range is moved to that category (fixes e.g. Land at 3000 mis-coded as an
-    expense). Otherwise the category follows the account_type, using the code
-    to split assets (Fixed vs Current) and liabilities (Current/Short/Long/
-    Other). Returns a category key from ACCOUNT_CATEGORY_LABELS."""
-    prefix, _ = _parse_account_code(code)
+    """Resolve the display/grouping category for an account. Under the
+    hierarchical chart the code range is authoritative — every 4-digit code
+    belongs to exactly one subclass. Non-numeric codes (subsidiary TN/LD
+    codes) fall back to the account_type."""
     reserved = reserved_category_for_code(code)
-
-    if account_type == 'expense' and reserved and reserved != 'expense':
+    if reserved:
         return reserved
     if account_type == 'asset':
-        return 'fixed_asset' if prefix == 3000 else 'current_asset'
+        return 'current_asset'
     if account_type == 'liability':
-        if reserved in ('current_liability', 'short_term_liability',
-                        'long_term_liability', 'other_liability'):
-            return reserved
         return 'current_liability'
     if account_type == 'equity':
         return 'equity'
@@ -109,30 +101,21 @@ def derive_account_category(code, account_type):
 
 
 def account_code_type_error(code, account_type):
-    """Return an error string if `code` is reserved for a category whose
-    account_type conflicts with `account_type` (used to validate NEW account
-    creation), else None. Non-numeric codes are unrestricted."""
-    prefix, _ = _parse_account_code(code)
-    if prefix is None:
-        return None
+    """Return an error string if `code` sits in a range whose subclass
+    conflicts with `account_type` (validates NEW account creation), else
+    None. Non-numeric codes are unrestricted."""
     reserved = reserved_category_for_code(code)
-    if reserved == 'expense':
-        if account_type != 'expense':
-            return 'This code range is reserved for Expense accounts.'
-    elif reserved in ('fixed_asset', 'current_asset'):
-        if account_type != 'asset':
-            return f'This code range is reserved for {ACCOUNT_CATEGORY_LABELS[reserved]}.'
-    elif reserved == 'equity':
-        if account_type != 'equity':
-            return 'This code range (5000) is reserved for Equity accounts.'
-    elif reserved in ('current_liability', 'short_term_liability',
-                      'long_term_liability', 'other_liability'):
-        if account_type != 'liability':
-            return f'This code range is reserved for {ACCOUNT_CATEGORY_LABELS[reserved]}.'
-    else:
-        # Not reserved. Codes below 3000 may only be Expense or Revenue.
-        if prefix < 3000 and account_type not in ('expense', 'revenue'):
-            return 'Codes below 3000 can only be used for Expense or Revenue accounts.'
+    if reserved is None:
+        return None
+    expected = {
+        'fixed_asset': 'asset', 'current_asset': 'asset',
+        'current_liability': 'liability', 'long_term_liability': 'liability',
+        'equity': 'equity', 'revenue': 'revenue', 'expense': 'expense',
+    }[reserved]
+    if account_type != expected:
+        return (f'This code range is reserved for '
+                f'{ACCOUNT_CATEGORY_LABELS.get(reserved, reserved)} accounts — '
+                f'no cross-subclass use.')
     return None
 
 
@@ -208,6 +191,15 @@ class ChartOfAccount(models.Model):
     name = models.CharField(max_length=255)
     account_type = models.CharField(max_length=20, choices=AccountType.choices)
     account_subtype = models.CharField(max_length=30, choices=AccountSubType.choices)
+    # ── Hierarchical taxonomy (brand chart, 6 levels) ─────────────────
+    # Level 1: which financial report the account belongs to.
+    report_type = models.CharField(max_length=20, blank=True, default='')      # balance_sheet | profit_loss
+    # Level 2: Asset / Contra Asset / Liability / Equity / Income / Expense.
+    account_class = models.CharField(max_length=20, blank=True, default='')
+    # Level 3: the code-range-owning subclass (see hierarchy.SUBCLASS_RANGES).
+    account_subclass = models.CharField(max_length=30, blank=True, default='')
+    # Level 4: type within the subclass (e.g. 'Fixed Asset', 'Property Expense').
+    hierarchy_type = models.CharField(max_length=60, blank=True, default='')
     # Landlord Balance Sheet sub-category (asset/liability accounts only).
     # Blank for equity/revenue/expense and for legacy rows created before
     # this field existed; the report treats blank as 'Other Current ...'.
@@ -240,6 +232,10 @@ class ChartOfAccount(models.Model):
     @property
     def normal_balance(self):
         """Return the normal balance side (debit or credit) for this account type."""
+        if self.account_class == 'contra_asset':
+            # Contra assets (e.g. Accumulated Depreciation) sit on the asset
+            # side of the report but carry a credit-normal balance.
+            return 'credit'
         if self.account_type in ['asset', 'expense']:
             return 'debit'
         return 'credit'

@@ -34,6 +34,7 @@ import toast from 'react-hot-toast'
 import { SelectionCheckbox, BulkActionsBar } from '../../components/ui'
 import { exportTableData } from '../../lib/export'
 import { useSelection } from '../../hooks/useSelection'
+import NewAccountWizard from '../../components/NewAccountWizard'
 
 interface Account {
   id: number
@@ -643,92 +644,8 @@ export default function ChartOfAccounts() {
         </TabsContent>
       </Tabs>
 
-      {/* Create Account Modal */}
-      <Modal
-        open={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        title="Create New Account"
-        icon={Plus}
-      >
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            createMutation.mutate(newAccount)
-          }}
-          className="space-y-5"
-        >
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Account Code"
-              placeholder="e.g., 1100"
-              value={newAccount.code}
-              onChange={(e) => setNewAccount({ ...newAccount, code: e.target.value })}
-              required
-            />
-            <Select
-              label="Account Type"
-              value={newAccount.account_type}
-              onChange={(e) => setNewAccount({
-                ...newAccount,
-                account_type: e.target.value,
-                account_subtype: subtypeOptions[e.target.value][0].value,
-                balance_sheet_category: defaultBsCategory[e.target.value] || '',
-              })}
-            >
-              <option value="asset">Asset</option>
-              <option value="liability">Liability</option>
-              <option value="equity">Equity</option>
-              <option value="revenue">Revenue</option>
-              <option value="expense">Expense</option>
-            </Select>
-          </div>
-
-          <Input
-            label="Account Name"
-            placeholder="e.g., Accounts Receivable"
-            value={newAccount.name}
-            onChange={(e) => setNewAccount({ ...newAccount, name: e.target.value })}
-            required
-          />
-
-          <Select
-            label="Sub-Type"
-            value={newAccount.account_subtype}
-            onChange={(e) => setNewAccount({ ...newAccount, account_subtype: e.target.value })}
-          >
-            {subtypeOptions[newAccount.account_type]?.map((subtype) => (
-              <option key={subtype.value} value={subtype.value}>
-                {subtype.label}
-              </option>
-            ))}
-          </Select>
-
-          {needsBsCategory && (
-            <Select
-              label="Balance Sheet Sub-Category"
-              value={newAccount.balance_sheet_category}
-              onChange={(e) => setNewAccount({ ...newAccount, balance_sheet_category: e.target.value })}
-              required
-              hint="Where this account appears on the landlord Balance Sheet. Required."
-            >
-              {bsCategoryOptions[newAccount.account_type]?.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </Select>
-          )}
-
-          <div className="flex gap-3 pt-4">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowCreateModal(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" className="flex-1" disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Creating...' : 'Create Account'}
-            </Button>
-          </div>
-        </form>
-      </Modal>
+      {/* Create Account Modal — guided hierarchy wizard */}
+      <NewAccountWizard open={showCreateModal} onClose={() => setShowCreateModal(false)} />
 
       <BulkActionsBar
         selectedCount={selection.selectedCount}

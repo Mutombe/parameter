@@ -38,7 +38,7 @@ echo "Fixing tenant schemas (adding missing columns)..."
 python manage.py fix_schemas || true
 
 echo "Setting up public tenant and domains..."
-python manage.py setup_public_tenant --domain parameter-backend.onrender.com 2>&1 || {
+python manage.py setup_public_tenant --domain "${BACKEND_DOMAIN:-parameter-backend.onrender.com}" 2>&1 || {
     echo "WARNING: setup_public_tenant failed — creating public tenant via SQL fallback..."
     python manage.py shell -c "
 from django.db import connection
@@ -68,10 +68,10 @@ with connection.cursor() as cursor:
 }
 
 echo "Syncing production domains for all tenants..."
-python manage.py sync_production_domains --domain-suffix parameter.co.zw || true
+python manage.py sync_production_domains --domain-suffix "${TENANT_DOMAIN_SUFFIX:-parameter.co.zw}" || true
 
-echo "Seeding trust accounting Chart of Accounts and subsidiary accounts..."
-python manage.py seed_trust_accounts || true
+echo "Installing hierarchical Chart of Accounts (brand spec)..."
+python manage.py install_brand_chart --all-tenants || true
 
 echo "Seeding standard expense categories from cash mapping spec..."
 python manage.py seed_expense_categories || true
@@ -79,25 +79,10 @@ python manage.py seed_expense_categories || true
 echo "Seeding category sub-account pockets for all tenants/account holders..."
 python manage.py seed_tenant_pockets --all-tenants || true
 
-echo "Re-homing pre-pocket tenant history into category pockets..."
-python manage.py migrate_legacy_pocket_history --all-tenants || true
-
 echo "Registering recurring task schedules (Django-Q)..."
 python manage.py setup_billing_schedules || true
 
 echo "Self-healing: posting any invoices stuck in DRAFT (failed auto-post)..."
 python manage.py post_draft_invoices --all-tenants || true
-
-echo "Ensuring Agent Commission + VAT Payable (Commission) accounts are present and labelled..."
-python manage.py ensure_agent_accounts --all-tenants || true
-
-echo "Relocating legacy 2200 deferred revenue into Unpaid 6000/010-070 range..."
-python manage.py relocate_unpaid_accounts --all-tenants || true
-
-echo "Relabelling engine control accounts seeded under colliding names..."
-python manage.py relabel_control_accounts --all-tenants || true
-
-echo "Correcting account types to match their code category (assets/liabilities mis-typed as expense)..."
-python manage.py fix_account_types_by_code --all-tenants || true
 
 echo "Build completed successfully!"

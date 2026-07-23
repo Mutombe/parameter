@@ -22,6 +22,7 @@ class ChartOfAccountSerializer(serializers.ModelSerializer):
         model = ChartOfAccount
         fields = [
             'id', 'code', 'name', 'account_type', 'account_subtype',
+            'report_type', 'account_class', 'account_subclass', 'hierarchy_type',
             'balance_sheet_category', 'category', 'category_label',
             'description', 'parent', 'is_active',
             'is_system', 'currency', 'current_balance', 'normal_balance',
@@ -40,6 +41,39 @@ class ChartOfAccountSerializer(serializers.ModelSerializer):
         strictly under its chosen bucket (per BS REPORTING spec). On a
         partial update, fall back to the instance's existing values.
         """
+        # ── Hierarchical chart rules (brand spec) ─────────────────────
+        # When the account carries a subclass, its GL code MUST be a free
+        # 4-digit code inside that subclass's reserved range — a code can
+        # be used once, ever, and never across subclasses.
+        subclass = attrs.get(
+            'account_subclass',
+            getattr(self.instance, 'account_subclass', ''),
+        )
+        code = attrs.get('code', getattr(self.instance, 'code', None))
+        if subclass:
+            from apps.accounting.hierarchy import (
+                validate_brand_code, LEGACY_TYPE_BY_CLASS,
+            )
+            ok, err = validate_brand_code(code, subclass)
+            if not ok:
+                raise serializers.ValidationError({'code': err})
+            qs = ChartOfAccount.objects.filter(code=code)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError({
+                    'code': f'GL code {code} is already in use — every code '
+                            f'may be assigned to exactly one account.'
+                })
+            # The legacy account_type follows the chosen class — the class
+            # decides the report section, never the caller.
+            klass = attrs.get(
+                'account_class',
+                getattr(self.instance, 'account_class', ''),
+            )
+            if klass in LEGACY_TYPE_BY_CLASS:
+                attrs['account_type'] = LEGACY_TYPE_BY_CLASS[klass]
+
         account_type = attrs.get(
             'account_type',
             getattr(self.instance, 'account_type', None),
@@ -103,6 +137,7 @@ class ChartOfAccountListSerializer(serializers.ModelSerializer):
         model = ChartOfAccount
         fields = [
             'id', 'code', 'name', 'account_type', 'account_subtype',
+            'report_type', 'account_class', 'account_subclass', 'hierarchy_type',
             'balance_sheet_category', 'category', 'category_label',
             'parent', 'is_active', 'is_system',
             'currency', 'current_balance', 'normal_balance',

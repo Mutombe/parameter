@@ -542,17 +542,24 @@ def _exclude_non_cash_expenses_q():
     return Q(journal_entry__source_type='expense', journal_entry__source_id__in=non_cash_ids)
 
 
-def _aggregate_balances_from_gl(scope_filter, account_types, end_date=None, start_date=None):
+def _aggregate_balances_from_gl(scope_filter, account_types, end_date=None, start_date=None,
+                                currency=None):
     """Aggregate per-account debit/credit totals from GL entries matching
     the scope filter. Returns a list of dicts with code/name/account_type/
     account_subtype/total_debit/total_credit, ordered by account code.
     Only used for the scoped paths of Trial Balance / Balance Sheet /
     Income Statement.
+
+    `currency` filters the LEDGER ROWS (one GL account serves both
+    currencies under the hierarchical chart — currency lives on each
+    transaction, so per-currency reports slice rows, not accounts).
     """
     qs = GeneralLedger.objects.filter(scope_filter).filter(
         account__account_type__in=account_types,
         account__is_active=True,
     )
+    if currency:
+        qs = qs.filter(currency=currency)
     if start_date:
         qs = qs.filter(date__gte=start_date)
     if end_date:
@@ -788,6 +795,9 @@ class TrialBalanceReportView(APIView):
         as_of_date = request.query_params.get('as_of_date', timezone.now().date())
         landlord_id = request.query_params.get('landlord_id')
         property_id = request.query_params.get('property_id')
+        # One GL account serves both currencies — ?currency=USD|ZWG slices
+        # the ledger rows for a single-currency view; omitted = all.
+        currency = request.query_params.get('currency') or None
         scope_filter = _gl_filter_for_landlord(landlord_id, property_id)
 
         report_data = []
@@ -804,6 +814,7 @@ class TrialBalanceReportView(APIView):
             gl_filter,
             account_types=['asset', 'liability', 'equity', 'revenue', 'expense'],
             end_date=as_of_date,
+            currency=currency,
         )
         for row in agg:
             debit_total = row['total_debit']
@@ -840,6 +851,7 @@ class TrialBalanceReportView(APIView):
         return Response({
             'report_name': 'Trial Balance',
             'as_of_date': str(as_of_date),
+            'currency': currency or 'ALL',
             'accounts': report_data,
             'scope': {
                 'landlord_id': int(landlord_id) if landlord_id else None,
@@ -865,6 +877,8 @@ class IncomeStatementView(APIView):
         end_date = request.query_params.get('end_date', timezone.now().date())
         landlord_id = request.query_params.get('landlord_id')
         property_id = request.query_params.get('property_id')
+        # Per-currency slice — one GL account serves both currencies.
+        currency = request.query_params.get('currency') or None
 
         scope_filter = _gl_filter_for_landlord(landlord_id, property_id)
 
@@ -886,6 +900,7 @@ class IncomeStatementView(APIView):
                 account_types=['revenue', 'expense'],
                 start_date=start_date,
                 end_date=end_date,
+                currency=currency,
             )
             revenue_list, expense_list = [], []
             total_revenue, total_expenses = Decimal('0'), Decimal('0')
@@ -969,6 +984,8 @@ class IncomeStatementView(APIView):
             # the figures strictly match the month/quarter the user picked.
             # ============================================================
             scoped_receipts = _scoped_receipt_qs(unit_id_list, property_id_list)
+            if currency:
+                scoped_receipts = scoped_receipts.filter(currency=currency)
             if start_date:
                 scoped_receipts = scoped_receipts.filter(date__gte=start_date)
             scoped_receipts = scoped_receipts.filter(date__lte=end_date)
@@ -1087,6 +1104,8 @@ class IncomeStatementView(APIView):
                 Q(landlord_id=landlord_obj.id) | Q(payee_type='landlord', payee_id=landlord_obj.id)
             ) if landlord_obj else Expense.objects.none()
             expense_qs = expense_qs.filter(status__in=['approved', 'paid'])
+            if currency:
+                expense_qs = expense_qs.filter(currency=currency)
             if start_date:
                 expense_qs = expense_qs.filter(date__gte=start_date)
             expense_qs = expense_qs.filter(date__lte=end_date)
@@ -1267,6 +1286,9 @@ class BalanceSheetView(APIView):
         as_of_date = request.query_params.get('as_of_date', timezone.now().date())
         landlord_id = request.query_params.get('landlord_id')
         property_id = request.query_params.get('property_id')
+        # Per-currency slice — one GL account serves both currencies; the
+        # sub-ledger pockets are already per-currency (…/01 USD, …/51 ZWG).
+        currency = request.query_params.get('currency') or None
 
         # Refuse tenant-scoped reports on the public schema. This used
         # to throw a confusing "relation does not exist" 500 because
@@ -1328,6 +1350,7 @@ class BalanceSheetView(APIView):
                 Q(),
                 account_types=['asset', 'liability', 'equity'],
                 end_date=as_of_date,
+                currency=currency,
             )
             for row in agg:
                 acct_type = row['account__account_type']
@@ -1367,6 +1390,7 @@ class BalanceSheetView(APIView):
                 Q(),
                 account_types=['revenue', 'expense'],
                 end_date=as_of_date,
+                currency=currency,
             )
             revenue_total = sum(
                 (r['total_credit'] - r['total_debit'])
@@ -1427,6 +1451,8 @@ class BalanceSheetView(APIView):
             landlord_subs = SubsidiaryAccount.objects.filter(
                 landlord_id=int(landlord_id), entity_type='landlord',
             )
+            if currency:
+                landlord_subs = landlord_subs.filter(currency=currency)
 
             funds_held_total = Decimal('0')
             funds_owed_total = Decimal('0')
@@ -1482,6 +1508,8 @@ class BalanceSheetView(APIView):
                 tenant_id__in=list(tenant_ids),
                 entity_type__in=['tenant', 'account_holder'],
             )
+            if currency:
+                tenant_subs = tenant_subs.filter(currency=currency)
 
             lessees_arrears_total = Decimal('0')
             lessees_prepayments_total = Decimal('0')
@@ -1532,6 +1560,7 @@ class BalanceSheetView(APIView):
                 scope_filter,
                 account_types=['asset', 'liability', 'equity'],
                 end_date=as_of_date,
+                currency=currency,
             )
 
             from apps.accounting.models import ChartOfAccount as _CoA
@@ -2767,11 +2796,17 @@ class CashFlowStatementView(APIView):
         end_date = request.query_params.get('end_date', timezone.now().date())
         landlord_id = request.query_params.get('landlord_id')
         property_id = request.query_params.get('property_id')
+        # Per-currency slice — one GL account serves both currencies, so
+        # folding it into the shared date filter carries it through every
+        # receipt/expense queryset this view builds.
+        currency = request.query_params.get('currency') or None
 
         # Build date filter
         date_filter = Q(date__lte=end_date)
         if start_date:
             date_filter &= Q(date__gte=start_date)
+        if currency:
+            date_filter &= Q(currency=currency)
 
         # Landlord/property scoping. None when both are blank — the report
         # then runs agency-wide.

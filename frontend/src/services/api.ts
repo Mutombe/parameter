@@ -454,6 +454,9 @@ export const accountApi = {
   delete: (id: number) => api.delete(`/accounting/accounts/${id}/`),
   byType: () => api.get('/accounting/accounts/by_type/'),
   seedDefaults: () => api.post('/accounting/accounts/seed_defaults/'),
+  taxonomy: () => api.get('/accounting/accounts/taxonomy/'),
+  availableCodes: (subclass: string) =>
+    api.get('/accounting/accounts/available_codes/', { params: { subclass } }),
 }
 
 export const journalApi = {

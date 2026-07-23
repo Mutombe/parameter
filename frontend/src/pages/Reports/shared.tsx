@@ -145,6 +145,10 @@ interface ReportFilterContextValue {
   propertyId: string
   setLandlordId: (v: string) => void
   setPropertyId: (v: string) => void
+  // Currency slice — '' = all currencies; one GL account serves both,
+  // so reports filter transactions by currency, not accounts.
+  currency: string
+  setCurrency: (v: string) => void
   // Shared reporting period (resolved [start, end] for the active selection).
   periodStart: string
   periodEnd: string
@@ -157,6 +161,7 @@ function useReportFilters() {
   const ctx = useContext(ReportFilterContext)
   if (!ctx) return {
     landlordId: '', propertyId: '', setLandlordId: () => {}, setPropertyId: () => {},
+    currency: '', setCurrency: () => {},
     periodStart: '', periodEnd: '', periodLabel: '',
   }
   return ctx

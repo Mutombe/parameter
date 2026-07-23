@@ -89,6 +89,41 @@ class ChartOfAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, v
         return queryset
 
     @action(detail=False, methods=['get'])
+    def taxonomy(self, request):
+        """The 6-level chart hierarchy for the New Account wizard:
+        report -> class -> subclass (with its reserved code range) ->
+        type -> subtype options."""
+        from apps.accounting.hierarchy import (
+            REPORT_TYPES, ACCOUNT_CLASSES, TAXONOMY,
+            TYPES_BY_SUBCLASS, SUBTYPES_BY_TYPE, SUBCLASS_RANGES,
+        )
+        return Response({
+            'report_types': REPORT_TYPES,
+            'account_classes': ACCOUNT_CLASSES,
+            'taxonomy': TAXONOMY,
+            'types_by_subclass': TYPES_BY_SUBCLASS,
+            'subtypes_by_type': SUBTYPES_BY_TYPE,
+            'subclass_ranges': {
+                slug: {'label': label, 'low': f'{lo:04d}', 'high': f'{hi:04d}'}
+                for slug, (label, lo, hi) in SUBCLASS_RANGES.items()
+            },
+        })
+
+    @action(detail=False, methods=['get'])
+    def available_codes(self, request):
+        """Free GL codes for a subclass — strictly the unused codes inside
+        the subclass's reserved range (in-use codes never reappear)."""
+        from apps.accounting.hierarchy import available_codes, SUBCLASS_RANGES
+        subclass = request.query_params.get('subclass', '')
+        if subclass not in SUBCLASS_RANGES:
+            return Response({'error': f'Unknown subclass: {subclass}'}, status=400)
+        used = set(ChartOfAccount.objects.values_list('code', flat=True))
+        return Response({
+            'subclass': subclass,
+            'codes': available_codes(subclass, used),
+        })
+
+    @action(detail=False, methods=['get'])
     def by_type(self, request):
         """Get accounts grouped by type."""
         result = {}
@@ -99,56 +134,30 @@ class ChartOfAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, v
 
     @action(detail=False, methods=['post'])
     def seed_defaults(self, request):
-        """Seed default chart of accounts."""
-        defaults = [
-            # Assets
-            ('1000', 'Cash', 'asset', 'cash', True),
-            ('1100', 'Bank - USD', 'asset', 'cash', True),
-            ('1110', 'Bank - ZiG', 'asset', 'cash', True),
-            ('1200', 'Accounts Receivable', 'asset', 'accounts_receivable', True),
-            ('1300', 'Prepaid Expenses', 'asset', 'prepaid', True),
-            # Liabilities
-            ('2000', 'Accounts Payable', 'liability', 'accounts_payable', True),
-            ('2100', 'VAT Payable', 'liability', 'vat_payable', True),
-            ('2110', 'VAT Payable (Commission)', 'liability', 'vat_payable', True),
-            ('2300', 'Landlord Trust Payable', 'liability', 'accounts_payable', True),
-            # Deferred Revenue — Unpaid accounts (one per billing category,
-            # all behaving like Unpaid Rent; legacy 2200 retired)
-            ('6000/010', 'Unpaid Rent USD', 'liability', 'tenant_deposits', True),
-            ('6000/020', 'Unpaid Levy USD', 'liability', 'tenant_deposits', True),
-            ('6000/030', 'Unpaid Parking USD', 'liability', 'tenant_deposits', True),
-            ('6000/040', 'Unpaid Special Levy USD', 'liability', 'tenant_deposits', True),
-            ('6000/050', 'Unpaid Maintenance USD', 'liability', 'tenant_deposits', True),
-            ('6000/060', 'Unpaid Rates USD', 'liability', 'tenant_deposits', True),
-            ('6000/070', 'Unpaid VAT USD', 'liability', 'tenant_deposits', True),
-            # Equity
-            ('3000', 'Retained Earnings', 'equity', 'retained_earnings', True),
-            ('3100', 'Capital', 'equity', 'capital', True),
-            # Revenue
-            ('4000', 'Rental Income', 'revenue', 'rental_income', True),
-            ('4100', 'Agent Commission', 'revenue', 'commission_income', True),
-            ('4200', 'Other Income', 'revenue', 'other_income', True),
-            # Expenses
-            ('5000', 'Operating Expenses', 'expense', 'operating_expense', True),
-            ('5100', 'Maintenance & Repairs', 'expense', 'maintenance', True),
-            ('5200', 'Utilities', 'expense', 'utilities', True),
-        ]
-
+        """Seed the canonical hierarchical chart of accounts (brand spec)."""
+        from apps.accounting.management.commands.install_brand_chart import CHART
+        from apps.accounting.hierarchy import LEGACY_TYPE_BY_CLASS
         created = 0
-        for code, name, acc_type, subtype, is_system in defaults:
+        for (report, klass, subclass, type_l4, subtype_l5,
+             code, name, legacy_subtype, bs_cat) in CHART:
             _, was_created = ChartOfAccount.objects.get_or_create(
                 code=code,
                 defaults={
                     'name': name,
-                    'account_type': acc_type,
-                    'account_subtype': subtype,
-                    'is_system': is_system
-                }
+                    'report_type': report,
+                    'account_class': klass,
+                    'account_subclass': subclass,
+                    'hierarchy_type': type_l4,
+                    'account_type': LEGACY_TYPE_BY_CLASS[klass],
+                    'account_subtype': legacy_subtype,
+                    'balance_sheet_category': bs_cat,
+                    'description': subtype_l5,
+                    'is_system': True,
+                },
             )
             if was_created:
                 created += 1
-
-        return Response({'message': f'Created {created} default accounts'})
+        return Response({'message': f'{created} accounts created', 'created': created})
 
 
 class ExchangeRateViewSet(viewsets.ModelViewSet):
@@ -213,7 +222,7 @@ class JournalViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
             Q(account_subtype__in=['bank', 'cash', 'vat_payable', 'commission_income'])
             | Q(name__icontains='unpaid')
             | Q(name__icontains='agent commission')
-            | Q(code='4100')
+            | Q(code='6000')
         )
         # Code 2200 is the RETIRED legacy Unpaid Rent account (relocated to
         # 6000/010-070 by relocate_unpaid_accounts) — despite its "unpaid"

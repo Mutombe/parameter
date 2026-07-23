@@ -3,8 +3,8 @@
 Each entry creates / updates an ExpenseCategory with:
   - code: short identifier (EXP_xxxx)
   - name: human label
-  - gl_account: USD GL account (created if missing)
-  - gl_account_zwg: ZWG GL account (created if missing)
+  - gl_account: the single GL account (serves USD and ZWG; created if
+    missing)
   - funding_category: which landlord sub-account to debit
   - default_description: pre-fills the Record Expense modal
 
@@ -16,41 +16,42 @@ from django_tenants.utils import schema_context, get_tenant_model
 from apps.accounting.models import ChartOfAccount, ExpenseCategory
 
 
-# (name, usd_code, zwg_code, funding_category, default_description, account_subtype)
+# (name, gl_code, funding_category, default_description)
+# ONE GL account per category serves BOTH currencies — currency lives on
+# the transaction. Codes are the hierarchical chart's 7000-range Operating
+# Expenses (plus 8000-range taxes and asset/liability payment categories).
 CATEGORIES = [
-    # ── Operating Expenses ──
-    ('Salaries & Wages',              '2000/001', '2000/501', 'rent',        'Salaries & Wages',          'operating'),
-    ('Utilities',                     '2000/002', '2000/502', 'rent',        'Utilities',                 'operating'),
-    ('Electricity',                   '2000/003', '2000/503', 'rent',        'Electricity',               'operating'),
-    ('Refuse Collection',             '2000/004', '2000/504', 'rent',        'Refuse Collection',         'operating'),
-    ('Payroll Expenses',              '2000/005', '2000/505', 'rent',        'Payroll Expenses',          'operating'),
-    ('Security Fees',                 '2000/006', '2000/506', 'rent',        'Security Fees',             'operating'),
-    ('Routine Maintenance',           '2000/007', '2000/507', 'maintenance', 'Routine Maintenance',       'operating'),
-    ('General Repairs',               '2000/008', '2000/508', 'maintenance', 'General Repairs',           'operating'),
-    ('City of Harare Rates',          '2000/009', '2000/509', 'rates',       'City of Harare Rates',      'operating'),
-    ('Upper Manyame Rates',           '2000/010', '2000/510', 'rates',       'Upper Manyame Rates',       'operating'),
-    # ── Payroll Expenses ──
-    ('NSSA',                          '2100/001', '2100/501', 'rent',        'NSSA',                      'operating'),
-    ('PAYE',                          '2100/002', '2100/502', 'rent',        'PAYE',                      'operating'),
-    # ── Other Expenses ──
-    ('Cash In Lieu',                  '2200/001', '2200/501', 'rent',        'Cash In Lieu',              'operating'),
-    ('Gratuity',                      '2200/002', '2200/502', 'rent',        'Gratuity',                  'operating'),
-    ('Insurance',                     '2200/003', '2200/503', 'rent',        'Insurance',                 'operating'),
-    ('Legal & Professional Fees',     '2200/004', '2200/504', 'rent',        'Legal & Professional Fees', 'operating'),
-    # ── Finance Expenses ──
-    ('Bank Charges',                  '2300/001', '2300/501', 'rent',        'Bank Charges',              'operating'),
-    ('Interest Charges',              '2300/002', '2300/502', 'rent',        'Interest Charges',          'operating'),
-    # ── Assets (capitalised purchases) ──
-    ('Land',                          '3000/001', '3000/501', 'rent',        'Land Purchase',             'operating'),
-    ('Buildings',                     '3000/002', '3000/502', 'rent',        'Buildings',                 'operating'),
-    ('Motor Vehicles',                '3000/003', '3000/503', 'rent',        'Motor Vehicles',            'operating'),
-    ('Office Furniture',              '3000/004', '3000/504', 'rent',        'Office Furniture',          'operating'),
-    ('Computer Equipment',            '3000/005', '3000/505', 'rent',        'Computer Equipment',        'operating'),
-    ('Accounts Receivable',           '4100/001', '4100/501', 'rent',        'Accounts Receivable',       'operating'),
-    # ── Liabilities ──
-    ('Short-term Loan',               '6100/010', '6100/510', 'rent',        'Short-term Loan repayment', 'operating'),
-    # ── Long-Term Liabilities ──
-    ('Mortgage',                      '7000/010', '7000/510', 'rent',        'Mortgage repayment',        'operating'),
+    # ── Operating Expenses (7000-7999) ──
+    ('Salaries & Wages',          '7000', 'rent',        'Salaries & Wages'),
+    ('Security Fees',             '7010', 'rent',        'Security Fees'),
+    ('Electricity',               '7020', 'rent',        'Electricity'),
+    ('City of Harare Rates',      '7030', 'rates',       'City of Harare Rates'),
+    ('Gardening',                 '7040', 'maintenance', 'Gardening'),
+    ('Routine Maintenance',       '7050', 'maintenance', 'Routine Maintenance'),
+    ('Fuels & Lubricants',        '7060', 'rent',        'Fuels & Lubricants'),
+    ('Repairs & Maintenance',     '7070', 'maintenance', 'Repairs & Maintenance'),
+    ('Insurance',                 '7080', 'rent',        'Insurance'),
+    ('Cash in Lieu',              '7090', 'rent',        'Cash in Lieu'),
+    ('Utilities',                 '7100', 'rent',        'Utilities'),
+    ('Payroll Expenses',          '7110', 'rent',        'Payroll Expenses'),
+    ('Bank Charges',              '7120', 'rent',        'Bank Charges'),
+    ('Audit Fees',                '7130', 'rent',        'Audit Fees'),
+    ('Legal & Professional Fees', '7140', 'rent',        'Legal & Professional Fees'),
+    ('Gratuity',                  '7150', 'rent',        'Gratuity'),
+    ('Refuse Collection',         '7160', 'rent',        'Refuse Collection'),
+    ('Cleaning',                  '7170', 'rent',        'Cleaning'),
+    # ── Taxation Expense (8000-8999) ──
+    ('Income Tax',                '8000', 'rent',        'Income Tax'),
+    ('Withholding Tax',           '8010', 'rent',        'Withholding Tax'),
+    ('Presumptive Tax',           '8020', 'rent',        'Presumptive Tax'),
+    ('Lessors VAT',               '8030', 'rent',        'Lessors VAT'),
+    # ── Capitalised purchases (Fixed Asset codes) ──
+    ('Motor Vehicles',            '0050', 'rent',        'Motor Vehicle purchase'),
+    ('Furniture & Fittings',      '0070', 'rent',        'Furniture & Fittings'),
+    ('Computer Equipment',        '0090', 'rent',        'Computer Equipment'),
+    ('Office Equipment',          '0110', 'rent',        'Office Equipment'),
+    # ── Liability settlements ──
+    ('Mortgage',                  '4000', 'rent',        'Mortgage repayment'),
 ]
 
 
@@ -76,14 +77,15 @@ class Command(BaseCommand):
 
     def _seed_schema(self):
         created, updated = 0, 0
-        for name, usd_code, zwg_code, funding, desc, subtype in CATEGORIES:
-            usd_acc = self._get_or_create_gl(usd_code, name, subtype)
-            zwg_acc = self._get_or_create_gl(zwg_code, f'{name} (ZWG)', subtype)
+        for name, code, funding, desc in CATEGORIES:
+            acc = self._get_or_create_gl(code, name, 'operating_expense')
             cat, was_created = ExpenseCategory.objects.update_or_create(
-                gl_account=usd_acc,
+                gl_account=acc,
                 defaults={
                     'name': name,
-                    'gl_account_zwg': zwg_acc,
+                    # ONE account serves both currencies under the
+                    # hierarchical chart — no ZWG twin.
+                    'gl_account_zwg': None,
                     'funding_category': funding,
                     'default_description': desc,
                     'is_system': True,
@@ -92,7 +94,7 @@ class Command(BaseCommand):
             )
             if was_created:
                 created += 1
-                self.stdout.write(f'  + {name} ({usd_code} / {zwg_code}) → {funding}')
+                self.stdout.write(f'  + {name} ({code}) -> {funding}')
             else:
                 updated += 1
         self.stdout.write(self.style.SUCCESS(

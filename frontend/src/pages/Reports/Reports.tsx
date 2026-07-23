@@ -615,6 +615,7 @@ export default function Reports() {
   // LandlordDetail/PropertyDetail still work.
   const [landlordId, setLandlordId] = useState<string>(() => searchParams.get('landlord_id') || '')
   const [propertyId, setPropertyId] = useState<string>(() => searchParams.get('property_id') || '')
+  const [currency, setCurrency] = useState('')  // '' = all currencies
 
   // Shared reporting period — defaults to the current month. Drives the
   // Trial Balance / Income Statement / Balance Sheet / Cash Flow queries.
@@ -839,10 +840,32 @@ export default function Reports() {
 
           <ReportFilterContext.Provider value={{
             landlordId, propertyId, setLandlordId, setPropertyId,
+            currency, setCurrency,
             periodStart: period.start, periodEnd: period.end, periodLabel: period.label,
           }}>
             {/* Filter bar shown only on the financial reports the filter applies to. */}
             {FINANCIAL_REPORTS.has(activeReport) && <ReportFilterBar />}
+            {/* Currency switcher — one GL account serves USD & ZWG; this
+                slices every financial report to a single currency. */}
+            {FINANCIAL_REPORTS.has(activeReport) && (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Currency</span>
+                <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5">
+                  {[['', 'All'], ['USD', 'USD'], ['ZWG', 'ZWG']].map(([v, l]) => (
+                    <button
+                      key={l}
+                      onClick={() => setCurrency(v)}
+                      className={cn(
+                        'px-2.5 py-1 text-xs font-medium rounded transition-colors',
+                        currency === v ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-100',
+                      )}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {/* Period selector — Trial Balance / Income Statement / Balance
                 Sheet / Cash Flow report strictly within the chosen period. */}
             {PERIOD_REPORTS.has(activeReport) && (

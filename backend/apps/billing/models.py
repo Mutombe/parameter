@@ -20,27 +20,26 @@ from apps.soft_delete import SoftDeleteModel
 
 
 # Deferred Revenue ("Unpaid") accounts — one per billing category, codes
-# 6000/010–6000/070 as laid out in the chart of accounts. Every invoice
-# credits the account matching its category (deferred revenue until payment)
-# and every receipt debits the SAME category's account (revenue recognised),
-# exactly the way Unpaid Rent behaves. The legacy single account at code
-# 2200 is retired by the relocate_unpaid_accounts command.
+# 2500-2570 in the hierarchical chart (Current Liabilities subclass).
+# Every invoice credits the account matching its category (deferred revenue
+# until payment) and every receipt debits the SAME category's account.
 UNPAID_ACCOUNT_MAP = {
-    'rent':         ('6000/010', 'Unpaid Rent USD'),
-    'levy':         ('6000/020', 'Unpaid Levy USD'),
-    'parking':      ('6000/030', 'Unpaid Parking USD'),
-    'special_levy': ('6000/040', 'Unpaid Special Levy USD'),
-    'maintenance':  ('6000/050', 'Unpaid Maintenance USD'),
-    'rates':        ('6000/060', 'Unpaid Rates USD'),
-    'vat':          ('6000/070', 'Unpaid VAT USD'),
+    'rent':         ('2500', 'Unpaid Rent'),
+    'levy':         ('2510', 'Unpaid Levy'),
+    'special_levy': ('2520', 'Unpaid Special Levy'),
+    'maintenance':  ('2530', 'Unpaid Maintenance'),
+    'parking':      ('2540', 'Unpaid Parking'),
+    'rates':        ('2550', 'Unpaid Rates'),
+    'vat':          ('2560', 'Unpaid VAT'),
+    'deposit':      ('2570', 'Unpaid Deposit'),
 }
 
 
 def get_unpaid_account(category):
     """Resolve the deferred-revenue account for a billing category.
 
-    Categories without their own account (deposit, penalty, utility, other)
-    fall back to Unpaid Rent (6000/010), mirroring _get_unpaid_contra_code.
+    Categories without their own account (penalty, utility, other) fall
+    back to Unpaid Rent (2500), mirroring _get_unpaid_contra_code.
     """
     code, name = UNPAID_ACCOUNT_MAP.get(category, UNPAID_ACCOUNT_MAP['rent'])
     account, _ = ChartOfAccount.objects.get_or_create(
@@ -201,38 +200,39 @@ class Invoice(SoftDeleteModel):
     def _get_billing_contra_code(self):
         """Get the billing/invoicing expense code for this invoice type."""
         type_map = {
-            'rent': '2300/010', 'levy': '2300/020', 'parking': '2300/030',
-            'maintenance': '2300/040', 'special_levy': '2300/050',
-            'rates': '2300/060', 'vat': '2300/070', 'penalty': '2300/080',
+            'rent': '2500', 'levy': '2510', 'parking': '2540',
+            'maintenance': '2530', 'special_levy': '2520',
+            'rates': '2550', 'vat': '2560', 'penalty': '2500',
+            'deposit': '2570',
         }
-        return type_map.get(self.invoice_type, '2300/010')
+        return type_map.get(self.invoice_type, '2500')
 
     def _get_income_contra_code(self):
         """Get the income account code for this invoice type."""
         type_map = {
-            'rent': '1000/010', 'levy': '1000/020', 'parking': '1000/030',
-            'maintenance': '1000/040', 'special_levy': '1000/050',
-            'rates': '1000/060', 'vat': '1000/080',
+            'rent': '5000', 'levy': '5010', 'parking': '5050',
+            'maintenance': '5030', 'special_levy': '5020',
+            'rates': '5040', 'vat': '5060', 'deposit': '5070',
         }
-        return type_map.get(self.invoice_type, '1000/010')
+        return type_map.get(self.invoice_type, '5000')
 
     def _get_unpaid_contra_code(self):
         """Get the unpaid/deferred liability code for this invoice type."""
         type_map = {
-            'rent': '6000/010', 'levy': '6000/020', 'parking': '6000/030',
-            'special_levy': '6000/040', 'maintenance': '6000/050',
-            'rates': '6000/060', 'vat': '6000/070',
+            'rent': '2500', 'levy': '2510', 'parking': '2540',
+            'special_levy': '2520', 'maintenance': '2530',
+            'rates': '2550', 'vat': '2560', 'deposit': '2570',
         }
-        return type_map.get(self.invoice_type, '6000/010')
+        return type_map.get(self.invoice_type, '2500')
 
     def _get_commission_expense_code(self):
         """Get the commission expense code for this invoice type."""
         type_map = {
-            'rent': '2000/010', 'levy': '2000/020', 'parking': '2000/030',
-            'maintenance': '2000/040', 'special_levy': '2000/050',
-            'rates': '2000/060',
+            'rent': '6000', 'levy': '6000', 'parking': '6000',
+            'maintenance': '6000', 'special_levy': '6000',
+            'rates': '6000',
         }
-        return type_map.get(self.invoice_type, '2000/010')
+        return type_map.get(self.invoice_type, '6000')
 
     @transaction.atomic
     def post_to_ledger(self, user=None):
@@ -259,7 +259,7 @@ class Invoice(SoftDeleteModel):
         unpaid_account = get_unpaid_account(self.invoice_type or 'rent')
 
         ar_account, _ = ChartOfAccount.objects.get_or_create(
-            code='1200',
+            code='1300',
             defaults={
                 'name': 'Accounts Receivable',
                 'account_type': 'asset',
@@ -469,16 +469,18 @@ class Receipt(SoftDeleteModel):
         """
         if self.payment_method == self.PaymentMethod.CASH:
             account, _ = ChartOfAccount.objects.get_or_create(
-                code='1000',
+                code='1200',
                 defaults={
-                    'name': 'Cash on Hand',
+                    'name': 'Petty Cash',
                     'account_type': 'asset',
                     'account_subtype': 'cash',
                     'is_system': True,
                 },
             )
             return account
-        code = '1100' if self.currency == 'USD' else '1110'
+        # ONE bank GL account for both currencies — currency lives on the
+        # transaction; reports filter by it.
+        code = '1100'
         account, _ = ChartOfAccount.objects.get_or_create(
             code=code,
             defaults={
@@ -707,7 +709,7 @@ class Receipt(SoftDeleteModel):
         # === Resolve accounts ===
         cash_account = self._resolve_cash_account()
         ar_account, _ = ChartOfAccount.objects.get_or_create(
-            code='1200',
+            code='1300',
             defaults={
                 'name': 'Accounts Receivable',
                 'account_type': 'asset',
@@ -719,7 +721,7 @@ class Receipt(SoftDeleteModel):
         # receipt clears the SAME Unpaid account its invoice credited.
         unpaid_account = get_unpaid_account(invoice_type)
         landlord_trust_account = get_or_create_account(
-            '2300', 'Landlord Trust Payable', 'liability', 'accounts_payable'
+            '2600', 'Landlord Trust Payable', 'liability', 'accounts_payable'
         )
         # Resolve the Agent Commission account by its SUBTYPE first — code
         # 4100 can be occupied by an unrelated account in some schemas, and
@@ -729,7 +731,7 @@ class Receipt(SoftDeleteModel):
             account_subtype='commission_income').order_by('id').first()
         if commission_revenue_account is None:
             commission_revenue_account = get_or_create_account(
-                '4100', 'Agent Commission', 'revenue', 'commission_income'
+                '6000', 'Agent Commission', 'expense', 'commission_income'
             )
         vat_payable_account = get_or_create_account(
             '2110', 'VAT Payable (Commission)', 'liability', 'vat_payable'
@@ -1173,10 +1175,12 @@ class Expense(SoftDeleteModel):
 
         # Credit-side account: bank for cash, accrued liabilities for non-cash.
         if is_non_cash:
+            # Accruals credit Accounts Payable (2400 is Withholding Tax
+            # Liability in the hierarchical chart).
             credit_account, _ = ChartOfAccount.objects.get_or_create(
-                code='2400',
+                code='2000',
                 defaults={
-                    'name': 'Accrued Liabilities',
+                    'name': 'Accounts Payable (Creditors)',
                     'account_type': 'liability',
                     'account_subtype': 'accrued_liabilities',
                     'is_system': True,

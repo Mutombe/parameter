@@ -72,11 +72,12 @@ import { FINANCIAL_REPORTS, CASH_ONLY_REPORTS, PERIOD_REPORTS, derivePeriod, _ym
 import type { ReportType, PeriodMode } from '../shared'
 
 function CashFlowReport() {
-  const { landlordId, propertyId, periodStart, periodEnd } = useReportFilters()
+  const { landlordId, propertyId, periodStart, periodEnd, currency } = useReportFilters()
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['cash-flow', landlordId, propertyId, periodStart, periodEnd],
+    queryKey: ['cash-flow', landlordId, propertyId, periodStart, periodEnd, currency],
     queryFn: () => reportsApi.cashFlow({
       ...(landlordId ? { landlord_id: Number(landlordId) } : {}),
+      ...(currency ? { currency } : {}),
       ...(propertyId ? { property_id: Number(propertyId) } : {}),
       ...(periodStart ? { start_date: periodStart } : {}),
       ...(periodEnd ? { end_date: periodEnd } : {}),
