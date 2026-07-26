@@ -30,7 +30,7 @@ import {
   ChevronRight,
   Loader2,
 } from 'lucide-react'
-import { landlordApi, reportsApi, propertyApi, leaseApi, invoiceApi, receiptApi, subsidiaryApi } from '../../services/api'
+import { landlordApi, reportsApi, propertyApi, leaseApi, invoiceApi, receiptApi, subsidiaryApi, propertyManagerApi } from '../../services/api'
 import PropertyForm from '../../components/forms/PropertyForm'
 import LeaseForm from '../../components/forms/LeaseForm'
 import { formatCurrency, formatPercent, cn } from '../../lib/utils'
@@ -386,19 +386,28 @@ export default function LandlordDetail() {
   // "Adding…" state and resolves itself when the id arrives. No page
   // redirect in between, so the chain keeps pace with fast data entry.
   const createPropertyMutation = useMutation({
-    mutationFn: (data: any) => propertyApi.create(data),
+    mutationFn: (data: any) => {
+      const { manager_user, ...payload } = data
+      void manager_user  // assigned post-create in onSuccess
+      return propertyApi.create(payload)
+    },
     onMutate: (data: any) => {
       setShowPropertyModal(false)
       setPendingProperty({ name: data?.name || 'property', management_type: data?.management_type })
       setShowLeaseModal(true)
     },
-    onSuccess: (response) => {
+    onSuccess: (response, variables: any) => {
       const newProperty = response?.data
       if (newProperty?.id) {
         // Seed the detail cache so PropertyDetail renders instantly later —
         // no second roundtrip to fetch what we just created.
         queryClient.setQueryData(['property', newProperty.id], newProperty)
         setPendingProperty({ name: newProperty.name || 'property', id: newProperty.id, management_type: newProperty.management_type })
+        if (variables?.manager_user) {
+          propertyManagerApi.create({
+            user: Number(variables.manager_user), property: newProperty.id, is_primary: true,
+          }).catch(() => showToast.error('Property created, but assigning the manager failed'))
+        }
       }
       queryClient.invalidateQueries({ predicate: (q) => {
         const key = q.queryKey[0] as string

@@ -1063,6 +1063,9 @@ function LeaseChargesCard({ leaseId, leaseType, leaseCurrency }: {
         { type: 'vat', label: 'VAT' },
       ]
 
+  // Dual-currency schedule: rows keyed `${currency}:${type}` so USD and
+  // ZWG items are configured independently and billed independently.
+  const CURRENCIES = ['USD', 'ZWG']
   const [rows, setRows] = useState<Record<string, { amount: string; is_active: boolean }>>({})
   const [dirty, setDirty] = useState(false)
 
@@ -1076,16 +1079,20 @@ function LeaseChargesCard({ leaseId, leaseType, leaseCurrency }: {
     if (!chargesData) return
     const next: Record<string, { amount: string; is_active: boolean }> = {}
     const existing: any[] = chargesData.charges || []
-    ITEMS.forEach(({ type }) => {
-      const row = existing.find((c: any) => c.charge_type === type)
-      if (row) {
-        next[type] = { amount: String(row.amount), is_active: !!row.is_active }
-      } else if ((type === 'rent' && !isLevy) || (type === 'levy' && isLevy)) {
-        // Bootstrap the headline item from the lease's monthly amount.
-        next[type] = { amount: String(chargesData.monthly_rent || '0'), is_active: true }
-      } else {
-        next[type] = { amount: '0', is_active: false }
-      }
+    const headlineCcy = leaseCurrency || 'USD'
+    CURRENCIES.forEach((ccy) => {
+      ITEMS.forEach(({ type }) => {
+        const key = `${ccy}:${type}`
+        const row = existing.find((c: any) => c.charge_type === type && (c.currency || 'USD') === ccy)
+        if (row) {
+          next[key] = { amount: String(row.amount), is_active: !!row.is_active }
+        } else if (ccy === headlineCcy && ((type === 'rent' && !isLevy) || (type === 'levy' && isLevy))) {
+          // Bootstrap the headline item from the lease's monthly amount.
+          next[key] = { amount: String(chargesData.monthly_rent || '0'), is_active: true }
+        } else {
+          next[key] = { amount: '0', is_active: false }
+        }
+      })
     })
     setRows(next)
     setDirty(false)
@@ -1095,12 +1102,12 @@ function LeaseChargesCard({ leaseId, leaseType, leaseCurrency }: {
   const saveMutation = useMutation({
     mutationFn: () => leaseApi.saveCharges(
       leaseId,
-      ITEMS.map(({ type }) => ({
+      CURRENCIES.flatMap((ccy) => ITEMS.map(({ type }) => ({
         charge_type: type,
-        amount: Number(rows[type]?.amount || 0),
-        is_active: !!rows[type]?.is_active && Number(rows[type]?.amount || 0) > 0,
-        currency: leaseCurrency,
-      })),
+        amount: Number(rows[`${ccy}:${type}`]?.amount || 0),
+        is_active: !!rows[`${ccy}:${type}`]?.is_active && Number(rows[`${ccy}:${type}`]?.amount || 0) > 0,
+        currency: ccy,
+      }))),
     ),
     onSuccess: () => {
       showToast.success('Charges updated — they apply from the next billing run')
@@ -1115,8 +1122,8 @@ function LeaseChargesCard({ leaseId, leaseType, leaseCurrency }: {
     setDirty(true)
   }
 
-  const activeTotal = ITEMS.reduce((sum, { type }) =>
-    rows[type]?.is_active ? sum + (Number(rows[type]?.amount) || 0) : sum, 0)
+  const totalFor = (ccy: string) => ITEMS.reduce((sum, { type }) =>
+    rows[`${ccy}:${type}`]?.is_active ? sum + (Number(rows[`${ccy}:${type}`]?.amount) || 0) : sum, 0)
 
   return (
     <motion.div
@@ -1144,40 +1151,54 @@ function LeaseChargesCard({ leaseId, leaseType, leaseCurrency }: {
           {ITEMS.map(i => <div key={i.type} className="h-10 bg-gray-100 rounded-lg animate-pulse" />)}
         </div>
       ) : (
-        <div className="p-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {ITEMS.map(({ type, label }) => (
-              <div
-                key={type}
-                className={cn(
-                  'rounded-xl border px-4 py-3 transition-colors',
-                  rows[type]?.is_active ? 'border-primary-200 bg-primary-50/30' : 'border-gray-200'
-                )}
-              >
-                <label className="flex items-center justify-between mb-2 cursor-pointer">
-                  <span className="text-sm font-medium text-gray-800">{label}</span>
-                  <input
-                    type="checkbox"
-                    checked={!!rows[type]?.is_active}
-                    onChange={(e) => setRow(type, { is_active: e.target.checked })}
-                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                  />
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={rows[type]?.amount ?? '0'}
-                  onChange={(e) => setRow(type, { amount: e.target.value, is_active: Number(e.target.value) > 0 ? true : rows[type]?.is_active })}
-                  className="w-full px-3 py-2 text-sm text-right tabular-nums bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
+        <div className="p-6 space-y-6">
+          {CURRENCIES.map((ccy) => (
+            <div key={ccy}>
+              <div className="flex items-center gap-2 mb-3">
+                <span className={cn(
+                  'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold',
+                  ccy === 'USD' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                )}>{ccy} items</span>
+                <span className="text-xs text-gray-400">billed in {ccy}</span>
               </div>
-            ))}
-          </div>
-          <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between text-sm font-semibold">
-            <span className="text-gray-600">Total monthly billing ({leaseCurrency || 'USD'})</span>
-            <span className="tabular-nums text-gray-900">{formatCurrency(activeTotal)}</span>
-          </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {ITEMS.map(({ type, label }) => {
+                  const key = `${ccy}:${type}`
+                  return (
+                    <div
+                      key={key}
+                      className={cn(
+                        'rounded-xl border px-4 py-3 transition-colors',
+                        rows[key]?.is_active ? 'border-primary-200 bg-primary-50/30' : 'border-gray-200'
+                      )}
+                    >
+                      <label className="flex items-center justify-between mb-2 cursor-pointer">
+                        <span className="text-sm font-medium text-gray-800">{label}</span>
+                        <input
+                          type="checkbox"
+                          checked={!!rows[key]?.is_active}
+                          onChange={(e) => setRow(key, { is_active: e.target.checked })}
+                          className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={rows[key]?.amount ?? '0'}
+                        onChange={(e) => setRow(key, { amount: e.target.value, is_active: Number(e.target.value) > 0 ? true : rows[key]?.is_active })}
+                        className="w-full px-3 py-2 text-sm text-right tabular-nums bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between text-sm font-semibold">
+                <span className="text-gray-600">Total monthly billing ({ccy})</span>
+                <span className="tabular-nums text-gray-900">{formatCurrency(totalFor(ccy))} {ccy}</span>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </motion.div>

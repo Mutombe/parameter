@@ -102,6 +102,122 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=['get'])
+    def type_options(self, request):
+        """Invoice Type options for a payer side — mirrors the payer's
+        sub-account pockets, plus any ACTIVE custom income types configured
+        for that side (payer_side = tenant / account_holder / both).
+
+        ?payer_type=rental|levy   (rental = Tenants, levy = Account Holders)
+        Custom types (IncomeType.management_type = rental / levy / both)
+        return value "income_type:<id>" — the client submits those as
+        invoice_type=other + income_type=<id>.
+        """
+        from apps.accounting.models import IncomeType
+        payer_type = request.query_params.get('payer_type', 'rental')
+        if payer_type == 'levy':
+            options = [
+                {'value': 'levy', 'label': 'Levy'},
+                {'value': 'special_levy', 'label': 'Special Levy'},
+                {'value': 'maintenance', 'label': 'Maintenance'},
+                {'value': 'parking', 'label': 'Parking'},
+                {'value': 'rates', 'label': 'Rates'},
+            ]
+            side = 'levy'
+        else:
+            options = [
+                {'value': 'rent', 'label': 'Rent'},
+                {'value': 'rates', 'label': 'Rates'},
+                {'value': 'maintenance', 'label': 'Maintenance'},
+                {'value': 'parking', 'label': 'Parking'},
+                {'value': 'vat', 'label': 'VAT'},
+                {'value': 'deposit', 'label': 'Deposit'},
+            ]
+            side = 'rental'
+        canonical_names = {o['label'].lower() for o in options}
+        for it in IncomeType.objects.filter(
+                is_active=True, management_type__in=[side, 'both']).order_by('display_order', 'name'):
+            if it.name.strip().lower() in canonical_names:
+                continue
+            options.append({'value': 'income_type:%d' % it.id, 'label': it.name,
+                            'income_type_id': it.id})
+        return Response({'payer_type': payer_type, 'options': options})
+
+    @action(detail=False, methods=['post'])
+    def bill_property(self, request):
+        """Bill EVERY active lease under a property with one invoice type.
+
+        Body: property_id, invoice_type (canonical slug or
+        "income_type:<id>"), date, due_date, currency (default USD),
+        description (optional custom text), amount (optional override —
+        otherwise each lease's configured charge for the type/currency is
+        used, falling back to monthly_rent for the headline type).
+        """
+        from django.db.models import Q as _Q
+        from apps.masterfile.models import LeaseAgreement
+        from apps.accounting.models import IncomeType
+        from decimal import Decimal as D
+
+        property_id = request.data.get('property_id')
+        raw_type = request.data.get('invoice_type') or 'rent'
+        currency = request.data.get('currency') or 'USD'
+        inv_date = request.data.get('date')
+        due_date = request.data.get('due_date')
+        description = (request.data.get('description') or '').strip()
+        amount_override = request.data.get('amount')
+        if not property_id or not inv_date or not due_date:
+            return Response({'error': 'property_id, date and due_date are required'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        income_type = None
+        if str(raw_type).startswith('income_type:'):
+            income_type = IncomeType.objects.filter(id=str(raw_type).split(':', 1)[1]).first()
+            if income_type is None:
+                return Response({'error': 'Unknown income type'}, status=400)
+            invoice_type = 'other'
+            type_label = income_type.name
+        else:
+            invoice_type = raw_type
+            type_label = str(raw_type).replace('_', ' ').title()
+
+        leases = (LeaseAgreement.objects.filter(status='active')
+                  .filter(_Q(unit__property_id=property_id) |
+                          _Q(property_id=property_id))
+                  .select_related('tenant', 'unit', 'unit__property', 'property')
+                  .prefetch_related('charges'))
+        created, skipped = [], []
+        for lease in leases:
+            if amount_override:
+                amount = D(str(amount_override))
+            else:
+                charge = next((c for c in lease.charges.all()
+                               if c.is_active and c.charge_type == invoice_type
+                               and (c.currency or 'USD') == currency), None)
+                if charge and charge.amount:
+                    amount = charge.amount
+                elif invoice_type in ('rent', 'levy') and (lease.currency or 'USD') == currency:
+                    amount = lease.monthly_rent
+                else:
+                    skipped.append('%s: no %s charge in %s' % (lease.lease_number, type_label, currency))
+                    continue
+            if not amount or amount <= 0:
+                skipped.append('%s: zero amount' % lease.lease_number)
+                continue
+            inv = Invoice.objects.create(
+                tenant=lease.tenant, lease=lease, unit=lease.unit,
+                property=lease.property or (lease.unit.property if lease.unit else None),
+                invoice_type=invoice_type, income_type=income_type,
+                date=inv_date, due_date=due_date,
+                amount=amount, vat_amount=D('0'), currency=currency,
+                description=description or ('%s Charge' % type_label),
+                created_by=request.user,
+            )
+            created.append(inv.invoice_number)
+        return Response({
+            'created': len(created), 'invoice_numbers': created[:50],
+            'skipped': skipped[:50], 'skipped_count': len(skipped),
+        })
+
     @action(detail=False, methods=['post'])
     def generate_monthly(self, request):
         """
@@ -128,6 +244,8 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
                 created_by=request.user,
                 invoice_date_override=invoice_date,
                 due_date_override=due_date_val,
+                invoice_types=request.data.get('invoice_types') or None,
+                currencies=request.data.get('currencies') or None,
             )
         except Exception as e:
             import logging
@@ -511,6 +629,12 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
             status__in=['draft', 'sent'],
             balance__gt=0
         ).select_related('tenant', 'unit', 'unit__property')
+
+        # Optional billing-type filter — send only the types the user has
+        # confirmed (e.g. rent only) while other types are still checked.
+        invoice_types = request.data.get('invoice_types', [])
+        if invoice_types:
+            invoices = invoices.filter(invoice_type__in=invoice_types)
 
         if invoice_ids:
             invoices = invoices.filter(id__in=invoice_ids)

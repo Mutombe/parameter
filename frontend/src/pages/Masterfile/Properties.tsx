@@ -192,8 +192,8 @@ export default function Properties() {
       // even after onMutate's resetForm() has cleared pendingCommissions
       // from React state. Without this, draft-mode commission overrides
       // staged in the JIT modal got wiped before they could be applied.
-      const { _editingId, _drafts, ...payload } = data
-      void _drafts
+      const { _editingId, _drafts, manager_user, ...payload } = data
+      void _drafts; void manager_user  // manager assigned post-create in onSuccess
       return id ? propertyApi.update(id, payload) : propertyApi.create(payload)
     },
     onMutate: async (newData) => {
@@ -236,6 +236,16 @@ export default function Properties() {
     onSuccess: async (response, variables: any, context) => {
       const newId = response?.data?.id
       const newName = response?.data?.name || ''
+      // Property Manager assignment (from the Add New Property form)
+      if (!context?.isUpdating && newId && variables?.manager_user) {
+        try {
+          await propertyManagerApi.create({
+            user: Number(variables.manager_user), property: newId, is_primary: true,
+          })
+        } catch {
+          showToast.error('Property created, but assigning the manager failed — assign them from the property page')
+        }
+      }
       // Read drafts from the mutation variables, NOT from the
       // `pendingCommissions` state — that's already been cleared by
       // onMutate's resetForm() by the time we get here.

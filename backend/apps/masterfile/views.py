@@ -464,9 +464,9 @@ class LeaseAgreementViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewse
                                     status=status.HTTP_400_BAD_REQUEST)
                 LeaseCharge.objects.update_or_create(
                     lease=lease, charge_type=ctype,
+                    currency=item.get('currency') or lease.currency or 'USD',
                     defaults={
                         'amount': amount,
-                        'currency': item.get('currency') or lease.currency,
                         'is_active': bool(item.get('is_active', True)),
                     },
                 )
@@ -780,6 +780,48 @@ class PropertyManagerViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(assigned_by=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def staff_options(self, request):
+        """Staff users eligible to be property managers (for the picker)."""
+        from apps.accounts.models import User
+        from django.db import connection as _conn
+        users = User.objects.filter(
+            role__in=['super_admin', 'admin', 'accountant', 'clerk'],
+            is_active=True,
+            tenant_schema=_conn.schema_name,
+        ).order_by('first_name', 'last_name')
+        return Response([
+            {'id': u.id, 'name': (u.get_full_name() or u.email), 'email': u.email,
+             'role': u.role}
+            for u in users
+        ])
+
+    @action(detail=False, methods=['post'])
+    def quick_create_user(self, request):
+        """Just-in-time creation of a property manager who isn't a system
+        user yet. Creates a staff (clerk) account with an unusable password
+        — they get access later via the normal invite / password-reset flow.
+        Body: first_name, last_name, email."""
+        from apps.accounts.models import User
+        from django.db import connection as _conn
+        email = (request.data.get('email') or '').strip().lower()
+        first = (request.data.get('first_name') or '').strip()
+        last = (request.data.get('last_name') or '').strip()
+        if not email or not first:
+            return Response({'error': 'first_name and email are required'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if User.objects.filter(email=email).exists():
+            return Response({'error': f'A user with email {email} already exists'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        user = User.objects.create_user(
+            email=email, password=None,  # unusable until invited/reset
+            first_name=first, last_name=last,
+            role='clerk', is_staff=False,
+            tenant_schema=_conn.schema_name or '',
+        )
+        return Response({'id': user.id, 'name': user.get_full_name() or email,
+                         'email': email}, status=status.HTTP_201_CREATED)
 
 
 class PropertyIncomeCommissionViewSet(viewsets.ModelViewSet):

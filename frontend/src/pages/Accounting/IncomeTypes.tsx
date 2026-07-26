@@ -53,6 +53,7 @@ interface GLAccount {
 const emptyForm = {
   name: '',
   description: '',
+  management_type: 'both',
   gl_account: '' as string | number,
   is_commissionable: false,
   default_commission_rate: '0.00',
@@ -101,6 +102,7 @@ export default function IncomeTypes() {
       setForm({
         name: editingType.name,
         description: editingType.description || '',
+        management_type: editingType.management_type || 'both',
         gl_account: editingType.gl_account || '',
         is_commissionable: editingType.is_commissionable,
         default_commission_rate: editingType.default_commission_rate || '0.00',
@@ -498,6 +500,26 @@ export default function IncomeTypes() {
               searchable
               clearable
             />
+
+            {/* Which payer side this income type bills — drives whether it
+                appears in Invoice Type options for Tenants (Rent Payers),
+                Account Holders (Levy Payers), or both. */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Applies To</label>
+              <select
+                value={form.management_type}
+                onChange={(e) => setForm({ ...form, management_type: e.target.value })}
+                className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="rental">Rent Payers side (Tenants)</option>
+                <option value="levy">Levy Payers side (Account Holders)</option>
+                <option value="both">Both sides</option>
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Once activated, this income type appears in the Create Invoice type
+                options for the selected side(s).
+              </p>
+            </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>

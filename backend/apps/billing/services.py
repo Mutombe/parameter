@@ -8,10 +8,16 @@ logger = logging.getLogger(__name__)
 
 
 def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, created_by=None,
-                              invoice_date_override=None, due_date_override=None):
+                              invoice_date_override=None, due_date_override=None,
+                              invoice_types=None, currencies=None):
     """
     Generate monthly invoices for active leases.
     Supports filtering by specific lease_ids or a single property_id.
+    `invoice_types`: optional list of billing types to generate (e.g.
+    ['rent', 'levy']) — anything not listed is left unbilled this run.
+    `currencies`: optional list ['USD'] / ['ZWG'] / both — bills only the
+    charge items in those currencies (dual-currency schedules bill each
+    currency's items separately).
     Returns (created_invoices, errors).
     """
     from .models import Invoice
@@ -51,7 +57,7 @@ def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, cre
             lease_id__in=lease_id_list,
             period_start=period_start,
             period_end=period_end
-        ).values_list('lease_id', 'invoice_type')
+        ).values_list('lease_id', 'invoice_type', 'currency')
     )
 
     invoices_to_create = []
@@ -84,11 +90,17 @@ def generate_monthly_invoices(month, year, lease_ids=None, property_id=None, cre
                             else Invoice.InvoiceType.RENT)
             items = [(default_type, lease.monthly_rent, lease.currency)]
 
+        # Billing-type / currency selection (Monthly Billing options)
+        if invoice_types:
+            items = [it for it in items if it[0] in invoice_types]
+        if currencies:
+            items = [it for it in items if (it[2] or 'USD') in currencies]
+
         # Resolve property for the invoice
         inv_property = lease.property or (lease.unit.property if lease.unit else None)
 
         for charge_type, amount, currency in items:
-            if (lease.id, charge_type) in existing_pairs:
+            if (lease.id, charge_type, currency or 'USD') in existing_pairs:
                 continue
             desc_label = ITEM_LABELS.get(charge_type, str(charge_type).replace('_', ' ').title())
             invoices_to_create.append(Invoice(

@@ -308,6 +308,17 @@ function BillingStatusTable({ month, year, onBillProperty, onBillAll, isBilling 
   )
 }
 
+const ALL_BILLING_TYPES = [
+  { value: 'rent', label: 'Rent' },
+  { value: 'levy', label: 'Levy' },
+  { value: 'special_levy', label: 'Special Levy' },
+  { value: 'maintenance', label: 'Maintenance' },
+  { value: 'parking', label: 'Parking' },
+  { value: 'rates', label: 'Rates' },
+  { value: 'vat', label: 'VAT' },
+  { value: 'deposit', label: 'Deposit' },
+]
+
 export default function Invoices() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -324,6 +335,7 @@ export default function Invoices() {
   // selected tenants & account holders.
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [emailForm, setEmailForm] = useState({
+    invoice_types: [] as string[],  // empty = all types
     mode: 'all' as 'all' | 'properties' | 'tenants',
     properties: [] as Array<number | string>,
     tenants: [] as Array<number | string>,
@@ -347,7 +359,7 @@ export default function Invoices() {
     onSuccess: (r: any) => {
       showToast.success(r?.data?.message || 'Invoice emails queued')
       setShowEmailModal(false)
-      setEmailForm({ mode: 'all', properties: [], tenants: [] })
+      setEmailForm({ mode: 'all', properties: [], tenants: [], invoice_types: [] })
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
     },
     onError: (err) => showToast.error(parseApiError(err, 'Failed to queue invoice emails')),
@@ -361,6 +373,7 @@ export default function Invoices() {
     }
     emailInvoicesMutation.mutate({
       send_all: emailForm.mode === 'all',
+      ...(emailForm.invoice_types.length ? { invoice_types: emailForm.invoice_types } : {}),
       ...(emailForm.mode === 'properties' ? { property_ids: emailForm.properties } : {}),
       ...(emailForm.mode === 'tenants' ? { tenant_ids: emailForm.tenants } : {}),
     })
@@ -377,6 +390,8 @@ export default function Invoices() {
     invoice_date: '',
     due_date: '',
     batchMode: false,
+    invoice_types: [] as string[],   // empty = all configured types
+    currencies: [] as string[],      // empty = both currencies
   })
   const [form, setForm] = useState({
     tenant: '',
@@ -387,6 +402,15 @@ export default function Invoices() {
     due_date: '',
     amount: '',
     description: '',
+  })
+
+  // Create Invoice can bill a single payer OR every active lease under a
+  // property (with a custom description) — the Bill To toggle switches.
+  const [billTo, setBillTo] = useState<'payer' | 'property'>('payer')
+  const [propForm, setPropForm] = useState({
+    property_id: '', invoice_type: 'rent', currency: 'USD',
+    date: new Date().toISOString().split('T')[0], due_date: '',
+    description: '', amount: '',
   })
 
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} })
@@ -438,6 +462,7 @@ export default function Invoices() {
 
   const resetForm = () => {
     setShowForm(false)
+    setBillTo('payer')
     lastAutoDescRef.current = ''
     setForm({
       tenant: '',
@@ -500,8 +525,60 @@ export default function Invoices() {
   }, [form.date, form.invoice_type])
 
   // Optimistic create mutation
+  // Invoice Type options mirror the payer's sub-account pockets (+ active
+  // custom income types configured for that side).
+  const selectedPayer = tenants?.find((t: any) => String(t.id) === form.tenant)
+  const payerSide = selectedPayer?.account_type === 'levy' ? 'levy' : 'rental'
+  const { data: payerTypeOptions } = useQuery({
+    queryKey: ['invoice-type-options', payerSide],
+    queryFn: () => invoiceApi.typeOptions(payerSide).then(r => r.data.options),
+    enabled: showForm,
+    staleTime: 60_000,
+  })
+  const { data: billPropsList } = useQuery({
+    queryKey: ['bill-property-options'],
+    queryFn: () => propertyApi.list({ page_size: 500 }).then((r: any) => r.data.results || r.data),
+    enabled: showForm && billTo === 'property',
+    staleTime: 60_000,
+  })
+  const selectedBillProp = (billPropsList || []).find((pr: any) => String(pr.id) === propForm.property_id)
+  const propSide = selectedBillProp?.management_type === 'levy' ? 'levy' : 'rental'
+  const { data: propTypeOptions } = useQuery({
+    queryKey: ['invoice-type-options', propSide],
+    queryFn: () => invoiceApi.typeOptions(propSide).then(r => r.data.options),
+    enabled: showForm && billTo === 'property',
+    staleTime: 60_000,
+  })
+  const billPropertyMutation = useMutation({
+    mutationFn: () => invoiceApi.billProperty({
+      property_id: Number(propForm.property_id),
+      invoice_type: propForm.invoice_type,
+      currency: propForm.currency,
+      date: propForm.date,
+      due_date: propForm.due_date,
+      description: propForm.description,
+      ...(propForm.amount ? { amount: Number(propForm.amount) } : {}),
+    }),
+    onSuccess: (r) => {
+      const d = r.data
+      showToast.success(`${d.created} invoice(s) created${d.skipped_count ? ` · ${d.skipped_count} lease(s) skipped (no matching charge)` : ''}`)
+      resetForm()
+      queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith('invoice') || String(q.queryKey[0]).startsWith('billing') })
+    },
+    onError: (err) => showToast.error(parseApiError(err, 'Failed to bill property')),
+  })
+
   const createMutation = useMutation({
-    mutationFn: (data: any) => invoiceApi.create(data),
+    mutationFn: (data: any) => {
+      // Custom income types come through as "income_type:<id>" — the API
+      // stores them as invoice_type=other + income_type FK.
+      const payload = { ...data }
+      if (String(payload.invoice_type).startsWith('income_type:')) {
+        payload.income_type = Number(String(payload.invoice_type).split(':')[1])
+        payload.invoice_type = 'other'
+      }
+      return invoiceApi.create(payload)
+    },
     onMutate: async (newData) => {
       // Close modal immediately (optimistic)
       resetForm()
@@ -623,6 +700,8 @@ export default function Invoices() {
         if (data.property_id) payload.property_id = Number(data.property_id)
         if (data.invoice_date) payload.invoice_date = data.invoice_date
         if (data.due_date) payload.due_date = data.due_date
+        if (data.invoice_types?.length) payload.invoice_types = data.invoice_types
+        if (data.currencies?.length) payload.currencies = data.currencies
         const res = await invoiceApi.generateMonthly(payload)
         totalCreated += res.data?.created || 0
         if (res.data?.errors?.length) allErrors.push(...res.data.errors)
@@ -1224,6 +1303,86 @@ export default function Invoices() {
           }}
           className="space-y-5"
         >
+          {/* Bill To: single payer, or every active lease under a property */}
+          <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 w-full">
+            {([['payer', 'Tenant / Account Holder'], ['property', 'Whole Property']] as const).map(([v, l]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setBillTo(v)}
+                className={cn(
+                  'flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors',
+                  billTo === v ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+                )}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+
+          {billTo === 'property' ? (
+            <div className="space-y-4">
+              <AsyncSelect
+                label="Property to Bill"
+                placeholder="Select property"
+                value={propForm.property_id}
+                onChange={(val) => setPropForm({ ...propForm, property_id: String(val) })}
+                options={(billPropsList || []).map((pr: any) => ({ value: pr.id, label: pr.name }))}
+                required
+                searchable
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <Select
+                  label="Invoice Type"
+                  value={propForm.invoice_type}
+                  onChange={(e) => setPropForm({ ...propForm, invoice_type: e.target.value })}
+                  options={(propTypeOptions || []).map((o: any) => ({ value: o.value, label: o.label }))}
+                />
+                <Select
+                  label="Currency"
+                  value={propForm.currency}
+                  onChange={(e) => setPropForm({ ...propForm, currency: e.target.value })}
+                  options={[{ value: 'USD', label: 'USD' }, { value: 'ZWG', label: 'ZWG' }]}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <DatePicker label="Invoice Date" value={propForm.date} onChange={(v) => setPropForm({ ...propForm, date: v })} required />
+                <DatePicker label="Due Date" value={propForm.due_date} onChange={(v) => setPropForm({ ...propForm, due_date: v })} required />
+              </div>
+              <Input
+                type="number"
+                label="Amount Override (optional)"
+                placeholder="Leave empty to use each lease's configured charge"
+                step="0.01" min="0"
+                value={propForm.amount}
+                onChange={(e) => setPropForm({ ...propForm, amount: e.target.value })}
+              />
+              <Textarea
+                label="Description"
+                placeholder="Custom description shown on every invoice in this batch…"
+                value={propForm.description}
+                onChange={(e) => setPropForm({ ...propForm, description: e.target.value })}
+                rows={2}
+              />
+              <p className="text-xs text-gray-500">
+                Bills every ACTIVE lease under the property with one {'{'}type{'}'} invoice.
+                Without an override, each lease's configured billing charge for the
+                selected type and currency is used; leases without that charge are skipped.
+              </p>
+              <div className="flex gap-3 pt-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={resetForm}>Cancel</Button>
+                <Button
+                  type="button"
+                  className="flex-1"
+                  disabled={billPropertyMutation.isPending || !propForm.property_id || !propForm.due_date}
+                  onClick={() => billPropertyMutation.mutate()}
+                >
+                  {billPropertyMutation.isPending ? 'Billing…' : 'Bill Property'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+          <>
           {/* Payer Select — covers both Tenants and Account Holders */}
           <PayerSelect
             value={form.tenant}
@@ -1304,12 +1463,10 @@ export default function Invoices() {
               label="Invoice Type"
               value={form.invoice_type}
               onChange={(e) => setForm({ ...form, invoice_type: e.target.value })}
-              options={[
-                { value: 'rent', label: 'Rent' },
-                { value: 'utilities', label: 'Utilities' },
-                { value: 'deposit', label: 'Deposit' },
-                { value: 'other', label: 'Other' },
-              ]}
+              options={(payerTypeOptions || []).map((o: any) => ({ value: o.value, label: o.label }))}
+              hint={selectedPayer?.account_type === 'levy'
+                ? 'Levy payer pockets: Levy, Special Levy, Maintenance, Parking, Rates'
+                : 'Tenant pockets: Rent, Rates, Maintenance, Parking, VAT, Deposit'}
             />
 
             <Input
@@ -1340,6 +1497,8 @@ export default function Invoices() {
               {createMutation.isPending ? 'Creating...' : 'Create Invoice'}
             </Button>
           </div>
+          </>
+          )}
         </form>
       </Modal>
 
@@ -1427,6 +1586,74 @@ export default function Invoices() {
               value={generateForm.due_date}
               onChange={(v) => setGenerateForm({ ...generateForm, due_date: v })}
             />
+          </div>
+
+          {/* Billing Types — tick the types to bill; none ticked = all */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Billing Types <span className="font-normal text-gray-400">(none ticked = every configured type)</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {ALL_BILLING_TYPES.map((t) => {
+                const on = generateForm.invoice_types.includes(t.value)
+                return (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => setGenerateForm({
+                      ...generateForm,
+                      invoice_types: on
+                        ? generateForm.invoice_types.filter((x) => x !== t.value)
+                        : [...generateForm.invoice_types, t.value],
+                    })}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors',
+                      on ? 'border-primary-300 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50',
+                    )}
+                  >
+                    <span className={cn('w-3.5 h-3.5 rounded border flex items-center justify-center text-[9px]',
+                      on ? 'bg-primary-600 border-primary-600 text-white' : 'border-gray-300 bg-white')}>
+                      {on ? '✓' : ''}
+                    </span>
+                    {t.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Currencies — bill one currency or both */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Currencies <span className="font-normal text-gray-400">(none ticked = both)</span>
+            </label>
+            <div className="flex gap-2">
+              {['USD', 'ZWG'].map((ccy) => {
+                const on = generateForm.currencies.includes(ccy)
+                return (
+                  <button
+                    key={ccy}
+                    type="button"
+                    onClick={() => setGenerateForm({
+                      ...generateForm,
+                      currencies: on
+                        ? generateForm.currencies.filter((x) => x !== ccy)
+                        : [...generateForm.currencies, ccy],
+                    })}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors',
+                      on ? 'border-primary-300 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50',
+                    )}
+                  >
+                    <span className={cn('w-3.5 h-3.5 rounded border flex items-center justify-center text-[9px]',
+                      on ? 'bg-primary-600 border-primary-600 text-white' : 'border-gray-300 bg-white')}>
+                      {on ? '✓' : ''}
+                    </span>
+                    {ccy}
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
           {/* Billing status per property */}
@@ -1584,6 +1811,39 @@ export default function Invoices() {
               { value: 'tenants', label: 'Specific tenants / account holders' },
             ]}
           />
+          {/* Invoice Types — send only the types you've confirmed */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Invoice Types <span className="font-normal text-gray-400">(none ticked = all types)</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {ALL_BILLING_TYPES.filter((t) => t.value !== 'deposit').map((t) => {
+                const on = emailForm.invoice_types.includes(t.value)
+                return (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => setEmailForm({
+                      ...emailForm,
+                      invoice_types: on
+                        ? emailForm.invoice_types.filter((x) => x !== t.value)
+                        : [...emailForm.invoice_types, t.value],
+                    })}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors',
+                      on ? 'border-primary-300 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50',
+                    )}
+                  >
+                    <span className={cn('w-3.5 h-3.5 rounded border flex items-center justify-center text-[9px]',
+                      on ? 'bg-primary-600 border-primary-600 text-white' : 'border-gray-300 bg-white')}>
+                      {on ? '✓' : ''}
+                    </span>
+                    {t.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
           {emailForm.mode === 'properties' && (
             <MultiCheckList
               label="Properties"

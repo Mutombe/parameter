@@ -4,7 +4,7 @@ import { Percent } from 'lucide-react'
 import { Input, Select } from '../ui'
 import { AutocompleteInput } from '../ui/AutocompleteInput'
 import { AsyncSelect } from '../ui/AsyncSelect'
-import { landlordApi, propertyApi } from '../../services/api'
+import { landlordApi, propertyApi, propertyManagerApi } from '../../services/api'
 import { useChainStore } from '../../stores/chainStore'
 import { cn } from '../../lib/utils'
 
@@ -36,13 +36,22 @@ const PropertyForm = forwardRef<PropertyFormRef, PropertyFormProps>(
       address: '',
       city: '',
       total_units: '',
-      unit_definition: '',
+      manager_user: '',
     })
+    const [showJitManager, setShowJitManager] = useState(false)
+    const [jitManager, setJitManager] = useState({ first_name: '', last_name: '', email: '' })
+    const [jitSaving, setJitSaving] = useState(false)
 
     const { data: landlords, isLoading: landlordsLoading, error: landlordsError } = useQuery({
       queryKey: ['landlords-select'],
       queryFn: () => landlordApi.list({ page_size: 500 }).then((r) => r.data.results || r.data),
       placeholderData: [],
+    })
+
+    const { data: staffOptions, refetch: refetchStaff } = useQuery({
+      queryKey: ['property-manager-staff-options'],
+      queryFn: () => propertyManagerApi.staffOptions().then((r) => r.data),
+      staleTime: 60_000,
     })
 
     // Fetch existing properties for address/city suggestions
@@ -205,17 +214,77 @@ const PropertyForm = forwardRef<PropertyFormRef, PropertyFormProps>(
           recentKey="property_cities"
         />
 
+        {/* Property Manager — the staff member managing this property for
+            the landlord (management contract). Units are added later from
+            the Units page or auto-created when leases specify unit numbers. */}
         <div>
-          <Input
-            label="Unit Definition"
-            placeholder="e.g., 1-17 or A1-A20; B1-B15"
-            value={form.unit_definition}
-            onChange={(e) => setForm({ ...form, unit_definition: e.target.value })}
-          />
-          <p className="mt-1 text-xs text-gray-500">
-            Define unit ranges using formats like "1-17" (numeric) or "A1-A20; B1-B15" (alphanumeric).
-            Units can be auto-generated after property creation.
-          </p>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Property Manager</label>
+          <div className="flex items-center gap-2">
+            <select
+              value={form.manager_user}
+              onChange={(e) => setForm({ ...form, manager_user: e.target.value })}
+              className="flex-1 px-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="">Select property manager…</option>
+              {(staffOptions || []).map((u: any) => (
+                <option key={u.id} value={u.id}>{u.name} · {u.role}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setShowJitManager(v => !v)}
+              className="px-3 py-2.5 text-sm font-medium text-primary-600 border border-primary-200 rounded-xl hover:bg-primary-50 whitespace-nowrap"
+            >
+              + New Manager
+            </button>
+          </div>
+          {showJitManager && (
+            <div className="mt-2 p-3 rounded-xl border border-primary-100 bg-primary-50/30 space-y-2">
+              <p className="text-xs font-medium text-gray-700">Add New Property Manager</p>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  placeholder="First name"
+                  value={jitManager.first_name}
+                  onChange={(e) => setJitManager({ ...jitManager, first_name: e.target.value })}
+                  className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+                <input
+                  placeholder="Last name"
+                  value={jitManager.last_name}
+                  onChange={(e) => setJitManager({ ...jitManager, last_name: e.target.value })}
+                  className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+              <input
+                type="email"
+                placeholder="Email address"
+                value={jitManager.email}
+                onChange={(e) => setJitManager({ ...jitManager, email: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+              <button
+                type="button"
+                disabled={jitSaving || !jitManager.first_name.trim() || !jitManager.email.trim()}
+                onClick={async () => {
+                  setJitSaving(true)
+                  try {
+                    const r = await propertyManagerApi.quickCreateUser(jitManager)
+                    await refetchStaff()
+                    setForm(prev => ({ ...prev, manager_user: String(r.data.id) }))
+                    setShowJitManager(false)
+                    setJitManager({ first_name: '', last_name: '', email: '' })
+                  } catch (err: any) {
+                    alert(err?.response?.data?.error || 'Failed to create manager')
+                  } finally {
+                    setJitSaving(false)
+                  }
+                }}
+                className="w-full px-3 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 disabled:opacity-50"
+              >
+                {jitSaving ? 'Creating…' : 'Create & Select'}
+              </button>
+            </div>
+          )}
         </div>
 
         {showButtons && (

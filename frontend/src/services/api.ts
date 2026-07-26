@@ -350,6 +350,9 @@ export const leaseApi = {
 
 // Billing API
 export const invoiceApi = {
+  typeOptions: (payerType: string) =>
+    api.get('/billing/invoices/type_options/', { params: { payer_type: payerType } }),
+  billProperty: (data: object) => api.post('/billing/invoices/bill_property/', data),
   list: (params?: object) => api.get('/billing/invoices/', { params }),
   get: (id: number) => api.get(`/billing/invoices/${id}/`),
   create: (data: object) => api.post('/billing/invoices/', data),
@@ -683,6 +686,9 @@ export const propertyManagerApi = {
   list: (params?: object) => api.get('/masterfile/property-managers/', { params }),
   create: (data: object) => api.post('/masterfile/property-managers/', data),
   update: (id: number, data: object) => api.patch(`/masterfile/property-managers/${id}/`, data),
+  staffOptions: () => api.get('/masterfile/property-managers/staff_options/'),
+  quickCreateUser: (data: { first_name: string; last_name?: string; email: string }) =>
+    api.post('/masterfile/property-managers/quick_create_user/', data),
   delete: (id: number) => api.delete(`/masterfile/property-managers/${id}/`),
 }
 

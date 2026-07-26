@@ -697,7 +697,7 @@ class LeaseCharge(models.Model):
     class Meta:
         verbose_name = 'Lease Charge'
         verbose_name_plural = 'Lease Charges'
-        unique_together = ['lease', 'charge_type']
+        unique_together = ['lease', 'charge_type', 'currency']
         ordering = ['charge_type']
 
     def __str__(self):
