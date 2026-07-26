@@ -135,8 +135,12 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
             ]
             side = 'rental'
         canonical_names = {o['label'].lower() for o in options}
+        # Only USER-ADDED income types join the list — the system-seeded
+        # defaults (Rental Income, Rates Recovery, ...) are already
+        # represented by the canonical pocket options above.
         for it in IncomeType.objects.filter(
-                is_active=True, management_type__in=[side, 'both']).order_by('display_order', 'name'):
+                is_active=True, is_system=False,
+                management_type__in=[side, 'both']).order_by('display_order', 'name'):
             if it.name.strip().lower() in canonical_names:
                 continue
             options.append({'value': 'income_type:%d' % it.id, 'label': it.name,
