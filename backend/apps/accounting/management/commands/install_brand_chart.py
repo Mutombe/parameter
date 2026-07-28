@@ -109,6 +109,10 @@ CHART = [
     ('profit_loss', 'expense', 'taxation_expense', 'Property Tax', '', '8030', 'Lessors VAT',      'operating_expense', ''),
     # ── Suspense / Opening Balances (9000-9999) ─────────────────────
     ('balance_sheet', 'equity', 'suspense', 'Suspense', '', '9000', 'Opening Balances / Suspense', 'retained_earnings', ''),
+    # Clearing accounts: net to zero, exist so every landlord-pocket flow
+    # is traceable to a GL account (the manual-journal hard rule).
+    ('balance_sheet', 'equity', 'suspense', 'Suspense', '', '9100', 'Currency Conversions', 'retained_earnings', ''),
+    ('balance_sheet', 'equity', 'suspense', 'Suspense', '', '9200', 'Intraproperty Transfers', 'retained_earnings', ''),
 ]
 
 

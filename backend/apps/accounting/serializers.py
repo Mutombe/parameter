@@ -8,7 +8,8 @@ from .models import (
     BankTransaction, BankReconciliation, ReconciliationItem,
     ExpenseCategory, JournalReallocation, IncomeType,
     SubsidiaryAccount, SubsidiaryTransaction, TransactionConsolidation,
-    AccruedExpense, BalanceSheetMovement, OpeningBalance,
+    AccruedExpense, BalanceSheetMovement, OpeningBalance, CurrencyConversion,
+    IntrapropertyTransfer,
 )
 
 
@@ -161,12 +162,15 @@ class JournalEntrySerializer(serializers.ModelSerializer):
     target_kind = serializers.SerializerMethodField()
     target_code = serializers.SerializerMethodField()
     target_name = serializers.SerializerMethodField()
+    extension_code = serializers.CharField(source='extension_account.code', read_only=True, default=None)
+    extension_name = serializers.CharField(source='extension_account.name', read_only=True, default=None)
 
     class Meta:
         model = JournalEntry
         fields = [
             'id', 'account', 'account_code', 'account_name',
             'subsidiary_account', 'bank_account',
+            'extension_account', 'extension_code', 'extension_name',
             'target_kind', 'target_code', 'target_name',
             'description', 'debit_amount', 'credit_amount',
             'source_type', 'source_id', 'created_at'
@@ -273,6 +277,13 @@ class JournalCreateSerializer(serializers.ModelSerializer):
         total_debit = Decimal('0')
         total_credit = Decimal('0')
 
+        landlord_pockets = set(
+            SubsidiaryAccount.objects.filter(
+                id__in=[e.get('subsidiary_account') for e in entries
+                        if e.get('subsidiary_account')],
+                entity_type='landlord',
+            ).values_list('id', flat=True)
+        )
         for entry in entries:
             targets = [entry.get('account'), entry.get('subsidiary_account'),
                        entry.get('bank_account')]
@@ -283,6 +294,17 @@ class JournalCreateSerializer(serializers.ModelSerializer):
             if set_count > 1:
                 raise serializers.ValidationError(
                     'Each entry must target only one account')
+            # HARD RULE: no debit or credit may sail through a LANDLORD
+            # sub-account (pocket) without a GL extension declaring the
+            # source/purpose of the funds (e.g. Bank Overdraft, Currency
+            # Conversions, Intraproperty Transfers).
+            sub_id = entry.get('subsidiary_account')
+            if sub_id and int(sub_id) in landlord_pockets and not entry.get('extension_account'):
+                raise serializers.ValidationError(
+                    'A journal line to a Landlord sub-account (pocket) requires '
+                    'a GL account extension declaring the source/purpose of the '
+                    'funds — no entry may pass through a landlord pocket without '
+                    'touching a general ledger account.')
 
             debit = Decimal(str(entry.get('debit_amount', 0) or 0))
             credit = Decimal(str(entry.get('credit_amount', 0) or 0))
@@ -314,6 +336,7 @@ class JournalCreateSerializer(serializers.ModelSerializer):
                 account_id=entry_data.get('account') or None,
                 subsidiary_account_id=entry_data.get('subsidiary_account') or None,
                 bank_account_id=entry_data.get('bank_account') or None,
+                extension_account_id=entry_data.get('extension_account') or None,
                 description=entry_data.get('description', ''),
                 debit_amount=Decimal(str(entry_data.get('debit_amount', 0) or 0)),
                 credit_amount=Decimal(str(entry_data.get('credit_amount', 0) or 0)),
@@ -913,3 +936,30 @@ class OpeningBalanceCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data['created_by'] = self.context['request'].user
         return super().create(validated_data)
+
+
+class CurrencyConversionSerializer(serializers.ModelSerializer):
+    tenant_name = serializers.CharField(source='tenant.name', read_only=True)
+
+    class Meta:
+        model = CurrencyConversion
+        fields = [
+            'id', 'scope', 'tenant', 'tenant_name', 'category',
+            'from_currency', 'to_currency', 'rate', 'amount_from', 'amount_to',
+            'journal_from', 'journal_to', 'receipt',
+            'reference_from', 'reference_to', 'narration', 'created_at',
+        ]
+
+
+class IntrapropertyTransferSerializer(serializers.ModelSerializer):
+    tenant_name = serializers.CharField(source='tenant.name', read_only=True)
+    property_name = serializers.CharField(source='property.name', read_only=True)
+
+    class Meta:
+        model = IntrapropertyTransfer
+        fields = [
+            'id', 'tenant', 'tenant_name', 'property', 'property_name',
+            'from_category', 'to_category', 'amount', 'currency',
+            'commission_reversed', 'commission_charged',
+            'journal', 'commission_journal', 'narration', 'created_at',
+        ]

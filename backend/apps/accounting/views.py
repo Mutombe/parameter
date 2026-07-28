@@ -2508,3 +2508,155 @@ class OpeningBalanceViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
             return Response(OpeningBalanceSerializer(entry).data)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class CurrencyConversionViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyModelViewSet):
+    """Currency Conversion journals — audit list + the two conversion actions."""
+    queryset = None
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['scope', 'tenant', 'category', 'from_currency', 'to_currency']
+
+    def get_queryset(self):
+        from .models import CurrencyConversion
+        return CurrencyConversion.objects.select_related('tenant').all()
+
+    def get_serializer_class(self):
+        from .serializers import CurrencyConversionSerializer
+        return CurrencyConversionSerializer
+
+    @action(detail=False, methods=['get'])
+    def rate_preview(self, request):
+        """Resolved default rate for a scope (property rate > settings)."""
+        from apps.accounting.conversions import resolve_rate
+        from apps.masterfile.models import Property
+        prop = None
+        if request.query_params.get('property_id'):
+            prop = Property.objects.filter(id=request.query_params['property_id']).first()
+        return Response({'rate': str(resolve_rate(None, prop))})
+
+    @action(detail=False, methods=['post'])
+    def partial(self, request):
+        """Partial Conversion — by tenant/account-holder, property or landlord.
+
+        Body: tenant_id | property_id | landlord_id, category (optional,
+        default all), from_currency (default ZWG), to_currency (default
+        USD), rate (optional override).
+        """
+        from apps.accounting.conversions import partial_convert_payer
+        from apps.masterfile.models import RentalTenant, Property, LeaseAgreement
+        from .serializers import CurrencyConversionSerializer
+        from django.db.models import Q as _Q
+
+        from_ccy = request.data.get('from_currency') or 'ZWG'
+        to_ccy = request.data.get('to_currency') or 'USD'
+        rate = request.data.get('rate') or None
+        category = request.data.get('category') or None
+        cats = [category] if category else None
+
+        prop = None
+        if request.data.get('tenant_id'):
+            payers = list(RentalTenant.objects.filter(id=request.data['tenant_id']))
+        elif request.data.get('property_id'):
+            prop = Property.objects.filter(id=request.data['property_id']).first()
+            ids = LeaseAgreement.objects.filter(status='active').filter(
+                _Q(unit__property_id=request.data['property_id']) |
+                _Q(property_id=request.data['property_id'])
+            ).values_list('tenant_id', flat=True)
+            payers = list(RentalTenant.objects.filter(id__in=list(ids)))
+        elif request.data.get('landlord_id'):
+            ids = LeaseAgreement.objects.filter(status='active').filter(
+                _Q(unit__property__landlord_id=request.data['landlord_id']) |
+                _Q(property__landlord_id=request.data['landlord_id'])
+            ).values_list('tenant_id', flat=True)
+            payers = list(RentalTenant.objects.filter(id__in=list(ids)))
+        else:
+            return Response({'error': 'Provide tenant_id, property_id or landlord_id'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        all_done = []
+        for payer in payers:
+            all_done.extend(partial_convert_payer(
+                payer, from_currency=from_ccy, to_currency=to_ccy,
+                rate=rate, categories=cats, user=request.user,
+                property_obj=prop))
+        return Response({
+            'converted': len(all_done),
+            'conversions': CurrencyConversionSerializer(all_done, many=True).data,
+        })
+
+    @action(detail=False, methods=['post'])
+    def full(self, request):
+        """Full Conversion — mirror an entire receipt into the other currency."""
+        from apps.accounting.conversions import full_convert_receipt
+        from apps.billing.models import Receipt
+        from .serializers import CurrencyConversionSerializer
+        receipt = Receipt.objects.filter(id=request.data.get('receipt_id')).first()
+        if receipt is None:
+            return Response({'error': 'receipt_id not found'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        conv = full_convert_receipt(receipt, rate=request.data.get('rate') or None,
+                                    user=request.user)
+        return Response(CurrencyConversionSerializer(conv).data,
+                        status=status.HTTP_201_CREATED)
+
+
+class IntrapropertyTransferViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyModelViewSet):
+    """Intraproperty Transfer journals — audit list + execute action."""
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['tenant', 'property', 'from_category', 'to_category']
+
+    def get_queryset(self):
+        from .models import IntrapropertyTransfer
+        return IntrapropertyTransfer.objects.select_related('tenant', 'property').all()
+
+    def get_serializer_class(self):
+        from .serializers import IntrapropertyTransferSerializer
+        return IntrapropertyTransferSerializer
+
+    @action(detail=False, methods=['get'])
+    def preview(self, request):
+        """Commission impact preview for a prospective transfer."""
+        from apps.accounting.transfers import commission_pct_for, _gross_split
+        from apps.masterfile.models import Property
+        from decimal import Decimal as D
+        prop = Property.objects.filter(id=request.query_params.get('property_id')).first()
+        if prop is None:
+            return Response({'error': 'property_id required'}, status=400)
+        amount = D(str(request.query_params.get('amount') or '0'))
+        f = request.query_params.get('from_category') or 'rent'
+        t = request.query_params.get('to_category') or 'maintenance'
+        f_pct, f_vat = commission_pct_for(prop, f)
+        t_pct, t_vat = commission_pct_for(prop, t)
+        rev = _gross_split(amount, f_pct, f_vat)
+        new = _gross_split(amount, t_pct, t_vat)
+        return Response({
+            'from_rate_pct': str(f_pct), 'to_rate_pct': str(t_pct),
+            'commission_reversal': {'gross': str(rev[0]), 'net': str(rev[1]), 'vat': str(rev[2])},
+            'commission_charge': {'gross': str(new[0]), 'net': str(new[1]), 'vat': str(new[2])},
+        })
+
+    @action(detail=False, methods=['post'])
+    def execute(self, request):
+        """Run the transfer. Body: tenant_id, property_id, from_category,
+        to_category, amount, currency (default USD), description."""
+        from apps.accounting.transfers import intraproperty_transfer
+        from apps.masterfile.models import RentalTenant, Property
+        from .serializers import IntrapropertyTransferSerializer
+        payer = RentalTenant.objects.filter(id=request.data.get('tenant_id')).first()
+        prop = Property.objects.filter(id=request.data.get('property_id')).first()
+        if payer is None or prop is None:
+            return Response({'error': 'tenant_id and property_id are required'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            rec = intraproperty_transfer(
+                payer, prop,
+                request.data.get('from_category'), request.data.get('to_category'),
+                request.data.get('amount'),
+                currency=request.data.get('currency') or 'USD',
+                user=request.user,
+                description=(request.data.get('description') or '').strip(),
+            )
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(IntrapropertyTransferSerializer(rec).data,
+                        status=status.HTTP_201_CREATED)

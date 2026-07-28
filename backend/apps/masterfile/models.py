@@ -148,6 +148,13 @@ class Property(SoftDeleteModel):
 
     # Details
     year_built = models.PositiveIntegerField(null=True, blank=True)
+    # Pre-configured conversion rate for this property (ZWG per USD).
+    # Overrides the company-wide Currency Settings default; an explicit
+    # rate entered at conversion time overrides both.
+    exchange_rate = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+    )
+
     total_units = models.PositiveIntegerField(default=0)
     total_floors = models.PositiveIntegerField(default=1)
     parking_spaces = models.PositiveIntegerField(default=0)

@@ -441,7 +441,8 @@ class Journal(models.Model):
                 SubsidiaryTransaction.create_entry(
                     account=entry.subsidiary_account,
                     date=self.date,
-                    contra_account='JRN',
+                    contra_account=(entry.extension_account.code
+                                    if entry.extension_account_id else 'JRN'),
                     reference=self.journal_number,
                     description=entry.description or self.description,
                     debit_amount=entry.debit_amount or None,
@@ -608,6 +609,17 @@ class JournalEntry(models.Model):
         'SubsidiaryAccount', on_delete=models.PROTECT,
         related_name='journal_entries', null=True, blank=True,
     )
+
+    # HARD RULE (manual journals): any line that debits or credits a
+    # LANDLORD sub-account (pocket) must declare a GL account as its
+    # extension — the classification/trace of where the funds come from
+    # or go to (e.g. Bank Overdraft for an owner contribution, Currency
+    # Conversions, Intraproperty Transfers). It becomes the pocket
+    # transaction's contra account on the landlord's statement.
+    extension_account = models.ForeignKey(
+        'ChartOfAccount', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='extension_entries',
+    )
     bank_account = models.ForeignKey(
         'BankAccount', on_delete=models.PROTECT,
         related_name='journal_entries', null=True, blank=True,
@@ -705,6 +717,88 @@ class GeneralLedger(models.Model):
 
     def __str__(self):
         return f'{self.date} - {self.account.code}: Dr {self.debit_amount} / Cr {self.credit_amount}'
+
+
+class CurrencyConversion(models.Model):
+    """Audit record of a currency conversion (partial or full).
+
+    Partial: pocket + Unpaid cross-currency conversion for one payer and
+    category. Full: an entire receipt mirrored into the other currency.
+    Feeds the Rent Rollover "ZWG Payments Converted" column.
+    """
+    SCOPE_CHOICES = [('partial', 'Partial'), ('full', 'Full')]
+
+    scope = models.CharField(max_length=10, choices=SCOPE_CHOICES)
+    tenant = models.ForeignKey(
+        'masterfile.RentalTenant', on_delete=models.CASCADE,
+        related_name='currency_conversions')
+    category = models.CharField(max_length=30, blank=True, default='')
+    from_currency = models.CharField(max_length=3)
+    to_currency = models.CharField(max_length=3)
+    rate = models.DecimalField(max_digits=12, decimal_places=4)
+    amount_from = models.DecimalField(max_digits=18, decimal_places=2)
+    amount_to = models.DecimalField(max_digits=18, decimal_places=2)
+    journal_from = models.ForeignKey(
+        'Journal', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='conversions_out')
+    journal_to = models.ForeignKey(
+        'Journal', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='conversions_in')
+    receipt = models.ForeignKey(
+        'billing.Receipt', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='conversions')
+    reference_from = models.CharField(max_length=50, blank=True, default='')
+    reference_to = models.CharField(max_length=50, blank=True, default='')
+    narration = models.CharField(max_length=255, blank=True, default='')
+    created_by = models.ForeignKey(
+        'accounts.User', on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['tenant', 'created_at'])]
+
+    def __str__(self):
+        return self.narration or f'{self.scope} conversion #{self.pk}'
+
+
+class IntrapropertyTransfer(models.Model):
+    """Audit record of an intraproperty category-to-category transfer.
+
+    Also the income re-attribution source: reports subtract `amount` from
+    the from-category's income and add it to the to-category's.
+    """
+    tenant = models.ForeignKey(
+        'masterfile.RentalTenant', on_delete=models.CASCADE,
+        related_name='intraproperty_transfers')
+    property = models.ForeignKey(
+        'masterfile.Property', on_delete=models.CASCADE,
+        related_name='intraproperty_transfers')
+    from_category = models.CharField(max_length=30)
+    to_category = models.CharField(max_length=30)
+    amount = models.DecimalField(max_digits=18, decimal_places=2)
+    currency = models.CharField(max_length=3, default='USD')
+    commission_reversed = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0)
+    commission_charged = models.DecimalField(
+        max_digits=18, decimal_places=2, default=0)
+    journal = models.ForeignKey(
+        'Journal', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='transfers')
+    commission_journal = models.ForeignKey(
+        'Journal', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='transfer_commissions')
+    narration = models.CharField(max_length=255, blank=True, default='')
+    created_by = models.ForeignKey(
+        'accounts.User', on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['property', 'created_at'])]
+
+    def __str__(self):
+        return self.narration or ('Transfer #%s' % self.pk)
 
 
 class AuditTrail(models.Model):

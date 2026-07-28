@@ -9,10 +9,12 @@ from .views import (
     ExpenseCategoryViewSet, JournalReallocationViewSet, IncomeTypeViewSet,
     SubsidiaryAccountViewSet, AccruedExpenseViewSet, BalanceSheetMovementViewSet,
     OpeningBalanceViewSet,
-)
+ CurrencyConversionViewSet, IntrapropertyTransferViewSet,)
 
 router = DefaultRouter()
 router.register('accounts', ChartOfAccountViewSet, basename='chart-of-account')
+router.register('conversions', CurrencyConversionViewSet, basename='currency-conversion')
+router.register('intraproperty-transfers', IntrapropertyTransferViewSet, basename='intraproperty-transfer')
 router.register('exchange-rates', ExchangeRateViewSet, basename='exchange-rate')
 router.register('journals', JournalViewSet, basename='journal')
 router.register('journal-entries', JournalEntryViewSet, basename='journal-entry')
