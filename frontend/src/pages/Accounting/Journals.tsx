@@ -58,6 +58,9 @@ interface JournalEntry {
 // when the journal is submitted.
 interface FormEntry {
   target: string
+  // GL extension — REQUIRED when the line targets a LANDLORD pocket: the
+  // GL account declaring the source/purpose of the funds (hard rule).
+  extension?: string
   description: string
   debit_amount: number
   credit_amount: number
@@ -813,10 +816,14 @@ export default function Journals() {
             const entries = newJournal.entries.map(en => {
               const [kind, idStr] = en.target.split(':')
               const id = Number(idStr)
-              const base = {
+              const base: any = {
                 description: en.description,
                 debit_amount: en.debit_amount,
                 credit_amount: en.credit_amount,
+              }
+              if (en.extension) {
+                const extId = Number(en.extension.split(':')[1] || en.extension)
+                if (extId) base.extension_account = extId
               }
               if (kind === 'subsidiary') return { ...base, subsidiary_account: id }
               if (kind === 'bank') return { ...base, bank_account: id }
@@ -859,7 +866,7 @@ export default function Journals() {
               <table className="w-full min-w-[640px]">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Account</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 min-w-[340px] w-2/5">Account</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Description</th>
                     <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 w-28">Debit</th>
                     <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 w-28">Credit</th>
@@ -869,7 +876,7 @@ export default function Journals() {
                 <tbody className="divide-y divide-gray-100">
                   {newJournal.entries.map((entry, index) => (
                     <tr key={index}>
-                      <td className="px-4 py-2">
+                      <td className="px-4 py-2 min-w-[340px]">
                         <AsyncSelect
                           placeholder="Select account..."
                           value={entry.target || ''}
@@ -878,6 +885,26 @@ export default function Journals() {
                           searchable
                           wrap
                         />
+                        {(() => {
+                          const opt = targetOptions.find((o: any) => String(o.value) === entry.target)
+                          const isLandlordPocket = opt?.code?.startsWith?.('LD/')
+                          if (!isLandlordPocket) return null
+                          return (
+                            <div className="mt-1.5">
+                              <AsyncSelect
+                                placeholder="GL extension (required for landlord pockets)…"
+                                value={entry.extension || ''}
+                                onChange={(val) => updateEntry(index, 'extension', String(val))}
+                                options={targetOptions.filter((o: any) => o.kind === 'gl')}
+                                searchable
+                              />
+                              <p className="mt-0.5 text-[10px] text-amber-600">
+                                Hard rule: a landlord pocket line must declare a GL account
+                                (its source/purpose) — it becomes the statement contra.
+                              </p>
+                            </div>
+                          )
+                        })()}
                       </td>
                       <td className="px-4 py-2">
                         <input

@@ -625,7 +625,7 @@ export default function BankReconciliation() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Bank Reconciliation</h1>
-          <p className="text-gray-500 mt-1">Sage-style bank reconciliation with checkbox matching</p>
+          <p className="text-gray-500 mt-1">Industry-style bank reconciliation with checkbox matching</p>
         </div>
         <button
           onClick={() => setShowModal(true)}

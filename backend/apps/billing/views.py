@@ -939,7 +939,7 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
                 code='1100', defaults={'name': 'Bank Account', 'account_type': 'asset',
                                        'account_subtype': 'bank', 'is_system': True})
         trust_gl, _ = ChartOfAccount.objects.get_or_create(
-            code='2300', defaults={'name': 'Landlord Trust Payable', 'account_type': 'liability',
+            code='2600', defaults={'name': 'Landlord Trust Payable', 'account_type': 'liability',
                                    'account_subtype': 'accounts_payable', 'is_system': True})
 
         # GL: Dr Bank, Cr Landlord Trust Payable (cash in, trust liability up).
@@ -953,6 +953,15 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
         JournalEntry.objects.create(
             journal=journal, account=trust_gl, description=description, credit_amount=amount)
         journal.post(request.user)
+
+        # Keep the chosen bank account's BOOK in sync — every transaction
+        # that affects a bank account must show on that bank account, not
+        # only receipts (spec adjustment 9).
+        if bank_account_id:
+            ba = BankAccount.objects.filter(id=bank_account_id).first()
+            if ba:
+                ba.book_balance = (ba.book_balance or _D('0')) + amount
+                ba.save(update_fields=['book_balance', 'updated_at'])
 
         # Sub-ledger: credit the chosen landlord pocket → raises Funds Held.
         pocket = (request.data.get('sub_account_category') or 'rent').lower()

@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, createContext, useContext, Fragment, type ReactNode } from 'react'
-import { useQuery, useIsFetching, keepPreviousData } from '@tanstack/react-query'
+import { useQuery, useQueryClient, useIsFetching, keepPreviousData } from '@tanstack/react-query'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { showToast } from '../../../lib/toast'
+import CurrencyConvertModal from '../../../components/CurrencyConvertModal'
 import {
   BarChart3,
   FileText,
@@ -260,6 +262,37 @@ function RentRolloverReport() {
     landlordName?: string
     currency?: string
   }>({ level: 1 })
+  // Default display merges converted + direct payments into one Payments
+  // column; the toggle reveals the breakdown (spec Table 4 vs Tables 1-3).
+  const [showBreakdown, setShowBreakdown] = useState(false)
+  const [showMinimums, setShowMinimums] = useState(false)
+  const [penaltyPct, setPenaltyPct] = useState('10')
+  const [penaltyPreview, setPenaltyPreview] = useState<any | null>(null)
+  const [penaltyBusy, setPenaltyBusy] = useState(false)
+  const [showConvert, setShowConvert] = useState(false)
+  const queryClientRR = useQueryClient()
+
+  const runMinimums = async (apply: boolean) => {
+    setPenaltyBusy(true)
+    try {
+      const r = await reportsApi.minimumsPenalty({
+        start_date: startDate, end_date: endDate,
+        pct: Number(penaltyPct),
+        ...(drillState.propertyId ? { property_id: drillState.propertyId } : {}),
+        apply,
+      })
+      setPenaltyPreview(r.data)
+      if (apply) {
+        showToast.success(`${r.data.created_invoices.length} penalty invoice(s) raised`)
+        queryClientRR.invalidateQueries({ queryKey: ['rent-rollover'] })
+        queryClientRR.invalidateQueries({ queryKey: ['rent-rollover-l2'] })
+      }
+    } catch (e: any) {
+      showToast.error(e?.response?.data?.error || 'Penalty run failed')
+    } finally {
+      setPenaltyBusy(false)
+    }
+  }
 
   // Level 1 query
   const { data, isLoading, refetch } = useQuery({
@@ -345,7 +378,15 @@ function RentRolloverReport() {
                 <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance B/F</th>
                 <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Charged</th>
                 <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Due</th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Paid</th>
+                {showBreakdown ? (
+                  <>
+                    <th className="px-4 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">ZWG Payments Converted</th>
+                    <th className="px-4 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Direct Payments</th>
+                  </>
+                ) : (
+                  <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Payments</th>
+                )}
+                <th className="px-4 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Penalty</th>
                 <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Carried Forward</th>
               </tr>
             </thead>
@@ -364,7 +405,15 @@ function RentRolloverReport() {
                   <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(lease.balance_bf)}</td>
                   <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(lease.amount_charged)}</td>
                   <td className="px-6 py-4 text-right tabular-nums font-semibold text-gray-900">{formatCurrency(lease.amount_due)}</td>
-                  <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(lease.amount_paid)}</td>
+                  {showBreakdown ? (
+                    <>
+                      <td className="px-4 py-4 text-right tabular-nums text-gray-700">{formatCurrency(lease.converted_payments || 0)}</td>
+                      <td className="px-4 py-4 text-right tabular-nums text-gray-700">{formatCurrency(lease.direct_payments ?? lease.amount_paid)}</td>
+                    </>
+                  ) : (
+                    <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(lease.amount_paid)}</td>
+                  )}
+                  <td className="px-4 py-4 text-right tabular-nums text-amber-700">{formatCurrency(lease.penalty || 0)}</td>
                   <td className={cn('px-6 py-4 text-right tabular-nums font-semibold', carriedForwardColor(lease.carried_forward))}>{formatCurrency(lease.carried_forward)}</td>
                 </motion.tr>
               ))}
@@ -427,8 +476,81 @@ function RentRolloverReport() {
           <button onClick={() => { setDrillState({ level: 1 }); refetch() }} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
             <RefreshCw className="w-5 h-5" />
           </button>
+          <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer whitespace-nowrap">
+            <input type="checkbox" checked={showBreakdown} onChange={(e) => setShowBreakdown(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-gray-300 text-primary-600" />
+            Payment breakdown
+          </label>
+          <button onClick={() => setShowConvert(true)}
+            className="px-3 py-1.5 text-xs font-medium text-primary-600 border border-primary-200 rounded-lg hover:bg-primary-50 whitespace-nowrap">
+            Convert Currency
+          </button>
+          <button onClick={() => { setShowMinimums(v => !v); setPenaltyPreview(null) }}
+            className="px-3 py-1.5 text-xs font-medium text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-50 whitespace-nowrap">
+            Late Penalties
+          </button>
         </div>
       </div>
+
+      {/* Minimums Method late-penalty panel */}
+      {showMinimums && (
+        <div className="px-6 py-4 border-b border-amber-100 bg-amber-50/40 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-semibold text-gray-800">Minimums Method</span>
+            <span className="text-xs text-gray-500">penalty = % × min(monthly charge, carried forward)</span>
+            <input type="number" min="0" step="0.5" value={penaltyPct}
+              onChange={(e) => setPenaltyPct(e.target.value)}
+              className="w-20 px-2 py-1.5 text-sm text-right border border-gray-200 rounded-lg" />
+            <span className="text-sm text-gray-500">%</span>
+            <button disabled={penaltyBusy} onClick={() => runMinimums(false)}
+              className="px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-white disabled:opacity-50">
+              {penaltyBusy ? 'Working…' : 'Preview'}
+            </button>
+            {penaltyPreview && penaltyPreview.preview.length > 0 && !penaltyPreview.applied && (
+              <button disabled={penaltyBusy} onClick={() => runMinimums(true)}
+                className="px-3 py-1.5 text-xs font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700 disabled:opacity-50">
+                Apply — raise {penaltyPreview.preview.length} penalty invoice(s) totalling {formatCurrency(penaltyPreview.total_penalties)}
+              </button>
+            )}
+          </div>
+          {penaltyPreview && (
+            penaltyPreview.preview.length === 0 ? (
+              <p className="text-xs text-gray-500">No leases qualify (need a positive charge AND a positive carried-forward balance).</p>
+            ) : (
+              <div className="overflow-x-auto max-h-56 overflow-y-auto rounded-lg border border-amber-100 bg-white">
+                <table className="w-full text-xs">
+                  <thead className="bg-amber-50 sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-600">Lease</th>
+                      <th className="px-3 py-2 text-left font-semibold text-gray-600">Tenant</th>
+                      <th className="px-3 py-2 text-right font-semibold text-gray-600">Charge</th>
+                      <th className="px-3 py-2 text-right font-semibold text-gray-600">Carried Fwd</th>
+                      <th className="px-3 py-2 text-right font-semibold text-gray-600">Base (min)</th>
+                      <th className="px-3 py-2 text-right font-semibold text-gray-600">Penalty</th>
+                      <th className="px-3 py-2 text-right font-semibold text-gray-600">New C/F</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {penaltyPreview.preview.map((r: any) => (
+                      <tr key={r.lease_id}>
+                        <td className="px-3 py-1.5 font-mono">{r.lease_number}</td>
+                        <td className="px-3 py-1.5">{r.tenant_name}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{formatCurrency(r.charge)}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{formatCurrency(r.carried_forward)}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{formatCurrency(r.penalty_base)}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums font-semibold text-amber-700">{formatCurrency(r.penalty_fee)}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{formatCurrency(r.new_carried_forward)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          )}
+        </div>
+      )}
+
+      <CurrencyConvertModal open={showConvert} onClose={() => setShowConvert(false)} />
 
       <Breadcrumb />
 
@@ -451,7 +573,15 @@ function RentRolloverReport() {
                       <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Balance B/F</th>
                       <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Charged</th>
                       <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Due</th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Paid</th>
+                      {showBreakdown ? (
+                        <>
+                          <th className="px-4 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">ZWG Payments Converted</th>
+                          <th className="px-4 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Direct Payments</th>
+                        </>
+                      ) : (
+                        <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Payments</th>
+                      )}
+                      <th className="px-4 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Penalty</th>
                       <th className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Carried Forward</th>
                     </tr>
                   </thead>
@@ -466,7 +596,15 @@ function RentRolloverReport() {
                         <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(prop.balance_bf)}</td>
                         <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(prop.amount_charged)}</td>
                         <td className="px-6 py-4 text-right tabular-nums font-semibold text-gray-900">{formatCurrency(prop.amount_due)}</td>
-                        <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(prop.amount_paid)}</td>
+                        {showBreakdown ? (
+                          <>
+                            <td className="px-4 py-4 text-right tabular-nums text-gray-700">{formatCurrency(prop.converted_payments || 0)}</td>
+                            <td className="px-4 py-4 text-right tabular-nums text-gray-700">{formatCurrency(prop.direct_payments ?? prop.amount_paid)}</td>
+                          </>
+                        ) : (
+                          <td className="px-6 py-4 text-right tabular-nums text-gray-900">{formatCurrency(prop.amount_paid)}</td>
+                        )}
+                        <td className="px-4 py-4 text-right tabular-nums text-amber-700">{formatCurrency(prop.penalty || 0)}</td>
                         <td className={cn('px-6 py-4 text-right tabular-nums font-semibold', carriedForwardColor(prop.carried_forward))}>{formatCurrency(prop.carried_forward)}</td>
                       </motion.tr>
                     ))}

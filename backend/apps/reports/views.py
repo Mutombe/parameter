@@ -2359,6 +2359,12 @@ class RentRolloverView(APIView):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
         property_id = request.query_params.get('property_id')
+        # Reporting currency (Direct Payments = receipts in THIS currency;
+        # ZWG Payments Converted = conversion journals INTO this currency).
+        currency = request.query_params.get('currency') or 'USD'
+        # Category filter (rent / levy / special_levy / ...): limits the
+        # report to leases whose charges match — Levy Payers side included.
+        category = request.query_params.get('category') or None
 
         if not start_date or not end_date:
             return Response({'error': 'start_date and end_date required'}, status=400)
@@ -2410,11 +2416,33 @@ class RentRolloverView(APIView):
             t=Coalesce(Sum('amount'), Decimal('0'))
         ).values_list('invoice__lease_id', 't'))
 
-        inv_period = dict(Invoice.objects.filter(
-            lease_id__in=lease_ids, date__gte=start_date, date__lte=end_date
+        _inv_period_qs = Invoice.objects.filter(
+            lease_id__in=lease_ids, date__gte=start_date, date__lte=end_date)
+        if category:
+            _inv_period_qs = _inv_period_qs.filter(invoice_type=category)
+        inv_period = dict(_inv_period_qs.exclude(invoice_type='penalty')
+                          .values('lease_id').annotate(
+            t=Coalesce(Sum('total_amount'), Decimal('0'))
+        ).values_list('lease_id', 't'))
+        # Late-payment penalties shown in their own column (still part of
+        # the carried-forward balance).
+        penalty_period = dict(Invoice.objects.filter(
+            lease_id__in=lease_ids, date__gte=start_date, date__lte=end_date,
+            invoice_type='penalty',
         ).values('lease_id').annotate(
             t=Coalesce(Sum('total_amount'), Decimal('0'))
         ).values_list('lease_id', 't'))
+
+        # Currency conversions INTO the reporting currency (per payer) —
+        # the "ZWG Payments Converted" column.
+        from apps.accounting.models import CurrencyConversion
+        conv_by_tenant = dict(CurrencyConversion.objects.filter(
+            tenant_id__in=[l.tenant_id for l in lease_list],
+            to_currency=currency,
+            created_at__date__gte=start_date, created_at__date__lte=end_date,
+        ).values('tenant_id').annotate(
+            t=Coalesce(Sum('amount_to'), Decimal('0'))
+        ).values_list('tenant_id', 't'))
 
         rcpt_period = dict(Receipt.objects.filter(
             invoice__lease_id__in=lease_ids, date__gte=start_date, date__lte=end_date
@@ -2458,12 +2486,15 @@ class RentRolloverView(APIView):
             rb = float(rcpt_before.get(lease.id, Decimal('0')))
             ip = float(inv_period.get(lease.id, Decimal('0')))
             rp = float(rcpt_period.get(lease.id, Decimal('0')))
+            converted = float(conv_by_tenant.get(lease.tenant_id, Decimal('0')))
+            penalty = float(penalty_period.get(lease.id, Decimal('0')))
 
             balance_bf = round(ib - rb, 2)
             amount_charged = round(ip, 2)
             amount_due = round(balance_bf + amount_charged, 2)
-            amount_paid = round(rp, 2)
-            carried_forward = round(amount_due - amount_paid, 2)
+            direct_payments = round(rp, 2)
+            amount_paid = round(direct_payments + converted, 2)
+            carried_forward = round(amount_due - amount_paid + penalty, 2)
 
             prop = lease.unit.property if lease.unit_id and lease.unit else lease.property
             if prop is None:
@@ -2483,7 +2514,10 @@ class RentRolloverView(APIView):
                 'balance_bf': balance_bf,
                 'amount_charged': amount_charged,
                 'amount_due': amount_due,
+                'converted_payments': converted,
+                'direct_payments': direct_payments,
                 'amount_paid': amount_paid,
+                'penalty': penalty,
                 'carried_forward': carried_forward,
             })
 
@@ -2492,7 +2526,10 @@ class RentRolloverView(APIView):
                 'total_balance_bf': round(sum(r['balance_bf'] for r in rows), 2),
                 'total_charged': round(sum(r['amount_charged'] for r in rows), 2),
                 'total_due': round(sum(r['amount_due'] for r in rows), 2),
+                'total_converted': round(sum(r.get('converted_payments', 0) for r in rows), 2),
+                'total_direct': round(sum(r.get('direct_payments', 0) for r in rows), 2),
                 'total_paid': round(sum(r['amount_paid'] for r in rows), 2),
+                'total_penalty': round(sum(r.get('penalty', 0) for r in rows), 2),
                 'total_carried_forward': round(sum(r['carried_forward'] for r in rows), 2),
             }
 
@@ -2530,7 +2567,10 @@ class RentRolloverView(APIView):
                 'balance_bf': s['total_balance_bf'],
                 'amount_charged': s['total_charged'],
                 'amount_due': s['total_due'],
+                'converted_payments': s['total_converted'],
+                'direct_payments': s['total_direct'],
                 'amount_paid': s['total_paid'],
+                'penalty': s['total_penalty'],
                 'carried_forward': s['total_carried_forward'],
             })
 
@@ -2541,6 +2581,106 @@ class RentRolloverView(APIView):
             'period': {'start': start_date, 'end': end_date},
             'properties': properties,
             'summary': _summary(lease_rows),
+        })
+
+
+class MinimumsPenaltyView(APIView):
+    """Minimums Method late-payment penalties (spec Tables 1-3).
+
+    Step 1: rollover figures for the period.  Step 2: penalty base =
+    min(monthly charge, carried forward); fee = base x pct.  Step 3:
+    apply -> penalty invoices are raised, increasing carried forward.
+
+    POST body: start_date, end_date, pct, property_id (optional),
+    apply (false = preview only).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from decimal import Decimal as D
+        start_date = request.data.get('start_date')
+        end_date = request.data.get('end_date')
+        pct = D(str(request.data.get('pct') or '0'))
+        apply_now = bool(request.data.get('apply'))
+        property_id = request.data.get('property_id')
+        if not start_date or not end_date or pct <= 0:
+            return Response({'error': 'start_date, end_date and a positive pct are required'},
+                            status=400)
+
+        # Reuse the rollover endpoint's own computation for step 1
+        params = {'start_date': start_date, 'end_date': end_date}
+        if property_id:
+            params['property_id'] = str(property_id)
+        from rest_framework.test import APIRequestFactory
+        rf = APIRequestFactory()
+        get_req = rf.get('/', params)
+        get_req.user = request.user
+        resp = RentRolloverView.as_view()(get_req)
+        if resp.status_code != 200:
+            return Response(resp.data, status=resp.status_code)
+        data = resp.data
+        rows = data.get('leases')
+        if rows is None:
+            # level 1 — flatten across properties by re-querying each
+            rows = []
+            for prop in data.get('properties', []):
+                sub_req = rf.get('/', {**params, 'property_id': prop['property_id']})
+                sub_req.user = request.user
+                sub = RentRolloverView.as_view()(sub_req)
+                if sub.status_code == 200:
+                    rows.extend(sub.data.get('leases', []))
+
+        preview = []
+        for r in rows:
+            charge = D(str(r['amount_charged']))
+            cf = D(str(r['carried_forward']))
+            if charge <= 0 or cf <= 0:
+                continue
+            base = min(charge, cf)
+            fee = (base * pct / D('100')).quantize(D('0.01'))
+            if fee <= 0:
+                continue
+            preview.append({
+                'lease_id': r['lease_id'], 'lease_number': r['lease_number'],
+                'tenant_id': r['tenant_id'], 'tenant_name': r['tenant_name'],
+                'charge': float(charge), 'carried_forward': float(cf),
+                'penalty_base': float(base), 'penalty_fee': float(fee),
+                'new_carried_forward': float(cf + fee),
+                'currency': r.get('currency') or 'USD',
+            })
+
+        created = []
+        if apply_now and preview:
+            from apps.billing.models import Invoice
+            from apps.masterfile.models import LeaseAgreement
+            from django.utils import timezone
+            leases = {l.id: l for l in LeaseAgreement.objects.filter(
+                id__in=[p['lease_id'] for p in preview]).select_related('tenant', 'unit')}
+            today = timezone.now().date()
+            for prow in preview:
+                lease = leases.get(prow['lease_id'])
+                if lease is None:
+                    continue
+                inv = Invoice.objects.create(
+                    tenant=lease.tenant, lease=lease, unit=lease.unit,
+                    property=lease.property or (lease.unit.property if lease.unit else None),
+                    invoice_type='penalty',
+                    date=today, due_date=today,
+                    amount=D(str(prow['penalty_fee'])),
+                    total_amount=D(str(prow['penalty_fee'])),
+                    balance=D(str(prow['penalty_fee'])),
+                    currency=prow['currency'],
+                    description=('Late payment penalty (Minimums Method: '
+                                 f"{pct}% of min(charge, balance) = {prow['penalty_base']})"),
+                    created_by=request.user)
+                created.append(inv.invoice_number)
+
+        return Response({
+            'pct': float(pct),
+            'preview': preview,
+            'total_penalties': round(sum(p['penalty_fee'] for p in preview), 2),
+            'applied': apply_now,
+            'created_invoices': created,
         })
 
 

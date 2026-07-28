@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     DashboardStatsView, TrialBalanceReportView, IncomeStatementView,
     BalanceSheetView, VacancyReportView, RentRollView, RentRolloverView,
+    MinimumsPenaltyView,
     LandlordStatementView,
     CashFlowStatementView, AgedAnalysisView, TenantAccountSummaryView,
     DepositAccountSummaryView, CommissionReportView, CommissionPropertyDrilldownView,
@@ -28,6 +29,7 @@ urlpatterns = [
     path('vacancy/', VacancyReportView.as_view(), name='vacancy-report'),
     path('rent-roll/', RentRollView.as_view(), name='rent-roll'),
     path('rent-rollover/', RentRolloverView.as_view(), name='rent-rollover'),
+    path('rent-rollover/minimums/', MinimumsPenaltyView.as_view(), name='rent-rollover-minimums'),
 
     # Landlord & Tenant reports
     path('landlord-statement/', LandlordStatementView.as_view(), name='landlord-statement'),

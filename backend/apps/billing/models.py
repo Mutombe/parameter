@@ -771,6 +771,12 @@ class Receipt(SoftDeleteModel):
         if self.invoice and self.invoice.lease_id:
             lease_ref = f'Lease ID {self.invoice.lease_id}'
 
+        # Indelible trace: actual bank/cash account + lease ride in the
+        # default description (spec adjustment 8).
+        if self.bank_account_id and self.bank_account:
+            payment_label = f'{payment_label}:{self.bank_account.name}'
+        elif self.payment_method == self.PaymentMethod.CASH:
+            payment_label = f'{payment_label}:Petty Cash'
         base_desc = build_transaction_description(
             txn_type='Rent Payment',
             payment_method=payment_label,

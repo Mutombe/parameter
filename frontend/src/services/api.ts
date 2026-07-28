@@ -194,6 +194,20 @@ export const authApi = {
 }
 
 // Dashboard/Reports API
+export const conversionApi = {
+  list: (params?: object) => api.get('/accounting/conversions/', { params }),
+  ratePreview: (propertyId?: number) =>
+    api.get('/accounting/conversions/rate_preview/', { params: propertyId ? { property_id: propertyId } : {} }),
+  partial: (data: object) => api.post('/accounting/conversions/partial/', data),
+  full: (data: object) => api.post('/accounting/conversions/full/', data),
+}
+
+export const transferApi = {
+  list: (params?: object) => api.get('/accounting/intraproperty-transfers/', { params }),
+  preview: (params: object) => api.get('/accounting/intraproperty-transfers/preview/', { params }),
+  execute: (data: object) => api.post('/accounting/intraproperty-transfers/execute/', data),
+}
+
 export const reportsApi = {
   dashboard: () => api.get('/reports/dashboard/'),
   trialBalance: (params?: { as_of_date?: string; landlord_id?: number; property_id?: number }) =>
@@ -206,7 +220,8 @@ export const reportsApi = {
     api.get('/reports/cash-flow/', { params }),
   vacancy: () => api.get('/reports/vacancy/'),
   rentRoll: () => api.get('/reports/rent-roll/'),
-  rentRollover: (params: { start_date: string; end_date: string; property_id?: number }) =>
+  minimumsPenalty: (data: object) => api.post('/reports/rent-rollover/minimums/', data),
+  rentRollover: (params: { start_date: string; end_date: string; property_id?: number; currency?: string; category?: string }) =>
     api.get('/reports/rent-rollover/', { params }),
   landlordStatement: (params: { landlord_id: number; start_date?: string; end_date?: string }) =>
     api.get('/reports/landlord-statement/', { params }),

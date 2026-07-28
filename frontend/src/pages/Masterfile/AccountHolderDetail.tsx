@@ -1,4 +1,6 @@
 import { useState, useMemo } from 'react'
+import CurrencyConvertModal from '../../components/CurrencyConvertModal'
+import IntrapropertyTransferModal from '../../components/IntrapropertyTransferModal'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -69,6 +71,8 @@ export default function AccountHolderDetail() {
   const holderId = Number(id)
 
   const [activeTab, setActiveTab] = useState<'overview' | 'leases' | 'statement' | 'sub-accounts'>('overview')
+  const [showConvert, setShowConvert] = useState(false)
+  const [showTransfer, setShowTransfer] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
 
   // Date range for statement
@@ -460,6 +464,10 @@ export default function AccountHolderDetail() {
               <div className="p-6">
                 <div className="mb-4">
                   <h3 className="text-lg font-semibold text-gray-900">Subsidiary Accounts</h3>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setShowConvert(true)} className="px-3 py-1.5 text-xs font-medium text-primary-600 border border-primary-200 rounded-lg hover:bg-primary-50">Convert Currency</button>
+                    <button onClick={() => setShowTransfer(true)} className="px-3 py-1.5 text-xs font-medium text-primary-600 border border-primary-200 rounded-lg hover:bg-primary-50">Transfer Categories</button>
+                  </div>
                   <p className="text-sm text-gray-500">Category-specific accounts for this account holder</p>
                 </div>
                 {(() => {
@@ -552,6 +560,8 @@ export default function AccountHolderDetail() {
           onCancel={() => setShowEditModal(false)}
         />
       </Modal>
+      <CurrencyConvertModal open={showConvert} onClose={() => setShowConvert(false)} tenantId={Number(holderId)} tenantName={holder?.name} />
+      <IntrapropertyTransferModal open={showTransfer} onClose={() => setShowTransfer(false)} tenantId={Number(holderId)} tenantName={holder?.name} />
     </div>
   )
 }
