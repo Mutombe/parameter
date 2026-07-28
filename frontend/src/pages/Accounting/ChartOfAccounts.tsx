@@ -54,43 +54,82 @@ interface Account {
 // Keyed by the code-derived category (see "Account categories" spec). The
 // chart groups accounts by these rather than the raw account_type, so a
 // fixed asset mis-typed as an expense still lands under Fixed Assets.
+// The 11 hierarchy subclasses, in canonical code-range order — this is
+// the display order of the chart's groups. Grouping keys come from each
+// account's `account_subclass` (level 3 of the hierarchy), with a
+// code/category fallback for engine-created accounts without one.
 const accountTypeConfig: Record<string, { icon: any; color: string; bgColor: string; borderColor: string; label: string; tooltip: string }> = {
-  current_asset: {
-    icon: Wallet, color: 'text-blue-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200',
-    label: 'Current Assets', tooltip: 'Cash and assets expected to be realised within a year (codes 4000)',
-  },
-  fixed_asset: {
+  noncurrent_assets: {
     icon: Wallet, color: 'text-sky-700', bgColor: 'bg-sky-50', borderColor: 'border-sky-200',
-    label: 'Fixed Assets', tooltip: 'Long-term tangible assets (codes 3000)',
+    label: 'Fixed / Non-current Assets', tooltip: 'Land, buildings, vehicles, equipment (codes 0001-0999)',
   },
-  current_liability: {
+  current_assets: {
+    icon: Wallet, color: 'text-blue-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200',
+    label: 'Current Assets', tooltip: 'Cash, bank, receivables, prepayments (codes 1000-1999)',
+  },
+  current_liabilities: {
     icon: CreditCard, color: 'text-rose-600', bgColor: 'bg-rose-50', borderColor: 'border-rose-200',
-    label: 'Current Liabilities', tooltip: 'Obligations due within a year (codes 6000)',
-  },
-  short_term_liability: {
-    icon: CreditCard, color: 'text-orange-600', bgColor: 'bg-orange-50', borderColor: 'border-orange-200',
-    label: 'Short-term Liabilities', tooltip: 'Short-term obligations (codes 6100)',
-  },
-  long_term_liability: {
-    icon: CreditCard, color: 'text-red-700', bgColor: 'bg-red-50', borderColor: 'border-red-200',
-    label: 'Long-term Liabilities', tooltip: 'Obligations due beyond a year (codes 7000)',
-  },
-  other_liability: {
-    icon: CreditCard, color: 'text-pink-600', bgColor: 'bg-pink-50', borderColor: 'border-pink-200',
-    label: 'Other Liabilities', tooltip: 'Other liabilities (codes 9000)',
+    label: 'Current Liabilities', tooltip: 'Payables, deferred revenue, tax liabilities, trust (codes 2000-2999)',
   },
   equity: {
     icon: Scale, color: 'text-purple-600', bgColor: 'bg-purple-50', borderColor: 'border-purple-200',
-    label: 'Equity', tooltip: "Owner's residual interest (codes 5000)",
+    label: 'Equity', tooltip: "Owner's residual interest (codes 3000-3999)",
   },
-  revenue: {
+  longterm_liabilities: {
+    icon: CreditCard, color: 'text-red-700', bgColor: 'bg-red-50', borderColor: 'border-red-200',
+    label: 'Long-term Liabilities', tooltip: 'Mortgages and long-term loans (codes 4000-4999)',
+  },
+  property_income: {
     icon: TrendingUp, color: 'text-emerald-600', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200',
-    label: 'Revenue', tooltip: 'Income earned from operations',
+    label: 'Property Income', tooltip: 'Rent, levy, rates, parking, VAT, deposit income (codes 5000-5499)',
   },
-  expense: {
+  other_income: {
+    icon: TrendingUp, color: 'text-teal-600', bgColor: 'bg-teal-50', borderColor: 'border-teal-200',
+    label: 'Other Income', tooltip: 'Non-property income (codes 5500-5999)',
+  },
+  cost_of_sales: {
+    icon: TrendingDown, color: 'text-orange-600', bgColor: 'bg-orange-50', borderColor: 'border-orange-200',
+    label: 'Cost of Sales', tooltip: 'Agent commission / management fees (codes 6000-6999)',
+  },
+  operating_expenses: {
     icon: TrendingDown, color: 'text-amber-600', bgColor: 'bg-amber-50', borderColor: 'border-amber-200',
-    label: 'Expenses', tooltip: 'Costs incurred earning revenue (codes 2000–2300)',
+    label: 'Operating Expenses', tooltip: 'Property running costs (codes 7000-7999)',
   },
+  taxation_expense: {
+    icon: TrendingDown, color: 'text-pink-600', bgColor: 'bg-pink-50', borderColor: 'border-pink-200',
+    label: 'Taxation Expense', tooltip: 'Income, withholding, presumptive taxes (codes 8000-8999)',
+  },
+  suspense: {
+    icon: Database, color: 'text-gray-600', bgColor: 'bg-gray-100', borderColor: 'border-gray-300',
+    label: 'Suspense / Opening Balances', tooltip: 'Opening balances and unresolved items (codes 9000-9999)',
+  },
+}
+
+// Resolve an account's group: the hierarchy subclass when present, else
+// derive from the 4-digit code range, else from the legacy category.
+function subclassOf(account: Account): string {
+  const sc = (account as any).account_subclass
+  if (sc && accountTypeConfig[sc]) return sc
+  const n = parseInt(String(account.code), 10)
+  if (!Number.isNaN(n) && /^\d+$/.test(String(account.code).trim())) {
+    if (n <= 999) return 'noncurrent_assets'
+    if (n <= 1999) return 'current_assets'
+    if (n <= 2999) return 'current_liabilities'
+    if (n <= 3999) return 'equity'
+    if (n <= 4999) return 'longterm_liabilities'
+    if (n <= 5499) return 'property_income'
+    if (n <= 5999) return 'other_income'
+    if (n <= 6999) return 'cost_of_sales'
+    if (n <= 7999) return 'operating_expenses'
+    if (n <= 8999) return 'taxation_expense'
+    return 'suspense'
+  }
+  const byCategory: Record<string, string> = {
+    fixed_asset: 'noncurrent_assets', current_asset: 'current_assets',
+    current_liability: 'current_liabilities', long_term_liability: 'longterm_liabilities',
+    equity: 'equity', revenue: 'property_income', expense: 'operating_expenses',
+  }
+  return byCategory[account.category || ''] || byCategory[account.account_type] || 'suspense'
 }
 
 function SkeletonChartOfAccounts() {
@@ -189,13 +228,13 @@ export default function ChartOfAccounts() {
     const matchesSearch = !search ||
       account.name.toLowerCase().includes(search.toLowerCase()) ||
       account.code.toLowerCase().includes(search.toLowerCase())
-    const cat = account.category || account.account_type
+    const cat = subclassOf(account)
     const matchesType = !typeFilter || cat === typeFilter
     return matchesSearch && matchesType
   }) || []
 
   const groupedAccounts = filteredAccounts.reduce((acc: Record<string, Account[]>, account: Account) => {
-    const cat = account.category || account.account_type
+    const cat = subclassOf(account)
     if (!acc[cat]) {
       acc[cat] = []
     }
@@ -394,7 +433,7 @@ export default function ChartOfAccounts() {
           })()}
 
           {/* Account Type Summary Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
             {Object.entries(accountTypeConfig).map(([type, config]) => {
               const TypeIcon = config.icon
               const count = groupedAccounts[type]?.length || 0
