@@ -72,6 +72,7 @@ import { FINANCIAL_REPORTS, CASH_ONLY_REPORTS, PERIOD_REPORTS, derivePeriod, _ym
 import type { ReportType, PeriodMode } from '../shared'
 
 function BankToIncomeReport() {
+  const { currency } = useReportFilters()
   const navigate = useNavigate()
   const [drillState, setDrillState] = useState<{
     level: 1 | 2 | 3
@@ -83,23 +84,23 @@ function BankToIncomeReport() {
 
   // Level 1 data
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['bank-to-income'],
-    queryFn: () => reportsApi.incomeItemAnalysis().then(r => r.data),
+    queryKey: ['bank-to-income', currency],
+    queryFn: () => reportsApi.incomeItemAnalysis({ ...(currency ? { currency } : {}) } as any).then(r => r.data),
     placeholderData: keepPreviousData,
   })
 
   // Level 2 data
   const { data: l2Data, isLoading: l2Loading } = useQuery({
-    queryKey: ['bank-to-income-l2', drillState.bankAccountId],
-    queryFn: () => reportsApi.incomeItemDrilldown({ level: 2, bank_account_id: drillState.bankAccountId! }).then(r => r.data),
+    queryKey: ['bank-to-income-l2', drillState.bankAccountId, currency],
+    queryFn: () => reportsApi.incomeItemDrilldown({ level: 2, bank_account_id: drillState.bankAccountId!, ...(currency ? { currency } : {}) } as any).then(r => r.data),
     enabled: drillState.level >= 2 && !!drillState.bankAccountId,
     placeholderData: keepPreviousData,
   })
 
   // Level 3 data
   const { data: l3Data, isLoading: l3Loading } = useQuery({
-    queryKey: ['bank-to-income-l3', drillState.bankAccountId, drillState.incomeType],
-    queryFn: () => reportsApi.incomeItemDrilldown({ level: 3, bank_account_id: drillState.bankAccountId!, income_type: drillState.incomeType }).then(r => r.data),
+    queryKey: ['bank-to-income-l3', drillState.bankAccountId, drillState.incomeType, currency],
+    queryFn: () => reportsApi.incomeItemDrilldown({ level: 3, bank_account_id: drillState.bankAccountId!, income_type: drillState.incomeType, ...(currency ? { currency } : {}) } as any).then(r => r.data),
     enabled: drillState.level === 3 && !!drillState.bankAccountId && !!drillState.incomeType,
     placeholderData: keepPreviousData,
   })
@@ -431,10 +432,11 @@ function BankToIncomeReport() {
 // ─── Receipts Listing Report ─────────────────────────────────────────────────
 
 function ReceiptsListingReport() {
+  const { currency } = useReportFilters()
   const navigate = useNavigate()
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['receipts-listing'],
-    queryFn: () => reportsApi.receiptListing().then(r => r.data),
+    queryKey: ['receipts-listing', currency],
+    queryFn: () => reportsApi.receiptListing({ ...(currency ? { currency } : {}) } as any).then(r => r.data),
     placeholderData: keepPreviousData,
   })
 
@@ -567,10 +569,11 @@ function ReceiptsListingReport() {
 // ─── Deposits Listing Report ─────────────────────────────────────────────────
 
 function DepositsListingReport() {
+  const { currency } = useReportFilters()
   const navigate = useNavigate()
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['deposits-listing'],
-    queryFn: () => reportsApi.depositSummary().then(r => r.data),
+    queryKey: ['deposits-listing', currency],
+    queryFn: () => reportsApi.depositSummary({ ...(currency ? { currency } : {}) } as any).then(r => r.data),
     placeholderData: keepPreviousData,
   })
 

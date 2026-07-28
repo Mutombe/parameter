@@ -131,8 +131,14 @@ class ReceiptCreateSerializer(serializers.ModelSerializer):
     income_type = serializers.PrimaryKeyRelatedField(
         queryset=IncomeType.objects.all(), required=False, allow_null=True
     )
+    # HARD RULE: every receipt must land in a specific bank/cash account —
+    # reconciles the cash layer and blocks fraudulent no-bank receipting.
     bank_account = serializers.PrimaryKeyRelatedField(
-        queryset=BankAccount.objects.all(), required=False, allow_null=True
+        queryset=BankAccount.objects.all(), required=True, allow_null=False,
+        error_messages={
+            'required': 'Pick a bank/cash account — no receipt may be recorded without one.',
+            'null': 'Pick a bank/cash account — no receipt may be recorded without one.',
+        },
     )
 
     class Meta:
@@ -148,12 +154,23 @@ class ReceiptCreateSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         """Convert empty strings to None for nullable FK fields."""
         data = data.copy() if hasattr(data, 'copy') else dict(data)
-        for field in ('invoice', 'income_type', 'bank_account'):
+        for field in ('invoice', 'income_type'):
             if field in data and data[field] in ('', None, 'null', 'undefined'):
                 data[field] = None
+        if 'bank_account' in data and data['bank_account'] in ('', 'null', 'undefined'):
+            data['bank_account'] = None  # -> triggers the required error
         return super().to_internal_value(data)
 
     def validate(self, data):
+        # CONTRACT RULE: an Account Holder is under a Levy Payment Contract —
+        # default their receipt category to 'levy' and never allow the
+        # rental-side default to leak in.
+        payer = data.get('tenant')
+        if payer is not None and getattr(payer, 'account_type', '') == 'levy':
+            cat = data.get('sub_account_category') or ''
+            levy_set = {'levy', 'special_levy', 'maintenance', 'parking', 'rates'}
+            if not cat or cat not in levy_set:
+                data['sub_account_category'] = 'levy'
         if not data.get('income_type'):
             # Auto-resolve from invoice type or default to first active income type
             invoice = data.get('invoice')

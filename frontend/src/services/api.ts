@@ -433,13 +433,15 @@ export const receiptApi = {
   batchProcess: (receipts: object[]) =>
     api.post('/billing/receipts/batch_process/', { receipts }),
   summary: () => api.get('/billing/receipts/summary/'),
-  reverse: (id: number, data: { reason?: string }) =>
+  reverse: (id: number, data?: { reason?: string; void_date?: string }) =>
     api.post(`/billing/receipts/${id}/reverse/`, data),
   // Record an owner (landlord) contribution — funds injected into trust.
   ownerContribution: (data: object) => api.post('/billing/receipts/owner_contribution/', data),
 }
 
 export const expenseApi = {
+  void: (id: number, data: { void_date: string; reason?: string }) =>
+    api.post(`/billing/expenses/${id}/void/`, data),
   list: (params?: object) => api.get('/billing/expenses/', { params }),
   get: (id: number) => api.get(`/billing/expenses/${id}/`),
   create: (data: object) => api.post('/billing/expenses/', data),

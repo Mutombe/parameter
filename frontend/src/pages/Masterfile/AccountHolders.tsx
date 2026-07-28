@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -46,7 +46,10 @@ export default function AccountHolders() {
 
   useEffect(() => { setCurrentPage(1) }, [debouncedSearch])
 
-  const queryKey = ['account-holders', debouncedSearch, currentPage] as const
+  const [searchParams] = useSearchParams()
+  const landlordFilter = searchParams.get('landlord') || ''
+
+  const queryKey = ['account-holders', debouncedSearch, currentPage, landlordFilter] as const
 
   const { data, isLoading } = useQuery({
     queryKey,
@@ -54,6 +57,7 @@ export default function AccountHolders() {
       search: debouncedSearch,
       page: currentPage,
       page_size: PAGE_SIZE,
+      ...(landlordFilter ? { landlord: landlordFilter } : {}),
     }).then(r => r.data),
     placeholderData: keepPreviousData,
   })

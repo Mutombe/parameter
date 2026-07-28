@@ -3331,6 +3331,7 @@ class AgedAnalysisView(APIView):
         tenant_id = request.query_params.get('tenant_id')
         property_id = request.query_params.get('property_id')
         landlord_id = request.query_params.get('landlord_id')
+        currency = request.query_params.get('currency') or None
 
         # Base queryset - unpaid invoices.
         # `draft` is included because invoices issued via flows that don't
@@ -3341,7 +3342,9 @@ class AgedAnalysisView(APIView):
         invoices = Invoice.objects.filter(
             status__in=['draft', 'sent', 'partial', 'overdue'],
             balance__gt=0
-        ).select_related(
+        )
+        if currency:
+            invoices = invoices.filter(currency=currency).select_related(
             'tenant', 'unit', 'unit__property', 'unit__property__landlord',
             'lease', 'lease__unit__property', 'lease__property', 'property',
         )
@@ -3617,6 +3620,7 @@ class DepositAccountSummaryView(APIView):
     def get(self, request):
         tenant_id = request.query_params.get('tenant_id')
         property_id = request.query_params.get('property_id')
+        currency = request.query_params.get('currency') or None
 
         # Build queryset for active leases with deposits
         leases = LeaseAgreement.objects.filter(
@@ -3632,6 +3636,8 @@ class DepositAccountSummaryView(APIView):
         deposit_invoices = Invoice.objects.filter(
             invoice_type='deposit'
         ).select_related('tenant', 'unit')
+        if currency:
+            deposit_invoices = deposit_invoices.filter(currency=currency)
 
         if tenant_id:
             deposit_invoices = deposit_invoices.filter(tenant_id=tenant_id)
@@ -3706,6 +3712,7 @@ class CommissionReportView(APIView):
     def get(self, request):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date', timezone.now().date())
+        currency = request.query_params.get('currency') or None
         landlord_id = request.query_params.get('landlord_id')
 
         # Invoice-linked receipts aggregate fast at the DB level; receipts
@@ -3737,7 +3744,7 @@ class CommissionReportView(APIView):
         if landlord_id:
             inv_filter &= Q(invoice__unit__property__landlord_id=landlord_id)
 
-        for row in Receipt.objects.filter(inv_filter).values(
+        for row in Receipt.objects.filter(inv_filter).filter(**({'currency': currency} if currency else {})).values(
             'invoice__unit__property__landlord__id',
             'invoice__unit__property__landlord__name',
             'invoice__unit__property__landlord__code',
@@ -3945,6 +3952,7 @@ class LeaseChargeSummaryView(APIView):
     def get(self, request):
         property_id = request.query_params.get('property_id')
         landlord_id = request.query_params.get('landlord_id')
+        currency = request.query_params.get('currency') or None
 
         # Get active leases
         leases = LeaseAgreement.objects.filter(
@@ -4088,6 +4096,7 @@ class ReceiptListingView(APIView):
     def get(self, request):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date', timezone.now().date())
+        currency = request.query_params.get('currency') or None
         bank_account_id = request.query_params.get('bank_account_id')
         income_type = request.query_params.get('income_type')
         payment_method = request.query_params.get('payment_method')
@@ -4117,6 +4126,8 @@ class ReceiptListingView(APIView):
             'invoice__property', 'invoice__property__landlord',
             'income_type', 'bank_account', 'created_by',
         ).prefetch_related(active_leases).filter(date__lte=end_date)
+        if currency:
+            receipts = receipts.filter(currency=currency)
 
         if start_date:
             receipts = receipts.filter(date__gte=start_date)
@@ -4288,11 +4299,14 @@ class CommissionAnalysisView(APIView):
     def get(self, request):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date', timezone.now().date())
+        currency = request.query_params.get('currency') or None
 
         # Receipts (incl. invoice-less direct payments) with the chains
         # _receipt_dims needs to resolve property / income-type via the
         # tenant when no invoice is present.
         receipts = Receipt.objects.filter(date__lte=end_date)
+        if currency:
+            receipts = receipts.filter(currency=currency)
         if start_date:
             receipts = receipts.filter(date__gte=start_date)
         receipts = _comparative_receipt_qs(receipts)
@@ -4432,10 +4446,13 @@ class IncomeItemAnalysisView(APIView):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date', timezone.now().date())
         income_type = request.query_params.get('income_type')
+        currency = request.query_params.get('currency') or None
         bank_account_id = request.query_params.get('bank_account_id')
 
         # Get receipts
         receipts = Receipt.objects.filter(date__lte=end_date)
+        if currency:
+            receipts = receipts.filter(currency=currency)
         if start_date:
             receipts = receipts.filter(date__gte=start_date)
         if income_type:
@@ -4567,6 +4584,7 @@ class IncomeItemDrilldownView(APIView):
     def get(self, request):
         level = request.query_params.get('level', '2')
         bank_account_id = request.query_params.get('bank_account_id')
+        currency = request.query_params.get('currency') or None
         income_type = request.query_params.get('income_type')
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date', timezone.now().date())
@@ -4579,6 +4597,8 @@ class IncomeItemDrilldownView(APIView):
             bank_account_id=bank_account_id,
             date__lte=end_date,
         )
+        if currency:
+            receipts = receipts.filter(currency=currency)
         if start_date:
             receipts = receipts.filter(date__gte=start_date)
 
@@ -5794,6 +5814,8 @@ class ReceiptListingReportView(APIView):
             'invoice__unit__property__landlord', 'bank_account',
         ).filter(date__lte=period_end)
 
+        if currency:
+            receipts = receipts.filter(currency=currency)
         if period_start:
             receipts = receipts.filter(date__gte=period_start)
         if landlord_id:

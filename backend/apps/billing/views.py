@@ -1115,7 +1115,16 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def reverse(self, request, pk=None):
-        """Reverse a receipt -- creates negative entries on same sides."""
+        """Void/reverse a receipt — negative entries on the same sides,
+        cloaked from customer-facing statements (visible internally).
+
+        `void_date` options: 'current' (today), 'original' (the receipt's
+        date, default) or an explicit YYYY-MM-DD. The chosen date may NEVER
+        be earlier than the original receipt date — the earliest allowed
+        moment is the original receipt itself (the reversal's timestamp is
+        by nature after the original's)."""
+        from django.utils import timezone as _tz
+        import datetime as _dt
         receipt = self.get_object()
         if not receipt.journal:
             return Response(
@@ -1124,6 +1133,23 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
             )
 
         reason = request.data.get('reason', 'Mispost reversed')
+        raw_vd = (request.data.get('void_date') or 'original')
+        if raw_vd == 'original':
+            void_date = receipt.date
+        elif raw_vd == 'current':
+            void_date = _tz.now().date()
+        else:
+            try:
+                void_date = _dt.date.fromisoformat(str(raw_vd))
+            except ValueError:
+                return Response({'error': f'Invalid void_date: {raw_vd}'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        if void_date < receipt.date:
+            return Response(
+                {'error': f'Void date cannot be earlier than the original receipt '
+                          f'date ({receipt.date}). Earliest allowed is the receipt '
+                          f'date itself.'},
+                status=status.HTTP_400_BAD_REQUEST)
 
         # Create reversal receipt with negative amount
         reversal = Receipt(
@@ -1136,7 +1162,7 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
             bank_account=receipt.bank_account,
             income_type=receipt.income_type,
             description=f'Mispost reversed-{receipt.description}',
-            date=receipt.date,  # Same date as original
+            date=void_date,  # user-chosen: original / current / custom (>= original)
             created_by=request.user,
         )
         reversal.save()
@@ -1202,6 +1228,38 @@ class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
         if end:
             qs = qs.filter(date__lte=end)
         return qs
+
+    @action(detail=True, methods=['post'])
+    def void(self, request, pk=None):
+        """Void an expense with a chosen date — same date rules as receipt
+        voiding: 'current', 'original' (default) or custom, never earlier
+        than the expense date. Reversal entries are cloaked from the
+        landlord's statement, visible internally."""
+        from django.utils import timezone as _tz
+        import datetime as _dt
+        expense = self.get_object()
+        raw_vd = (request.data.get('void_date') or 'original')
+        if raw_vd == 'original':
+            void_date = expense.date
+        elif raw_vd == 'current':
+            void_date = _tz.now().date()
+        else:
+            try:
+                void_date = _dt.date.fromisoformat(str(raw_vd))
+            except ValueError:
+                return Response({'error': f'Invalid void_date: {raw_vd}'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        if void_date < expense.date:
+            return Response(
+                {'error': f'Void date cannot be earlier than the original expense '
+                          f'date ({expense.date}).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            expense.reverse_postings(user=request.user, void_date=void_date)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        expense.delete()
+        return Response({'message': f'Expense voided as at {void_date}'})
 
     def perform_destroy(self, instance):
         """Reverse the expense's ledger footprint before (soft-)deleting it, so

@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft,
@@ -13,7 +14,8 @@ import {
 import { receiptApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { printReceipt } from '../../lib/printTemplate'
-import { Button } from '../../components/ui'
+import { Button, Modal, Select, DatePicker, Textarea } from '../../components/ui'
+import { showToast, parseApiError } from '../../lib/toast'
 import { usePrefetch } from '../../hooks/usePrefetch'
 import { TbUserSquareRounded } from 'react-icons/tb'
 
@@ -98,6 +100,25 @@ export default function ReceiptDetail() {
     placeholderData: keepPreviousData,
   })
 
+  const queryClient = useQueryClient()
+  const [showVoid, setShowVoid] = useState(false)
+  const [voidMode, setVoidMode] = useState<'original' | 'current' | 'custom'>('original')
+  const [voidDate, setVoidDate] = useState('')
+  const [voidReason, setVoidReason] = useState('')
+
+  const voidMutation = useMutation({
+    mutationFn: () => receiptApi.reverse(Number(id), {
+      reason: voidReason.trim() || 'Voided',
+      void_date: voidMode === 'custom' ? voidDate : voidMode,
+    }),
+    onSuccess: () => {
+      showToast.success('Receipt voided — reversal is cloaked from customer statements')
+      setShowVoid(false)
+      queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith('receipt') })
+    },
+    onError: (e) => showToast.error(parseApiError(e, 'Void failed')),
+  })
+
   const handlePrint = () => {
     if (!receipt) return
     printReceipt({
@@ -147,6 +168,9 @@ export default function ReceiptDetail() {
         <Button variant="outline" onClick={handlePrint} className="gap-2">
           <Printer className="w-4 h-4" />
           Print
+        </Button>
+        <Button variant="outline" onClick={() => setShowVoid(true)} className="gap-2 text-red-600 border-red-200 hover:bg-red-50">
+          Void Receipt
         </Button>
       </motion.div>
 
@@ -322,6 +346,43 @@ export default function ReceiptDetail() {
           </button>
         </motion.div>
       )}
+      {/* Void by chosen date — never earlier than the original receipt.
+          The reversal is cloaked from tenant/account-holder/landlord
+          statements but stays visible internally for auditing. */}
+      <Modal open={showVoid} onClose={() => setShowVoid(false)} title="Void Receipt">
+        <div className="space-y-4">
+          <Select
+            label="Void date"
+            value={voidMode}
+            onChange={(e) => setVoidMode(e.target.value as any)}
+            options={[
+              { value: 'original', label: `Original receipt date (${receipt?.date || ''})` },
+              { value: 'current', label: 'Current date (today)' },
+              { value: 'custom', label: 'Custom date…' },
+            ]}
+            hint="The earliest allowed void date is the original receipt date — never before it."
+          />
+          {voidMode === 'custom' && (
+            <DatePicker label="Custom void date" value={voidDate} onChange={setVoidDate} required />
+          )}
+          <Textarea label="Reason" rows={2} value={voidReason}
+            onChange={(e) => setVoidReason(e.target.value)}
+            placeholder="Why is this receipt being voided?" />
+          <p className="text-xs text-gray-500">
+            The customer will not see the internal back-and-forth — the voided
+            pair is hidden from their statements while remaining fully visible
+            to internal users for auditing.
+          </p>
+          <div className="flex gap-3 pt-1">
+            <Button variant="outline" className="flex-1" onClick={() => setShowVoid(false)}>Cancel</Button>
+            <Button className="flex-1 bg-red-600 hover:bg-red-700"
+              disabled={voidMutation.isPending || (voidMode === 'custom' && !voidDate)}
+              onClick={() => voidMutation.mutate()}>
+              {voidMutation.isPending ? 'Voiding…' : 'Void Receipt'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

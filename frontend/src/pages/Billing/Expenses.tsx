@@ -904,7 +904,15 @@ export default function Expenses() {
     undoToast({
       message: `Deleting ${count} expenses...`,
       onConfirm: async () => {
-        for (const id of ids) { try { await expenseApi.delete(id as number) } catch {} }
+        for (const id of ids) {
+          try {
+            // Void with the original-date rule (reversal cloaked from the
+            // landlord statement); falls back to plain delete for drafts.
+            await expenseApi.void(id as number, { void_date: 'original' })
+          } catch {
+            try { await expenseApi.delete(id as number) } catch {}
+          }
+        }
         queryClient.invalidateQueries({ queryKey: ['expenses'] })
         showToast.success(`Deleted ${count} expenses`)
       },

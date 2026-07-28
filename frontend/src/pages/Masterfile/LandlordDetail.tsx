@@ -702,6 +702,14 @@ export default function LandlordDetail() {
           </Button>
           <Button
             variant="outline"
+            onClick={() => navigate(`/dashboard/account-holders?landlord=${landlordId}`)}
+            className="gap-2"
+          >
+            <Users className="w-4 h-4" />
+            View Account Holders
+          </Button>
+          <Button
+            variant="outline"
             onClick={openEditModal}
             className="gap-2"
           >

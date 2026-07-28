@@ -74,10 +74,11 @@ import type { ReportType, PeriodMode } from '../shared'
 const CHART_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#14b8a6', '#3b82f6']
 
 function CommissionByPropertyReport() {
+  const { currency } = useReportFilters()
   const navigate = useNavigate()
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['commission-property'],
-    queryFn: () => reportsApi.commission().then(r => r.data),
+    queryKey: ['commission-property', currency],
+    queryFn: () => reportsApi.commission({ ...(currency ? { currency } : {}) } as any).then(r => r.data),
     placeholderData: keepPreviousData,
   })
 
@@ -96,8 +97,8 @@ function CommissionByPropertyReport() {
 
   // Level 2 query
   const { data: l2Data, isLoading: l2Loading } = useQuery({
-    queryKey: ['commission-property-l2', drillState.propertyId],
-    queryFn: () => reportsApi.commissionPropertyDrilldown({ property_id: drillState.propertyId! }).then(r => r.data),
+    queryKey: ['commission-property-l2', drillState.propertyId, currency],
+    queryFn: () => reportsApi.commissionPropertyDrilldown({ property_id: drillState.propertyId!, ...(currency ? { currency } : {}) } as any).then(r => r.data),
     enabled: drillState.level === 2 && !!drillState.propertyId,
     placeholderData: keepPreviousData,
   })
@@ -360,9 +361,10 @@ function CommissionByPropertyReport() {
 }
 
 function CommissionByIncomeReport() {
+  const { currency } = useReportFilters()
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['commission-income'],
-    queryFn: () => reportsApi.commissionAnalysis().then(r => r.data),
+    queryKey: ['commission-income', currency],
+    queryFn: () => reportsApi.commissionAnalysis({ ...(currency ? { currency } : {}) } as any).then(r => r.data),
     placeholderData: keepPreviousData,
   })
 

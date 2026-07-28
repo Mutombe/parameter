@@ -667,7 +667,7 @@ export default function Receipts() {
           {/* Payer Select — covers both Tenants and Account Holders */}
           <PayerSelect
             value={form.tenant}
-            onChange={(val) => setForm({ ...form, tenant: String(val) })}
+            onChange={(val) => { const p = (tenants as any[])?.find((t: any) => String(t.id) === String(val)); setForm({ ...form, tenant: String(val), sub_account_category: p?.account_type === 'levy' ? 'levy' : (form.sub_account_category === 'levy' || form.sub_account_category === 'special_levy' ? 'rent' : form.sub_account_category) })} }
             required
           />
 
@@ -732,18 +732,30 @@ export default function Receipts() {
             label="Sub-Account Category"
             value={form.sub_account_category}
             onChange={(e) => setForm({ ...form, sub_account_category: e.target.value })}
-            options={[
-              { value: 'rent', label: 'Rent' },
-              { value: 'levy', label: 'Levy' },
-              { value: 'special_levy', label: 'Special Levy' },
-              { value: 'maintenance', label: 'Maintenance' },
-              { value: 'parking', label: 'Parking' },
-              { value: 'rates', label: 'Rates' },
-              { value: 'vat', label: 'VAT' },
-              { value: 'deposit', label: 'Deposit' },
-              { value: 'general', label: 'General' },
-            ]}
-            hint="Category lock: this ONE pick credits the payer's pocket AND the landlord's pocket of the SAME category — no cross-category posting"
+            options={(() => {
+              const payer = (tenants as any[])?.find((t: any) => String(t.id) === form.tenant)
+              // Levy Payment Contract side: Levy, Special Levy, Maintenance,
+              // Parking, Rates only (no Rent on the Levy Payers' side).
+              if (payer?.account_type === 'levy') return [
+                { value: 'levy', label: 'Levy' },
+                { value: 'special_levy', label: 'Special Levy' },
+                { value: 'maintenance', label: 'Maintenance' },
+                { value: 'parking', label: 'Parking' },
+                { value: 'rates', label: 'Rates' },
+              ]
+              return [
+                { value: 'rent', label: 'Rent' },
+                { value: 'levy', label: 'Levy' },
+                { value: 'special_levy', label: 'Special Levy' },
+                { value: 'maintenance', label: 'Maintenance' },
+                { value: 'parking', label: 'Parking' },
+                { value: 'rates', label: 'Rates' },
+                { value: 'vat', label: 'VAT' },
+                { value: 'deposit', label: 'Deposit' },
+                { value: 'general', label: 'General' },
+              ]
+            })()}
+            hint="Category lock: this ONE pick credits the payer's pocket AND the landlord's pocket of the SAME category — the category also shows the payer's contract side (Rental vs Levy)"
           />
 
           <div className="grid grid-cols-2 gap-4">
@@ -783,11 +795,12 @@ export default function Receipts() {
             />
             <Select
               label="Bank Account"
-              hint="Which account this payment landed in — needed for bank reconciliation"
+              hint="HARD RULE: every receipt must land in a bank/cash account — reconciles the cash layer and blocks no-bank receipting"
               value={form.bank_account}
               onChange={(e) => setForm({ ...form, bank_account: e.target.value })}
+              required
               options={[
-                { value: '', label: '— Select bank account —' },
+                { value: '', label: '— Select bank account (required) —' },
                 ...(((bankAccounts as any[]) || []).map((b: any) => ({
                   value: String(b.id),
                   label: `${b.name}${b.currency ? ` (${b.currency})` : ''}`,

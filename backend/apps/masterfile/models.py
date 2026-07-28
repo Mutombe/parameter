@@ -613,6 +613,19 @@ class LeaseAgreement(SoftDeleteModel):
         """Ensure tenant has only one active lease."""
         from django.core.exceptions import ValidationError
 
+        # CONTRACT RULE: one contract per client — the lease type must match
+        # the payer's contract side (Tenant = rental, Account Holder = levy).
+        # One contract, one client ID, one lease ID.
+        if self.tenant_id and self.tenant and self.lease_type:
+            side = getattr(self.tenant, 'account_type', 'rental') or 'rental'
+            if side != self.lease_type:
+                contract = 'Levy' if side == 'levy' else 'Rental'
+                raise ValidationError(
+                    f'{self.tenant.name} is under a {contract} Payment Contract '
+                    f'— a {self.lease_type} lease would give them a second '
+                    f'contract (one contract, one client ID, one lease ID).'
+                )
+
         existing = LeaseAgreement.objects.filter(
             tenant=self.tenant,
             status=self.Status.ACTIVE

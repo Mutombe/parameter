@@ -79,6 +79,12 @@ const IncomeStatementReport = lazy(() => import('./sections/IncomeStatement').th
 const BalanceSheetReport = lazy(() => import('./sections/BalanceSheet').then(m => ({ default: m.BalanceSheetReport })))
 const CashFlowReport = lazy(() => import('./sections/CashFlow').then(m => ({ default: m.CashFlowReport })))
 const VacancyReport = lazy(() => import('./sections/Operational').then(m => ({ default: m.VacancyReport })))
+// Reports beyond the financial set that support the currency slice.
+const CURRENCY_REPORTS: ReadonlySet<string> = new Set([
+  'aged-analysis', 'commission-property', 'commission-income',
+  'bank-to-income', 'receipts-listing', 'deposits-listing', 'lease-charges',
+])
+
 const RentRolloverReport = lazy(() => import('./sections/Operational').then(m => ({ default: m.RentRolloverReport })))
 const AgedAnalysisReport = lazy(() => import('./sections/Operational').then(m => ({ default: m.AgedAnalysisReport })))
 const LeaseChargeSummaryReport = lazy(() => import('./sections/Operational').then(m => ({ default: m.LeaseChargeSummaryReport })))
@@ -846,8 +852,9 @@ export default function Reports() {
             {/* Filter bar shown only on the financial reports the filter applies to. */}
             {FINANCIAL_REPORTS.has(activeReport) && <ReportFilterBar />}
             {/* Currency switcher — one GL account serves USD & ZWG; this
-                slices every financial report to a single currency. */}
-            {FINANCIAL_REPORTS.has(activeReport) && (
+                slices financial, aged, comparative and administrative
+                reports to a single currency. */}
+            {(FINANCIAL_REPORTS.has(activeReport) || CURRENCY_REPORTS.has(activeReport)) && (
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Currency</span>
                 <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5">

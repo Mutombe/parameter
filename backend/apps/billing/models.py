@@ -1307,7 +1307,7 @@ class Expense(SoftDeleteModel):
 
         return journal
 
-    def reverse_postings(self, user=None):
+    def reverse_postings(self, user=None, void_date=None):
         """Undo this expense's ledger footprint — the GL journal AND the
         landlord sub-account transaction(s) it created. Called when a posted
         expense is deleted so it doesn't leave phantom balances on the
@@ -1327,7 +1327,7 @@ class Expense(SoftDeleteModel):
             if SubsidiaryTransaction.objects.filter(reversed_transaction=st).exists():
                 continue
             rev = SubsidiaryTransaction.create_entry(
-                account=st.account, date=timezone.now().date(),
+                account=st.account, date=void_date or timezone.now().date(),
                 contra_account=st.contra_account,
                 reference=f'REV-{st.reference}'[:50],
                 description=f'Reversal — deleted expense {self.expense_number}',
