@@ -77,24 +77,16 @@ class Command(BaseCommand):
         )
         inc = delta > 0  # increase control in its normal direction
         amt = abs(delta)
-        if credit_normal:
-            JournalEntry.objects.create(journal=journal, account=control,
-                                        description=journal.description,
-                                        credit_amount=amt if inc else None,
-                                        debit_amount=None if inc else amt)
-            JournalEntry.objects.create(journal=journal, account=suspense,
-                                        description=journal.description,
-                                        debit_amount=amt if inc else None,
-                                        credit_amount=None if inc else amt)
-        else:
-            JournalEntry.objects.create(journal=journal, account=control,
-                                        description=journal.description,
-                                        debit_amount=amt if inc else None,
-                                        credit_amount=None if inc else amt)
-            JournalEntry.objects.create(journal=journal, account=suspense,
-                                        description=journal.description,
-                                        credit_amount=amt if inc else None,
-                                        debit_amount=None if inc else amt)
+        zero = Decimal('0')
+        control_side_credit = (credit_normal and inc) or (not credit_normal and not inc)
+        JournalEntry.objects.create(
+            journal=journal, account=control, description=journal.description,
+            credit_amount=amt if control_side_credit else zero,
+            debit_amount=zero if control_side_credit else amt)
+        JournalEntry.objects.create(
+            journal=journal, account=suspense, description=journal.description,
+            debit_amount=amt if control_side_credit else zero,
+            credit_amount=zero if control_side_credit else amt)
         journal.post()
         return journal.journal_number
 
