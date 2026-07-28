@@ -432,11 +432,14 @@ function BankToIncomeReport() {
 // ─── Receipts Listing Report ─────────────────────────────────────────────────
 
 function ReceiptsListingReport() {
-  const { currency } = useReportFilters()
+  const { currency, category } = useReportFilters()
   const navigate = useNavigate()
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['receipts-listing', currency],
-    queryFn: () => reportsApi.receiptListing({ ...(currency ? { currency } : {}) } as any).then(r => r.data),
+    queryKey: ['receipts-listing', currency, category],
+    queryFn: () => reportsApi.receiptListing({
+      ...(currency ? { currency } : {}),
+      ...(category ? { category } : {}),
+    } as any).then(r => r.data),
     placeholderData: keepPreviousData,
   })
 

@@ -129,18 +129,24 @@ export default function SubAccountStatement() {
 
   // Branded print (letterhead + statement table), like the financial reports.
   // Reflects the current reversal-cloaking mode.
+  // Sequential transaction number as shown on statements (per spec: every
+  // statement line carries an indelible, sequential transaction number).
+  const txnNo = (t: any) =>
+    t?.transaction_number != null ? `TXN${String(t.transaction_number).padStart(6, '0')}` : '—'
+
   const handlePrint = () => {
     const money = (v: any) => formatCurrency(Number(v || 0))
     const rowsHtml = displayItems.map((item: any) => {
       if (item.kind === 'group') {
         const bal = money(item.reversal?.balance ?? item.original?.balance ?? 0)
-        return `<tr><td colspan="4"><em>Reversed Transaction (net 0)</em></td>
+        return `<tr><td colspan="5"><em>Reversed Transaction (net 0)</em></td>
           <td class="num">—</td><td class="num">—</td><td class="num">${bal}</td></tr>`
       }
       const t = item.txn
       const dr = Number(t.debit_amount ?? t.debit ?? 0)
       const cr = Number(t.credit_amount ?? t.credit ?? 0)
       return `<tr>
+        <td>${txnNo(t)}</td>
         <td>${t.date || '—'}</td>
         <td>${t.reference || t.ref || '—'}</td>
         <td>${(dr > 0 && t.contra_display) ? t.contra_display : '—'}</td>
@@ -157,6 +163,7 @@ export default function SubAccountStatement() {
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:9pt">
         <thead><tr style="background:#f3f4f6;text-align:left">
+          <th style="padding:5px">Txn #</th>
           <th style="padding:5px">Date</th><th style="padding:5px">Ref</th>
           <th style="padding:5px">Contra</th><th style="padding:5px">Description</th>
           <th style="padding:5px;text-align:right">Debit</th>
@@ -164,11 +171,11 @@ export default function SubAccountStatement() {
           <th style="padding:5px;text-align:right">Balance</th>
         </tr></thead>
         <tbody>
-          <tr style="font-weight:600"><td colspan="6" style="padding:5px">Opening Balance</td>
+          <tr style="font-weight:600"><td colspan="7" style="padding:5px">Opening Balance</td>
             <td class="num" style="padding:5px;text-align:right">${money(openingBalance)}</td></tr>
           ${rowsHtml}
           <tr style="font-weight:700;background:#ecfdf5;border-top:2px solid #a7f3d0">
-            <td colspan="4" style="padding:5px">Closing Balance</td>
+            <td colspan="5" style="padding:5px">Closing Balance</td>
             <td class="num" style="padding:5px;text-align:right">${money(shownDebits)}</td>
             <td class="num" style="padding:5px;text-align:right">${money(shownCredits)}</td>
             <td class="num" style="padding:5px;text-align:right">${money(closingBalance)}</td>
@@ -289,6 +296,7 @@ export default function SubAccountStatement() {
               <table className="w-full">
                 <thead>
                   <tr className="bg-gray-50">
+                    <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-[0.1em] px-6 py-3">Txn #</th>
                     <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-[0.1em] px-6 py-3">Date</th>
                     <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-[0.1em] px-6 py-3">Ref</th>
                     <th className="text-left text-[10px] font-semibold text-gray-500 uppercase tracking-[0.1em] px-6 py-3">Contra</th>
@@ -301,7 +309,7 @@ export default function SubAccountStatement() {
                 <tbody className="divide-y divide-gray-100">
                   {reversalMode === 'hidden' && hiddenGroupCount > 0 && (
                     <tr>
-                      <td colSpan={7} className="px-6 py-2 bg-gray-50/60 text-xs text-gray-500">
+                      <td colSpan={8} className="px-6 py-2 bg-gray-50/60 text-xs text-gray-500">
                         <span className="inline-flex items-center gap-1.5">
                           <EyeOff className="w-3.5 h-3.5 text-gray-400" />
                           {hiddenGroupCount} reversed transaction{hiddenGroupCount === 1 ? '' : 's'} hidden (net zero).
@@ -319,7 +327,7 @@ export default function SubAccountStatement() {
                       return (
                         <Fragment key={`g-${item.group}`}>
                           <tr className="bg-rose-50/30 hover:bg-rose-50/50 cursor-pointer" onClick={() => toggleGroup(item.group)}>
-                            <td colSpan={4} className="px-6 py-3 text-sm">
+                            <td colSpan={5} className="px-6 py-3 text-sm">
                               <span className="inline-flex items-center gap-1.5">
                                 <ChevronRight className={cn('w-3.5 h-3.5 text-rose-400 transition-transform', open && 'rotate-90')} />
                                 <span className="text-rose-700 font-medium">Reversed Transaction</span>
@@ -334,7 +342,8 @@ export default function SubAccountStatement() {
                             <>
                               {[['original', item.original, -amt, 'Expense'], ['reversal', item.reversal, amt, 'Reversal']].map(([role, r, signed]: any) => (
                                 <tr key={role} className="bg-rose-50/10 text-xs">
-                                  <td className="px-6 py-2 pl-12 text-gray-500 tabular-nums">{r?.date || '—'}</td>
+                                  <td className="px-6 py-2 pl-12 text-gray-400 font-mono">{txnNo(r)}</td>
+                                  <td className="px-6 py-2 text-gray-500 tabular-nums">{r?.date || '—'}</td>
                                   <td className="px-6 py-2 text-gray-400 font-mono">{r?.reference || '—'}</td>
                                   <td colSpan={2} className="px-6 py-2 text-gray-600">{r?.description || (role === 'reversal' ? 'Reversal' : 'Expense')}</td>
                                   <td colSpan={2} className="px-6 py-2 text-right tabular-nums text-rose-600 font-semibold">
@@ -344,7 +353,7 @@ export default function SubAccountStatement() {
                                 </tr>
                               ))}
                               <tr className="bg-rose-50/30 text-xs font-semibold">
-                                <td colSpan={4} className="px-6 py-2 pl-12 text-gray-600">Net effect</td>
+                                <td colSpan={5} className="px-6 py-2 pl-12 text-gray-600">Net effect</td>
                                 <td colSpan={2} className="px-6 py-2 text-right tabular-nums text-gray-700">{formatCurrency(0)}</td>
                                 <td className="px-6 py-2"></td>
                               </tr>
@@ -363,6 +372,7 @@ export default function SubAccountStatement() {
                     const cloaked = txn.reversal_cloaked
                     return (
                       <tr key={idx} className={cn('hover:bg-gray-50 transition-colors', cloaked && 'bg-rose-50/20')}>
+                        <td className="px-6 py-3 text-xs text-gray-500 font-mono">{txnNo(txn)}</td>
                         <td className="px-6 py-3 text-sm text-gray-600 tabular-nums">{txn.date || '—'}</td>
                         <td className="px-6 py-3 text-xs text-gray-500 font-mono">{txn.reference || txn.ref || '—'}</td>
                         <td className="px-6 py-3 text-sm">
@@ -409,7 +419,7 @@ export default function SubAccountStatement() {
                   {/* Closing balance row — carries the debit/credit column
                       totals alongside the closing balance, all in green. */}
                   <tr className="bg-emerald-50 border-t-2 border-emerald-200 font-bold">
-                    <td colSpan={4} className="px-6 py-3 text-sm text-gray-700">Closing Balance</td>
+                    <td colSpan={5} className="px-6 py-3 text-sm text-gray-700">Closing Balance</td>
                     <td className="px-6 py-3 text-sm text-right tabular-nums text-emerald-700">
                       {formatCurrency(shownDebits)}
                     </td>

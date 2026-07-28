@@ -85,6 +85,18 @@ const CURRENCY_REPORTS: ReadonlySet<string> = new Set([
   'bank-to-income', 'receipts-listing', 'deposits-listing', 'lease-charges',
 ])
 
+// Reports that support the income-category slice (rent, levy, …). GL-based
+// financial statements are excluded — a per-category balance sheet would
+// not balance, so category only applies to operational reports.
+const CATEGORY_REPORTS: ReadonlySet<string> = new Set([
+  'aged-analysis', 'rent-rollover', 'receipts-listing', 'lease-charges',
+])
+const CATEGORY_OPTIONS: Array<[string, string]> = [
+  ['', 'All'], ['rent', 'Rent'], ['levy', 'Levy'], ['special_levy', 'Special Levy'],
+  ['maintenance', 'Maintenance'], ['parking', 'Parking'], ['rates', 'Rates'],
+  ['deposit', 'Deposit'], ['penalty', 'Penalty'],
+]
+
 const RentRolloverReport = lazy(() => import('./sections/Operational').then(m => ({ default: m.RentRolloverReport })))
 const AgedAnalysisReport = lazy(() => import('./sections/Operational').then(m => ({ default: m.AgedAnalysisReport })))
 const LeaseChargeSummaryReport = lazy(() => import('./sections/Operational').then(m => ({ default: m.LeaseChargeSummaryReport })))
@@ -622,6 +634,7 @@ export default function Reports() {
   const [landlordId, setLandlordId] = useState<string>(() => searchParams.get('landlord_id') || '')
   const [propertyId, setPropertyId] = useState<string>(() => searchParams.get('property_id') || '')
   const [currency, setCurrency] = useState('')  // '' = all currencies
+  const [category, setCategory] = useState('')  // '' = all categories
 
   // Shared reporting period — defaults to the current month. Drives the
   // Trial Balance / Income Statement / Balance Sheet / Cash Flow queries.
@@ -847,6 +860,7 @@ export default function Reports() {
           <ReportFilterContext.Provider value={{
             landlordId, propertyId, setLandlordId, setPropertyId,
             currency, setCurrency,
+            category, setCategory,
             periodStart: period.start, periodEnd: period.end, periodLabel: period.label,
           }}>
             {/* Filter bar shown only on the financial reports the filter applies to. */}
@@ -865,6 +879,27 @@ export default function Reports() {
                       className={cn(
                         'px-2.5 py-1 text-xs font-medium rounded transition-colors',
                         currency === v ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-100',
+                      )}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Category switcher — narrows operational reports to a single
+                income category (rent, levy, special levy, …). */}
+            {CATEGORY_REPORTS.has(activeReport) && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Category</span>
+                <div className="inline-flex flex-wrap rounded-md border border-gray-200 bg-white p-0.5">
+                  {CATEGORY_OPTIONS.map(([v, l]) => (
+                    <button
+                      key={l}
+                      onClick={() => setCategory(v)}
+                      className={cn(
+                        'px-2.5 py-1 text-xs font-medium rounded transition-colors',
+                        category === v ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-100',
                       )}
                     >
                       {l}

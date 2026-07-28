@@ -29,6 +29,7 @@ import { expenseApi, landlordApi, supplierApi, incomeTypeApi, expenseCategoryApi
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { SubAccountBadge } from '../../components/SubAccountBadge'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
+import { printTable } from '../../lib/printTemplate'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, Tooltip, Pagination, DatePicker } from '../../components/ui'
 import { AutocompleteInput } from '../../components/ui/AutocompleteInput'
 import { showToast, parseApiError } from '../../lib/toast'
@@ -987,6 +988,28 @@ export default function Expenses() {
         ]}
         actions={
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => printTable(
+                (expenses as any[]).map((x: any) => ({
+                  number: x.expense_number || x.id,
+                  date: x.date || '—',
+                  payee: x.payee_name || x.supplier_name || '—',
+                  status: x.status || '—',
+                  amount: formatCurrency(Number(x.amount || 0), x.currency),
+                })),
+                [
+                  { key: 'number', label: 'Expense #' },
+                  { key: 'date', label: 'Date' },
+                  { key: 'payee', label: 'Payee' },
+                  { key: 'status', label: 'Status' },
+                  { key: 'amount', label: 'Amount', align: 'right' },
+                ],
+                { title: 'Expenditure Listing' },
+              )}
+            >
+              Print
+            </Button>
             <Button variant="outline" onClick={() => setShowWithdraw(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Post withdrawal

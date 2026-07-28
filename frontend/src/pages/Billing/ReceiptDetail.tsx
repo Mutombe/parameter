@@ -11,7 +11,7 @@ import {
   Printer,
   Receipt,
 } from 'lucide-react'
-import { receiptApi } from '../../services/api'
+import { receiptApi, conversionApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { printReceipt } from '../../lib/printTemplate'
 import { Button, Modal, Select, DatePicker, Textarea } from '../../components/ui'
@@ -119,6 +119,25 @@ export default function ReceiptDetail() {
     onError: (e) => showToast.error(parseApiError(e, 'Void failed')),
   })
 
+  // Full Conversion — negative receipt in the source currency + a mirrored
+  // receipt in the target currency (rate hierarchy: override → property →
+  // client default). Backend engine: apps/accounting/conversions.py.
+  const [showConvert, setShowConvert] = useState(false)
+  const [convertRate, setConvertRate] = useState('')
+  const convertMutation = useMutation({
+    mutationFn: () => conversionApi.full({
+      receipt_id: Number(id),
+      ...(convertRate.trim() ? { rate: convertRate.trim() } : {}),
+    }),
+    onSuccess: () => {
+      showToast.success('Receipt fully converted to the other currency')
+      setShowConvert(false)
+      queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith('receipt') })
+    },
+    onError: (e) => showToast.error(parseApiError(e, 'Conversion failed')),
+  })
+  const targetCurrency = receipt?.currency === 'ZWG' ? 'USD' : 'ZWG'
+
   const handlePrint = () => {
     if (!receipt) return
     printReceipt({
@@ -168,6 +187,9 @@ export default function ReceiptDetail() {
         <Button variant="outline" onClick={handlePrint} className="gap-2">
           <Printer className="w-4 h-4" />
           Print
+        </Button>
+        <Button variant="outline" onClick={() => setShowConvert(true)} className="gap-2">
+          Convert Currency
         </Button>
         <Button variant="outline" onClick={() => setShowVoid(true)} className="gap-2 text-red-600 border-red-200 hover:bg-red-50">
           Void Receipt
@@ -379,6 +401,42 @@ export default function ReceiptDetail() {
               disabled={voidMutation.isPending || (voidMode === 'custom' && !voidDate)}
               onClick={() => voidMutation.mutate()}>
               {voidMutation.isPending ? 'Voiding…' : 'Void Receipt'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Full Conversion — mirrors this receipt into the other currency:
+          a negative receipt cancels it here, and a matching receipt is
+          created in the target currency at the applied rate. */}
+      <Modal open={showConvert} onClose={() => setShowConvert(false)} title="Convert Receipt Currency">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            This receipt is <strong>{receipt?.currency || '—'} {formatCurrency(receipt?.amount || 0)}</strong>.
+            Converting posts a negative receipt in {receipt?.currency || 'the source currency'} and a
+            mirrored receipt in <strong>{targetCurrency}</strong>.
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Exchange rate (optional)</label>
+            <input
+              type="number"
+              step="0.0001"
+              min="0"
+              value={convertRate}
+              onChange={(e) => setConvertRate(e.target.value)}
+              placeholder="Leave blank to use the property / client rate"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Rate hierarchy when blank: manual override → property rate → client default.
+            </p>
+          </div>
+          <div className="flex gap-3 pt-1">
+            <Button variant="outline" className="flex-1" onClick={() => setShowConvert(false)}>Cancel</Button>
+            <Button className="flex-1"
+              disabled={convertMutation.isPending}
+              onClick={() => convertMutation.mutate()}>
+              {convertMutation.isPending ? 'Converting…' : `Convert to ${targetCurrency}`}
             </Button>
           </div>
         </div>

@@ -31,6 +31,14 @@ export default function TenantLease() {
     placeholderData: keepPreviousData,
   })
 
+  // Levy account holders see contract wording instead of rental wording.
+  const { data: profile } = useQuery({
+    queryKey: ['portal-profile-page'],
+    queryFn: () => tenantPortalApi.profile().then(r => r.data),
+    staleTime: 5 * 60 * 1000,
+  })
+  const isLevy = profile?.account_type === 'levy'
+
   const lease = data?.active_lease || null
 
   const config = statusConfig[lease?.status || 'draft'] || statusConfig.draft
@@ -73,8 +81,10 @@ export default function TenantLease() {
     <div className="space-y-6">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">My Lease</h1>
-          <p className="text-sm text-gray-500 mt-1">Your current lease agreement details</p>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">{isLevy ? 'My Contract' : 'My Lease'}</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {isLevy ? 'Your current levy contract details' : 'Your current lease agreement details'}
+          </p>
         </div>
         {lease && (
           <Button variant="outline" className="gap-2" onClick={handlePrintLease}>
@@ -130,7 +140,7 @@ export default function TenantLease() {
               </div>
 
               <div className="space-y-1.5">
-                <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Monthly Rent</p>
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">{isLevy ? 'Monthly Levy' : 'Monthly Rent'}</p>
                 <div className="flex items-center gap-2 text-sm text-gray-700">
                   <DollarSign className="w-3.5 h-3.5 text-gray-400" />
                   <span className="font-semibold">{formatCurrency(lease.monthly_rent || 0)}</span>

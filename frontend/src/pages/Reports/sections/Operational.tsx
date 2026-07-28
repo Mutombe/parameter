@@ -249,6 +249,7 @@ function VacancyReport() {
 
 function RentRolloverReport() {
   const navigate = useNavigate()
+  const { currency, category } = useReportFilters()
   const [startDate, setStartDate] = useState(() => {
     const d = new Date()
     return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0]
@@ -296,15 +297,21 @@ function RentRolloverReport() {
 
   // Level 1 query
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['rent-rollover', startDate, endDate],
-    queryFn: () => reportsApi.rentRollover({ start_date: startDate, end_date: endDate }).then(r => r.data),
+    queryKey: ['rent-rollover', startDate, endDate, currency, category],
+    queryFn: () => reportsApi.rentRollover({
+      start_date: startDate, end_date: endDate,
+      ...(currency ? { currency } : {}), ...(category ? { category } : {}),
+    } as any).then(r => r.data),
     placeholderData: keepPreviousData,
   })
 
   // Level 2 query
   const { data: l2Data, isLoading: l2Loading } = useQuery({
-    queryKey: ['rent-rollover-l2', drillState.propertyId, startDate, endDate],
-    queryFn: () => reportsApi.rentRollover({ start_date: startDate, end_date: endDate, property_id: drillState.propertyId! }).then(r => r.data),
+    queryKey: ['rent-rollover-l2', drillState.propertyId, startDate, endDate, currency, category],
+    queryFn: () => reportsApi.rentRollover({
+      start_date: startDate, end_date: endDate, property_id: drillState.propertyId!,
+      ...(currency ? { currency } : {}), ...(category ? { category } : {}),
+    } as any).then(r => r.data),
     enabled: drillState.level === 2 && !!drillState.propertyId,
     placeholderData: keepPreviousData,
   })
@@ -651,14 +658,17 @@ function AgedAnalysisReport() {
   const [asOfDate, setAsOfDate] = useState(today)
   const [propertyFilter, setPropertyFilter] = useState<string>('')
   const [landlordFilter, setLandlordFilter] = useState<string>('')
+  const { currency, category } = useReportFilters()
 
   const { data: analysisData, isLoading, refetch } = useQuery({
-    queryKey: ['aged-analysis', asOfDate, propertyFilter, landlordFilter],
+    queryKey: ['aged-analysis', asOfDate, propertyFilter, landlordFilter, currency, category],
     queryFn: () => reportsApi.agedAnalysis({
       as_of_date: asOfDate,
       ...(propertyFilter ? { property_id: Number(propertyFilter) } : {}),
       ...(landlordFilter ? { landlord_id: Number(landlordFilter) } : {}),
-    }).then(r => r.data),
+      ...(currency ? { currency } : {}),
+      ...(category ? { category } : {}),
+    } as any).then(r => r.data),
     placeholderData: keepPreviousData,
   })
 
@@ -886,12 +896,15 @@ function LeaseChargeSummaryReport() {
     placeholderData: keepPreviousData,
   })
 
+  const { currency, category } = useReportFilters()
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['lease-charges', propertyFilter, landlordFilter],
+    queryKey: ['lease-charges', propertyFilter, landlordFilter, currency, category],
     queryFn: () => reportsApi.leaseCharges({
       ...(propertyFilter ? { property_id: Number(propertyFilter) } : {}),
       ...(landlordFilter ? { landlord_id: Number(landlordFilter) } : {}),
-    }).then(r => r.data),
+      ...(currency ? { currency } : {}),
+      ...(category ? { category } : {}),
+    } as any).then(r => r.data),
     placeholderData: keepPreviousData,
   })
 

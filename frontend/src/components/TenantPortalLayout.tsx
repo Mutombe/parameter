@@ -15,8 +15,9 @@ import {
   Eye,
   ArrowLeft,
 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../stores/authStore'
-import { authApi } from '../services/api'
+import { authApi, tenantPortalApi } from '../services/api'
 import { cn } from '../lib/utils'
 import { useThemeEffect } from '../hooks/useThemeEffect'
 import { useNetworkStatus } from '../hooks/useNetworkStatus'
@@ -43,9 +44,19 @@ export default function TenantPortalLayout() {
 
   const isImpersonating = !!impersonation
 
+  // The portal serves both rental tenants and levy account holders — the
+  // profile's account_type decides the branding and wording throughout.
+  const { data: profile } = useQuery({
+    queryKey: ['portal-profile', impersonation?.tenantId ?? 'self'],
+    queryFn: () => tenantPortalApi.profile().then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
+  })
+  const isLevy = profile?.account_type === 'levy'
+  const portalTitle = isLevy ? 'Account Holder Portal' : 'Tenant Portal'
+
   const handleExitImpersonation = () => {
     stopImpersonation()
-    navigate(`/dashboard/tenants/${impersonation?.tenantId}`)
+    navigate(`/dashboard/${isLevy ? 'account-holders' : 'tenants'}/${impersonation?.tenantId}`)
   }
 
   const handleLogout = async () => {
@@ -68,7 +79,7 @@ export default function TenantPortalLayout() {
             <Home className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="font-bold text-gray-900">Tenant Portal</h1>
+            <h1 className="font-bold text-gray-900">{portalTitle}</h1>
             <p className="text-xs text-gray-500">Property Management</p>
           </div>
         </div>
@@ -92,7 +103,7 @@ export default function TenantPortalLayout() {
             }
           >
             <item.icon className="w-5 h-5" />
-            {item.name}
+            {isLevy && item.name === 'My Lease' ? 'My Contract' : item.name}
           </NavLink>
         ))}
       </nav>
@@ -176,7 +187,7 @@ export default function TenantPortalLayout() {
           <button onClick={() => setMobileOpen(true)} className="p-2 hover:bg-gray-100 rounded-lg">
             <Menu className="w-5 h-5 text-gray-600" />
           </button>
-          <h1 className="font-bold text-gray-900">Tenant Portal</h1>
+          <h1 className="font-bold text-gray-900">{portalTitle}</h1>
           <div className="w-9" /> {/* Spacer */}
         </div>
 

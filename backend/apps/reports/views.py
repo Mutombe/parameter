@@ -2705,7 +2705,7 @@ class LandlordStatementView(APIView):
         return receipt.amount * rate
 
     @staticmethod
-    def _receipt_base_qs(unit_id_list, property_id_list, currency=None):
+    def _receipt_base_qs(unit_id_list, property_id_list, currency=None, category=None):
         """Apply the shared scope helper. Uses `_scoped_receipt_qs` so the
         OR'd JOINs from `_receipt_scope_q` don't break later
         `.aggregate(_commission_expr())` calls (the OuterRef subquery in
@@ -2713,6 +2713,11 @@ class LandlordStatementView(APIView):
         qs = _scoped_receipt_qs(unit_id_list, property_id_list)
         if currency:
             qs = qs.filter(currency=currency)
+        if category:
+            qs = qs.filter(
+                Q(sub_account_category=category) |
+                Q(invoice__invoice_type=category)
+            )
         return qs
 
     def get(self, request):
@@ -2720,6 +2725,7 @@ class LandlordStatementView(APIView):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
         currency = request.query_params.get('currency', '').upper() or None
+        category = request.query_params.get('category') or None
 
         if not landlord_id:
             return Response({'error': 'landlord_id is required'}, status=400)
@@ -2752,7 +2758,7 @@ class LandlordStatementView(APIView):
 
         # ── Opening balance (all transactions before start_date) ──
         # Use DB aggregation instead of Python loops to avoid OOM for large histories
-        prior_receipt_qs = self._receipt_base_qs(unit_id_list, property_id_list, currency).filter(
+        prior_receipt_qs = self._receipt_base_qs(unit_id_list, property_id_list, currency, category).filter(
             date__lt=start_date,
         )
         prior_agg = prior_receipt_qs.aggregate(
@@ -2772,12 +2778,14 @@ class LandlordStatementView(APIView):
         ).exclude(expense_kind='non_cash')
         if currency:
             prior_expense_qs = prior_expense_qs.filter(currency=currency)
+        if category:
+            prior_expense_qs = prior_expense_qs.filter(sub_account_category=category)
         prior_expenses_total = prior_expense_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
 
         opening_balance = prior_receipts_total - prior_commissions_total - prior_expenses_total
 
         # ── Period transactions ──
-        receipts = list(self._receipt_base_qs(unit_id_list, property_id_list, currency).filter(
+        receipts = list(self._receipt_base_qs(unit_id_list, property_id_list, currency, category).filter(
             date__gte=start_date, date__lte=end_date,
         ).select_related(
             'tenant', 'invoice', 'invoice__unit', 'invoice__unit__property',
@@ -2797,6 +2805,8 @@ class LandlordStatementView(APIView):
         ).exclude(expense_kind='non_cash')
         if currency:
             expense_qs = expense_qs.filter(currency=currency)
+        if category:
+            expense_qs = expense_qs.filter(sub_account_category=category)
         expenses = expense_qs.order_by('date')
 
         transactions = []
@@ -3332,6 +3342,7 @@ class AgedAnalysisView(APIView):
         property_id = request.query_params.get('property_id')
         landlord_id = request.query_params.get('landlord_id')
         currency = request.query_params.get('currency') or None
+        category = request.query_params.get('category') or None
 
         # Base queryset - unpaid invoices.
         # `draft` is included because invoices issued via flows that don't
@@ -3342,12 +3353,14 @@ class AgedAnalysisView(APIView):
         invoices = Invoice.objects.filter(
             status__in=['draft', 'sent', 'partial', 'overdue'],
             balance__gt=0
-        )
-        if currency:
-            invoices = invoices.filter(currency=currency).select_related(
+        ).select_related(
             'tenant', 'unit', 'unit__property', 'unit__property__landlord',
             'lease', 'lease__unit__property', 'lease__property', 'property',
         )
+        if currency:
+            invoices = invoices.filter(currency=currency)
+        if category:
+            invoices = invoices.filter(invoice_type=category)
 
         # Apply filters. Property/landlord scoping ORs every linkage path —
         # an invoice may carry the property via `unit`, via direct `property`
@@ -3953,18 +3966,35 @@ class LeaseChargeSummaryView(APIView):
         property_id = request.query_params.get('property_id')
         landlord_id = request.query_params.get('landlord_id')
         currency = request.query_params.get('currency') or None
+        category = request.query_params.get('category') or None
 
-        # Get active leases
+        # Get active leases. Levy contracts attach at property level (no
+        # unit), so every property/landlord filter must OR both linkages.
         leases = LeaseAgreement.objects.filter(
             status='active'
         ).select_related(
             'tenant', 'unit', 'unit__property', 'unit__property__landlord',
+            'property', 'property__landlord',
         ).order_by('unit__property__name', 'unit__unit_number')
 
         if property_id:
-            leases = leases.filter(unit__property_id=property_id)
+            leases = leases.filter(
+                Q(unit__property_id=property_id) | Q(property_id=property_id)
+            )
         if landlord_id:
-            leases = leases.filter(unit__property__landlord_id=landlord_id)
+            leases = leases.filter(
+                Q(unit__property__landlord_id=landlord_id) |
+                Q(property__landlord_id=landlord_id)
+            )
+        if currency:
+            leases = leases.filter(currency=currency)
+        if category:
+            # Category maps onto the contract side: rent → rental leases,
+            # levy-family categories → levy contracts.
+            if category in ('rent', 'rental'):
+                leases = leases.filter(lease_type='rental')
+            elif category in ('levy', 'special_levy', 'maintenance', 'parking', 'rates'):
+                leases = leases.filter(lease_type='levy')
 
         # Determine commission rate per lease from income_type on latest invoice
         lease_ids = [l.id for l in leases]
@@ -4000,8 +4030,12 @@ class LeaseChargeSummaryView(APIView):
         total_amount = Decimal('0')
 
         for lease in leases:
-            prop = lease.unit.property
+            # Levy contracts carry the property directly; rentals via unit.
+            prop = lease.unit.property if lease.unit_id else lease.property
+            if prop is None:
+                continue
             landlord = prop.landlord
+            unit_number = lease.unit.unit_number if lease.unit_id else '—'
 
             # Commission rate: per-(property, income_type) override → IncomeType
             # default → 0%. Falls back to the income-type default surfaced by
@@ -4033,7 +4067,7 @@ class LeaseChargeSummaryView(APIView):
             property_display = ', '.join(parts)
 
             # Tenant display: "Name UnitNumber PropertyName"
-            tenant_display = f"{lease.tenant.name} {lease.unit.unit_number} {prop.name}"
+            tenant_display = f"{lease.tenant.name} {unit_number} {prop.name}".replace(' — ', ' ')
 
             # Charge type from lease_type
             charge_type = lease_type_labels.get(lease.lease_type, lease.lease_type)
@@ -4069,8 +4103,8 @@ class LeaseChargeSummaryView(APIView):
                 'balance': float(balance),
                 # Extra fields for navigation/filtering
                 'unit_id': lease.unit_id,
-                'unit': lease.unit.unit_number,
-                'unit_name': lease.unit.unit_number,
+                'unit': unit_number,
+                'unit_name': unit_number,
                 'landlord_id': landlord.id,
                 'landlord_name': landlord.name,
             })
@@ -4128,6 +4162,14 @@ class ReceiptListingView(APIView):
         ).prefetch_related(active_leases).filter(date__lte=end_date)
         if currency:
             receipts = receipts.filter(currency=currency)
+        category = request.query_params.get('category') or None
+        if category:
+            # A receipt's category lives on sub_account_category, or on the
+            # linked invoice's type for invoice-driven receipts.
+            receipts = receipts.filter(
+                Q(sub_account_category=category) |
+                Q(invoice__invoice_type=category)
+            )
 
         if start_date:
             receipts = receipts.filter(date__gte=start_date)

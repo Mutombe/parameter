@@ -6,13 +6,14 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Edit2, Mail, Phone, CreditCard, Wallet, Calendar, FileText,
-  Briefcase, Plus, Layers, ChevronLeft, ChevronRight, Search, Building2,
+  Briefcase, Plus, Layers, ChevronLeft, ChevronRight, Search, Building2, Eye,
 } from 'lucide-react'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { accountHolderApi, invoiceApi, receiptApi, subsidiaryApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { Modal, Button, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
+import { useAuthStore } from '../../stores/authStore'
 import { usePagination } from '../../hooks/usePagination'
 import { usePrefetch } from '../../hooks/usePrefetch'
 import TenantForm from '../../components/forms/TenantForm'
@@ -66,6 +67,7 @@ const PAGE_SIZE = 10
 export default function AccountHolderDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { startImpersonation } = useAuthStore()
   const queryClient = useQueryClient()
   const prefetch = usePrefetch()
   const holderId = Number(id)
@@ -201,6 +203,16 @@ export default function AccountHolderDetail() {
         <div className="flex items-center gap-2">
           <Button onClick={() => navigate('/dashboard/account-holders')} className="gap-2">
             <Plus className="w-4 h-4" /> Add Account Holder
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              startImpersonation(holderId, holder?.name || `Account Holder #${holderId}`)
+              navigate('/portal')
+            }}
+            className="gap-2"
+          >
+            <Eye className="w-4 h-4" /> Portal
           </Button>
           <Button variant="outline" onClick={() => setShowEditModal(true)} className="gap-2">
             <Edit2 className="w-4 h-4" /> Edit

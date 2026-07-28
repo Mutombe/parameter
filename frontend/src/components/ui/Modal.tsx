@@ -92,10 +92,10 @@ export function Modal({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ type: 'spring', duration: 0.3 }}
-              className={`relative bg-white rounded-2xl shadow-xl w-full ${sizeClasses[size]}`}
+              className={`relative bg-white rounded-2xl shadow-xl w-full flex flex-col max-h-[calc(100vh-2rem)] ${sizeClasses[size]}`}
             >
               {/* Header */}
-              <div className="flex items-start justify-between p-6 border-b border-gray-100">
+              <div className="flex items-start justify-between p-6 border-b border-gray-100 shrink-0">
                 <div className="flex items-center gap-3">
                   {Icon && (
                     <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
@@ -120,8 +120,10 @@ export function Modal({
                 )}
               </div>
 
-              {/* Content */}
-              <div className="p-6">{children}</div>
+              {/* Content — scrolls inside the dialog so the whole modal always
+                  fits one screen; the visible scrollbar + overscroll-contain
+                  keep wheel input inside the dialog instead of the page. */}
+              <div className="p-6 flex-1 min-h-0 overflow-y-auto overscroll-contain modal-scroll">{children}</div>
             </motion.div>
           </div>
         </div>

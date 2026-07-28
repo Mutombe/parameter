@@ -7,6 +7,7 @@ import {
   Search,
   Filter,
   Plus,
+  Printer,
   Check,
   RotateCcw,
   AlertCircle,
@@ -30,6 +31,7 @@ import {
 } from 'lucide-react'
 import { journalApi, journalEntryApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
+import { printTable } from '../../lib/printTemplate'
 import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, Skeleton, Textarea, SelectionCheckbox, BulkActionsBar, TimeAgo, Tooltip, Pagination, DatePicker } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { exportTableData } from '../../lib/export'
@@ -358,10 +360,36 @@ export default function Journals() {
           { label: 'Journals' },
         ]}
         actions={
-          <Button onClick={() => setShowCreateModal(true)} className="gap-2">
-            <Plus className="w-4 h-4" />
-            New Journal Entry
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => printTable(
+                (journals as any[]).map((j: any) => ({
+                  number: j.journal_number || j.id,
+                  date: j.date || '—',
+                  description: j.description || '—',
+                  status: j.status || '—',
+                  total: formatCurrency(Number(j.total_debit || 0)),
+                })),
+                [
+                  { key: 'number', label: 'Journal #' },
+                  { key: 'date', label: 'Date' },
+                  { key: 'description', label: 'Description' },
+                  { key: 'status', label: 'Status' },
+                  { key: 'total', label: 'Total', align: 'right' },
+                ],
+                { title: 'Journal Entries' },
+              )}
+            >
+              <Printer className="w-4 h-4" />
+              Print
+            </Button>
+            <Button onClick={() => setShowCreateModal(true)} className="gap-2">
+              <Plus className="w-4 h-4" />
+              New Journal Entry
+            </Button>
+          </div>
         }
       />
 

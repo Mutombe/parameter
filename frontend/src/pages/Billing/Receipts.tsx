@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { Search, CreditCard, Plus, Send, Loader2, Eye, X, User, Download, Printer, BookOpen } from 'lucide-react'
 import { receiptApi, tenantApi, invoiceApi, leaseApi, bankAccountApi, landlordApi } from '../../services/api'
 import { formatCurrency, formatDate, useDebounce, cn } from '../../lib/utils'
+import { printTable } from '../../lib/printTemplate'
 import { EmptyTableState, PageHeader, Modal, Button, Input, Select, Textarea, SelectionCheckbox, BulkActionsBar, Tooltip, Pagination, DatePicker } from '../../components/ui'
 import { PayerSelect } from '../../components/PayerSelect'
 import { PayerCell } from '../../components/PayerCell'
@@ -396,6 +397,30 @@ export default function Receipts() {
         ]}
         actions={
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => printTable(
+                (receipts as any[]).map((x: any) => ({
+                  number: x.receipt_number || x.id,
+                  date: x.date || '—',
+                  payer: x.tenant_name || '—',
+                  method: x.payment_method || '—',
+                  amount: formatCurrency(Number(x.amount || 0), x.currency),
+                })),
+                [
+                  { key: 'number', label: 'Receipt #' },
+                  { key: 'date', label: 'Date' },
+                  { key: 'payer', label: 'Payer' },
+                  { key: 'method', label: 'Method' },
+                  { key: 'amount', label: 'Amount', align: 'right' },
+                ],
+                { title: 'Receipts Listing' },
+              )}
+            >
+              <Printer className="w-4 h-4" />
+              Print
+            </Button>
             <Button variant="outline" onClick={() => setShowContribution(true)} className="gap-2">
               <Plus className="w-4 h-4" />
               Owner Contribution

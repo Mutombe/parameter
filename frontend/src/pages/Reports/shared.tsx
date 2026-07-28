@@ -149,6 +149,10 @@ interface ReportFilterContextValue {
   // so reports filter transactions by currency, not accounts.
   currency: string
   setCurrency: (v: string) => void
+  // Category slice — '' = all categories; narrows operational reports to a
+  // single income category (rent, levy, special levy, …).
+  category: string
+  setCategory: (v: string) => void
   // Shared reporting period (resolved [start, end] for the active selection).
   periodStart: string
   periodEnd: string
@@ -162,6 +166,7 @@ function useReportFilters() {
   if (!ctx) return {
     landlordId: '', propertyId: '', setLandlordId: () => {}, setPropertyId: () => {},
     currency: '', setCurrency: () => {},
+    category: '', setCategory: () => {},
     periodStart: '', periodEnd: '', periodLabel: '',
   }
   return ctx
