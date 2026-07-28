@@ -253,10 +253,17 @@ class Invoice(SoftDeleteModel):
         if self.journal:
             return self.journal
 
-        # Deferred-revenue account for THIS invoice's category (6000/0X0) —
+        # Deferred-revenue account for THIS invoice's category —
         # a levy invoice credits Unpaid Levy, a rates invoice Unpaid Rates,
         # all behaving exactly like Unpaid Rent.
         unpaid_account = get_unpaid_account(self.invoice_type or 'rent')
+
+        # POCKET-FIRST: the tenant's category pocket is the transaction's
+        # face; Accounts Receivable is just the control account summarising
+        # all pockets, updated automatically on the same journal line.
+        tenant_sub = SubsidiaryAccount.get_or_create_for_tenant_category(
+            self.tenant, category=self.invoice_type or 'rent', currency=self.currency,
+        )
 
         ar_account, _ = ChartOfAccount.objects.get_or_create(
             code='1300',
@@ -287,10 +294,12 @@ class Invoice(SoftDeleteModel):
             created_by=user
         )
 
-        # GL Entry 1: Dr Accounts Receivable (control account)
+        # Entry 1 — Dr the TENANT'S POCKET (its control account, Accounts
+        # Receivable, is carried on the same line and updated automatically).
         je_debit = JournalEntry.objects.create(
             journal=journal,
             account=ar_account,
+            subsidiary_account=tenant_sub,
             description=desc,
             debit_amount=self.total_amount,
             source_type='invoice',
@@ -312,10 +321,7 @@ class Invoice(SoftDeleteModel):
         # === Subsidiary Ledger Entries ===
         # Txn 1: Debit the tenant's CATEGORY pocket for this invoice item —
         # a rent invoice debits the tenant's Rent pocket, a parking invoice
-        # the Parking pocket, etc. (mirrors the landlord pocket structure).
-        tenant_sub = SubsidiaryAccount.get_or_create_for_tenant_category(
-            self.tenant, category=self.invoice_type or 'rent', currency=self.currency,
-        )
+        # the Parking pocket, etc. (pocket resolved above, before posting).
         SubsidiaryTransaction.create_entry(
             account=tenant_sub,
             date=self.date,
@@ -744,6 +750,18 @@ class Receipt(SoftDeleteModel):
             self.amount, commission_rate, vat_rate
         )
 
+        # POCKET-FIRST: resolve both pockets up front — the receipt's
+        # journal lines carry them as their face; the control accounts
+        # (1300 / 2600) ride along and stay equal to the pocket totals.
+        tenant_sub = SubsidiaryAccount.get_or_create_for_tenant_category(
+            self.tenant, category=invoice_type, currency=self.currency,
+        )
+        landlord_sub = None
+        if landlord:
+            landlord_sub = SubsidiaryAccount.get_or_create_for_landlord_category(
+                landlord, category=invoice_type, currency=self.currency
+            )
+
         # === Build description ===
         payment_label = self._get_payment_method_label()
         unit_label = ''
@@ -779,9 +797,10 @@ class Receipt(SoftDeleteModel):
             description=base_desc, debit_amount=self.amount,
             source_type='receipt', source_id=self.id
         )
-        # GL: Cr Accounts Receivable
+        # Cr the TENANT'S POCKET (Accounts Receivable control rides along)
         je_ar_cr = JournalEntry.objects.create(
             journal=journal, account=ar_account,
+            subsidiary_account=tenant_sub,
             description=base_desc, credit_amount=self.amount,
             source_type='receipt', source_id=self.id
         )
@@ -793,9 +812,10 @@ class Receipt(SoftDeleteModel):
             description=base_desc, debit_amount=self.amount,
             source_type='receipt', source_id=self.id
         )
-        # GL: Cr Landlord Trust Payable (money now owed to landlord)
+        # Cr the LANDLORD'S POCKET (Trust Payable control rides along)
         je_trust_cr = JournalEntry.objects.create(
             journal=journal, account=landlord_trust_account,
+            subsidiary_account=landlord_sub,
             description=base_desc, credit_amount=self.amount,
             source_type='receipt', source_id=self.id
         )
@@ -808,6 +828,7 @@ class Receipt(SoftDeleteModel):
             # GL: Dr Landlord Trust Payable (reduce what's owed for commission)
             je_trust_dr = JournalEntry.objects.create(
                 journal=journal, account=landlord_trust_account,
+                subsidiary_account=landlord_sub,
                 description=f'Rent Commission-{base_desc}',
                 debit_amount=gross_commission,
                 source_type='receipt', source_id=self.id
@@ -836,9 +857,6 @@ class Receipt(SoftDeleteModel):
         # landlord pocket credited below use that same value, so a
         # maintenance payment can never credit the tenant's maintenance
         # pocket but a different landlord pocket (or vice versa).
-        tenant_sub = SubsidiaryAccount.get_or_create_for_tenant_category(
-            self.tenant, category=invoice_type, currency=self.currency,
-        )
         billing_contra = Invoice(invoice_type=invoice_type)._get_billing_contra_code()
         income_contra = Invoice(invoice_type=invoice_type)._get_income_contra_code()
         unpaid_contra = Invoice(invoice_type=invoice_type)._get_unpaid_contra_code()
@@ -856,12 +874,7 @@ class Receipt(SoftDeleteModel):
             journal_entry=je_ar_cr,
         )
 
-        if landlord:
-            # Use category-specific landlord sub-account based on invoice type
-            landlord_sub = SubsidiaryAccount.get_or_create_for_landlord_category(
-                landlord, category=invoice_type, currency=self.currency
-            )
-
+        if landlord and landlord_sub is not None:
             # Activity 3 Txn 6: Cr Landlord Account (rent income transfer)
             SubsidiaryTransaction.create_entry(
                 account=landlord_sub, date=self.date,
@@ -1202,6 +1215,32 @@ class Expense(SoftDeleteModel):
                 )
             credit_description = f'Payment to {self.payee_name}'
 
+        # POCKET-FIRST: a cash expense funded by a landlord debits the
+        # LANDLORD'S POCKET (Trust Payable control rides along) rather than
+        # an agency P&L account — it is the landlord's cost, reported on
+        # their statements from the Expense record itself. Supplier-debt
+        # settlements and accruals keep their GL debit (AP / expense).
+        landlord_obj = self.landlord
+        if landlord_obj is None and self.payee_type == 'landlord' and self.payee_id:
+            from apps.masterfile.models import Landlord
+            landlord_obj = Landlord.objects.filter(id=self.payee_id).first()
+        landlord_sub = None
+        debit_via_trust = bool(landlord_obj) and not is_non_cash and not self.clears_payable
+        if landlord_obj and not is_non_cash:
+            funding_cat = (
+                self.sub_account_category
+                or (cat.funding_category if cat and cat.funding_category else 'rent')
+            )
+            landlord_sub = SubsidiaryAccount.get_or_create_for_landlord_category(
+                landlord_obj, category=funding_cat, currency=self.currency
+            )
+        if debit_via_trust:
+            trust_debit_account, _ = ChartOfAccount.objects.get_or_create(
+                code='2600',
+                defaults={'name': 'Landlord Trust Payable', 'account_type': 'liability',
+                          'account_subtype': 'accounts_payable', 'is_system': True},
+            )
+
         # Create journal — type is PAYMENTS for cash, GENERAL for accruals
         # so the cash journal listing isn't polluted by non-cash adjustments.
         journal = Journal.objects.create(
@@ -1222,7 +1261,8 @@ class Expense(SoftDeleteModel):
 
         je_debit = JournalEntry.objects.create(
             journal=journal,
-            account=expense_account,
+            account=trust_debit_account if debit_via_trust else expense_account,
+            subsidiary_account=landlord_sub if debit_via_trust else None,
             description=self.description,
             debit_amount=self.amount,
             source_type='expense',
@@ -1242,23 +1282,9 @@ class Expense(SoftDeleteModel):
 
         # === Subsidiary Ledger Entry for the landlord ===
         # Non-cash expenses don't touch the trust ledger — they're P&L only.
-        # Cash expenses reduce the landlord's matching sub-account.
-        landlord_obj = self.landlord
-        if landlord_obj is None and self.payee_type == 'landlord' and self.payee_id:
-            from apps.masterfile.models import Landlord
-            landlord_obj = Landlord.objects.filter(id=self.payee_id).first()
-
-        if landlord_obj and not is_non_cash:
-            # Explicit pick on the expense wins over the category default,
-            # so users can override which trust pocket is deducted (e.g. a
-            # maintenance expense funded out of the deposit pocket).
-            funding_cat = (
-                self.sub_account_category
-                or (cat.funding_category if cat and cat.funding_category else 'rent')
-            )
-            landlord_sub = SubsidiaryAccount.get_or_create_for_landlord_category(
-                landlord_obj, category=funding_cat, currency=self.currency
-            )
+        # Cash expenses reduce the landlord's matching sub-account (pocket
+        # resolved above, before posting).
+        if landlord_sub is not None:
             SubsidiaryTransaction.create_entry(
                 account=landlord_sub,
                 date=self.date,

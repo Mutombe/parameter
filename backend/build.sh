@@ -85,4 +85,7 @@ python manage.py setup_billing_schedules || true
 echo "Self-healing: posting any invoices stuck in DRAFT (failed auto-post)..."
 python manage.py post_draft_invoices --all-tenants || true
 
+echo "Verifying control accounts equal pocket totals..."
+python manage.py verify_control_accounts --all-tenants || true
+
 echo "Build completed successfully!"

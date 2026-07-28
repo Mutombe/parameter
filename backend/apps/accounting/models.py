@@ -285,6 +285,30 @@ class ExchangeRate(models.Model):
         return Decimal('1.0')  # Default to 1:1 if no rate found
 
 
+def control_account_for_pocket(sub):
+    """The GL control account summarising this pocket's population.
+
+    Tenant / account-holder pockets roll up into 1300 Accounts Receivable;
+    landlord pockets into 2600 Landlord Trust Payable. The system keeps
+    each control equal to the sum of its pockets by mirroring every pocket
+    movement into its control within the same journal."""
+    if sub.entity_type in ('tenant', 'account_holder'):
+        acct, _ = ChartOfAccount.objects.get_or_create(
+            code='1300',
+            defaults={'name': 'Accounts Receivable', 'account_type': 'asset',
+                      'account_subtype': 'accounts_receivable', 'is_system': True},
+        )
+        return acct
+    if sub.entity_type == 'landlord':
+        acct, _ = ChartOfAccount.objects.get_or_create(
+            code='2600',
+            defaults={'name': 'Landlord Trust Payable', 'account_type': 'liability',
+                      'account_subtype': 'accounts_payable', 'is_system': True},
+        )
+        return acct
+    return None
+
+
 class Journal(models.Model):
     """
     Journal - Transaction header for grouping related entries.
@@ -405,8 +429,12 @@ class Journal(models.Model):
 
         gl_entries = []
         for entry in entries:
-            # --- Subsidiary sub-ledger line (landlord / tenant) ---
-            if entry.subsidiary_account_id:
+            # --- Subsidiary-ONLY line (e.g. manual journal to a pocket) ---
+            # The pocket is authoritative: post the pocket movement, then
+            # AUTO-MIRROR the same amount into the pocket's control account
+            # (1300 for tenant/account-holder, 2600 for landlord) so the
+            # control always equals the sum of its pockets.
+            if entry.subsidiary_account_id and not entry.account_id:
                 # create_entry applies the correct sign for the entity type
                 # (tenant debit-normal, landlord credit-normal) and stamps a
                 # running balance, mirroring how receipts/charges post.
@@ -420,7 +448,36 @@ class Journal(models.Model):
                     credit_amount=entry.credit_amount or None,
                     journal_entry=entry,
                 )
+                control = control_account_for_pocket(entry.subsidiary_account)
+                if control is not None:
+                    control = ChartOfAccount.objects.select_for_update().get(pk=control.pk)
+                    if entry.debit_amount:
+                        if control.normal_balance == 'debit':
+                            control.current_balance += entry.debit_amount
+                        else:
+                            control.current_balance -= entry.debit_amount
+                    if entry.credit_amount:
+                        if control.normal_balance == 'credit':
+                            control.current_balance += entry.credit_amount
+                        else:
+                            control.current_balance -= entry.credit_amount
+                    control.save(update_fields=['current_balance', 'updated_at'])
+                    gl_entries.append(GeneralLedger(
+                        journal_entry=entry,
+                        account=control,
+                        date=self.date,
+                        description=entry.description or self.description,
+                        debit_amount=entry.debit_amount,
+                        credit_amount=entry.credit_amount,
+                        balance=control.current_balance,
+                        currency=self.currency,
+                        exchange_rate=self.exchange_rate,
+                    ))
                 continue
+            # (Hybrid lines — control account + pocket set together by the
+            #  posting engine — fall through: the GL side posts here, the
+            #  pocket side is created by the engine with its full contra
+            #  and reference context.)
 
             # --- Bank account line ---
             if entry.bank_account_id:
@@ -576,8 +633,12 @@ class JournalEntry(models.Model):
 
     @property
     def target(self):
-        """The account this line posts to, whatever its kind."""
-        return self.account or self.subsidiary_account or self.bank_account
+        """The account this line posts to, whatever its kind.
+
+        Pocket-first: when a line carries BOTH a subsidiary pocket and its
+        control GL account, the pocket is the line's face — users think in
+        tenants and landlords, not control accounts."""
+        return self.subsidiary_account or self.account or self.bank_account
 
     def __str__(self):
         tgt = self.target
@@ -587,13 +648,21 @@ class JournalEntry(models.Model):
         return f'Cr: {code} - {self.credit_amount}'
 
     def clean(self):
-        """Validate entry targets exactly one account and has debit XOR credit."""
+        """Validate entry targeting and debit XOR credit.
+
+        One target is the rule, with ONE sanctioned pairing: a subsidiary
+        pocket together with its GL control account (pocket-first posting —
+        the pocket is the line's face, the control account is maintained
+        automatically on the same line). Bank may never combine."""
         targets = [self.account_id, self.subsidiary_account_id, self.bank_account_id]
         set_count = sum(1 for t in targets if t)
         if set_count == 0:
             raise ValidationError('Entry must target a GL, subsidiary, or bank account')
         if set_count > 1:
-            raise ValidationError('Entry must target only one account')
+            hybrid = (self.account_id and self.subsidiary_account_id
+                      and not self.bank_account_id)
+            if not hybrid:
+                raise ValidationError('Entry must target only one account')
         if self.debit_amount and self.credit_amount:
             raise ValidationError('Entry cannot have both debit and credit amounts')
         if not self.debit_amount and not self.credit_amount:
