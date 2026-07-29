@@ -173,6 +173,19 @@ class Command(BaseCommand):
                             setattr(acct, k, fields[k])
                         acct.save(update_fields=changed + ['updated_at'])
                         updated += 1
+            # Retire old-chart 4x00 income accounts (they collide with the
+            # Long-term Liabilities range) and repoint IncomeTypes to the
+            # canonical 5000-range Property Income accounts.
+            from apps.accounting.income_provisioning import heal_legacy_income_accounts
+            deactivated, skipped = heal_legacy_income_accounts()
+
             self.stdout.write(self.style.SUCCESS(
                 f'[{schema}] chart installed: {created} created, {updated} aligned, '
                 f'{len(CHART)} canonical accounts'))
+            if deactivated:
+                self.stdout.write(self.style.SUCCESS(
+                    f'[{schema}] retired legacy income accounts: {", ".join(deactivated)}'))
+            if skipped:
+                self.stdout.write(self.style.WARNING(
+                    f'[{schema}] legacy income accounts WITH postings left active '
+                    f'(need balance transfer): {", ".join(skipped)}'))
