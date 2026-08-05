@@ -42,12 +42,21 @@ def _income_type_for(category):
 
 def commission_pct_for(property_obj, category):
     """Gross commission %% for (property, category): per-property override
-    first, then the income type's default, else zero."""
+    first, then the income type's default, else zero.
+
+    Non-commissionable categories (Rates, Levy, Special Levy, Maintenance,
+    Rates, Deposit, VAT) never attract commission — the income type carries a
+    non-zero `default_commission_rate` for other purposes, so `is_commissionable`
+    is the authority. This keeps a plain Rates -> Maintenance transfer a pure
+    three-step move with no commission legs, exactly as specified.
+    """
     from apps.masterfile.models import PropertyIncomeCommission
     it = _income_type_for(category)
     if it is None:
         return Decimal('0'), Decimal('15')
     vat_pct = Decimal(str(it.vat_rate or '15')) if getattr(it, 'is_vatable', True) else Decimal('0')
+    if not getattr(it, 'is_commissionable', True):
+        return Decimal('0'), vat_pct
     override = None
     if property_obj is not None:
         override = PropertyIncomeCommission.objects.filter(
@@ -164,9 +173,12 @@ def intraproperty_transfer(payer, property_obj, from_category, to_category,
             JournalEntry.objects.create(journal=jc, account=commission_gl,
                                         description=clabel, debit_amount=rev_net,
                                         credit_amount=Decimal('0'), source_type='transfer')
-            JournalEntry.objects.create(journal=jc, account=vat_gl,
-                                        description=clabel, debit_amount=rev_vat,
-                                        credit_amount=Decimal('0'), source_type='transfer')
+            # VAT line only when the category actually attracts VAT — a
+            # zero-amount entry fails the debit-or-credit invariant.
+            if rev_vat > 0:
+                JournalEntry.objects.create(journal=jc, account=vat_gl,
+                                            description=clabel, debit_amount=rev_vat,
+                                            credit_amount=Decimal('0'), source_type='transfer')
         if new_gross > 0:
             # charge the TO-rate commission as if receipted correctly
             JournalEntry.objects.create(journal=jc, subsidiary_account=ll_to,
@@ -177,9 +189,10 @@ def intraproperty_transfer(payer, property_obj, from_category, to_category,
             JournalEntry.objects.create(journal=jc, account=commission_gl,
                                         description=clabel, credit_amount=new_net,
                                         debit_amount=Decimal('0'), source_type='transfer')
-            JournalEntry.objects.create(journal=jc, account=vat_gl,
-                                        description=clabel, credit_amount=new_vat,
-                                        debit_amount=Decimal('0'), source_type='transfer')
+            if new_vat > 0:
+                JournalEntry.objects.create(journal=jc, account=vat_gl,
+                                            description=clabel, credit_amount=new_vat,
+                                            debit_amount=Decimal('0'), source_type='transfer')
         jc.post(user)
 
     return IntrapropertyTransfer.objects.create(
