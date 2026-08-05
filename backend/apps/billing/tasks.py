@@ -624,8 +624,20 @@ def _apply_late_penalties():
             if today <= grace_deadline:
                 continue
 
-            # Calculate penalty
-            penalty_amount = config.calculate_penalty(invoice.balance)
+            # Calculate penalty. The Minimums Method needs the monthly
+            # charge (this invoice's charge) and the tenant's carried-forward
+            # closing balance (all outstanding, same currency) so the base is
+            # min(charge, closing balance) rather than the raw arrears.
+            if config.penalty_type == 'minimums':
+                closing_balance = Invoice.objects.filter(
+                    tenant=invoice.tenant, balance__gt=0,
+                    currency=invoice.currency,
+                ).aggregate(t=models.Sum('balance'))['t'] or Decimal('0')
+                penalty_amount = config.calculate_penalty(
+                    invoice.balance, monthly_charge=invoice.amount,
+                    closing_balance=closing_balance)
+            else:
+                penalty_amount = config.calculate_penalty(invoice.balance)
             if penalty_amount <= 0:
                 continue
 

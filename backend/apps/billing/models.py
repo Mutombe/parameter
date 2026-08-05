@@ -1477,6 +1477,10 @@ class LatePenaltyConfig(models.Model):
         PERCENTAGE = 'percentage', 'Percentage of Invoice'
         FLAT_FEE = 'flat_fee', 'Flat Fee'
         BOTH = 'both', 'Percentage + Flat Fee'
+        # Minimums Method: penalty = rate x min(monthly charge, carried
+        # forward / closing balance). Capping the base at the monthly charge
+        # keeps accumulated arrears from compounding the penalty.
+        MINIMUMS = 'minimums', 'Minimums Method (% of min[Monthly Charge, Closing Balance])'
 
     property = models.ForeignKey(
         Property, on_delete=models.CASCADE, null=True, blank=True,
@@ -1532,15 +1536,32 @@ class LatePenaltyConfig(models.Model):
         target = self.tenant or self.property or 'System Default'
         return f'Penalty Config: {self.penalty_type} for {target}'
 
-    def calculate_penalty(self, overdue_amount):
-        """Calculate the penalty amount for a given overdue amount."""
+    def calculate_penalty(self, overdue_amount, monthly_charge=None, closing_balance=None):
+        """Calculate the penalty amount.
+
+        For the Minimums Method the base is min(monthly charge, closing
+        balance): if the monthly charge is smaller than the closing balance
+        the penalty is a percentage of the monthly charge; if the closing
+        balance is smaller, it is a percentage of the closing balance. This
+        caps the base at the monthly charge so accumulated arrears never
+        compound the penalty. `monthly_charge`/`closing_balance` fall back to
+        `overdue_amount` when a caller can't supply them.
+        """
         penalty = Decimal('0')
 
-        if self.penalty_type in ('percentage', 'both'):
-            penalty += overdue_amount * (self.percentage_rate / Decimal('100'))
+        if self.penalty_type == 'minimums':
+            charge = Decimal(str(monthly_charge)) if monthly_charge is not None else overdue_amount
+            balance = Decimal(str(closing_balance)) if closing_balance is not None else overdue_amount
+            base = min(charge, balance)
+            if base < 0:
+                base = Decimal('0')
+            penalty = base * (self.percentage_rate / Decimal('100'))
+        else:
+            if self.penalty_type in ('percentage', 'both'):
+                penalty += overdue_amount * (self.percentage_rate / Decimal('100'))
 
-        if self.penalty_type in ('flat_fee', 'both'):
-            penalty += self.flat_fee
+            if self.penalty_type in ('flat_fee', 'both'):
+                penalty += self.flat_fee
 
         if self.max_penalty_amount and penalty > self.max_penalty_amount:
             penalty = self.max_penalty_amount

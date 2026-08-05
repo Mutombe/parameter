@@ -32,7 +32,7 @@ interface PenaltyConfig {
   property_name: string | null
   tenant: number | null
   tenant_name: string | null
-  penalty_type: 'percentage' | 'flat_fee' | 'both'
+  penalty_type: 'percentage' | 'flat_fee' | 'both' | 'minimums'
   percentage_rate: string
   flat_fee: string
   currency: string
@@ -246,6 +246,7 @@ export default function LatePenalties() {
     percentage: 'Percentage',
     flat_fee: 'Flat Fee',
     both: 'Both',
+    minimums: 'Minimums Method',
   }
 
   const tabs = [
@@ -473,7 +474,8 @@ export default function LatePenalties() {
                     <p className="text-sm text-gray-500 mt-0.5">
                       {penaltyTypeLabel[config.penalty_type]}
                       {config.penalty_type !== 'flat_fee' && ` - ${config.percentage_rate}%`}
-                      {config.penalty_type !== 'percentage' && ` - ${config.currency} ${config.flat_fee}`}
+                      {config.penalty_type === 'minimums' && ' of min(charge, closing balance)'}
+                      {(config.penalty_type === 'flat_fee' || config.penalty_type === 'both') && ` - ${config.currency} ${config.flat_fee}`}
                       {config.grace_period_days > 0 && ` | ${config.grace_period_days} day grace period`}
                       {config.max_penalties_per_invoice === 1 && ' | One-time'}
                       {config.max_penalties_per_invoice === 0 && ' | Recurring'}
@@ -680,15 +682,23 @@ export default function LatePenalties() {
               { value: 'percentage', label: 'Percentage of Invoice' },
               { value: 'flat_fee', label: 'Flat Fee' },
               { value: 'both', label: 'Percentage + Flat Fee' },
+              { value: 'minimums', label: 'Minimums Method (% of min[Monthly Charge, Closing Balance])' },
             ]}
           />
+          {configForm.penalty_type === 'minimums' && (
+            <p className="text-xs text-gray-500 -mt-2">
+              The penalty is the percentage rate applied to the smaller of the monthly charge and the
+              carried-forward closing balance — capping the base at the monthly charge so accumulated
+              arrears never compound the penalty.
+            </p>
+          )}
 
           <div className="grid grid-cols-3 gap-4">
             {configForm.penalty_type !== 'flat_fee' && (
               <Input label="Percentage Rate (%)" type="number" step="0.01" value={configForm.percentage_rate}
                 onChange={(e) => setConfigForm({ ...configForm, percentage_rate: e.target.value })} />
             )}
-            {configForm.penalty_type !== 'percentage' && (
+            {(configForm.penalty_type === 'flat_fee' || configForm.penalty_type === 'both') && (
               <Input label="Flat Fee" type="number" step="0.01" value={configForm.flat_fee}
                 onChange={(e) => setConfigForm({ ...configForm, flat_fee: e.target.value })} />
             )}
