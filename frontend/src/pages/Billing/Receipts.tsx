@@ -402,6 +402,7 @@ export default function Receipts() {
               className="gap-2"
               onClick={() => printTable(
                 (receipts as any[]).map((x: any) => ({
+                  txn: x.transaction_display || '—',
                   number: x.receipt_number || x.id,
                   date: x.date || '—',
                   payer: x.tenant_name || '—',
@@ -409,6 +410,7 @@ export default function Receipts() {
                   amount: formatCurrency(Number(x.amount || 0), x.currency),
                 })),
                 [
+                  { key: 'txn', label: 'Txn #' },
                   { key: 'number', label: 'Receipt #' },
                   { key: 'date', label: 'Date' },
                   { key: 'payer', label: 'Payer' },

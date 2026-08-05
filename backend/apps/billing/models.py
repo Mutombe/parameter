@@ -1265,11 +1265,26 @@ class Expense(SoftDeleteModel):
             created_by=user,
         )
 
+        # Indelible transaction description (spec: Default Transaction
+        # Description). For cash expenses the bank/cash account is embedded so
+        # it always appears on the ledger and landlord statement and the user
+        # cannot remove it; their own text follows as "Ref-". Non-cash
+        # accruals move no cash, so no bank/cash label applies.
+        if is_non_cash:
+            line_desc = self.description or f'Accrual {self.expense_number}'
+        else:
+            pay_label = (self.bank_account.name
+                         if self.bank_account_id and self.bank_account else 'Petty Cash')
+            line_desc = build_transaction_description(
+                txn_type='Expense', payment_method=pay_label,
+                tenant_name=self.payee_name or None,
+                user_ref=self.description or None)
+
         je_debit = JournalEntry.objects.create(
             journal=journal,
             account=trust_debit_account if debit_via_trust else expense_account,
             subsidiary_account=landlord_sub if debit_via_trust else None,
-            description=self.description,
+            description=line_desc,
             debit_amount=self.amount,
             source_type='expense',
             source_id=self.id,
@@ -1296,7 +1311,7 @@ class Expense(SoftDeleteModel):
                 date=self.date,
                 contra_account=expense_account.code if expense_account else '',
                 reference=self.expense_number,
-                description=self.description,
+                description=line_desc,
                 debit_amount=self.amount,
                 journal_entry=je_debit,
             )

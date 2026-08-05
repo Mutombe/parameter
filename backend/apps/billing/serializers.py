@@ -106,6 +106,8 @@ class ReceiptSerializer(serializers.ModelSerializer):
     payer_type = serializers.CharField(source='tenant.account_type', read_only=True)
     invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
     journal_number = serializers.CharField(source='journal.journal_number', read_only=True)
+    transaction_number = serializers.IntegerField(source='journal.transaction_number', read_only=True, default=None)
+    transaction_display = serializers.CharField(source='journal.transaction_display', read_only=True, default='')
     income_type_name = serializers.CharField(source='income_type.name', read_only=True, default=None)
     sub_account_category_display = serializers.CharField(source='get_sub_account_category_display', read_only=True)
 
@@ -118,7 +120,8 @@ class ReceiptSerializer(serializers.ModelSerializer):
             'sub_account_category', 'sub_account_category_display',
             'date', 'amount', 'currency', 'payment_method',
             'reference', 'bank_name', 'description', 'notes', 'journal',
-            'journal_number', 'created_by', 'created_at', 'updated_at'
+            'journal_number', 'transaction_number', 'transaction_display',
+            'created_by', 'created_at', 'updated_at'
         ]
         read_only_fields = ['receipt_number', 'journal', 'created_at', 'updated_at']
 
@@ -189,6 +192,8 @@ class ReceiptCreateSerializer(serializers.ModelSerializer):
 
 class ExpenseSerializer(serializers.ModelSerializer):
     journal_number = serializers.CharField(source='journal.journal_number', read_only=True)
+    transaction_number = serializers.IntegerField(source='journal.transaction_number', read_only=True, default=None)
+    transaction_display = serializers.CharField(source='journal.transaction_display', read_only=True, default='')
     expense_category_name = serializers.CharField(source='expense_category.name', read_only=True, default=None)
     expense_category_funding = serializers.CharField(source='expense_category.funding_category', read_only=True, default=None)
     income_type_name = serializers.CharField(source='income_type.name', read_only=True, default=None)
@@ -215,7 +220,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
             'supplier', 'supplier_name', 'supplier_code',
             'sub_account_category', 'sub_account_category_display',
             'clears_payable',
-            'journal', 'journal_number',
+            'journal', 'journal_number', 'transaction_number', 'transaction_display',
             'approved_by', 'approved_at', 'created_by', 'created_at', 'updated_at'
         ]
         read_only_fields = [

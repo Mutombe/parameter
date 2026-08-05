@@ -234,17 +234,21 @@ class JournalSerializer(serializers.ModelSerializer):
     total_debit = serializers.SerializerMethodField()
     total_credit = serializers.SerializerMethodField()
 
+    transaction_display = serializers.CharField(read_only=True)
+
     class Meta:
         model = Journal
         fields = [
-            'id', 'journal_number', 'journal_type', 'date', 'description',
+            'id', 'journal_number', 'transaction_number', 'transaction_display',
+            'journal_type', 'date', 'description',
             'reference', 'status', 'reversed_by', 'reversal_reason',
             'currency', 'exchange_rate', 'created_by', 'created_by_name',
             'posted_by', 'posted_by_name', 'posted_at', 'entries',
             'total_debit', 'total_credit', 'created_at', 'updated_at'
         ]
         read_only_fields = [
-            'journal_number', 'status', 'posted_by', 'posted_at',
+            'journal_number', 'transaction_number', 'transaction_display',
+            'status', 'posted_by', 'posted_at',
             'reversed_by', 'created_at', 'updated_at'
         ]
 
@@ -662,11 +666,17 @@ class IncomeTypeSerializer(serializers.ModelSerializer):
 class SubsidiaryTransactionSerializer(serializers.ModelSerializer):
     """Individual transaction line in a subsidiary account statement."""
     display_description = serializers.SerializerMethodField()
+    # Global sequential transaction number of the journal behind this line —
+    # the system-wide chronological trace shown on statements.
+    global_transaction_number = serializers.IntegerField(
+        source='journal_entry.journal.transaction_number', read_only=True, default=None)
+    transaction_display = serializers.SerializerMethodField()
 
     class Meta:
         model = SubsidiaryTransaction
         fields = [
-            'id', 'transaction_number', 'date', 'contra_account',
+            'id', 'transaction_number', 'global_transaction_number',
+            'transaction_display', 'date', 'contra_account',
             'reference', 'description', 'display_description',
             'debit_amount', 'credit_amount',
             'balance', 'is_reversal', 'reversed_transaction',
@@ -677,6 +687,13 @@ class SubsidiaryTransactionSerializer(serializers.ModelSerializer):
     def get_display_description(self, obj):
         """Return overwritten description if set, otherwise original."""
         return obj.overwritten_description or obj.description
+
+    def get_transaction_display(self, obj):
+        """TXN######## from the journal's global number, else the per-account one."""
+        je = getattr(obj, 'journal_entry', None)
+        num = getattr(getattr(je, 'journal', None), 'transaction_number', None) if je else None
+        num = num or obj.transaction_number
+        return f'TXN{num:08d}' if num else ''
 
 
 class SubsidiaryAccountSerializer(serializers.ModelSerializer):

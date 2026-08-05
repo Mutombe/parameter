@@ -992,6 +992,7 @@ export default function Expenses() {
               variant="outline"
               onClick={() => printTable(
                 (expenses as any[]).map((x: any) => ({
+                  txn: x.transaction_display || '—',
                   number: x.expense_number || x.id,
                   date: x.date || '—',
                   payee: x.payee_name || x.supplier_name || '—',
@@ -999,6 +1000,7 @@ export default function Expenses() {
                   amount: formatCurrency(Number(x.amount || 0), x.currency),
                 })),
                 [
+                  { key: 'txn', label: 'Txn #' },
                   { key: 'number', label: 'Expense #' },
                   { key: 'date', label: 'Date' },
                   { key: 'payee', label: 'Payee' },

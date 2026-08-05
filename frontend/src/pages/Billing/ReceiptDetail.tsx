@@ -179,6 +179,9 @@ export default function ReceiptDetail() {
             ) : (
               <>
                 <h1 className="text-xl md:text-2xl font-bold text-gray-900">Receipt {receipt?.receipt_number}</h1>
+                {receipt?.transaction_display && (
+                  <span className="font-mono text-xs text-gray-400" title="Global transaction number">{receipt.transaction_display}</span>
+                )}
                 <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600">Received</span>
               </>
             )}

@@ -71,6 +71,8 @@ interface FormEntry {
 interface Journal {
   id: number
   journal_number: string
+  transaction_number?: number | null
+  transaction_display?: string
   date: string
   description: string
   status: 'draft' | 'posted' | 'reversed'
@@ -366,6 +368,7 @@ export default function Journals() {
               className="gap-2"
               onClick={() => printTable(
                 (journals as any[]).map((j: any) => ({
+                  txn: j.transaction_display || '—',
                   number: j.journal_number || j.id,
                   date: j.date || '—',
                   description: j.description || '—',
@@ -373,6 +376,7 @@ export default function Journals() {
                   total: formatCurrency(Number(j.total_debit || 0)),
                 })),
                 [
+                  { key: 'txn', label: 'Txn #' },
                   { key: 'number', label: 'Journal #' },
                   { key: 'date', label: 'Date' },
                   { key: 'description', label: 'Description' },
@@ -651,6 +655,11 @@ export default function Journals() {
                           >
                             {journal.journal_number}
                           </button>
+                          {journal.transaction_display && (
+                            <span className="font-mono text-[11px] text-gray-400" title="Global transaction number">
+                              {journal.transaction_display}
+                            </span>
+                          )}
                           <span className={cn(
                             'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
                             config.bgColor, config.color

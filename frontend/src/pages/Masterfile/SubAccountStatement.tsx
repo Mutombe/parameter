@@ -129,10 +129,15 @@ export default function SubAccountStatement() {
 
   // Branded print (letterhead + statement table), like the financial reports.
   // Reflects the current reversal-cloaking mode.
-  // Sequential transaction number as shown on statements (per spec: every
-  // statement line carries an indelible, sequential transaction number).
-  const txnNo = (t: any) =>
-    t?.transaction_number != null ? `TXN${String(t.transaction_number).padStart(6, '0')}` : '—'
+  // Global sequential transaction number shown on statements — the same
+  // number system-wide regardless of transaction type, for chronological
+  // tracing. Prefers the pre-formatted display, then the journal's global
+  // number, then the legacy per-account number.
+  const txnNo = (t: any) => {
+    if (t?.transaction_display) return t.transaction_display
+    const n = t?.global_transaction_number ?? t?.transaction_number
+    return n != null ? `TXN${String(n).padStart(8, '0')}` : '—'
+  }
 
   const handlePrint = () => {
     const money = (v: any) => formatCurrency(Number(v || 0))

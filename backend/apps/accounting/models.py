@@ -329,6 +329,15 @@ class Journal(models.Model):
         REVERSED = 'reversed', 'Reversed'
 
     journal_number = models.CharField(max_length=50, unique=True)
+    # Global sequential Transaction Number — monotonic across the WHOLE
+    # system regardless of transaction type (receipt, invoice, expense,
+    # transfer, conversion, manual journal all post a Journal). Unlike the
+    # per-type reference, this gives a single chronological trace. Displayed
+    # as TXN########. Assigned once at creation and never reused.
+    transaction_number = models.PositiveIntegerField(
+        null=True, blank=True, unique=True, db_index=True,
+        help_text='Global sequential transaction number (chronological trace)'
+    )
     journal_type = models.CharField(max_length=20, choices=JournalType.choices, default=JournalType.GENERAL)
     date = models.DateField()
     description = models.TextField()
@@ -369,10 +378,43 @@ class Journal(models.Model):
     def __str__(self):
         return f'{self.journal_number} - {self.description[:50]}'
 
+    # Global transaction numbers start here so they never collide with the
+    # older SubsidiaryTransaction sequence (10001+) at a glance.
+    TXN_NUMBER_BASE = 100000
+
     def save(self, *args, **kwargs):
         if not self.journal_number:
             self.journal_number = self.generate_journal_number()
+        # Assign the global transaction number on first insert only. Retry on
+        # the rare race where two concurrent inserts grab the same max+1 and
+        # collide on the unique index; each retry runs in a savepoint so the
+        # surrounding transaction (Journal.post / receipt posting) is safe.
+        if self.transaction_number is None and self.pk is None:
+            from django.db import IntegrityError, transaction as _txn
+            for attempt in range(5):
+                self.transaction_number = self.next_transaction_number()
+                try:
+                    with _txn.atomic():
+                        super().save(*args, **kwargs)
+                    return
+                except IntegrityError:
+                    if attempt == 4:
+                        raise
+                    kwargs.pop('force_insert', None)
+            return
         super().save(*args, **kwargs)
+
+    @classmethod
+    def next_transaction_number(cls):
+        """Next global sequential transaction number (max across all journals)."""
+        from django.db.models import Max
+        current = cls.objects.aggregate(m=Max('transaction_number'))['m']
+        return (current or cls.TXN_NUMBER_BASE) + 1
+
+    @property
+    def transaction_display(self):
+        """Human-facing global transaction number, e.g. TXN00100001."""
+        return f'TXN{self.transaction_number:08d}' if self.transaction_number else ''
 
     @classmethod
     def generate_journal_number(cls):
