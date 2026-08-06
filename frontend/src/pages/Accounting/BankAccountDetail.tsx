@@ -94,12 +94,13 @@ export default function BankAccountDetail() {
         {isLoading ? (
           <div className="p-6 space-y-3">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-8" />)}</div>
         ) : rows.length === 0 ? (
-          <EmptyState icon={Landmark} title="No transactions" description="No receipts or expenses have used this bank account in this period." />
+          <EmptyState icon={Landmark} title="No transactions" description="No transaction has affected this bank account in this period." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Txn #</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Ref</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Description</th>
@@ -111,7 +112,7 @@ export default function BankAccountDetail() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 <tr className="bg-gray-50/60 font-medium">
-                  <td colSpan={6} className="px-4 py-3 text-gray-600">Opening Balance{range.start_date ? ` (b/f as at ${range.start_date})` : ''}</td>
+                  <td colSpan={7} className="px-4 py-3 text-gray-600">Opening Balance{range.start_date ? ` (b/f as at ${range.start_date})` : ''}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-gray-900">{formatCurrency(Number(data?.opening_balance ?? summary.opening_balance ?? 0))}</td>
                 </tr>
                 {rows.map((t, idx) => (
@@ -120,6 +121,7 @@ export default function BankAccountDetail() {
                     className="hover:bg-gray-50 cursor-pointer"
                     onClick={() => navigate(t.type === 'receipt' ? `/dashboard/receipts/${t.id}` : t.type === 'journal' ? `/dashboard/journals/${t.id}` : `/dashboard/expenses/${t.id}`)}
                   >
+                    <td className="px-4 py-3 font-mono text-[11px] text-gray-400 whitespace-nowrap">{t.transaction_display || '—'}</td>
                     <td className="px-4 py-3 text-gray-600 tabular-nums whitespace-nowrap">{t.date}</td>
                     <td className="px-4 py-3 font-mono text-xs text-primary-600">{t.reference || '—'}</td>
                     <td className="px-4 py-3 text-gray-700 max-w-[260px] truncate" title={t.description}>{t.description}</td>
@@ -132,7 +134,7 @@ export default function BankAccountDetail() {
               </tbody>
               <tfoot className="bg-gray-50 border-t-2 border-gray-300">
                 <tr className="font-bold">
-                  <td colSpan={4} className="px-4 py-3 text-gray-900">Closing Balance</td>
+                  <td colSpan={5} className="px-4 py-3 text-gray-900">Closing Balance</td>
                   <td className="px-4 py-3 text-right tabular-nums text-emerald-700">{formatCurrency(Number(summary.total_inflow || 0))}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-rose-700">{formatCurrency(Number(summary.total_outflow || 0))}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-gray-900">{formatCurrency(Number(summary.closing_balance ?? summary.net ?? 0))}</td>

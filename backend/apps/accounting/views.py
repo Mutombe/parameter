@@ -627,12 +627,24 @@ class BankAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, view
         # Every per-bank movement: receipts in, paid cash expenses out, and
         # posted journal lines that target this bank (opening balances,
         # transfers, adjustments). Journal debit = money in, credit = money out.
-        receipts_all = Receipt.objects.filter(bank_account=account).select_related('tenant')
+        receipts_all = Receipt.objects.filter(bank_account=account).select_related('tenant', 'journal')
         expenses_all = Expense.objects.filter(
             bank_account=account, status='paid',
-        ).exclude(expense_kind='non_cash').select_related('expense_category')
+        ).exclude(expense_kind='non_cash').select_related('expense_category', 'journal')
+        # Journal lines that reach this bank two ways:
+        #  (a) via the bank_account FK (explicit bank lines), and
+        #  (b) via the bank's GL account (owner contributions, manual journals,
+        #      and ANY other transaction posted to the bank's ledger account).
+        # Receipt/expense cash lines also hit the GL account, but they're
+        # already represented by the receipt/expense rows above, so exclude
+        # them from (b) to avoid double-counting. Every OTHER movement through
+        # the bank must appear here (spec: the bank ledger is complete).
+        journal_q = Q(bank_account=account)
+        if account.gl_account_id:
+            journal_q |= (Q(account_id=account.gl_account_id)
+                          & ~Q(source_type__in=['receipt', 'expense']))
         journal_all = JournalEntry.objects.filter(
-            bank_account=account, journal__status='posted',
+            journal_q, journal__status='posted',
         ).select_related('journal')
 
         # Opening balance brought forward = net of EVERY movement dated before
@@ -662,6 +674,7 @@ class BankAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, view
             rows.append({
                 'type': 'receipt', 'id': r.id, 'date': str(r.date),
                 'reference': r.reference or r.receipt_number,
+                'transaction_display': r.journal.transaction_display if r.journal_id else '',
                 'description': f'Receipt — {r.tenant.name}' if r.tenant_id else 'Receipt',
                 'party': r.tenant.name if r.tenant_id else '',
                 'inflow': float(r.amount), 'outflow': 0.0,
@@ -672,6 +685,7 @@ class BankAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, view
             rows.append({
                 'type': 'expense', 'id': e.id, 'date': str(e.date),
                 'reference': getattr(e, 'reference', '') or e.expense_number,
+                'transaction_display': e.journal.transaction_display if e.journal_id else '',
                 'description': cat or e.description or 'Expense',
                 'party': e.payee_name or '',
                 'inflow': 0.0, 'outflow': float(e.amount),
@@ -679,8 +693,11 @@ class BankAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, view
             })
         for je in journal:
             rows.append({
-                'type': 'journal', 'id': je.id, 'date': str(je.journal.date),
+                # `id` is the JOURNAL id so the row drills through to the
+                # journal (not the individual entry).
+                'type': 'journal', 'id': je.journal_id, 'date': str(je.journal.date),
                 'reference': je.journal.journal_number,
+                'transaction_display': je.journal.transaction_display,
                 'description': je.description or je.journal.description or 'Journal',
                 'party': '',
                 'inflow': float(je.debit_amount or 0), 'outflow': float(je.credit_amount or 0),
