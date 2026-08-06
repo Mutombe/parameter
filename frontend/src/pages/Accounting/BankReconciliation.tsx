@@ -136,6 +136,8 @@ export default function BankReconciliation() {
   const [localItems, setLocalItems] = useState<ReconciliationItem[]>([])
   const [workspaceData, setWorkspaceData] = useState<WorkspaceData | null>(null)
   const [workspaceLoading, setWorkspaceLoading] = useState(false)
+  // Which items to display: all, matched (reconciled) or unmatched.
+  const [itemFilter, setItemFilter] = useState<'all' | 'matched' | 'unmatched'>('all')
 
   // ─── Queries ─────────────────────────────────────────────────────────
 
@@ -201,6 +203,11 @@ export default function BankReconciliation() {
 
   const reconciledCount = useMemo(() => localItems.filter(i => i.is_reconciled).length, [localItems])
   const unreconciledCount = useMemo(() => localItems.filter(i => !i.is_reconciled).length, [localItems])
+  const filteredItems = useMemo(() => (
+    itemFilter === 'matched' ? localItems.filter(i => i.is_reconciled)
+      : itemFilter === 'unmatched' ? localItems.filter(i => !i.is_reconciled)
+      : localItems
+  ), [localItems, itemFilter])
 
   // ─── Mutations ──────────────────────────────────────────────────────
 
@@ -525,6 +532,36 @@ export default function BankReconciliation() {
           </div>
         )}
 
+        {/* Display filter — Matched, Unmatched, or All. The reconciliation
+            difference stays visible in the cards above and the footer. */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Show</span>
+          <div className="inline-flex rounded-lg bg-gray-100 p-0.5">
+            {([
+              ['all', 'All', localItems.length],
+              ['matched', 'Matched', reconciledCount],
+              ['unmatched', 'Unmatched', unreconciledCount],
+            ] as const).map(([v, label, count]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setItemFilter(v)}
+                className={cn(
+                  'px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
+                  itemFilter === v ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700',
+                )}
+              >
+                {label} <span className="text-gray-400">({count})</span>
+              </button>
+            ))}
+          </div>
+          <div className="flex-1" />
+          <span className={cn('text-sm font-semibold',
+            Math.abs(diff) < 0.01 ? 'text-green-700' : 'text-red-700')}>
+            Difference: {formatCurrency(diff)}
+          </span>
+        </div>
+
         {/* Items Table */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
@@ -549,8 +586,16 @@ export default function BankReconciliation() {
                       were found for this bank account in {MONTH_NAMES[(workspaceData.month || 1) - 1]} {workspaceData.year}.
                     </td>
                   </tr>
+                ) : filteredItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                      No {itemFilter} transactions. {itemFilter === 'matched'
+                        ? 'Tick items as you match them against the bank statement.'
+                        : 'Everything in view has been matched.'}
+                    </td>
+                  </tr>
                 ) : (
-                  localItems.map((item) => (
+                  filteredItems.map((item) => (
                     <tr
                       key={item.id}
                       className={cn(
