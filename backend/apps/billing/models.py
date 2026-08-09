@@ -423,6 +423,17 @@ class Receipt(SoftDeleteModel):
         related_name='receipts'
     )
 
+    # Void / reversal tracking. A receipt may be voided ONCE and never again;
+    # `is_reversed` marks an original that has been voided, `is_reversal`
+    # marks the negative counter-receipt, and `reversal_of` links the two.
+    is_reversed = models.BooleanField(default=False)
+    reversed_at = models.DateField(null=True, blank=True)
+    is_reversal = models.BooleanField(default=False)
+    reversal_of = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='reversals',
+    )
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         related_name='created_receipts'
@@ -827,10 +838,14 @@ class Receipt(SoftDeleteModel):
         )
 
         # --- Activity 4: Commission Allocation ---
+        # Use != 0 (not > 0) so a NEGATIVE receipt (a void/reversal, or a
+        # full-conversion out) also reverses the commission it originally
+        # charged. Otherwise a voided receipt leaves the commission legs
+        # behind and the pockets never net back to zero.
         je_trust_dr = None
         je_comm_cr = None
         je_vat_cr = None
-        if gross_commission > Decimal('0'):
+        if gross_commission != Decimal('0'):
             # GL: Dr Landlord Trust Payable (reduce what's owed for commission)
             je_trust_dr = JournalEntry.objects.create(
                 journal=journal, account=landlord_trust_account,
@@ -891,7 +906,7 @@ class Receipt(SoftDeleteModel):
                 journal_entry=je_trust_cr,
             )
 
-            if gross_commission > Decimal('0'):
+            if gross_commission != Decimal('0'):
                 # Generate commission allocation reference
                 from django.utils import timezone
                 cma_prefix = timezone.now().strftime('CMA%Y%m%d')

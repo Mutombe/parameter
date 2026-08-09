@@ -182,7 +182,13 @@ export default function ReceiptDetail() {
                 {receipt?.transaction_display && (
                   <span className="font-mono text-xs text-gray-400" title="Global transaction number">{receipt.transaction_display}</span>
                 )}
-                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600">Received</span>
+                {receipt?.is_reversal ? (
+                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Reversal entry</span>
+                ) : receipt?.is_reversed ? (
+                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600">Voided{receipt?.reversed_at ? ` · ${receipt.reversed_at}` : ''}</span>
+                ) : (
+                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600">Received</span>
+                )}
               </>
             )}
           </div>
@@ -191,12 +197,18 @@ export default function ReceiptDetail() {
           <Printer className="w-4 h-4" />
           Print
         </Button>
-        <Button variant="outline" onClick={() => setShowConvert(true)} className="gap-2">
-          Convert Currency
-        </Button>
-        <Button variant="outline" onClick={() => setShowVoid(true)} className="gap-2 text-red-600 border-red-200 hover:bg-red-50">
-          Void Receipt
-        </Button>
+        {/* Convert/void hidden for reversal entries and already-voided receipts:
+            a receipt is voided ONCE and a reversal can't itself be voided. */}
+        {!receipt?.is_reversal && !receipt?.is_reversed && (
+          <>
+            <Button variant="outline" onClick={() => setShowConvert(true)} className="gap-2">
+              Convert Currency
+            </Button>
+            <Button variant="outline" onClick={() => setShowVoid(true)} className="gap-2 text-red-600 border-red-200 hover:bg-red-50">
+              Void Receipt
+            </Button>
+          </>
+        )}
       </motion.div>
 
       {/* Profile Info Bar */}

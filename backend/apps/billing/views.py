@@ -1132,6 +1132,20 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # VOID ONCE: a receipt may be voided exactly once, and a reversal
+        # entry itself can never be voided. This blocks double/multiple voids.
+        if receipt.is_reversal:
+            return Response(
+                {'error': 'This is a reversal entry — it cannot be voided.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if receipt.is_reversed or receipt.reversals.exists():
+            return Response(
+                {'error': 'This receipt has already been voided — a receipt can '
+                          'only be voided once.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         reason = request.data.get('reason', 'Mispost reversed')
         raw_vd = (request.data.get('void_date') or 'original')
         if raw_vd == 'original':
@@ -1151,24 +1165,38 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
                           f'date itself.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        # Create reversal receipt with negative amount
+        # Create reversal receipt with negative amount. It MUST mirror the
+        # original exactly — same sub_account_category, currency, invoice,
+        # bank and income type — so post_to_ledger resolves the identical
+        # accounts (tenant/landlord pockets, Unpaid, GL). Previously
+        # sub_account_category was NOT copied, so it fell back to the model
+        # default 'rent' and voided a Rates receipt against Rent sub-accounts
+        # (and account holders have no Rent pocket at all).
         reversal = Receipt(
             tenant=receipt.tenant,
             invoice=receipt.invoice,
             amount=-receipt.amount,  # NEGATIVE
             currency=receipt.currency,
+            sub_account_category=receipt.sub_account_category,
             payment_method=receipt.payment_method,
             reference=receipt.reference,
             bank_account=receipt.bank_account,
             income_type=receipt.income_type,
             description=f'Mispost reversed-{receipt.description}',
             date=void_date,  # user-chosen: original / current / custom (>= original)
+            is_reversal=True,
+            reversal_of=receipt,
             created_by=request.user,
         )
         reversal.save()
 
         # Post reversal -- the negative amount will create negative entries on SAME sides
         reversal.post_to_ledger(request.user)
+
+        # Mark the original as voided so it can never be voided again.
+        receipt.is_reversed = True
+        receipt.reversed_at = void_date
+        receipt.save(update_fields=['is_reversed', 'reversed_at', 'updated_at'])
 
         # Mark subsidiary entries as reversals and link to originals
         from apps.accounting.models import SubsidiaryTransaction

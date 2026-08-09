@@ -121,6 +121,7 @@ class ReceiptSerializer(serializers.ModelSerializer):
             'date', 'amount', 'currency', 'payment_method',
             'reference', 'bank_name', 'description', 'notes', 'journal',
             'journal_number', 'transaction_number', 'transaction_display',
+            'is_reversed', 'reversed_at', 'is_reversal', 'reversal_of',
             'created_by', 'created_at', 'updated_at'
         ]
         read_only_fields = ['receipt_number', 'journal', 'created_at', 'updated_at']
