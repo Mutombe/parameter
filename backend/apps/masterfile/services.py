@@ -229,18 +229,45 @@ def get_tenant_detail(tenant):
             data['termination_reason'] = l.termination_reason
         return data
 
-    billing = tenant.invoices.aggregate(
+    # Billing totals MUST NOT sum across currencies — USD and ZWG are
+    # different units (adding them is "3 cars + 7 houses = 10 houses").
+    # Aggregate per currency and return a breakdown the UI shows separately.
+    inv_by_ccy = tenant.invoices.values('currency').annotate(
         total_invoiced=Sum('total_amount'),
         overdue_amount=Sum('total_amount', filter=Q(status='overdue')),
         invoice_count=Count('id'),
     )
-    receipt_agg = tenant.receipts.aggregate(
+    rcpt_by_ccy = tenant.receipts.values('currency').annotate(
         total_paid=Sum('amount'),
         receipt_count=Count('id'),
     )
 
-    total_invoiced = billing['total_invoiced'] or 0
-    total_paid = receipt_agg['total_paid'] or 0
+    buckets = {}
+
+    def _bucket(ccy):
+        ccy = ccy or 'USD'
+        if ccy not in buckets:
+            buckets[ccy] = {
+                'currency': ccy,
+                'total_invoiced': Decimal('0'), 'total_paid': Decimal('0'),
+                'overdue_amount': Decimal('0'),
+                'invoice_count': 0, 'receipt_count': 0,
+            }
+        return buckets[ccy]
+
+    for row in inv_by_ccy:
+        b = _bucket(row['currency'])
+        b['total_invoiced'] = row['total_invoiced'] or Decimal('0')
+        b['overdue_amount'] = row['overdue_amount'] or Decimal('0')
+        b['invoice_count'] = row['invoice_count'] or 0
+    for row in rcpt_by_ccy:
+        b = _bucket(row['currency'])
+        b['total_paid'] = row['total_paid'] or Decimal('0')
+        b['receipt_count'] = row['receipt_count'] or 0
+    for b in buckets.values():
+        b['balance_due'] = b['total_invoiced'] - b['total_paid']
+
+    by_currency = [buckets[c] for c in sorted(buckets)]
 
     recent_invoices = tenant.invoices.order_by('-date')
     recent_receipts = tenant.receipts.order_by('-date')
@@ -249,12 +276,10 @@ def get_tenant_detail(tenant):
         'active_leases': [_serialize_lease(l) for l in active_leases],
         'lease_history': [_serialize_lease(l, include_termination=True) for l in past_leases],
         'billing_summary': {
-            'total_invoiced': total_invoiced,
-            'total_paid': total_paid,
-            'balance_due': total_invoiced - total_paid,
-            'overdue_amount': billing['overdue_amount'] or 0,
-            'invoice_count': billing['invoice_count'] or 0,
-            'receipt_count': receipt_agg['receipt_count'] or 0,
+            # Per-currency figures — never a cross-currency sum.
+            'by_currency': by_currency,
+            'invoice_count': sum(b['invoice_count'] for b in by_currency),
+            'receipt_count': sum(b['receipt_count'] for b in by_currency),
         },
         'recent_invoices': InvoiceSerializer(recent_invoices, many=True).data,
         'recent_receipts': ReceiptSerializer(recent_receipts, many=True).data,

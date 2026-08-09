@@ -398,6 +398,8 @@ export default function TenantDetail() {
 
   const tenantInfo = detail?.tenant || tenant
   const billing = detail?.billing_summary || {}
+  // Per-currency billing — USD and ZWG are shown separately, never summed.
+  const billingByCurrency: any[] = billing.by_currency || []
   const activeLeases = detail?.active_leases || []
   const recentInvoices = detail?.recent_invoices || []
   const recentReceipts = detail?.recent_receipts || []
@@ -841,22 +843,30 @@ export default function TenantDetail() {
           )}
         </InfoColumn>
 
-        {/* Account / Billing */}
+        {/* Account / Billing — one line per currency, never a cross-currency sum */}
         <InfoColumn label="Account">
-          <InfoLine
-            icon={(billing.overdue_amount || 0) > 0 ? AlertTriangle : DollarSign}
-            className={(billing.overdue_amount || 0) > 0 ? 'text-red-600 font-semibold' : 'text-gray-900 font-semibold'}
-            title={`${formatCurrency(billing.balance_due || 0)} outstanding`}
-          >
-            {formatCurrency(billing.balance_due || 0)}
-          </InfoLine>
-          <InfoLine muted title={`${formatCurrency(billing.total_paid || 0)} paid of ${formatCurrency(billing.total_invoiced || 0)} invoiced`}>
-            {formatCurrency(billing.total_paid || 0)} / {formatCurrency(billing.total_invoiced || 0)}
-          </InfoLine>
-          {(billing.overdue_amount || 0) > 0 && (
-            <InfoLine muted className="text-red-500" title={`${formatCurrency(billing.overdue_amount)} overdue`}>
-              {formatCurrency(billing.overdue_amount)} overdue
-            </InfoLine>
+          {billingByCurrency.length === 0 ? (
+            <InfoLine className="text-gray-900 font-semibold">{formatCurrency(0)}</InfoLine>
+          ) : (
+            billingByCurrency.map((b: any) => (
+              <div key={b.currency}>
+                <InfoLine
+                  icon={(b.overdue_amount || 0) > 0 ? AlertTriangle : DollarSign}
+                  className={(b.overdue_amount || 0) > 0 ? 'text-red-600 font-semibold' : 'text-gray-900 font-semibold'}
+                  title={`${formatCurrency(b.balance_due || 0, b.currency)} outstanding`}
+                >
+                  {formatCurrency(b.balance_due || 0, b.currency)} outstanding
+                </InfoLine>
+                <InfoLine muted title={`${formatCurrency(b.total_paid || 0, b.currency)} paid of ${formatCurrency(b.total_invoiced || 0, b.currency)} invoiced`}>
+                  {formatCurrency(b.total_paid || 0, b.currency)} / {formatCurrency(b.total_invoiced || 0, b.currency)}
+                </InfoLine>
+                {(b.overdue_amount || 0) > 0 && (
+                  <InfoLine muted className="text-red-500" title={`${formatCurrency(b.overdue_amount, b.currency)} overdue`}>
+                    {formatCurrency(b.overdue_amount, b.currency)} overdue
+                  </InfoLine>
+                )}
+              </div>
+            ))
           )}
         </InfoColumn>
 

@@ -137,6 +137,8 @@ export default function AccountHolderDetail() {
   // ---- Derived ----
   const holderInfo = detail?.tenant || holder
   const billing = detail?.billing_summary || {}
+  // Per-currency balances — never summed across currencies.
+  const billingByCurrency: any[] = billing.by_currency || []
   const activeLeases = detail?.active_leases || []
   const subAccounts = useMemo(() => {
     const list = Array.isArray(subAccountsData) ? subAccountsData : (subAccountsData?.results || [])
@@ -288,13 +290,23 @@ export default function AccountHolderDetail() {
           <div className="space-y-2">
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Billing</p>
             <div className="space-y-1.5">
-              <div className="flex items-center gap-2 text-sm">
-                <Wallet className="w-3.5 h-3.5 text-gray-400" />
-                <span className="text-gray-500">Balance:</span>
-                <span className={cn('font-semibold', Number(billing.balance_due || 0) > 0 ? 'text-red-600' : 'text-emerald-600')}>
-                  {formatCurrency(billing.balance_due || 0)}
-                </span>
-              </div>
+              {billingByCurrency.length === 0 ? (
+                <div className="flex items-center gap-2 text-sm">
+                  <Wallet className="w-3.5 h-3.5 text-gray-400" />
+                  <span className="text-gray-500">Balance:</span>
+                  <span className="font-semibold text-emerald-600">{formatCurrency(0)}</span>
+                </div>
+              ) : (
+                billingByCurrency.map((b: any) => (
+                  <div key={b.currency} className="flex items-center gap-2 text-sm">
+                    <Wallet className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-gray-500">Balance ({b.currency}):</span>
+                    <span className={cn('font-semibold', Number(b.balance_due || 0) > 0 ? 'text-red-600' : 'text-emerald-600')}>
+                      {formatCurrency(b.balance_due || 0, b.currency)}
+                    </span>
+                  </div>
+                ))
+              )}
               <div className="flex items-center gap-2 text-sm text-gray-600"><FileText className="w-3.5 h-3.5 text-gray-400" /><span>{billing.invoice_count || 0} invoices</span></div>
             </div>
           </div>

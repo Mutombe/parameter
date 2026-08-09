@@ -817,43 +817,55 @@ export default function Tenants() {
                       <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
                         Billing Summary
                       </h3>
-                      <div className="grid grid-cols-4 gap-4">
-                        <Tooltip content="Sum of all invoices issued">
-                          <div className="bg-gray-50 rounded-lg p-3">
-                            <p className="text-xs text-gray-500">Total Invoiced</p>
-                            <p className="text-lg font-semibold text-gray-900">
-                              {formatCurrency(tenantDetail.billing_summary?.total_invoiced || 0)}
-                            </p>
-                          </div>
-                        </Tooltip>
-                        <Tooltip content="Total payments received">
-                          <div className="bg-gray-50 rounded-lg p-3">
-                            <p className="text-xs text-gray-500">Total Paid</p>
-                            <p className="text-lg font-semibold text-green-600">
-                              {formatCurrency(tenantDetail.billing_summary?.total_paid || 0)}
-                            </p>
-                          </div>
-                        </Tooltip>
-                        <Tooltip content="Current outstanding amount">
-                          <div className="bg-gray-50 rounded-lg p-3">
-                            <p className="text-xs text-gray-500">Balance Due</p>
-                            <p className={`text-lg font-semibold ${
-                              tenantDetail.billing_summary?.balance_due > 0 ? 'text-amber-600' : 'text-gray-900'
-                            }`}>
-                              {formatCurrency(tenantDetail.billing_summary?.balance_due || 0)}
-                            </p>
-                          </div>
-                        </Tooltip>
-                        <Tooltip content="Amount past due date">
-                          <div className="bg-gray-50 rounded-lg p-3">
-                            <p className="text-xs text-gray-500">Overdue</p>
-                            <p className={`text-lg font-semibold ${
-                              tenantDetail.billing_summary?.overdue_amount > 0 ? 'text-red-600' : 'text-gray-900'
-                            }`}>
-                              {formatCurrency(tenantDetail.billing_summary?.overdue_amount || 0)}
-                            </p>
-                          </div>
-                        </Tooltip>
+                      {/* One card group per currency — USD and ZWG are never summed together. */}
+                      <div className="space-y-4">
+                        {(tenantDetail.billing_summary?.by_currency || []).length === 0 ? (
+                          <p className="text-sm text-gray-500">No billing yet.</p>
+                        ) : (
+                          (tenantDetail.billing_summary.by_currency as any[]).map((b: any) => (
+                            <div key={b.currency}>
+                              <p className="text-xs font-semibold text-gray-400 mb-1.5">{b.currency}</p>
+                              <div className="grid grid-cols-4 gap-4">
+                                <Tooltip content="Sum of all invoices issued">
+                                  <div className="bg-gray-50 rounded-lg p-3">
+                                    <p className="text-xs text-gray-500">Total Invoiced</p>
+                                    <p className="text-lg font-semibold text-gray-900">
+                                      {formatCurrency(b.total_invoiced || 0, b.currency)}
+                                    </p>
+                                  </div>
+                                </Tooltip>
+                                <Tooltip content="Total payments received">
+                                  <div className="bg-gray-50 rounded-lg p-3">
+                                    <p className="text-xs text-gray-500">Total Paid</p>
+                                    <p className="text-lg font-semibold text-green-600">
+                                      {formatCurrency(b.total_paid || 0, b.currency)}
+                                    </p>
+                                  </div>
+                                </Tooltip>
+                                <Tooltip content="Current outstanding amount">
+                                  <div className="bg-gray-50 rounded-lg p-3">
+                                    <p className="text-xs text-gray-500">Balance Due</p>
+                                    <p className={`text-lg font-semibold ${
+                                      b.balance_due > 0 ? 'text-amber-600' : 'text-gray-900'
+                                    }`}>
+                                      {formatCurrency(b.balance_due || 0, b.currency)}
+                                    </p>
+                                  </div>
+                                </Tooltip>
+                                <Tooltip content="Amount past due date">
+                                  <div className="bg-gray-50 rounded-lg p-3">
+                                    <p className="text-xs text-gray-500">Overdue</p>
+                                    <p className={`text-lg font-semibold ${
+                                      b.overdue_amount > 0 ? 'text-red-600' : 'text-gray-900'
+                                    }`}>
+                                      {formatCurrency(b.overdue_amount || 0, b.currency)}
+                                    </p>
+                                  </div>
+                                </Tooltip>
+                              </div>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </div>
 
