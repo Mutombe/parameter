@@ -80,6 +80,7 @@ export default function Receipts() {
 
   const [form, setForm] = useState({
     tenant: '',
+    currency: '',
     invoice: '',
     sub_account_category: 'rent',
     date: new Date().toISOString().split('T')[0],
@@ -123,13 +124,14 @@ export default function Receipts() {
     placeholderData: keepPreviousData,
   })
 
-  // The receipt currency FOLLOWS the chosen bank/cash account — a ZWG
-  // account records a ZWG receipt (tenant pockets, Unpaid, GL all in ZWG).
-  // The backend enforces this; here we just show the cashier which currency
-  // they're receipting in.
-  const selectedBank = ((bankAccounts as any[]) || []).find(
-    (b: any) => String(b.id) === String(form.bank_account))
-  const receiptCurrency = selectedBank?.currency || ''
+  // The cashier picks the payment CURRENCY first (right after the payer).
+  // That choice narrows everything downstream to a single currency: the
+  // invoices offered, the bank/cash accounts offered, and the tenant/
+  // landlord sub-accounts the receipt posts to. High precision from the
+  // start — no mixing USD and ZWG.
+  const receiptCurrency = form.currency
+  const bankOptions = ((bankAccounts as any[]) || [])
+    .filter((b: any) => !form.currency || (b.currency || 'USD') === form.currency)
 
   const { data: contribLandlords = [] } = useQuery({
     queryKey: ['landlords-for-contribution'],
@@ -177,9 +179,13 @@ export default function Receipts() {
     placeholderData: keepPreviousData,
   })
 
-  // Filter invoices with outstanding balance (sent, partial, or overdue with balance > 0)
+  // Invoices offered for this receipt are scoped to the chosen payer AND the
+  // chosen currency, so the cashier is never shown invoices in the other
+  // currency (or another payer's invoices).
   const invoices = allInvoices?.filter((inv: any) =>
     ['sent', 'partial', 'overdue'].includes(inv.status) && Number(inv.balance) > 0
+    && (!form.tenant || String(inv.tenant) === String(form.tenant))
+    && (!form.currency || (inv.currency || 'USD') === form.currency)
   )
 
   // Active leases for the selected payer — feeds the property-confirmation
@@ -331,6 +337,7 @@ export default function Receipts() {
   const resetForm = () => {
     setForm({
       tenant: '',
+      currency: '',
       invoice: '',
       sub_account_category: 'rent',
       date: new Date().toISOString().split('T')[0],
@@ -699,11 +706,29 @@ export default function Receipts() {
         icon={Plus}
       >
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Payer Select — covers both Tenants and Account Holders */}
+          {/* Payer Select — covers both Tenants and Account Holders. Changing
+              the payer clears the invoice (it belonged to the old payer). */}
           <PayerSelect
             value={form.tenant}
-            onChange={(val) => { const p = (tenants as any[])?.find((t: any) => String(t.id) === String(val)); setForm({ ...form, tenant: String(val), sub_account_category: p?.account_type === 'levy' ? 'levy' : (form.sub_account_category === 'levy' || form.sub_account_category === 'special_levy' ? 'rent' : form.sub_account_category) })} }
+            onChange={(val) => { const p = (tenants as any[])?.find((t: any) => String(t.id) === String(val)); setForm({ ...form, tenant: String(val), invoice: '', sub_account_category: p?.account_type === 'levy' ? 'levy' : (form.sub_account_category === 'levy' || form.sub_account_category === 'special_levy' ? 'rent' : form.sub_account_category) })} }
             required
+          />
+
+          {/* Payment currency — chosen FIRST (after the payer) so the whole
+              receipt is scoped to one currency: it filters the invoices and
+              bank accounts below and selects the matching sub-account. */}
+          <Select
+            label="Payment Currency"
+            hint="Pick the currency the payer is paying in — this narrows the invoices and bank accounts to that currency"
+            value={form.currency}
+            onChange={(e) => setForm({ ...form, currency: e.target.value, invoice: '', bank_account: '' })}
+            disabled={!form.tenant}
+            required
+            options={[
+              { value: '', label: form.tenant ? '— Select payment currency —' : 'Select a payer first' },
+              { value: 'USD', label: 'USD' },
+              { value: 'ZWG', label: 'ZWG' },
+            ]}
           />
 
           {/* Property confirmation — shows which property (and landlord) the
@@ -833,13 +858,16 @@ export default function Receipts() {
             />
             <Select
               label="Bank Account"
-              hint="HARD RULE: every receipt must land in a bank/cash account — reconciles the cash layer and blocks no-bank receipting"
+              hint={form.currency
+                ? `Only ${form.currency} accounts are shown — a receipt banks into an account of its own currency`
+                : 'Select a payment currency first'}
               value={form.bank_account}
               onChange={(e) => setForm({ ...form, bank_account: e.target.value })}
               required
+              disabled={!form.currency}
               options={[
-                { value: '', label: '— Select bank account (required) —' },
-                ...(((bankAccounts as any[]) || []).map((b: any) => ({
+                { value: '', label: form.currency ? '— Select bank account (required) —' : 'Select a payment currency first' },
+                ...(bankOptions.map((b: any) => ({
                   value: String(b.id),
                   label: `${b.name}${b.currency ? ` (${b.currency})` : ''}`,
                 }))),
@@ -875,8 +903,10 @@ export default function Receipts() {
             </Button>
             <Button
               type="submit"
+              // Currency is mandatory and chosen up front so the receipt is
+              // scoped to one currency end to end.
               className="flex-1"
-              disabled={createMutation.isPending || tenantsLoading}
+              disabled={createMutation.isPending || tenantsLoading || !form.currency}
             >
               {createMutation.isPending ? 'Recording...' : 'Record Receipt'}
             </Button>
@@ -995,6 +1025,9 @@ export default function Receipts() {
               date: quickInvoice.date,
               due_date: quickInvoice.due_date || quickInvoice.date,
               amount: parseFloat(quickInvoice.amount),
+              // Match the receipt's chosen currency so it appears in the
+              // currency-filtered invoice list and posts consistently.
+              ...(form.currency ? { currency: form.currency } : {}),
               description: quickInvoice.description,
             })
           }}
