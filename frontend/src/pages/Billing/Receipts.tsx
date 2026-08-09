@@ -123,6 +123,14 @@ export default function Receipts() {
     placeholderData: keepPreviousData,
   })
 
+  // The receipt currency FOLLOWS the chosen bank/cash account — a ZWG
+  // account records a ZWG receipt (tenant pockets, Unpaid, GL all in ZWG).
+  // The backend enforces this; here we just show the cashier which currency
+  // they're receipting in.
+  const selectedBank = ((bankAccounts as any[]) || []).find(
+    (b: any) => String(b.id) === String(form.bank_account))
+  const receiptCurrency = selectedBank?.currency || ''
+
   const { data: contribLandlords = [] } = useQuery({
     queryKey: ['landlords-for-contribution'],
     queryFn: () => landlordApi.list({ page_size: 500 }).then((r: any) => r.data.results || r.data),
@@ -794,7 +802,10 @@ export default function Receipts() {
             />
             <Input
               type="number"
-              label="Amount"
+              label={`Amount${receiptCurrency ? ` (${receiptCurrency})` : ''}`}
+              hint={receiptCurrency
+                ? `Recorded in ${receiptCurrency} — the selected bank account's currency`
+                : 'Currency follows the bank account you select below'}
               placeholder="0.00"
               step="0.01"
               min="0"

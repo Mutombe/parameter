@@ -165,6 +165,16 @@ class ReceiptCreateSerializer(serializers.ModelSerializer):
         return super().to_internal_value(data)
 
     def validate(self, data):
+        # CURRENCY FOLLOWS THE BANK: a receipt banked into a ZWG (or any
+        # non-USD) account is a ZWG receipt — the tenant/landlord pockets,
+        # Unpaid accounts and every GL line must post in that currency. The
+        # bank account is authoritative, overriding any client-sent currency
+        # (the record-receipt form doesn't send one, so it used to default to
+        # USD even for a ZWG account).
+        bank = data.get('bank_account')
+        if bank is not None and getattr(bank, 'currency', None):
+            data['currency'] = bank.currency
+
         # CONTRACT RULE: an Account Holder is under a Levy Payment Contract —
         # default their receipt category to 'levy' and never allow the
         # rental-side default to leak in.
