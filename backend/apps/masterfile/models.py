@@ -390,10 +390,11 @@ class RentalTenant(SoftDeleteModel):
         COMPANY = 'company', 'Company'
 
     class AccountType(models.TextChoices):
-        """Differentiates rental tenants from levy account holders."""
+        """Payer type — mutually exclusive. A payer is a Rental Tenant OR a
+        Levy Account Holder, never both (hard business rule). This attribute
+        determines the account structure and which transactions may post."""
         RENTAL = 'rental', 'Rental Tenant'
         LEVY = 'levy', 'Levy Account Holder'
-        BOTH = 'both', 'Both (Rental & Levy)'
 
     code = models.CharField(max_length=20, unique=True)
     name = models.CharField(max_length=255)

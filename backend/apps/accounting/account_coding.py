@@ -52,6 +52,25 @@ CURRENCY_BAND_WIDTH = 20
 RENTAL_CATEGORIES = ['rent', 'rates', 'maintenance', 'parking', 'vat', 'deposit']
 LEVY_CATEGORIES = ['levy', 'special_levy', 'maintenance', 'parking', 'rates']
 SEED_CURRENCIES = ['USD', 'ZWG']
+GENERAL_CATEGORY = 'general'
+
+
+def allowed_categories(account_type):
+    """The sub-account categories a payer may transact in. A Rental payer may
+    only use the Rental structure and a Levy payer only the Levy structure
+    (spec: payer type is mutually exclusive). General is shared."""
+    if account_type == 'levy':
+        return set(LEVY_CATEGORIES) | {GENERAL_CATEGORY}
+    return set(RENTAL_CATEGORIES) | {GENERAL_CATEGORY}
+
+
+def primary_category(account_type):
+    """The default category for a payer type."""
+    return 'levy' if account_type == 'levy' else 'rent'
+
+
+def payer_side_label(account_type):
+    return 'Levy' if account_type == 'levy' else 'Rental'
 
 # ── Validation ───────────────────────────────────────────────────────
 MAIN_CODE_RE = re.compile(r'^(TN|AH|LD)\d{6}$')

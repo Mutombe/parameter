@@ -803,13 +803,14 @@ export default function Receipts() {
                 { value: 'parking', label: 'Parking' },
                 { value: 'rates', label: 'Rates' },
               ]
+              // Rental Payment Contract side: Rent, Rates, Maintenance,
+              // Parking, VAT, Deposit only (no Levy on the Rental side) — a
+              // payer is Rental XOR Levy, never both.
               return [
                 { value: 'rent', label: 'Rent' },
-                { value: 'levy', label: 'Levy' },
-                { value: 'special_levy', label: 'Special Levy' },
+                { value: 'rates', label: 'Rates' },
                 { value: 'maintenance', label: 'Maintenance' },
                 { value: 'parking', label: 'Parking' },
-                { value: 'rates', label: 'Rates' },
                 { value: 'vat', label: 'VAT' },
                 { value: 'deposit', label: 'Deposit' },
                 { value: 'general', label: 'General' },

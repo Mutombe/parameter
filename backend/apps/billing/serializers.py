@@ -97,6 +97,25 @@ class InvoiceCreateSerializer(serializers.ModelSerializer):
                 'lease': 'Lease does not belong to the selected tenant.'
             })
 
+        # PAYER-TYPE RULE: a Rental payer can only be billed Rental items and
+        # a Levy payer only Levy items — billing must not cross payer types.
+        payer = tenant or (lease.tenant if lease else None)
+        inv_type = data.get('invoice_type')
+        if payer and inv_type:
+            from apps.accounting.account_coding import (
+                RENTAL_CATEGORIES, LEVY_CATEGORIES, allowed_categories, payer_side_label,
+            )
+            recognized = set(RENTAL_CATEGORIES) | set(LEVY_CATEGORIES)
+            atype = getattr(payer, 'account_type', 'rental') or 'rental'
+            if inv_type in recognized and inv_type not in allowed_categories(atype):
+                other = 'Levy' if atype != 'levy' else 'Rental'
+                raise serializers.ValidationError({
+                    'invoice_type': (
+                        f'{payer.code} ({payer.name}) is a {payer_side_label(atype)} '
+                        f'Payer and cannot be billed {other} items ({inv_type}).'
+                    )
+                })
+
         return data
 
 
@@ -176,15 +195,30 @@ class ReceiptCreateSerializer(serializers.ModelSerializer):
         if bank is not None and getattr(bank, 'currency', None):
             data['currency'] = bank.currency
 
-        # CONTRACT RULE: an Account Holder is under a Levy Payment Contract —
-        # default their receipt category to 'levy' and never allow the
-        # rental-side default to leak in.
+        # PAYER-TYPE RULE (mutually exclusive): a Rental payer may only be
+        # receipted against Rental categories and a Levy payer only against
+        # Levy categories. An unset category defaults to the payer's primary;
+        # an explicit cross-type category is REJECTED (spec §11) so a Levy
+        # payment can never land on a Rental account or vice versa.
         payer = data.get('tenant')
-        if payer is not None and getattr(payer, 'account_type', '') == 'levy':
+        if payer is not None:
+            from apps.accounting.account_coding import (
+                allowed_categories, primary_category, payer_side_label,
+            )
+            atype = getattr(payer, 'account_type', 'rental') or 'rental'
+            allowed = allowed_categories(atype)
             cat = data.get('sub_account_category') or ''
-            levy_set = {'levy', 'special_levy', 'maintenance', 'parking', 'rates'}
-            if not cat or cat not in levy_set:
-                data['sub_account_category'] = 'levy'
+            if not cat:
+                data['sub_account_category'] = primary_category(atype)
+            elif cat not in allowed:
+                other = 'Levy' if atype != 'levy' else 'Rental'
+                raise serializers.ValidationError({
+                    'sub_account_category': (
+                        f'{payer.code} ({payer.name}) is configured as a '
+                        f'{payer_side_label(atype)} Payer and cannot receive '
+                        f'{other} transactions ({cat}).'
+                    )
+                })
         if not data.get('income_type'):
             # Auto-resolve from invoice type or default to first active income type
             invoice = data.get('invoice')
