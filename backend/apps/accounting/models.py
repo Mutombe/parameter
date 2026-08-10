@@ -1496,32 +1496,21 @@ class SubsidiaryAccount(models.Model):
         DEPOSIT = 'deposit', 'Deposit'
         GENERAL = 'general', 'General'
 
-    # Suffix maps per management type.
-    # Rental: 6 categories × 2 currencies = 12 max sub-accounts
-    # Levy: 5 categories × 2 currencies = 10 max sub-accounts
-    RENTAL_SUFFIX_MAP = {
-        ('rent', 'USD'): '01', ('rates', 'USD'): '02', ('maintenance', 'USD'): '03',
-        ('parking', 'USD'): '04', ('vat', 'USD'): '05', ('deposit', 'USD'): '06',
-        ('rent', 'ZWG'): '07', ('rates', 'ZWG'): '08', ('maintenance', 'ZWG'): '09',
-        ('parking', 'ZWG'): '10', ('vat', 'ZWG'): '11', ('deposit', 'ZWG'): '12',
-    }
-    LEVY_SUFFIX_MAP = {
-        ('levy', 'USD'): '01', ('special_levy', 'USD'): '02', ('maintenance', 'USD'): '03',
-        ('parking', 'USD'): '04', ('rates', 'USD'): '05',
-        ('levy', 'ZWG'): '06', ('special_levy', 'ZWG'): '07', ('maintenance', 'ZWG'): '08',
-        ('parking', 'ZWG'): '09', ('rates', 'ZWG'): '10',
-    }
-    GENERAL_SUFFIX_MAP = {
-        ('general', 'USD'): '00', ('general', 'ZWG'): '50',
-    }
+    # Category/currency numbering lives in apps.accounting.account_coding
+    # (the single source of truth for the /NN sub-account map). The category
+    # lists each management side seeds also live there.
 
-    code = models.CharField(max_length=20, unique=True, db_index=True)
+    code = models.CharField(max_length=30, unique=True, db_index=True)
     name = models.CharField(max_length=255)
     entity_type = models.CharField(max_length=20, choices=EntityType.choices)
     category = models.CharField(
         max_length=20, choices=AccountCategory.choices,
         default='general', db_index=True
     )
+    # Two-digit sub-account number (the /NN segment of the code). The parent
+    # is the tenant/landlord FK — the code communicates the relationship to
+    # users while the FK maintains it structurally (spec §15).
+    sub_account_number = models.CharField(max_length=2, blank=True, default='')
 
     # Polymorphic links — exactly one should be set
     # Tenants/Account holders: ForeignKey (multiple category-specific
@@ -1566,32 +1555,14 @@ class SubsidiaryAccount(models.Model):
         get_or_create_for_tenant_category); this returns the earliest account
         so pre-pocket history keeps resolving to the same statement.
         """
-        # Determine prefix and entity type based on account type
-        if tenant.account_type == 'levy':
-            prefix = 'AC'
-            entity_type = cls.EntityType.ACCOUNT_HOLDER
-        else:
-            prefix = 'TN'
-            entity_type = cls.EntityType.TENANT
-
-        code = f'{prefix}/{tenant.code.replace("TN", "").lstrip("0") or "0"}'
-
         # tenant is a plain FK now — a tenant can hold several pockets, so
-        # get_or_create(tenant=...) would raise MultipleObjectsReturned.
+        # return the earliest existing account (pre-pocket history stays on
+        # the same statement). When none exists yet, create the General pocket
+        # in the standard MainCode/00 format.
         account = cls.objects.filter(tenant=tenant).order_by('id').first()
         if account is None:
-            account = cls.objects.create(
-                code=code,
-                name=tenant.name,
-                entity_type=entity_type,
-                tenant=tenant,
-                currency='USD',
-            )
-        # Fix code format if account was previously created with wrong prefix
-        if tenant.account_type == 'levy' and account.code.startswith('TN/'):
-            account.code = f'AC/{tenant.code.replace("TN", "").lstrip("0") or "0"}'
-            account.entity_type = cls.EntityType.ACCOUNT_HOLDER
-            account.save(update_fields=['code', 'entity_type'])
+            account = cls.get_or_create_for_tenant_category(
+                tenant, category='general', currency='USD')
         return account
 
     @classmethod
@@ -1605,18 +1576,11 @@ class SubsidiaryAccount(models.Model):
         Account holders (levy): Levy, Special Levy, Maintenance, Parking, Rates.
         Categories outside the map fall back to the General pocket.
         """
-        if tenant.account_type == 'levy':
-            prefix = 'AC'
-            entity_type = cls.EntityType.ACCOUNT_HOLDER
-            type_map = cls.LEVY_SUFFIX_MAP
-        else:
-            prefix = 'TN'
-            entity_type = cls.EntityType.TENANT
-            type_map = cls.RENTAL_SUFFIX_MAP
-
-        suffix_map = cls.GENERAL_SUFFIX_MAP if category == 'general' else type_map
-        suffix = suffix_map.get((category, currency), '00')
-        code = f'{prefix}/{tenant.id:05d}/{suffix}'
+        from apps.accounting.account_coding import format_sub_code, sub_account_number
+        entity_type = (cls.EntityType.ACCOUNT_HOLDER if tenant.account_type == 'levy'
+                       else cls.EntityType.TENANT)
+        # Sub-account inherits the tenant's full main code: e.g. TN000001/03.
+        code = format_sub_code(tenant.code, category, currency)
 
         category_label = dict(cls.AccountCategory.choices).get(
             category, category.replace('_', ' ').title()
@@ -1631,6 +1595,7 @@ class SubsidiaryAccount(models.Model):
                 'tenant': tenant,
                 'category': category,
                 'currency': currency,
+                'sub_account_number': sub_account_number(category, currency),
             }
         )
         return account
@@ -1642,23 +1607,9 @@ class SubsidiaryAccount(models.Model):
         Rental: max 6 sub-accounts (Rent, Rates, Maintenance, Parking, VAT, Deposit)
         Levy: max 5 sub-accounts (Levy, Special Levy, Maintenance, Parking, Rates)
         """
-        # Determine management type from landlord's properties
-        mgmt_type = 'rental'
-        if hasattr(landlord, 'properties'):
-            prop = landlord.properties.first()
-            if prop and prop.management_type == 'levy':
-                mgmt_type = 'levy'
-
-        # Select the right suffix map
-        if category == 'general':
-            suffix_map = cls.GENERAL_SUFFIX_MAP
-        elif mgmt_type == 'levy':
-            suffix_map = cls.LEVY_SUFFIX_MAP
-        else:
-            suffix_map = cls.RENTAL_SUFFIX_MAP
-
-        suffix = suffix_map.get((category, currency), '00')
-        code = f'LD/{landlord.id:05d}/{suffix}'
+        from apps.accounting.account_coding import format_sub_code, sub_account_number
+        # Sub-account inherits the landlord's full main code: e.g. LD000001/06.
+        code = format_sub_code(landlord.code, category, currency)
 
         # Category display name
         category_label = dict(cls.AccountCategory.choices).get(
@@ -1674,6 +1625,7 @@ class SubsidiaryAccount(models.Model):
                 'landlord': landlord,
                 'category': category,
                 'currency': currency,
+                'sub_account_number': sub_account_number(category, currency),
             }
         )
         return account
@@ -1701,13 +1653,15 @@ class SubsidiaryAccount(models.Model):
         Idempotent — uses get_or_create on each (category, currency) pair.
         Called from the Property post_save signal once we know the management type.
         """
-        suffix_map = cls.LEVY_SUFFIX_MAP if management_type == 'levy' else cls.RENTAL_SUFFIX_MAP
+        from apps.accounting.account_coding import (
+            RENTAL_CATEGORIES, LEVY_CATEGORIES, SEED_CURRENCIES,
+        )
+        cats = LEVY_CATEGORIES if management_type == 'levy' else RENTAL_CATEGORIES
         created_accounts = []
-        for (category, currency) in suffix_map.keys():
-            account = cls.get_or_create_for_landlord_category(
-                landlord, category=category, currency=currency
-            )
-            created_accounts.append(account)
+        for category in cats:
+            for currency in SEED_CURRENCIES:
+                created_accounts.append(cls.get_or_create_for_landlord_category(
+                    landlord, category=category, currency=currency))
         return created_accounts
 
     @classmethod
@@ -1725,11 +1679,13 @@ class SubsidiaryAccount(models.Model):
         Called from the RentalTenant post_save signal and the
         seed_tenant_pockets backfill command.
         """
-        suffix_map = (cls.LEVY_SUFFIX_MAP if tenant.account_type == 'levy'
-                      else cls.RENTAL_SUFFIX_MAP)
+        from apps.accounting.account_coding import (
+            RENTAL_CATEGORIES, LEVY_CATEGORIES, SEED_CURRENCIES,
+        )
+        cats = LEVY_CATEGORIES if tenant.account_type == 'levy' else RENTAL_CATEGORIES
         return [
             cls.get_or_create_for_tenant_category(tenant, category=category, currency=currency)
-            for (category, currency) in suffix_map.keys()
+            for category in cats for currency in SEED_CURRENCIES
         ]
 
 

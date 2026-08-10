@@ -97,9 +97,12 @@ class Landlord(SoftDeleteModel):
 
     @classmethod
     def generate_code(cls):
-        last = cls.all_objects.select_for_update().order_by('-id').first()
-        num = (last.id + 1) if last else 1
-        return f'LL{num:04d}'
+        """Next landlord code: LD + 6 digits, highest + 1 (never reused)."""
+        from apps.accounting.account_coding import (
+            LANDLORD_PREFIX, format_main_code, next_main_number,
+        )
+        codes = list(cls.all_objects.select_for_update().values_list('code', flat=True))
+        return format_main_code(LANDLORD_PREFIX, next_main_number(codes, LANDLORD_PREFIX))
 
 
 class Property(SoftDeleteModel):
@@ -472,16 +475,22 @@ class RentalTenant(SoftDeleteModel):
     def save(self, *args, **kwargs):
         if not self.code:
             with transaction.atomic():
-                self.code = self.generate_code()
+                self.code = self.generate_code(self.account_type)
                 super().save(*args, **kwargs)
                 return
         super().save(*args, **kwargs)
 
     @classmethod
-    def generate_code(cls):
-        last = cls.all_objects.select_for_update().order_by('-id').first()
-        num = (last.id + 1) if last else 1
-        return f'TN{num:04d}'
+    def generate_code(cls, account_type='rental'):
+        """Next main account code. Levy account holders get the AH prefix and
+        their own independent sequence; rental tenants get TN. Both are
+        6-digit and never reuse a retired number (highest + 1 per prefix)."""
+        from apps.accounting.account_coding import (
+            account_prefix, format_main_code, next_main_number,
+        )
+        prefix = account_prefix(account_type=account_type)
+        codes = list(cls.all_objects.select_for_update().values_list('code', flat=True))
+        return format_main_code(prefix, next_main_number(codes, prefix))
 
 
 class LeaseAgreement(SoftDeleteModel):

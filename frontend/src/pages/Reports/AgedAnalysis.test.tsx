@@ -59,11 +59,11 @@ const backendResponse = {
   },
   by_tenant: [
     {
-      tenant_id: 1, tenant_code: 'TN0001', tenant_name: 'Alice',
+      tenant_id: 1, tenant_code: 'TN000001', tenant_name: 'Alice',
       current: 1000, '31_60': 0, '61_90': 500, '91_120': 0, over_120: 2500, total: 4000,
     },
     {
-      tenant_id: 2, tenant_code: 'TN0002', tenant_name: 'Bob',
+      tenant_id: 2, tenant_code: 'TN000002', tenant_name: 'Bob',
       current: 0, '31_60': 1500, '61_90': 0, '91_120': 0, over_120: 0, total: 1500,
     },
   ],

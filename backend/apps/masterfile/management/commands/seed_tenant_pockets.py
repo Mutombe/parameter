@@ -64,12 +64,18 @@ class Command(BaseCommand):
                 raise RuntimeError(
                     f'search_path not applied (current_schema={current!r}, '
                     f'expected {schema!r}) — refusing to seed the wrong schema')
+            from apps.accounting.account_coding import (
+                RENTAL_CATEGORIES, LEVY_CATEGORIES, SEED_CURRENCIES,
+                account_prefix, format_main_code, sub_account_number,
+            )
             labels = dict(SubsidiaryAccount.AccountCategory.choices)
             existing_codes = set(
                 SubsidiaryAccount.objects.filter(tenant__isnull=False)
                 .values_list('code', flat=True)
             )
-            payers = RentalTenant.objects.all().only('id', 'name', 'account_type')
+            # Pockets inherit the payer's main code (TN000001/AH000001), so we
+            # need each payer's code, not just its id.
+            payers = RentalTenant.objects.all().only('id', 'code', 'name', 'account_type')
             total_payers = 0
             total_created = 0
             batch = []
@@ -85,26 +91,31 @@ class Command(BaseCommand):
             for t in payers.iterator(chunk_size=CHUNK):
                 total_payers += 1
                 if t.account_type == 'levy':
-                    prefix = 'AC'
                     entity = SubsidiaryAccount.EntityType.ACCOUNT_HOLDER
-                    smap = SubsidiaryAccount.LEVY_SUFFIX_MAP
+                    cats = LEVY_CATEGORIES
                 else:
-                    prefix = 'TN'
                     entity = SubsidiaryAccount.EntityType.TENANT
-                    smap = SubsidiaryAccount.RENTAL_SUFFIX_MAP
-                for (category, currency), suffix in smap.items():
-                    code = f'{prefix}/{t.id:05d}/{suffix}'
-                    if code in existing_codes:
-                        continue
-                    label = labels.get(category, category.replace('_', ' ').title())
-                    batch.append(SubsidiaryAccount(
-                        code=code,
-                        name=f'{t.name} - {label} ({currency})',
-                        entity_type=entity,
-                        tenant_id=t.id,
-                        category=category,
-                        currency=currency,
-                    ))
+                    cats = RENTAL_CATEGORIES
+                # Fall back to a computed main code only if a legacy row somehow
+                # lacks one (post-migration every payer has a TN/AH code).
+                main = t.code or format_main_code(
+                    account_prefix(account_type=t.account_type), t.id)
+                for category in cats:
+                    for currency in SEED_CURRENCIES:
+                        nn = sub_account_number(category, currency)
+                        code = f'{main}/{nn}'
+                        if code in existing_codes:
+                            continue
+                        label = labels.get(category, category.replace('_', ' ').title())
+                        batch.append(SubsidiaryAccount(
+                            code=code,
+                            name=f'{t.name} - {label} ({currency})',
+                            entity_type=entity,
+                            tenant_id=t.id,
+                            category=category,
+                            currency=currency,
+                            sub_account_number=nn,
+                        ))
                 if len(batch) >= CHUNK * 12:
                     flush()
             flush()

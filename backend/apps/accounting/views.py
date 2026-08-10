@@ -2096,12 +2096,12 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
                 'entries': formatted_entries,
                 'generated_at': timezone.now().strftime('%Y-%m-%d %H:%M'),
             }
-            filename = f'LD-{landlord.id:05d}_consolidated_{period_start}_to_{period_end}.pdf'
+            filename = f'{landlord.code}_consolidated_{period_start}_to_{period_end}.pdf'
             return render_pdf('pdf/landlord_consolidated_statement.html', context, filename)
 
         # CSV export (default)
         response = HttpResponse(content_type='text/csv')
-        filename = f'LD-{landlord.id:05d}_consolidated_{period_start}_to_{period_end}.csv'
+        filename = f'{landlord.code}_consolidated_{period_start}_to_{period_end}.csv'
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
 
         writer = csv.writer(response)
