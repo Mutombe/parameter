@@ -27,7 +27,17 @@ def forwards(apps, schema_editor):
     Landlord = apps.get_model('masterfile', 'Landlord')
     SubsidiaryAccount = apps.get_model('accounting', 'SubsidiaryAccount')
     SubsidiaryTransaction = apps.get_model('accounting', 'SubsidiaryTransaction')
-    from apps.accounting.account_coding import sub_account_number
+
+    # Self-contained: this migration froze the CURRENCY-BAND scheme (USD base,
+    # ZWG +20). Later account_coding versions changed the numbering, so we
+    # inline the logic here rather than import the (now-different) helper.
+    _BASE = {'general': 0, 'rent': 1, 'levy': 2, 'special_levy': 3,
+             'maintenance': 4, 'parking': 5, 'rates': 6, 'vat': 7, 'deposit': 8}
+
+    def sub_account_number(category, currency='USD'):
+        base = _BASE.get(category, 0)
+        band = 20 if (currency or 'USD').upper() == 'ZWG' else 0
+        return f'{base + band:02d}'
 
     # Use _base_manager throughout so SOFT-DELETED tenants/landlords are
     # migrated too — their pockets and transactions still exist and reference

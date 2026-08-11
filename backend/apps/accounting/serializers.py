@@ -678,7 +678,7 @@ class SubsidiaryTransactionSerializer(serializers.ModelSerializer):
             'id', 'transaction_number', 'global_transaction_number',
             'transaction_display', 'date', 'contra_account',
             'reference', 'description', 'display_description',
-            'debit_amount', 'credit_amount',
+            'currency', 'debit_amount', 'credit_amount',
             'balance', 'is_reversal', 'reversed_transaction',
             'is_consolidated', 'consolidation_marker',
             'overwritten_description', 'created_at'
@@ -701,14 +701,25 @@ class SubsidiaryAccountSerializer(serializers.ModelSerializer):
     entity_name = serializers.SerializerMethodField()
     entity_id = serializers.SerializerMethodField()
     transaction_count = serializers.SerializerMethodField()
+    # Per-currency balances — currency is a dimension of the one-per-category
+    # pocket, e.g. {"USD": "800.00", "ZWG": "0.00"}.
+    balances = serializers.SerializerMethodField()
 
     class Meta:
         model = SubsidiaryAccount
         fields = [
-            'id', 'code', 'name', 'entity_type', 'category', 'entity_name', 'entity_id',
-            'currency', 'current_balance', 'is_active',
+            'id', 'code', 'name', 'entity_type', 'category', 'sub_account_number',
+            'entity_name', 'entity_id',
+            'currency', 'current_balance', 'balances', 'is_active',
             'transaction_count', 'created_at', 'updated_at'
         ]
+
+    def get_balances(self, obj):
+        from apps.accounting.account_coding import SUPPORTED_CURRENCIES
+        bmap = obj.balance_map()
+        # Always present every supported currency (zero if none) so the UI
+        # shows the full per-currency structure.
+        return {c: str(bmap.get(c, '0.00')) for c in SUPPORTED_CURRENCIES}
 
     def get_entity_name(self, obj):
         if obj.tenant:

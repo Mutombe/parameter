@@ -490,6 +490,7 @@ class Journal(models.Model):
                     debit_amount=entry.debit_amount or None,
                     credit_amount=entry.credit_amount or None,
                     journal_entry=entry,
+                    currency=self.currency,
                 )
                 control = control_account_for_pocket(entry.subsidiary_account)
                 if control is not None:
@@ -1546,147 +1547,151 @@ class SubsidiaryAccount(models.Model):
     def __str__(self):
         return f'{self.code} - {self.name}'
 
+    # ── Per-currency balance helpers (currency is a dimension) ──
+    def balance_in(self, currency):
+        row = self.currency_balances.filter(currency=currency).first()
+        return row.balance if row else Decimal('0.00')
+
+    def balance_map(self):
+        """{currency: balance} across every currency this pocket holds."""
+        return {r.currency: r.balance for r in self.currency_balances.all()}
+
+    # ── Account creation (template seeding) — the ONLY place pockets are
+    #    created. Transaction processing must use the get-only resolvers. ──
     @classmethod
-    def get_or_create_for_tenant(cls, tenant):
-        """Get or create the tenant's ORIGINAL (legacy/general) subsidiary
-        account. Rental tenants get TN/ prefix; levy tenants get AC/ prefix.
-
-        Tenants now carry multiple category pockets (see
-        get_or_create_for_tenant_category); this returns the earliest account
-        so pre-pocket history keeps resolving to the same statement.
-        """
-        # tenant is a plain FK now — a tenant can hold several pockets, so
-        # return the earliest existing account (pre-pocket history stays on
-        # the same statement). When none exists yet, create the General pocket
-        # in the standard MainCode/00 format.
-        account = cls.objects.filter(tenant=tenant).order_by('id').first()
-        if account is None:
-            account = cls.get_or_create_for_tenant_category(
-                tenant, category='general', currency='USD')
-        return account
-
-    @classmethod
-    def get_or_create_for_tenant_category(cls, tenant, category='general', currency='USD'):
-        """Category-specific pocket for a tenant/account holder — the mirror
-        of get_or_create_for_landlord_category. A tenant billed rent, rates,
-        maintenance and parking gets a pocket per item: paying rent credits
-        the Rent pocket, paying parking credits the Parking pocket, etc.
-
-        Rental tenants: Rent, Rates, Maintenance, Parking, VAT, Deposit.
-        Account holders (levy): Levy, Special Levy, Maintenance, Parking, Rates.
-        Categories outside the map fall back to the General pocket.
-        """
+    def ensure_for_tenant_category(cls, tenant, category='general'):
+        """Create-if-missing a payer's single per-category pocket (no currency
+        in the identity). Used by template seeding / account creation only."""
         from apps.accounting.account_coding import format_sub_code, sub_account_number
         entity_type = (cls.EntityType.ACCOUNT_HOLDER if tenant.account_type == 'levy'
                        else cls.EntityType.TENANT)
-        # Sub-account inherits the tenant's full main code: e.g. TN000001/03.
-        code = format_sub_code(tenant.code, category, currency)
-
-        category_label = dict(cls.AccountCategory.choices).get(
-            category, category.replace('_', ' ').title()
-        )
-        name = f'{tenant.name} - {category_label} ({currency})'
-
-        account, _created = cls.objects.get_or_create(
+        code = format_sub_code(tenant.code, category)  # e.g. AH000001/01
+        label = dict(cls.AccountCategory.choices).get(
+            category, category.replace('_', ' ').title())
+        account, _ = cls.objects.get_or_create(
             code=code,
             defaults={
-                'name': name,
+                'name': f'{tenant.name} - {label}',
                 'entity_type': entity_type,
                 'tenant': tenant,
                 'category': category,
-                'currency': currency,
-                'sub_account_number': sub_account_number(category, currency),
-            }
-        )
+                'sub_account_number': sub_account_number(category),
+            })
         return account
 
     @classmethod
-    def get_or_create_for_landlord_category(cls, landlord, category='general', currency='USD'):
-        """Get or create a category-specific subsidiary account for a landlord.
-        Uses the correct suffix map based on the landlord's property management type.
-        Rental: max 6 sub-accounts (Rent, Rates, Maintenance, Parking, VAT, Deposit)
-        Levy: max 5 sub-accounts (Levy, Special Levy, Maintenance, Parking, Rates)
-        """
+    def ensure_for_landlord_category(cls, landlord, category='general'):
         from apps.accounting.account_coding import format_sub_code, sub_account_number
-        # Sub-account inherits the landlord's full main code: e.g. LD000001/06.
-        code = format_sub_code(landlord.code, category, currency)
-
-        # Category display name
-        category_label = dict(cls.AccountCategory.choices).get(
-            category, category.replace('_', ' ').title()
-        )
-        name = f'{landlord.name} - {category_label} ({currency})'
-
-        account, created = cls.objects.get_or_create(
+        code = format_sub_code(landlord.code, category)
+        label = dict(cls.AccountCategory.choices).get(
+            category, category.replace('_', ' ').title())
+        account, _ = cls.objects.get_or_create(
             code=code,
             defaults={
-                'name': name,
+                'name': f'{landlord.name} - {label}',
                 'entity_type': cls.EntityType.LANDLORD,
                 'landlord': landlord,
                 'category': category,
-                'currency': currency,
-                'sub_account_number': sub_account_number(category, currency),
-            }
-        )
+                'sub_account_number': sub_account_number(category),
+            })
+        return account
+
+    # ── Get-only resolvers (transactions may NOT create pockets) ──
+    @classmethod
+    def get_for_tenant_category(cls, tenant, category='general'):
+        """Return the payer's existing per-category pocket, or raise — a
+        transaction must never create structure (spec §5, §12)."""
+        from apps.accounting.account_coding import format_sub_code
+        code = format_sub_code(tenant.code, category)
+        account = cls.objects.filter(code=code).first()
+        if account is None:
+            raise SubsidiaryStructureError(
+                f'{tenant.code} ({tenant.name}) has no {category} sub-account. '
+                f'A transaction may not create one — the account structure must '
+                f'exist first.')
+        return account
+
+    @classmethod
+    def get_for_landlord_category(cls, landlord, category='general'):
+        from apps.accounting.account_coding import format_sub_code
+        code = format_sub_code(landlord.code, category)
+        account = cls.objects.filter(code=code).first()
+        if account is None:
+            raise SubsidiaryStructureError(
+                f'{landlord.code} ({landlord.name}) has no {category} sub-account.')
+        return account
+
+    # ── Back-compat aliases: posting code calls these; they are GET-ONLY now
+    #    (the `currency` arg is ignored for identity — currency is a dimension). ──
+    @classmethod
+    def get_or_create_for_tenant_category(cls, tenant, category='general', currency=None):
+        return cls.get_for_tenant_category(tenant, category)
+
+    @classmethod
+    def get_or_create_for_landlord_category(cls, landlord, category='general', currency=None):
+        return cls.get_for_landlord_category(landlord, category)
+
+    @classmethod
+    def get_or_create_for_tenant(cls, tenant):
+        account = cls.objects.filter(tenant=tenant).order_by('id').first()
+        if account is None:
+            account = cls.ensure_for_tenant_category(tenant, 'general')
         return account
 
     @classmethod
     def get_or_create_for_landlord(cls, landlord, currency=None):
-        """Get or create a subsidiary account for a landlord.
+        return cls.get_for_landlord_category(landlord, 'general')
 
-        Backward-compatible wrapper — delegates to get_or_create_for_landlord_category
-        with category='general'.
-        """
-        if currency is None:
-            currency = getattr(landlord, 'preferred_currency', 'USD') or 'USD'
-        return cls.get_or_create_for_landlord_category(
-            landlord, category='general', currency=currency
-        )
-
+    # ── Template seeding (full predefined structure at account creation) ──
     @classmethod
     def seed_for_landlord(cls, landlord, management_type='rental'):
-        """Pre-create the full set of category-specific sub-accounts for a landlord.
-
-        Rental: 12 accounts (6 categories × 2 currencies)
-        Levy:   10 accounts (5 categories × 2 currencies)
-
-        Idempotent — uses get_or_create on each (category, currency) pair.
-        Called from the Property post_save signal once we know the management type.
-        """
-        from apps.accounting.account_coding import (
-            RENTAL_CATEGORIES, LEVY_CATEGORIES, SEED_CURRENCIES,
-        )
-        cats = LEVY_CATEGORIES if management_type == 'levy' else RENTAL_CATEGORIES
-        created_accounts = []
-        for category in cats:
-            for currency in SEED_CURRENCIES:
-                created_accounts.append(cls.get_or_create_for_landlord_category(
-                    landlord, category=category, currency=currency))
-        return created_accounts
+        """Create the landlord's complete pocket template. A landlord may
+        receive either side's income (rental and/or levy properties), so seed
+        the UNION of categories, one pocket per category. Idempotent."""
+        from apps.accounting.account_coding import RENTAL_CATEGORIES, LEVY_CATEGORIES
+        seen, cats = set(), []
+        for c in ['general'] + RENTAL_CATEGORIES + LEVY_CATEGORIES:
+            if c not in seen:
+                seen.add(c)
+                cats.append(c)
+        return [cls.ensure_for_landlord_category(landlord, c) for c in cats]
 
     @classmethod
     def seed_for_tenant(cls, tenant):
-        """Pre-create the full set of category pockets for a tenant or
-        account holder — the mirror of seed_for_landlord, so every payer
-        carries their own slate of category-specific sub-accounts.
+        """Create the payer's complete predefined pocket template at account
+        creation: general + the payer-type categories, one pocket each. Every
+        payer of the same type has the identical structure (spec §2, §9)."""
+        from apps.accounting.account_coding import template_categories
+        cats = ['general'] + template_categories(tenant.account_type)
+        return [cls.ensure_for_tenant_category(tenant, c) for c in cats]
 
-        Rental tenant:        12 pockets (Rent, Rates, Maintenance, Parking,
-                              VAT, Deposit × USD/ZWG)
-        Account holder (levy): 10 pockets (Levy, Special Levy, Maintenance,
-                              Parking, Rates × USD/ZWG)
 
-        Idempotent — get_or_create on each (category, currency) pair.
-        Called from the RentalTenant post_save signal and the
-        seed_tenant_pockets backfill command.
-        """
-        from apps.accounting.account_coding import (
-            RENTAL_CATEGORIES, LEVY_CATEGORIES, SEED_CURRENCIES,
-        )
-        cats = LEVY_CATEGORIES if tenant.account_type == 'levy' else RENTAL_CATEGORIES
-        return [
-            cls.get_or_create_for_tenant_category(tenant, category=category, currency=currency)
-            for category in cats for currency in SEED_CURRENCIES
-        ]
+class SubsidiaryStructureError(Exception):
+    """Raised when a transaction requires a sub-account that does not exist.
+    Transactions must never create structure — the account's template must be
+    created up front (spec: master-structure model, not activity-driven)."""
+    pass
+
+
+class SubsidiaryBalance(models.Model):
+    """Per-currency balance of a subsidiary account. One sub-account (per
+    category) holds a balance in each currency it has transacted in — currency
+    is a DIMENSION of the pocket, not a separate sub-account."""
+    account = models.ForeignKey(
+        SubsidiaryAccount, on_delete=models.CASCADE, related_name='currency_balances'
+    )
+    currency = models.CharField(max_length=3, default='USD')
+    balance = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('0.00'))
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Subsidiary Balance'
+        verbose_name_plural = 'Subsidiary Balances'
+        unique_together = ['account', 'currency']
+        indexes = [models.Index(fields=['account', 'currency'])]
+
+    def __str__(self):
+        return f'{self.account.code} {self.currency}: {self.balance}'
 
 
 class SubsidiaryTransaction(models.Model):
@@ -1712,6 +1717,11 @@ class SubsidiaryTransaction(models.Model):
         help_text='Document reference (INV-xxxxxx, RCT-xxxxxx, CMA-xxxxxx)'
     )
     description = models.CharField(max_length=500)
+
+    # Currency is a DIMENSION of the transaction — one sub-account (per
+    # category) holds transactions in several currencies; `balance` is the
+    # running balance IN THIS CURRENCY.
+    currency = models.CharField(max_length=3, default='USD', db_index=True)
 
     debit_amount = models.DecimalField(
         max_digits=18, decimal_places=2, default=Decimal('0.00')
@@ -1770,23 +1780,33 @@ class SubsidiaryTransaction(models.Model):
     @classmethod
     def create_entry(cls, account, date, contra_account, reference,
                      description, debit_amount=None, credit_amount=None,
-                     journal_entry=None):
+                     journal_entry=None, currency=None):
         """
-        Create a subsidiary transaction and update the account balance.
-        Returns the created transaction.
+        Create a subsidiary transaction and update the account's PER-CURRENCY
+        balance. `currency` is the transaction's currency (a dimension of the
+        one-per-category sub-account); `balance` stored is the running balance
+        in that currency. Returns the created transaction.
         """
         debit = debit_amount or Decimal('0.00')
         credit = credit_amount or Decimal('0.00')
+        ccy = (currency or getattr(account, 'currency', 'USD') or 'USD')
 
-        # Update running balance on the account
-        # Tenant accounts: normal balance is DEBIT (they owe money)
-        # Landlord accounts: normal balance is CREDIT (agent owes them)
+        # Per-currency running balance (authoritative in SubsidiaryBalance).
+        # Tenant/AH pockets are debit-normal; landlord pockets credit-normal.
+        bal_row, _ = SubsidiaryBalance.objects.select_for_update().get_or_create(
+            account=account, currency=ccy,
+            defaults={'balance': Decimal('0.00')})
         if account.entity_type in ('tenant', 'account_holder'):
-            account.current_balance += debit - credit
+            bal_row.balance += debit - credit
         else:
-            account.current_balance += credit - debit
+            bal_row.balance += credit - debit
+        bal_row.save(update_fields=['balance', 'updated_at'])
 
-        account.save(update_fields=['current_balance', 'updated_at'])
+        # Keep the legacy single-value current_balance tracking the primary
+        # currency (USD) so older readers stay sensible.
+        if ccy == 'USD':
+            account.current_balance = bal_row.balance
+            account.save(update_fields=['current_balance', 'updated_at'])
 
         txn_number = cls.get_next_number()
 
@@ -1799,7 +1819,8 @@ class SubsidiaryTransaction(models.Model):
             description=description,
             debit_amount=debit,
             credit_amount=credit,
-            balance=account.current_balance,
+            balance=bal_row.balance,
+            currency=ccy,
             journal_entry=journal_entry,
         )
 
@@ -1966,6 +1987,7 @@ class AccruedExpense(models.Model):
                 description=self.custom_description or self.description,
                 debit_amount=self.amount,
                 journal_entry=journal.entries.filter(debit_amount__gt=0).first(),
+                currency=self.currency,
             )
 
         # For clearable expenses, also record on accrual sub-account
@@ -1978,6 +2000,7 @@ class AccruedExpense(models.Model):
                 description=self.custom_description or self.description,
                 credit_amount=self.amount,
                 journal_entry=journal.entries.filter(credit_amount__gt=0).first(),
+                currency=self.currency,
             )
 
         self.journal = journal
@@ -2098,6 +2121,7 @@ class BalanceSheetMovement(models.Model):
                 description=self.custom_description or self.description,
                 debit_amount=self.amount,
                 journal_entry=journal.entries.filter(debit_amount__gt=0).first(),
+                currency=self.currency,
             )
 
         self.journal = journal
@@ -2236,7 +2260,8 @@ class OpeningBalance(models.Model):
         if self.landlord_sub_account:
             kwargs = {'account': self.landlord_sub_account, 'date': self.date,
                       'contra_account': '9000', 'reference': self.entry_number,
-                      'description': desc, 'journal_entry': je_target}
+                      'description': desc, 'journal_entry': je_target,
+                      'currency': self.currency}
             if self.direction == self.EntryDirection.DEBIT:
                 kwargs['debit_amount'] = self.amount
             else:
@@ -2247,7 +2272,8 @@ class OpeningBalance(models.Model):
         if self.tenant_sub_account:
             kwargs = {'account': self.tenant_sub_account, 'date': self.date,
                       'contra_account': '9000', 'reference': self.entry_number,
-                      'description': desc, 'journal_entry': je_target}
+                      'description': desc, 'journal_entry': je_target,
+                      'currency': self.currency}
             if self.direction == self.EntryDirection.DEBIT:
                 kwargs['debit_amount'] = self.amount
             else:

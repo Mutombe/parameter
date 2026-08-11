@@ -22,14 +22,13 @@ python manage.py migrate_schemas --shared 2>&1 && {
     }
 }
 
-# Step 2: Migrate all tenant schemas
+# Step 2: Migrate all tenant schemas.
+# HARD FAIL on error: a migration failure must fail the build so the current
+# (working) release stays live, rather than shipping new code against an
+# un-migrated schema. errexit propagates the non-zero exit and aborts deploy.
 echo "Migrating tenant schemas..."
-python manage.py migrate_schemas --tenant 2>&1 && {
-    echo "Tenant migrations completed successfully"
-} || {
-    echo "WARNING: Tenant migrations had errors (some schemas may have failed)"
-    echo "This is often OK if test schemas were deleted. Continuing..."
-}
+python manage.py migrate_schemas --tenant
+echo "Tenant migrations completed successfully"
 
 echo "Creating cache table..."
 python manage.py createcachetable || true

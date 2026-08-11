@@ -330,6 +330,7 @@ class Invoice(SoftDeleteModel):
             description=desc,
             debit_amount=self.total_amount,
             journal_entry=je_debit,
+            currency=self.currency,
         )
 
         # Txn 2: Credit unpaid rent (tracked per invoice for auditing)
@@ -893,6 +894,7 @@ class Receipt(SoftDeleteModel):
             description=base_desc,
             credit_amount=self.amount,
             journal_entry=je_ar_cr,
+            currency=self.currency,
         )
 
         if landlord and landlord_sub is not None:
@@ -904,6 +906,7 @@ class Receipt(SoftDeleteModel):
                 description=base_desc,
                 credit_amount=self.amount,
                 journal_entry=je_trust_cr,
+                currency=self.currency,
             )
 
             if gross_commission != Decimal('0'):
@@ -930,6 +933,7 @@ class Receipt(SoftDeleteModel):
                     description=f'Rent Commission-{base_desc}',
                     debit_amount=gross_commission,
                     journal_entry=je_trust_dr,
+                    currency=self.currency,
                 )
 
         # === Update invoice payment status ===
@@ -1329,6 +1333,7 @@ class Expense(SoftDeleteModel):
                 description=line_desc,
                 debit_amount=self.amount,
                 journal_entry=je_debit,
+                currency=self.currency,
             )
 
         self.journal = journal
@@ -1363,6 +1368,7 @@ class Expense(SoftDeleteModel):
                 description=f'Reversal — deleted expense {self.expense_number}',
                 debit_amount=st.credit_amount or None,
                 credit_amount=st.debit_amount or None,
+                currency=st.currency,
             )
             rev.is_reversal = True
             rev.reversed_transaction = st

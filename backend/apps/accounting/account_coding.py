@@ -30,29 +30,38 @@ ENTITY_PREFIX = {
 
 # ── Sub-account category map (primary-currency base numbers) ──────────
 CATEGORY_BASE_SUFFIX = {
+    # Per-payer-type templates. A payer is ONE type, so rent/levy can both be
+    # /01 and vat/special_levy both /02 with no in-account clash. Currency is
+    # NOT part of the code — one sub-account per CATEGORY, currency is a
+    # balance/transaction dimension.
+    #   Rental: /01 Rent /02 VAT /03 Maintenance /04 Parking /05 Rates /06 Deposit
+    #   Levy:   /01 Levy /02 Special Levy /03 Maintenance /04 Parking /05 Rates
     'general': 0,
     'rent': 1,
-    'levy': 2,
-    'special_levy': 3,
-    'maintenance': 4,
-    'parking': 5,
-    'rates': 6,
-    'vat': 7,
-    'deposit': 8,
+    'levy': 1,
+    'vat': 2,
+    'special_levy': 2,
+    'maintenance': 3,
+    'parking': 4,
+    'rates': 5,
+    'deposit': 6,
 }
 
-# Currency bands: primary currency at offset 0, each extra currency +20.
-CURRENCY_BAND = {
-    'USD': 0,
-    'ZWG': 20,
-}
-CURRENCY_BAND_WIDTH = 20
-
-# Which category pockets each management side seeds (× currencies).
-RENTAL_CATEGORIES = ['rent', 'rates', 'maintenance', 'parking', 'vat', 'deposit']
+# The full predefined pocket template per payer side (ORDER = display order).
+# One pocket per category, no currency multiplication.
+RENTAL_CATEGORIES = ['rent', 'vat', 'maintenance', 'parking', 'rates', 'deposit']
 LEVY_CATEGORIES = ['levy', 'special_levy', 'maintenance', 'parking', 'rates']
-SEED_CURRENCIES = ['USD', 'ZWG']
 GENERAL_CATEGORY = 'general'
+
+# Currencies a pocket keeps a balance in (per-currency balance rows).
+SUPPORTED_CURRENCIES = ['USD', 'ZWG']
+# Back-compat alias (older callers referenced SEED_CURRENCIES).
+SEED_CURRENCIES = SUPPORTED_CURRENCIES
+
+
+def template_categories(account_type):
+    """The complete predefined category set for a payer type (ordered)."""
+    return list(LEVY_CATEGORIES if account_type == 'levy' else RENTAL_CATEGORIES)
 
 
 def allowed_categories(account_type):
@@ -91,16 +100,15 @@ def format_main_code(prefix, number):
     return f'{prefix}{number:0{MAIN_CODE_DIGITS}d}'
 
 
-def sub_account_number(category, currency='USD'):
-    """Two-digit /NN suffix for a (category, currency) pocket."""
+def sub_account_number(category):
+    """Two-digit /NN suffix for a category (currency-independent)."""
     base = CATEGORY_BASE_SUFFIX.get(category, CATEGORY_BASE_SUFFIX['general'])
-    band = CURRENCY_BAND.get((currency or 'USD').upper(), 0)
-    return f'{base + band:02d}'
+    return f'{base:02d}'
 
 
-def format_sub_code(main_code, category, currency='USD'):
-    """Full sub-account code, e.g. TN000001/03."""
-    return f'{main_code}/{sub_account_number(category, currency)}'
+def format_sub_code(main_code, category):
+    """Full sub-account code, e.g. AH000001/01 (Levy) — one per category."""
+    return f'{main_code}/{sub_account_number(category)}'
 
 
 def parent_code_of(sub_code):

@@ -1209,71 +1209,58 @@ export default function TenantDetail() {
                   <p className="text-sm text-gray-500">Category-specific accounts for this tenant</p>
                 </div>
                 {(() => {
-                  // Hide the legacy "General (history)" account once its
-                  // transactions have been re-homed into the pockets.
-                  const visibleAccounts = tenantSubAccounts.filter((acc: any) =>
-                    acc.code?.split('/').length > 2 ||
-                    Number(acc.transaction_count || 0) > 0 ||
-                    Number(acc.current_balance || 0) !== 0)
-                  const byCurrency: Record<string, any[]> = {}
-                  visibleAccounts.forEach((acc: any) => {
-                    const cur = (acc.currency || 'USD').toUpperCase()
-                    ;(byCurrency[cur] ||= []).push(acc)
-                  })
-                  const currencies = Object.keys(byCurrency).sort()
+                  // MASTER STRUCTURE: the complete predefined template — one
+                  // card per CATEGORY with per-currency (USD + ZWG) balances.
+                  // Zero-balance pockets are structural and stay visible.
+                  const pockets = tenantSubAccounts
+                    .filter((acc: any) => acc.is_active !== false)
+                    .sort((a: any, b: any) => String(a.code).localeCompare(String(b.code)))
                   const catLabel = (acc: any) => {
                     const c = acc.category_name || acc.category
-                    if (!c || c === 'general') return acc.code?.includes('/') ? 'General' : 'General (history)'
+                    if (!c || c === 'general') return 'General'
                     return String(c).replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())
                   }
                   return (
-                    <div className="space-y-4">
-                      {currencies.map((cur) => (
-                        <div key={cur}>
-                          {currencies.length > 1 && (
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-[0.1em]">{cur}</span>
-                              <div className="flex-1 h-px bg-gray-100" />
-                              <span className="text-[10px] text-gray-400">
-                                {byCurrency[cur].length} account{byCurrency[cur].length === 1 ? '' : 's'}
-                              </span>
+                    <div className="flex flex-wrap gap-2">
+                      {pockets.map((acc: any) => {
+                        const bals: Record<string, string> = acc.balances || { USD: String(acc.current_balance ?? 0) }
+                        const ccys = Object.keys(bals)
+                        const isSelected = tenantSubAccount?.id === acc.id
+                        return (
+                          <button
+                            key={acc.id}
+                            onClick={() => setSelectedSubId(acc.id)}
+                            className={cn(
+                              'w-[172px] px-3 py-2 border rounded-lg text-left transition-all bg-white',
+                              isSelected
+                                ? 'border-primary-500 ring-2 ring-primary-100 shadow-sm'
+                                : 'border-gray-200 hover:border-primary-300 hover:shadow-sm'
+                            )}
+                            title={acc.code}
+                          >
+                            <div className="flex items-center justify-between mb-0.5">
+                              <span className="text-[10px] font-mono text-gray-400 truncate">{acc.code || '-'}</span>
                             </div>
-                          )}
-                          <div className="flex flex-wrap gap-2">
-                            {byCurrency[cur].map((acc: any) => {
-                              const balance = Number(acc.balance ?? acc.current_balance ?? 0)
-                              const isSelected = tenantSubAccount?.id === acc.id
-                              return (
-                                <button
-                                  key={acc.id}
-                                  onClick={() => setSelectedSubId(acc.id)}
-                                  className={cn(
-                                    'w-[148px] px-3 py-2 border rounded-lg text-left transition-all bg-white',
-                                    isSelected
-                                      ? 'border-primary-500 ring-2 ring-primary-100 shadow-sm'
-                                      : 'border-gray-200 hover:border-primary-300 hover:shadow-sm'
-                                  )}
-                                  title={acc.code}
-                                >
-                                  <div className="flex items-center justify-between mb-0.5">
-                                    <span className="text-[10px] font-mono text-gray-400 truncate">{acc.code || '-'}</span>
+                            <p className="text-[11px] font-medium text-gray-700 truncate leading-tight mb-1">
+                              {catLabel(acc)}
+                            </p>
+                            <div className="space-y-0.5">
+                              {ccys.map((cur) => {
+                                const b = Number(bals[cur] || 0)
+                                return (
+                                  <div key={cur} className="flex items-center justify-between">
                                     <span className="text-[10px] font-medium text-gray-400">{cur}</span>
+                                    <span className={cn('text-xs font-bold tabular-nums',
+                                      b > 0 ? 'text-emerald-600' : b < 0 ? 'text-red-600' : 'text-gray-400')}>
+                                      {formatCurrency(Math.abs(b))}
+                                    </span>
                                   </div>
-                                  <p className="text-[11px] font-medium text-gray-700 truncate leading-tight mb-1">
-                                    {catLabel(acc)}
-                                  </p>
-                                  <p className={cn(
-                                    'text-sm font-bold tabular-nums leading-tight',
-                                    balance > 0 ? 'text-emerald-600' : balance < 0 ? 'text-red-600' : 'text-gray-500'
-                                  )}>
-                                    {formatCurrency(Math.abs(balance))}
-                                  </p>
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      ))}
+                                )
+                              })}
+                            </div>
+                          </button>
+                        )
+                      })}
                     </div>
                   )
                 })()}

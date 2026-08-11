@@ -65,8 +65,8 @@ class Command(BaseCommand):
                     f'search_path not applied (current_schema={current!r}, '
                     f'expected {schema!r}) — refusing to seed the wrong schema')
             from apps.accounting.account_coding import (
-                RENTAL_CATEGORIES, LEVY_CATEGORIES, SEED_CURRENCIES,
-                account_prefix, format_main_code, sub_account_number,
+                template_categories, account_prefix, format_main_code,
+                sub_account_number,
             )
             labels = dict(SubsidiaryAccount.AccountCategory.choices)
             existing_codes = set(
@@ -90,33 +90,29 @@ class Command(BaseCommand):
 
             for t in payers.iterator(chunk_size=CHUNK):
                 total_payers += 1
-                if t.account_type == 'levy':
-                    entity = SubsidiaryAccount.EntityType.ACCOUNT_HOLDER
-                    cats = LEVY_CATEGORIES
-                else:
-                    entity = SubsidiaryAccount.EntityType.TENANT
-                    cats = RENTAL_CATEGORIES
-                # Fall back to a computed main code only if a legacy row somehow
-                # lacks one (post-migration every payer has a TN/AH code).
+                entity = (SubsidiaryAccount.EntityType.ACCOUNT_HOLDER
+                          if t.account_type == 'levy'
+                          else SubsidiaryAccount.EntityType.TENANT)
+                # ONE pocket per category (currency is a balance dimension).
+                cats = ['general'] + template_categories(t.account_type)
                 main = t.code or format_main_code(
                     account_prefix(account_type=t.account_type), t.id)
                 for category in cats:
-                    for currency in SEED_CURRENCIES:
-                        nn = sub_account_number(category, currency)
-                        code = f'{main}/{nn}'
-                        if code in existing_codes:
-                            continue
-                        label = labels.get(category, category.replace('_', ' ').title())
-                        batch.append(SubsidiaryAccount(
-                            code=code,
-                            name=f'{t.name} - {label} ({currency})',
-                            entity_type=entity,
-                            tenant_id=t.id,
-                            category=category,
-                            currency=currency,
-                            sub_account_number=nn,
-                        ))
-                if len(batch) >= CHUNK * 12:
+                    nn = sub_account_number(category)
+                    code = f'{main}/{nn}'
+                    if code in existing_codes:
+                        continue
+                    existing_codes.add(code)
+                    label = labels.get(category, category.replace('_', ' ').title())
+                    batch.append(SubsidiaryAccount(
+                        code=code,
+                        name=f'{t.name} - {label}',
+                        entity_type=entity,
+                        tenant_id=t.id,
+                        category=category,
+                        sub_account_number=nn,
+                    ))
+                if len(batch) >= CHUNK * 8:
                     flush()
             flush()
 
