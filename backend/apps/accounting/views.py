@@ -1725,6 +1725,17 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Currency is a DIMENSION of the one-per-category pocket, so a statement
+        # is always for ONE currency — balances of different currencies are
+        # never summed. Default to the pocket's most-used currency; expose the
+        # full list so the UI can switch.
+        available_currencies = sorted(
+            c for c in account.transactions.values_list('currency', flat=True).distinct() if c
+        )
+        currency = request.query_params.get('currency')
+        if not currency:
+            currency = available_currencies[0] if available_currencies else 'USD'
+
         from datetime import datetime
         start = datetime.strptime(period_start, '%Y-%m-%d').date()
         end = datetime.strptime(period_end, '%Y-%m-%d').date()
@@ -1738,7 +1749,7 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
         # period. Summed (order-independent) rather than read off one
         # transaction's stored balance, because transaction_number is
         # posting order — a back-dated entry would otherwise corrupt it.
-        prior_qs = account.transactions.filter(date__lt=start)
+        prior_qs = account.transactions.filter(date__lt=start, currency=currency)
         if view_mode == 'consolidated':
             prior_qs = prior_qs.filter(is_consolidated=False)
         prior = prior_qs.aggregate(d=Sum('debit_amount'), c=Sum('credit_amount'))
@@ -1748,7 +1759,7 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
 
         # Period transactions, sorted strictly by DATE (transaction_number
         # then id break same-day ties deterministically).
-        txn_qs = account.transactions.filter(date__gte=start, date__lte=end)
+        txn_qs = account.transactions.filter(date__gte=start, date__lte=end, currency=currency)
         if view_mode == 'consolidated':
             txn_qs = txn_qs.filter(is_consolidated=False)
         txn_qs = txn_qs.select_related('journal_entry').order_by('date', 'transaction_number', 'id')
@@ -1859,6 +1870,8 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
             'period_start': period_start,
             'period_end': period_end,
             'view_mode': view_mode,
+            'currency': currency,
+            'available_currencies': available_currencies,
             'opening_balance': opening_balance,
             'transactions': txn_rows,
             'total_debits': totals['total_debits'] or Decimal('0.00'),
@@ -1885,9 +1898,13 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
 
         is_debit_normal = account.entity_type in ('tenant', 'account_holder')
 
+        # One currency per statement (currency is a dimension — never summed).
+        _avail = sorted(c for c in account.transactions.values_list('currency', flat=True).distinct() if c)
+        currency = request.query_params.get('currency') or (_avail[0] if _avail else 'USD')
+
         # Opening balance = net of every movement dated before the period
         # (summed, order-independent — transaction_number is posting order).
-        prior_qs = account.transactions.filter(date__lt=start)
+        prior_qs = account.transactions.filter(date__lt=start, currency=currency)
         if view_mode == 'consolidated':
             prior_qs = prior_qs.filter(is_consolidated=False)
         prior = prior_qs.aggregate(d=Sum('debit_amount'), c=Sum('credit_amount'))
@@ -1896,7 +1913,7 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
         opening = (prior_d - prior_c) if is_debit_normal else (prior_c - prior_d)
 
         # Transactions sorted strictly by DATE.
-        transactions = account.transactions.filter(date__gte=start, date__lte=end)
+        transactions = account.transactions.filter(date__gte=start, date__lte=end, currency=currency)
         if view_mode == 'consolidated':
             transactions = transactions.filter(is_consolidated=False)
         transactions = transactions.order_by('date', 'transaction_number', 'id')

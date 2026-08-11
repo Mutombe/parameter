@@ -575,8 +575,11 @@ def _aggregate_balances_from_gl(scope_filter, account_types, end_date=None, star
     )
 
 
-def _sub_account_balance_as_of(sub, as_of_date):
+def _sub_account_balance_as_of(sub, as_of_date, currency=None):
     """Closing balance of a subsidiary account as at `as_of_date`.
+
+    `currency` scopes to one currency (a pocket now holds several — currency
+    is a dimension). Balances of different currencies are never summed.
 
     Summed from the movements themselves rather than read off the latest
     transaction's stored running balance. The stored balance is written
@@ -595,9 +598,10 @@ def _sub_account_balance_as_of(sub, as_of_date):
       tenant / account_holder → debit-normal  (debit − credit)
       landlord               → credit-normal (credit − debit)
     """
-    agg = sub.transactions.filter(
-        date__lte=as_of_date, is_consolidated=False,
-    ).aggregate(d=Sum('debit_amount'), c=Sum('credit_amount'))
+    qs = sub.transactions.filter(date__lte=as_of_date, is_consolidated=False)
+    if currency:
+        qs = qs.filter(currency=currency)
+    agg = qs.aggregate(d=Sum('debit_amount'), c=Sum('credit_amount'))
     debit = agg['d'] or Decimal('0')
     credit = agg['c'] or Decimal('0')
     if sub.entity_type in ('tenant', 'account_holder'):
@@ -605,20 +609,24 @@ def _sub_account_balance_as_of(sub, as_of_date):
     return credit - debit
 
 
-def _sub_account_balances_as_of(subs, as_of_date):
+def _sub_account_balances_as_of(subs, as_of_date, currency=None):
     """Batch version of `_sub_account_balance_as_of` — one GROUP BY query for
     the whole set instead of one aggregate per account (the Balance Sheet was
     firing 40+ of those per request). Returns {sub_id: Decimal balance} with
     the same period rule and sign convention as the single-account helper;
-    accounts with no movements map to 0."""
+    accounts with no movements map to 0. `currency` scopes to one currency
+    (currency is a dimension of the one-per-category pocket)."""
     from apps.accounting.models import SubsidiaryTransaction
     subs = list(subs)
     if not subs:
         return {}
-    rows = SubsidiaryTransaction.objects.filter(
+    qs = SubsidiaryTransaction.objects.filter(
         account_id__in=[s.id for s in subs],
         date__lte=as_of_date, is_consolidated=False,
-    ).values('account_id').annotate(d=Sum('debit_amount'), c=Sum('credit_amount'))
+    )
+    if currency:
+        qs = qs.filter(currency=currency)
+    rows = qs.values('account_id').annotate(d=Sum('debit_amount'), c=Sum('credit_amount'))
     agg = {r['account_id']: (r['d'] or Decimal('0'), r['c'] or Decimal('0')) for r in rows}
     out = {}
     for s in subs:
@@ -1448,18 +1456,19 @@ class BalanceSheetView(APIView):
             # Balance "as of date" = net of every movement dated on/before
             # as_of_date (see _sub_account_balance_as_of). If no movements,
             # the balance is 0.
+            # One pocket per category now; currency is a dimension, so scope
+            # the BALANCE by currency instead of filtering pockets by a stale
+            # currency field.
             landlord_subs = SubsidiaryAccount.objects.filter(
-                landlord_id=int(landlord_id), entity_type='landlord',
+                landlord_id=int(landlord_id), entity_type='landlord', is_active=True,
             )
-            if currency:
-                landlord_subs = landlord_subs.filter(currency=currency)
 
             funds_held_total = Decimal('0')
             funds_owed_total = Decimal('0')
             funds_held_breakdown = []
             funds_owed_breakdown = []
             landlord_subs = list(landlord_subs)
-            _ll_balances = _sub_account_balances_as_of(landlord_subs, as_of_date)
+            _ll_balances = _sub_account_balances_as_of(landlord_subs, as_of_date, currency=currency)
             for sub in landlord_subs:
                 # Strict period rule: closing balance as at the report date,
                 # summed from every movement dated on/before as_of_date so
@@ -1506,17 +1515,15 @@ class BalanceSheetView(APIView):
 
             tenant_subs = SubsidiaryAccount.objects.filter(
                 tenant_id__in=list(tenant_ids),
-                entity_type__in=['tenant', 'account_holder'],
+                entity_type__in=['tenant', 'account_holder'], is_active=True,
             )
-            if currency:
-                tenant_subs = tenant_subs.filter(currency=currency)
 
             lessees_arrears_total = Decimal('0')
             lessees_prepayments_total = Decimal('0')
             arrears_breakdown = []
             prepayments_breakdown = []
             tenant_subs = list(tenant_subs)
-            _tn_balances = _sub_account_balances_as_of(tenant_subs, as_of_date)
+            _tn_balances = _sub_account_balances_as_of(tenant_subs, as_of_date, currency=currency)
             for sub in tenant_subs:
                 # Strict period rule: the tenant's CLOSING balance as at the
                 # report date — summed from every charge and payment dated

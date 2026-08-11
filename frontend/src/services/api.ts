@@ -615,7 +615,7 @@ export const incomeTypeApi = {
 export const subsidiaryApi = {
   list: (params?: object) => api.get('/accounting/subsidiary-accounts/', { params }),
   get: (id: number) => api.get(`/accounting/subsidiary-accounts/${id}/`),
-  statement: (id: number, params: { period_start: string; period_end: string; view?: string }) =>
+  statement: (id: number, params: { period_start: string; period_end: string; view?: string; currency?: string }) =>
     api.get(`/accounting/subsidiary-accounts/${id}/statement/`, { params }),
   byType: (params?: object) => api.get('/accounting/subsidiary-accounts/by_type/', { params }),
   syncAccounts: () => api.post('/accounting/subsidiary-accounts/sync_accounts/'),

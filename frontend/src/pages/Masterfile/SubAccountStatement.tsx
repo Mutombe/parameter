@@ -29,6 +29,9 @@ export default function SubAccountStatement() {
     period_end: new Date().toISOString().split('T')[0],
   })
   const [view, setView] = useState<'consolidated' | 'audit'>('consolidated')
+  // Currency is a dimension of the pocket — a statement is for ONE currency.
+  // '' lets the backend pick the pocket's default; the switcher sets it.
+  const [currency, setCurrency] = useState<string>('')
   // Red Reversal Cloaking — how reversal pairs (an entry + its net-zero
   // reversal) are presented. 'hidden' = drop them (normal users), 'grouped' =
   // one collapsible group per pair (accountants), 'full' = show every row
@@ -48,11 +51,12 @@ export default function SubAccountStatement() {
   })
 
   const { data: statement, isLoading, isFetching } = useQuery({
-    queryKey: ['subaccount-statement', accountId, range, view],
+    queryKey: ['subaccount-statement', accountId, range, view, currency],
     queryFn: () => subsidiaryApi.statement(accountId, {
       period_start: range.period_start,
       period_end: range.period_end,
       view,
+      ...(currency ? { currency } : {}),
     }).then(r => r.data),
     enabled: !!accountId,
     placeholderData: keepPreviousData,
@@ -219,13 +223,31 @@ export default function SubAccountStatement() {
               )}
             </div>
             <p className="text-sm text-gray-500 mt-0.5">
-              {account?.code}{account?.currency ? ` · ${account.currency}` : ''}
+              {account?.code}{statement?.currency ? ` · ${statement.currency}` : ''}
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <DatePicker value={range.period_start} onChange={(v) => setRange(r => ({ ...r, period_start: v }))} className="min-w-[150px]" />
             <span className="text-gray-400 text-sm">to</span>
             <DatePicker value={range.period_end} onChange={(v) => setRange(r => ({ ...r, period_end: v }))} className="min-w-[150px]" />
+            {/* Currency switcher — one currency per statement (currency is a
+                dimension of the one-per-category pocket). */}
+            {(statement?.available_currencies?.length > 1) && (
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5" title="Statement currency">
+                {(statement.available_currencies as string[]).map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setCurrency(c)}
+                    className={cn(
+                      'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
+                      (statement?.currency || currency) === c ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    )}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
               {(['consolidated', 'audit'] as const).map(v => (
                 <button
