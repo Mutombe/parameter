@@ -53,6 +53,14 @@ RENTAL_CATEGORIES = ['rent', 'vat', 'maintenance', 'parking', 'rates', 'deposit'
 LEVY_CATEGORIES = ['levy', 'special_levy', 'maintenance', 'parking', 'rates']
 GENERAL_CATEGORY = 'general'
 
+# Landlords are NOT payer-type-restricted — they can receive both rental and
+# levy income — so they need a numbering where EVERY category is distinct
+# (the per-payer map deliberately shares rent/levy=/01, which would collide).
+LANDLORD_CATEGORY_SUFFIX = {
+    'general': 0, 'rent': 1, 'vat': 2, 'maintenance': 3, 'parking': 4,
+    'rates': 5, 'deposit': 6, 'levy': 7, 'special_levy': 8,
+}
+
 # Currencies a pocket keeps a balance in (per-currency balance rows).
 SUPPORTED_CURRENCIES = ['USD', 'ZWG']
 # Back-compat alias (older callers referenced SEED_CURRENCIES).
@@ -100,15 +108,16 @@ def format_main_code(prefix, number):
     return f'{prefix}{number:0{MAIN_CODE_DIGITS}d}'
 
 
-def sub_account_number(category):
-    """Two-digit /NN suffix for a category (currency-independent)."""
-    base = CATEGORY_BASE_SUFFIX.get(category, CATEGORY_BASE_SUFFIX['general'])
-    return f'{base:02d}'
+def sub_account_number(category, landlord=False):
+    """Two-digit /NN suffix for a category (currency-independent). Landlords
+    use a distinct-per-category map so their union of categories never clashes."""
+    m = LANDLORD_CATEGORY_SUFFIX if landlord else CATEGORY_BASE_SUFFIX
+    return f'{m.get(category, m["general"]):02d}'
 
 
-def format_sub_code(main_code, category):
+def format_sub_code(main_code, category, landlord=False):
     """Full sub-account code, e.g. AH000001/01 (Levy) — one per category."""
-    return f'{main_code}/{sub_account_number(category)}'
+    return f'{main_code}/{sub_account_number(category, landlord)}'
 
 
 def parent_code_of(sub_code):

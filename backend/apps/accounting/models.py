@@ -1582,7 +1582,7 @@ class SubsidiaryAccount(models.Model):
     @classmethod
     def ensure_for_landlord_category(cls, landlord, category='general'):
         from apps.accounting.account_coding import format_sub_code, sub_account_number
-        code = format_sub_code(landlord.code, category)
+        code = format_sub_code(landlord.code, category, landlord=True)
         label = dict(cls.AccountCategory.choices).get(
             category, category.replace('_', ' ').title())
         account, _ = cls.objects.get_or_create(
@@ -1592,7 +1592,7 @@ class SubsidiaryAccount(models.Model):
                 'entity_type': cls.EntityType.LANDLORD,
                 'landlord': landlord,
                 'category': category,
-                'sub_account_number': sub_account_number(category),
+                'sub_account_number': sub_account_number(category, landlord=True),
             })
         return account
 
@@ -1614,7 +1614,7 @@ class SubsidiaryAccount(models.Model):
     @classmethod
     def get_for_landlord_category(cls, landlord, category='general'):
         from apps.accounting.account_coding import format_sub_code
-        code = format_sub_code(landlord.code, category)
+        code = format_sub_code(landlord.code, category, landlord=True)
         account = cls.objects.filter(code=code).first()
         if account is None:
             raise SubsidiaryStructureError(

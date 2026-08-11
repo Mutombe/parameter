@@ -31,13 +31,18 @@ from django.db import migrations
 # Per-payer-type template numbering (rent/levy share /01; vat/special_levy /02).
 _BASE = {'general': 0, 'rent': 1, 'levy': 1, 'vat': 2, 'special_levy': 2,
          'maintenance': 3, 'parking': 4, 'rates': 5, 'deposit': 6}
+# Landlords take the UNION of categories, so they need a distinct-per-category
+# map (the payer map deliberately shares rent/levy=/01, which would collide).
+_LANDLORD_BASE = {'general': 0, 'rent': 1, 'vat': 2, 'maintenance': 3,
+                  'parking': 4, 'rates': 5, 'deposit': 6, 'levy': 7, 'special_levy': 8}
 _RENTAL = ['rent', 'vat', 'maintenance', 'parking', 'rates', 'deposit']
 _LEVY = ['levy', 'special_levy', 'maintenance', 'parking', 'rates']
 _LANDLORD_UNION = ['general'] + list(dict.fromkeys(_RENTAL + _LEVY))
 
 
-def _nn(category):
-    return f'{_BASE.get(category, 0):02d}'
+def _nn(category, landlord=False):
+    m = _LANDLORD_BASE if landlord else _BASE
+    return f'{m.get(category, 0):02d}'
 
 
 def _template(account_type):
@@ -126,11 +131,12 @@ def forwards(apps, schema_editor):
 
     # ── assign final template codes + recompute per-currency balances ──
     for canonical, main, category, old_codes in canonicals:
-        new_code = f'{main}/{_nn(category)}'
+        is_ld = bool(canonical.landlord_id)
+        new_code = f'{main}/{_nn(category, is_ld)}'
         for oc in old_codes:
             contra_map[oc] = new_code
         canonical.code = new_code
-        canonical.sub_account_number = _nn(category)
+        canonical.sub_account_number = _nn(category, is_ld)
         canonical.currency = 'USD'
         canonical.is_active = True
         canonical.save(update_fields=['code', 'sub_account_number', 'currency', 'is_active'])
@@ -171,10 +177,10 @@ def forwards(apps, schema_editor):
         l = LDm.filter(id=eid).first()
         for cat in _LANDLORD_UNION:
             if cat not in have:
-                SA.create(code=f'{main}/{_nn(cat)}',
+                SA.create(code=f'{main}/{_nn(cat, landlord=True)}',
                           name=f'{l.name} - {labels.get(cat, cat.title())}',
                           entity_type='landlord', landlord_id=eid, category=cat,
-                          sub_account_number=_nn(cat))
+                          sub_account_number=_nn(cat, landlord=True))
 
     # ── 6. Rewrite historical contra references ──
     if contra_map:
