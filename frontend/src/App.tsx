@@ -63,6 +63,7 @@ const Trash = lazy(() => import('./pages/Trash'))
 // Accounting
 const BalanceSheetMovements = lazy(() => import('./pages/Accounting/BalanceSheetMovements'))
 const OpeningBalances = lazy(() => import('./pages/Accounting/OpeningBalances'))
+const OpeningBalanceImport = lazy(() => import('./pages/Accounting/OpeningBalanceImport'))
 const GlobalAccounts = lazy(() => import('./pages/Accounting/GlobalAccounts'))
 const SupplierDetail = lazy(() => import('./pages/Accounting/SupplierDetail'))
 
@@ -224,6 +225,7 @@ export default function App() {
         <Route path="subaccounts/:id" element={<LazyPage><SubAccountStatement /></LazyPage>} />
         <Route path="bs-movements" element={<LazyPage><BalanceSheetMovements /></LazyPage>} />
         <Route path="opening-balances" element={<LazyPage><OpeningBalances /></LazyPage>} />
+        <Route path="opening-balances/import" element={<LazyPage><OpeningBalanceImport /></LazyPage>} />
         {/* Assets & Liabilities moved into Chart of Accounts — keep old links working. */}
         <Route path="global-accounts" element={<Navigate to="/dashboard/chart-of-accounts" replace />} />
         <Route path="global-accounts/:id" element={<LazyPage><AccountDetail /></LazyPage>} />

@@ -918,6 +918,39 @@ export const importsApi = {
     api.get(`/imports/jobs/templates/${templateType}/`, { responseType: 'blob' }),
 }
 
+// Mass Opening Balance Import — property-level bulk opening balances.
+export const openingBalanceImportApi = {
+  list: (params?: object) => api.get('/accounting/opening-balance-imports/', { params }),
+  get: (id: number) => api.get(`/accounting/opening-balance-imports/${id}/`),
+  rows: (id: number, status?: string) =>
+    api.get(`/accounting/opening-balance-imports/${id}/rows/`, { params: { status } }),
+  // Download the property-specific template (blob).
+  template: (propertyId: number, accountType: string) =>
+    api.get('/accounting/opening-balance-imports/template/', {
+      params: { property: propertyId, account_type: accountType }, responseType: 'blob',
+    }),
+  // Upload a filled template -> validate + preview (does NOT post).
+  upload: (data: { property: number; account_type: string; date: string; file: File }) => {
+    const fd = new FormData()
+    fd.append('property', String(data.property))
+    fd.append('account_type', data.account_type)
+    fd.append('date', data.date)
+    fd.append('file', data.file)
+    return api.post('/accounting/opening-balance-imports/upload/', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  // Post the batch through the accounting engine.
+  postBatch: (id: number, allowPartial = false) =>
+    api.post(`/accounting/opening-balance-imports/${id}/post_batch/`, { allow_partial: allowPartial }),
+  // Reverse every journal the batch posted.
+  reverse: (id: number, reason: string) =>
+    api.post(`/accounting/opening-balance-imports/${id}/reverse/`, { reason }),
+  // Download an error report (blob).
+  errorReport: (id: number) =>
+    api.get(`/accounting/opening-balance-imports/${id}/error-report/`, { responseType: 'blob' }),
+}
+
 // Trash API
 export const trashApi = {
   list: (params?: { type?: string }) => api.get('/trash/', { params }),

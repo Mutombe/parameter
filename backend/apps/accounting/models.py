@@ -2323,3 +2323,162 @@ class TransactionConsolidation(models.Model):
 
     def __str__(self):
         return f'Consolidation on {self.account.code} ({self.source_transactions.count()} txns)'
+
+
+class OpeningBalanceImportBatch(models.Model):
+    """A mass opening-balance upload for a single Property.
+
+    The batch is the operational aggregation unit: one upload is validated as a
+    whole, posted through the accounting engine as proper opening-balance
+    journals (offset to the 9000 Opening Balances account), and can be reversed
+    as a unit. It NEVER creates an Account or Sub-Account — every balance must
+    land on an already-existing (payer, category) pocket, with currency kept as
+    an accounting dimension rather than a new pocket.
+    """
+
+    class AccountType(models.TextChoices):
+        TENANT = 'tenant', 'Tenant'
+        ACCOUNT_HOLDER = 'account_holder', 'Account Holder'
+
+    class Status(models.TextChoices):
+        DRAFT = 'draft', 'Draft'
+        VALIDATED = 'validated', 'Validated'
+        POSTED = 'posted', 'Posted'
+        PARTIALLY_FAILED = 'partially_failed', 'Partially Failed'
+        FAILED = 'failed', 'Failed'
+        REVERSED = 'reversed', 'Reversed'
+
+    # RentalTenant.account_type that each import AccountType maps onto.
+    ACCOUNT_TYPE_TO_PAYER = {
+        AccountType.TENANT: 'rental',
+        AccountType.ACCOUNT_HOLDER: 'levy',
+    }
+
+    batch_number = models.CharField(max_length=30, unique=True)
+    property = models.ForeignKey(
+        'masterfile.Property', on_delete=models.PROTECT,
+        related_name='opening_balance_batches'
+    )
+    account_type = models.CharField(max_length=20, choices=AccountType.choices)
+    date = models.DateField(help_text='Effective date of the opening balances')
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
+
+    file_name = models.CharField(max_length=255, blank=True)
+    record_count = models.PositiveIntegerField(default=0)
+    valid_count = models.PositiveIntegerField(default=0)
+    error_count = models.PositiveIntegerField(default=0)
+    # Per-currency totals of the valid rows, e.g.
+    # {'USD': {'debit': '1250.00', 'credit': '100.00'}, 'ZWG': {...}}
+    totals = models.JSONField(default=dict, blank=True)
+    # Journals created when the batch was posted — used to reverse the batch.
+    posted_journal_ids = models.JSONField(default=list, blank=True)
+    notes = models.CharField(max_length=255, blank=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+'
+    )
+    posted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+'
+    )
+    reversed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    posted_at = models.DateTimeField(null=True, blank=True)
+    reversed_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Opening balance import batch'
+        verbose_name_plural = 'Opening balance import batches'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['property', 'status']),
+            models.Index(fields=['batch_number']),
+        ]
+
+    def __str__(self):
+        return f'{self.batch_number} - {self.property.name} ({self.get_status_display()})'
+
+    def payer_type(self):
+        """The RentalTenant.account_type this batch targets ('rental'/'levy').
+
+        NOTE: a plain method (not a @property) because the `property` FK field
+        above shadows the builtin `property` in this class body.
+        """
+        return self.ACCOUNT_TYPE_TO_PAYER.get(self.account_type, 'rental')
+
+    def save(self, *args, **kwargs):
+        if not self.batch_number:
+            self.batch_number = self._generate_number()
+        super().save(*args, **kwargs)
+
+    def _generate_number(self):
+        from django.utils import timezone
+        prefix = f'OB-{timezone.now().year}-'
+        last = (OpeningBalanceImportBatch.objects
+                .filter(batch_number__startswith=prefix)
+                .order_by('-batch_number').first())
+        if last:
+            try:
+                num = int(last.batch_number.rsplit('-', 1)[1]) + 1
+            except (ValueError, IndexError):
+                num = 1
+        else:
+            num = 1
+        return f'{prefix}{num:05d}'
+
+
+class OpeningBalanceImportRow(models.Model):
+    """One (account, category, currency) opening-balance line within a batch.
+
+    `amount` is signed following the engine's tenant/account-holder pocket
+    convention: a POSITIVE amount is a debit (the account owes an opening
+    arrear); a NEGATIVE amount is a credit (an opening prepayment).
+    """
+
+    class Status(models.TextChoices):
+        VALID = 'valid', 'Valid'
+        ERROR = 'error', 'Error'
+        POSTED = 'posted', 'Posted'
+        SKIPPED = 'skipped', 'Skipped'
+
+    batch = models.ForeignKey(
+        OpeningBalanceImportBatch, on_delete=models.CASCADE, related_name='rows'
+    )
+    source_row = models.PositiveIntegerField(default=0)
+    account_code = models.CharField(max_length=30, blank=True)
+    account_name = models.CharField(max_length=255, blank=True)
+    category = models.CharField(max_length=20, blank=True)
+    currency = models.CharField(max_length=3, default='USD')
+    amount = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('0.00'))
+
+    tenant = models.ForeignKey(
+        'masterfile.RentalTenant', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+'
+    )
+    subsidiary_account = models.ForeignKey(
+        SubsidiaryAccount, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+'
+    )
+    subsidiary_transaction = models.ForeignKey(
+        SubsidiaryTransaction, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+'
+    )
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ERROR)
+    error_message = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        verbose_name = 'Opening balance import row'
+        verbose_name_plural = 'Opening balance import rows'
+        ordering = ['source_row', 'id']
+        indexes = [
+            models.Index(fields=['batch', 'status']),
+        ]
+
+    def __str__(self):
+        return f'{self.account_code} · {self.category} · {self.currency} = {self.amount}'

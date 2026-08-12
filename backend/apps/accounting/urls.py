@@ -8,7 +8,7 @@ from .views import (
     BankAccountViewSet, BankTransactionViewSet, BankReconciliationViewSet,
     ExpenseCategoryViewSet, JournalReallocationViewSet, IncomeTypeViewSet,
     SubsidiaryAccountViewSet, AccruedExpenseViewSet, BalanceSheetMovementViewSet,
-    OpeningBalanceViewSet,
+    OpeningBalanceViewSet, OpeningBalanceImportBatchViewSet,
  CurrencyConversionViewSet, IntrapropertyTransferViewSet,)
 
 router = DefaultRouter()
@@ -31,6 +31,7 @@ router.register('subsidiary-accounts', SubsidiaryAccountViewSet, basename='subsi
 router.register('accrued-expenses', AccruedExpenseViewSet, basename='accrued-expense')
 router.register('bs-movements', BalanceSheetMovementViewSet, basename='bs-movement')
 router.register('opening-balances', OpeningBalanceViewSet, basename='opening-balance')
+router.register('opening-balance-imports', OpeningBalanceImportBatchViewSet, basename='opening-balance-import')
 
 urlpatterns = [
     path('', include(router.urls)),

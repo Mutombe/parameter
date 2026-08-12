@@ -10,6 +10,7 @@ from .models import (
     SubsidiaryAccount, SubsidiaryTransaction, TransactionConsolidation,
     AccruedExpense, BalanceSheetMovement, OpeningBalance, CurrencyConversion,
     IntrapropertyTransfer,
+    OpeningBalanceImportBatch, OpeningBalanceImportRow,
 )
 
 
@@ -964,6 +965,40 @@ class OpeningBalanceCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data['created_by'] = self.context['request'].user
         return super().create(validated_data)
+
+
+class OpeningBalanceImportRowSerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = OpeningBalanceImportRow
+        fields = [
+            'id', 'source_row', 'account_code', 'account_name', 'category',
+            'currency', 'amount', 'status', 'status_display', 'error_message',
+            'tenant', 'subsidiary_account', 'subsidiary_transaction',
+        ]
+
+
+class OpeningBalanceImportBatchSerializer(serializers.ModelSerializer):
+    property_name = serializers.CharField(source='property.name', read_only=True)
+    account_type_display = serializers.CharField(source='get_account_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True, default=None)
+    posted_by_name = serializers.CharField(source='posted_by.get_full_name', read_only=True, default=None)
+    reversed_by_name = serializers.CharField(source='reversed_by.get_full_name', read_only=True, default=None)
+
+    class Meta:
+        model = OpeningBalanceImportBatch
+        fields = [
+            'id', 'batch_number', 'property', 'property_name',
+            'account_type', 'account_type_display', 'date',
+            'status', 'status_display', 'file_name',
+            'record_count', 'valid_count', 'error_count', 'totals', 'notes',
+            'created_by', 'created_by_name', 'created_at',
+            'posted_by', 'posted_by_name', 'posted_at',
+            'reversed_by', 'reversed_by_name', 'reversed_at',
+        ]
+        read_only_fields = fields
 
 
 class CurrencyConversionSerializer(serializers.ModelSerializer):

@@ -6,7 +6,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.negotiation import DefaultContentNegotiation
 
 
@@ -32,6 +32,7 @@ from .models import (
     ExpenseCategory, JournalReallocation, IncomeType,
     SubsidiaryAccount, SubsidiaryTransaction, TransactionConsolidation,
     AccruedExpense, BalanceSheetMovement, OpeningBalance,
+    OpeningBalanceImportBatch, OpeningBalanceImportRow,
 )
 from .serializers import (
     ChartOfAccountSerializer, ExchangeRateSerializer,
@@ -48,6 +49,7 @@ from .serializers import (
     AccruedExpenseSerializer, AccruedExpenseCreateSerializer,
     BalanceSheetMovementSerializer, BalanceSheetMovementCreateSerializer,
     OpeningBalanceSerializer, OpeningBalanceCreateSerializer,
+    OpeningBalanceImportBatchSerializer, OpeningBalanceImportRowSerializer,
 )
 from apps.accounts.mixins import TenantSchemaValidationMixin
 
@@ -2542,6 +2544,154 @@ class OpeningBalanceViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
             return Response(OpeningBalanceSerializer(entry).data)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+def _xlsx_response(data_bytes, filename):
+    resp = HttpResponse(
+        data_bytes,
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+
+class OpeningBalanceImportBatchViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
+    """Mass Opening Balance Import — property-level bulk opening balances.
+
+    Workflow: template (download) -> upload (validate + preview) -> post (post
+    valid rows through the accounting engine) -> optional reverse. Never creates
+    an Account or Sub-Account; a missing account/pocket is a row error.
+    """
+    queryset = OpeningBalanceImportBatch.objects.select_related(
+        'property', 'created_by', 'posted_by', 'reversed_by'
+    ).all()
+    serializer_class = OpeningBalanceImportBatchSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    filterset_fields = ['property', 'account_type', 'status']
+    search_fields = ['batch_number', 'property__name', 'file_name']
+    ordering = ['-created_at']
+
+    # -- template ----------------------------------------------------------
+    @action(detail=False, methods=['get'])
+    def template(self, request):
+        """Download a Property-specific .xlsx template pre-filled with the
+        existing accounts of the selected type. Params: property, account_type
+        ('tenant' | 'account_holder')."""
+        from apps.masterfile.models import Property
+        from . import opening_balance_import as obi
+
+        property_id = request.query_params.get('property')
+        account_type = request.query_params.get('account_type', 'tenant')
+        if not property_id:
+            return Response({'error': 'property is required'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if account_type not in dict(OpeningBalanceImportBatch.AccountType.choices):
+            return Response({'error': 'invalid account_type'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        prop = Property.objects.filter(id=property_id).first()
+        if prop is None:
+            return Response({'error': 'property not found'},
+                            status=status.HTTP_404_NOT_FOUND)
+        data = obi.generate_template_xlsx(prop, account_type)
+        safe = prop.name.replace(' ', '_')[:40]
+        return _xlsx_response(data, f'opening_balances_{safe}_{account_type}.xlsx')
+
+    # -- upload + validate -------------------------------------------------
+    @action(detail=False, methods=['post'])
+    def upload(self, request):
+        """Upload a filled template. Creates a batch, validates every row, and
+        returns the preview (counts, per-currency totals, error rows). Does NOT
+        post. Multipart body: property, account_type, date, file."""
+        from apps.masterfile.models import Property
+        from . import opening_balance_import as obi
+
+        property_id = request.data.get('property')
+        account_type = request.data.get('account_type', 'tenant')
+        date = request.data.get('date')
+        upload = request.FILES.get('file')
+
+        if not property_id or not date or upload is None:
+            return Response({'error': 'property, date and file are required'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if account_type not in dict(OpeningBalanceImportBatch.AccountType.choices):
+            return Response({'error': 'invalid account_type'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        prop = Property.objects.filter(id=property_id).first()
+        if prop is None:
+            return Response({'error': 'property not found'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            records = obi.parse_upload(upload.read())
+        except Exception as e:
+            return Response({'error': f'Could not read the file: {e}'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if not records:
+            return Response({'error': 'No opening-balance rows found in the file'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            batch = OpeningBalanceImportBatch.objects.create(
+                property=prop, account_type=account_type, date=date,
+                file_name=getattr(upload, 'name', '')[:255],
+                created_by=request.user,
+            )
+            result = obi.validate_records(batch, records)
+
+        data = OpeningBalanceImportBatchSerializer(batch).data
+        data['errors'] = OpeningBalanceImportRowSerializer(
+            batch.rows.filter(status=OpeningBalanceImportRow.Status.ERROR), many=True
+        ).data
+        data['preview'] = result
+        return Response(data, status=status.HTTP_201_CREATED)
+
+    # -- rows --------------------------------------------------------------
+    @action(detail=True, methods=['get'])
+    def rows(self, request, pk=None):
+        """All rows for a batch (valid + error + posted)."""
+        batch = self.get_object()
+        only = request.query_params.get('status')
+        qs = batch.rows.all()
+        if only:
+            qs = qs.filter(status=only)
+        return Response(OpeningBalanceImportRowSerializer(qs, many=True).data)
+
+    # -- post --------------------------------------------------------------
+    @action(detail=True, methods=['post'])
+    def post_batch(self, request, pk=None):
+        """Post the batch through the accounting engine. Body: allow_partial
+        (default false — the batch will not post while any row has errors)."""
+        from . import opening_balance_import as obi
+        batch = self.get_object()
+        allow_partial = request.data.get('allow_partial') in (True, 'true', 'True', 1, '1')
+        try:
+            obi.post_batch(batch, user=request.user, allow_partial=allow_partial)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OpeningBalanceImportBatchSerializer(batch).data)
+
+    # -- reverse -----------------------------------------------------------
+    @action(detail=True, methods=['post'])
+    def reverse(self, request, pk=None):
+        """Reverse every journal this batch posted. Body: reason (required)."""
+        from . import opening_balance_import as obi
+        batch = self.get_object()
+        reason = (request.data.get('reason') or '').strip()
+        try:
+            obi.reverse_batch(batch, reason, user=request.user)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(OpeningBalanceImportBatchSerializer(batch).data)
+
+    # -- error report ------------------------------------------------------
+    @action(detail=True, methods=['get'], url_path='error-report')
+    def error_report(self, request, pk=None):
+        """Download an .xlsx listing every error row and its reason."""
+        from . import opening_balance_import as obi
+        batch = self.get_object()
+        data = obi.error_report_xlsx(batch)
+        return _xlsx_response(data, f'{batch.batch_number}_errors.xlsx')
 
 
 class CurrencyConversionViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyModelViewSet):

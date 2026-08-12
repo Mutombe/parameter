@@ -114,6 +114,7 @@ const navigation: NavSection[] = [
     defaultOpen: false,
     items: [
       { name: 'Opening Balances', href: '/dashboard/opening-balances', icon: BookOpen },
+      { name: 'Mass OB Import', href: '/dashboard/opening-balances/import', icon: Upload },
       { name: 'Account Transfers', href: '/dashboard/bs-movements', icon: GitCompare },
     ],
   },
