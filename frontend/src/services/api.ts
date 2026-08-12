@@ -293,6 +293,29 @@ export const propertyCommissionApi = {
   delete: (id: number) => api.delete(`/masterfile/property-commissions/${id}/`),
 }
 
+// Property-level billing configuration: define a billing rule once at property
+// level and apply it to every eligible lease under that property.
+export const propertyBillingConfigApi = {
+  list: (params?: { property?: number; category?: string; is_active?: boolean }) =>
+    api.get('/masterfile/property-billing-configs/', { params }),
+  get: (id: number) => api.get(`/masterfile/property-billing-configs/${id}/`),
+  create: (data: object) => api.post('/masterfile/property-billing-configs/', data),
+  update: (id: number, data: object) =>
+    api.patch(`/masterfile/property-billing-configs/${id}/`, data),
+  delete: (id: number) => api.delete(`/masterfile/property-billing-configs/${id}/`),
+  // Dry-run preview: who this config bills, who is excluded, who is overridden.
+  affectedLeases: (id: number, date?: string) =>
+    api.get(`/masterfile/property-billing-configs/${id}/affected-leases/`, { params: { date } }),
+  // Create one invoice per eligible lease for a billing date.
+  generate: (id: number, data: { date: string; due_date: string }) =>
+    api.post(`/masterfile/property-billing-configs/${id}/generate/`, data),
+  // Bulk deletion of generated billing by property/period/category.
+  bulkDeletePreview: (data: object) =>
+    api.post('/masterfile/property-billing-configs/bulk-delete-preview/', data),
+  bulkDelete: (data: object) =>
+    api.post('/masterfile/property-billing-configs/bulk-delete/', data),
+}
+
 export const propertyApi = {
   list: (params?: object) => api.get('/masterfile/properties/', { params }),
   get: (id: number) => api.get(`/masterfile/properties/${id}/`),

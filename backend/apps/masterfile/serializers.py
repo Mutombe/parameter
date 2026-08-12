@@ -643,3 +643,24 @@ class LeaseChargeSerializer(serializers.ModelSerializer):
         fields = ['id', 'lease', 'charge_type', 'charge_type_display',
                   'amount', 'currency', 'is_active', 'updated_at']
         read_only_fields = ['lease', 'updated_at']
+
+
+class PropertyBillingConfigSerializer(serializers.ModelSerializer):
+    """A property-level billing rule applied to all eligible leases."""
+    category_display = serializers.CharField(source='get_category_display', read_only=True)
+    frequency_display = serializers.CharField(source='get_frequency_display', read_only=True)
+    property_name = serializers.CharField(source='property.name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True, default=None)
+    updated_by_name = serializers.CharField(source='updated_by.get_full_name', read_only=True, default=None)
+
+    class Meta:
+        from .models import PropertyBillingConfig
+        model = PropertyBillingConfig
+        fields = [
+            'id', 'property', 'property_name', 'category', 'category_display',
+            'amount', 'currency', 'frequency', 'frequency_display',
+            'effective_from', 'effective_to', 'is_active', 'notes',
+            'created_by', 'created_by_name', 'updated_by', 'updated_by_name',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_by', 'updated_by', 'created_at', 'updated_at']

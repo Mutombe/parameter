@@ -25,7 +25,7 @@ class IgnoreFormatNegotiation(DefaultContentNegotiation):
         return renderers
 from .models import (
     Landlord, Property, Unit, RentalTenant, LeaseAgreement, PropertyManager,
-    Supplier, PropertyIncomeCommission, LeaseCharge,
+    Supplier, PropertyIncomeCommission, LeaseCharge, PropertyBillingConfig,
 )
 from .serializers import (
     LandlordSerializer, PropertySerializer, PropertyListSerializer,
@@ -33,6 +33,7 @@ from .serializers import (
     LeaseAgreementSerializer,
     LeaseActivateSerializer, LeaseTerminateSerializer, PropertyManagerSerializer,
     SupplierSerializer, PropertyIncomeCommissionSerializer, LeaseChargeSerializer,
+    PropertyBillingConfigSerializer,
 )
 from .services import (
     send_lease_activation_emails, send_lease_termination_emails,
@@ -961,3 +962,372 @@ class PropertyIncomeCommissionViewSet(viewsets.ModelViewSet):
             defaults={'rate': rate_dec, 'notes': notes},
         )
         return Response(PropertyIncomeCommissionSerializer(obj).data)
+
+
+# ---------------------------------------------------------------------------
+# Property-Level Billing Configuration
+# ---------------------------------------------------------------------------
+def _leases_under_property(property_id):
+    """Active leases attached to a property, either directly or via a unit."""
+    from django.db.models import Q as _Q
+    return (LeaseAgreement.objects.filter(status='active')
+            .filter(_Q(unit__property_id=property_id) | _Q(property_id=property_id))
+            .select_related('tenant', 'unit', 'unit__property', 'property')
+            .prefetch_related('charges'))
+
+
+def _resolve_lease_amount(config, lease):
+    """Effective charge for one lease under a Property billing config.
+
+    Precedence (spec §Resolution):
+      lease-level override (LeaseCharge for this category+currency) →
+      the Property config amount → nothing.
+    Returns (amount, source) where source is 'override' | 'property' | None.
+    The amount is None when the lease should not be billed.
+    """
+    override = next(
+        (c for c in lease.charges.all()
+         if c.is_active and c.charge_type == config.category
+         and (c.currency or 'USD') == config.currency),
+        None,
+    )
+    if override and override.amount and override.amount > 0:
+        return override.amount, 'override'
+    if config.amount and config.amount > 0:
+        return config.amount, 'property'
+    return None, None
+
+
+class PropertyBillingConfigViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
+    """Configure a billing rule ONCE at property level and apply it to every
+    eligible lease under that property.
+
+    CRUD plus:
+      - affected_leases (GET, detail): dry-run preview of who this config bills,
+        who is excluded by payer type, and who has a lease-level override.
+      - generate (POST, detail): create one invoice per eligible lease for a
+        given billing date, honouring lease overrides and effective-dating.
+      - bulk_delete_preview / bulk_delete (POST, list): remove generated billing
+        for a property/period/category, protecting anything paid or posted.
+    """
+    queryset = PropertyBillingConfig.objects.select_related(
+        'property', 'created_by', 'updated_by'
+    ).all()
+    serializer_class = PropertyBillingConfigSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['property', 'category', 'currency', 'is_active']
+    search_fields = ['property__name', 'notes']
+    ordering_fields = ['effective_from', 'created_at', 'category', 'amount']
+    ordering = ['property__name', 'category', '-effective_from']
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+    # -- preview -----------------------------------------------------------
+    @action(detail=True, methods=['get'], url_path='affected-leases')
+    def affected_leases(self, request, pk=None):
+        """Dry run: classify every active lease under the property for this
+        config without creating anything.
+
+        Optional `date` query param (YYYY-MM-DD) checks the effective window;
+        defaults to today. Returns eligible/overridden/excluded buckets.
+        """
+        from datetime import date as _date
+        config = self.get_object()
+
+        period_raw = request.query_params.get('date')
+        try:
+            period_date = _date.fromisoformat(period_raw) if period_raw else _date.today()
+        except ValueError:
+            return Response({'error': 'date must be YYYY-MM-DD'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        in_window = config.applies_on(period_date)
+        eligible, overrides, excluded = [], [], []
+        for lease in _leases_under_property(config.property_id):
+            acct_type = getattr(lease.tenant, 'account_type', 'rental') or 'rental'
+            if not config.eligible_for_account_type(acct_type):
+                excluded.append({
+                    'lease_number': lease.lease_number,
+                    'tenant': lease.tenant.name,
+                    'account_type': acct_type,
+                    'reason': 'payer type not eligible for this category',
+                })
+                continue
+            amount, source = _resolve_lease_amount(config, lease)
+            row = {
+                'lease_number': lease.lease_number,
+                'tenant': lease.tenant.name,
+                'account_type': acct_type,
+                'amount': str(amount) if amount is not None else None,
+                'currency': config.currency,
+                'source': source,
+            }
+            if amount is None:
+                row['reason'] = 'no positive amount configured'
+                excluded.append(row)
+            elif source == 'override':
+                overrides.append(row)
+            else:
+                eligible.append(row)
+
+        return Response({
+            'config_id': config.id,
+            'category': config.category,
+            'currency': config.currency,
+            'period_date': period_date.isoformat(),
+            'applies_on_period': in_window,
+            'counts': {
+                'eligible': len(eligible),
+                'overrides': len(overrides),
+                'excluded': len(excluded),
+                'billable': len(eligible) + len(overrides) if in_window else 0,
+            },
+            'eligible': eligible,
+            'overrides': overrides,
+            'excluded': excluded,
+        })
+
+    # -- generate ----------------------------------------------------------
+    @action(detail=True, methods=['post'])
+    def generate(self, request, pk=None):
+        """Create one invoice per eligible lease under this config's property.
+
+        Body: date (billing date, required), due_date (required).
+        Applies lease overrides, respects payer-type eligibility, and skips
+        the effective window / duplicates. Uses the existing sub-account
+        structure — never creates pockets. Invoices are left unposted so the
+        cashier can review before posting to the ledger.
+        """
+        from datetime import date as _date
+        from apps.billing.models import Invoice
+        from apps.accounting.models import AuditTrail
+
+        config = self.get_object()
+        inv_date_raw = request.data.get('date')
+        due_raw = request.data.get('due_date')
+        if not inv_date_raw or not due_raw:
+            return Response({'error': 'date and due_date are required'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            inv_date = _date.fromisoformat(str(inv_date_raw))
+            due_date = _date.fromisoformat(str(due_raw))
+        except ValueError:
+            return Response({'error': 'date and due_date must be YYYY-MM-DD'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if not config.applies_on(inv_date):
+            return Response({
+                'error': 'This configuration is not effective for %s '
+                         '(effective %s to %s, active=%s).' % (
+                             inv_date, config.effective_from,
+                             config.effective_to or 'open', config.is_active),
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        created, skipped, override_count = [], [], 0
+        with transaction.atomic():
+            for lease in _leases_under_property(config.property_id):
+                acct_type = getattr(lease.tenant, 'account_type', 'rental') or 'rental'
+                if not config.eligible_for_account_type(acct_type):
+                    continue
+                amount, source = _resolve_lease_amount(config, lease)
+                if amount is None:
+                    skipped.append('%s: no amount' % lease.lease_number)
+                    continue
+                # Duplicate guard: one charge of this type/currency per lease per day.
+                if Invoice.objects.filter(
+                    lease=lease, invoice_type=config.category,
+                    currency=config.currency, date=inv_date,
+                ).exists():
+                    skipped.append('%s: already billed on %s' % (lease.lease_number, inv_date))
+                    continue
+                if source == 'override':
+                    override_count += 1
+                inv = Invoice.objects.create(
+                    tenant=lease.tenant, lease=lease, unit=lease.unit,
+                    property=lease.property or (lease.unit.property if lease.unit else None),
+                    invoice_type=config.category,
+                    date=inv_date, due_date=due_date,
+                    amount=amount, vat_amount=Decimal('0'), currency=config.currency,
+                    description='%s Charge (property config #%s)' % (
+                        config.get_category_display(), config.id),
+                    created_by=request.user,
+                )
+                created.append(inv.invoice_number)
+
+            AuditTrail.objects.create(
+                action='property_billing_generate',
+                model_name='PropertyBillingConfig',
+                record_id=config.id,
+                changes={
+                    'property_id': config.property_id,
+                    'category': config.category,
+                    'currency': config.currency,
+                    'date': inv_date.isoformat(),
+                    'created': len(created),
+                    'skipped': len(skipped),
+                    'overrides_applied': override_count,
+                },
+                user=request.user if request.user.is_authenticated else None,
+            )
+
+        return Response({
+            'created': len(created),
+            'invoice_numbers': created[:50],
+            'overrides_applied': override_count,
+            'skipped': skipped[:50],
+            'skipped_count': len(skipped),
+        })
+
+    # -- bulk deletion -----------------------------------------------------
+    @staticmethod
+    def _bulk_delete_filters(data):
+        """Parse/validate the shared filter body for the two delete actions.
+
+        Returns (queryset, error_response). Filters: property_id (required),
+        category (optional), and a period given as either date_from/date_to or
+        month+year.
+        """
+        from datetime import date as _date
+        from calendar import monthrange
+        from apps.billing.models import Invoice
+
+        property_id = data.get('property_id')
+        if not property_id:
+            return None, Response({'error': 'property_id is required'},
+                                  status=status.HTTP_400_BAD_REQUEST)
+
+        date_from = data.get('date_from')
+        date_to = data.get('date_to')
+        month = data.get('month')
+        year = data.get('year')
+        try:
+            if month and year:
+                month, year = int(month), int(year)
+                start = _date(year, month, 1)
+                end = _date(year, month, monthrange(year, month)[1])
+            elif date_from and date_to:
+                start = _date.fromisoformat(str(date_from))
+                end = _date.fromisoformat(str(date_to))
+            else:
+                return None, Response(
+                    {'error': 'Provide either month+year or date_from+date_to'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        except (ValueError, TypeError):
+            return None, Response({'error': 'invalid period'},
+                                  status=status.HTTP_400_BAD_REQUEST)
+
+        qs = Invoice.objects.filter(
+            property_id=property_id, date__gte=start, date__lte=end,
+        ).select_related('tenant')
+        category = data.get('category')
+        if category:
+            qs = qs.filter(invoice_type=category)
+        return {'qs': qs, 'start': start, 'end': end}, None
+
+    @staticmethod
+    def _classify_for_delete(inv):
+        """Deletable only when nothing depends on it: unpaid and unposted.
+        Anything paid/partially paid or already posted to the ledger is
+        protected and reported, never silently removed."""
+        from apps.billing.models import Invoice
+        if inv.amount_paid and inv.amount_paid > 0:
+            return 'protected', 'has payments'
+        if inv.status in (Invoice.Status.PAID, Invoice.Status.PARTIAL):
+            return 'protected', 'paid status'
+        if inv.journal_id:
+            return 'protected', 'posted to ledger'
+        return 'deletable', None
+
+    @action(detail=False, methods=['post'], url_path='bulk-delete-preview')
+    def bulk_delete_preview(self, request):
+        """Dry run for bulk deletion: show what would be removed vs protected."""
+        parsed, err = self._bulk_delete_filters(request.data)
+        if err:
+            return err
+        deletable, protected = [], []
+        for inv in parsed['qs']:
+            bucket, reason = self._classify_for_delete(inv)
+            row = {
+                'invoice_number': inv.invoice_number,
+                'tenant': inv.tenant.name,
+                'invoice_type': inv.invoice_type,
+                'amount': str(inv.amount),
+                'currency': inv.currency,
+                'date': inv.date.isoformat(),
+                'status': inv.status,
+            }
+            if bucket == 'deletable':
+                deletable.append(row)
+            else:
+                row['reason'] = reason
+                protected.append(row)
+        return Response({
+            'period': {'from': parsed['start'].isoformat(), 'to': parsed['end'].isoformat()},
+            'counts': {'deletable': len(deletable), 'protected': len(protected)},
+            'deletable': deletable,
+            'protected': protected,
+            'note': 'Sub-accounts are never deleted; only invoices are removed.',
+        })
+
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """Delete unpaid/unposted billing for a property/period/category.
+
+        Protects anything paid or posted (skipped and reported). Sub-accounts
+        are left intact. Every run is recorded in the immutable audit trail.
+        Pass confirm=true to actually delete; otherwise behaves as a preview.
+        """
+        from apps.accounting.models import AuditTrail
+
+        parsed, err = self._bulk_delete_filters(request.data)
+        if err:
+            return err
+        confirm = request.data.get('confirm') in (True, 'true', 'True', 1, '1')
+
+        to_delete, protected = [], []
+        for inv in parsed['qs']:
+            bucket, reason = self._classify_for_delete(inv)
+            if bucket == 'deletable':
+                to_delete.append(inv)
+            else:
+                protected.append({'invoice_number': inv.invoice_number, 'reason': reason})
+
+        if not confirm:
+            return Response({
+                'confirmed': False,
+                'would_delete': len(to_delete),
+                'protected': len(protected),
+                'message': 'Set confirm=true to delete.',
+            })
+
+        deleted_numbers = [inv.invoice_number for inv in to_delete]
+        with transaction.atomic():
+            for inv in to_delete:
+                inv.delete()  # soft delete (SoftDeleteModel)
+            AuditTrail.objects.create(
+                action='property_billing_bulk_delete',
+                model_name='Invoice',
+                record_id=int(request.data.get('property_id')),
+                changes={
+                    'property_id': request.data.get('property_id'),
+                    'category': request.data.get('category') or 'all',
+                    'period_from': parsed['start'].isoformat(),
+                    'period_to': parsed['end'].isoformat(),
+                    'deleted_count': len(deleted_numbers),
+                    'deleted_invoices': deleted_numbers[:200],
+                    'protected_count': len(protected),
+                },
+                user=request.user if request.user.is_authenticated else None,
+            )
+        return Response({
+            'confirmed': True,
+            'deleted': len(deleted_numbers),
+            'deleted_invoices': deleted_numbers[:100],
+            'protected': len(protected),
+            'protected_detail': protected[:100],
+            'note': 'Sub-accounts were not modified.',
+        })

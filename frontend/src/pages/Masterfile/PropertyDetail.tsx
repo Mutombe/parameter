@@ -39,6 +39,7 @@ import {
 } from 'recharts'
 import api, { propertyApi, landlordApi, unitApi, reportsApi, leaseApi, invoiceApi, receiptApi, subsidiaryApi } from '../../services/api'
 import { CommissionGrid } from '../../components/property/CommissionGrid'
+import { PropertyBillingConfig } from '../../components/property/PropertyBillingConfig'
 import { formatCurrency, formatPercent, formatDate, cn } from '../../lib/utils'
 import { Modal, Button, Input, Select, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker } from '../../components/ui'
 import { ProfileInfoBar, InfoColumn, InfoLine } from '../../components/detail/ProfileInfoBar'
@@ -863,6 +864,7 @@ export default function PropertyDetail() {
           <TabsTrigger value="financials" icon={DollarSign}>Financials</TabsTrigger>
           <TabsTrigger value="sub-accounts" icon={Layers}>Sub Accounts</TabsTrigger>
           <TabsTrigger value="commissions" icon={Percent}>Commissions</TabsTrigger>
+          <TabsTrigger value="billing-config" icon={CreditCard}>Billing Rules</TabsTrigger>
           <TabsTrigger value="reports" icon={BarChart3}>Reports</TabsTrigger>
         </TabsList>
 
@@ -2073,6 +2075,13 @@ export default function PropertyDetail() {
         {/* ===== COMMISSIONS TAB ===== */}
         <TabsContent value="commissions" className="space-y-6">
           <CommissionGrid propertyId={Number(propertyId)} propertyName={property?.name || ''} />
+        </TabsContent>
+
+        {/* ===== BILLING RULES TAB ===== */}
+        <TabsContent value="billing-config" className="space-y-6">
+          {activeTab === 'billing-config' && (
+            <PropertyBillingConfig propertyId={Number(propertyId)} />
+          )}
         </TabsContent>
 
         {/* ===== REPORTS TAB ===== */}

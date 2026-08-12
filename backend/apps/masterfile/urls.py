@@ -5,6 +5,7 @@ from .views import (
     LandlordViewSet, PropertyViewSet, UnitViewSet,
     RentalTenantViewSet, AccountHolderViewSet, LeaseAgreementViewSet,
     PropertyManagerViewSet, SupplierViewSet, PropertyIncomeCommissionViewSet,
+    PropertyBillingConfigViewSet,
 )
 from .landlord_views import LandlordPortalViewSet
 
@@ -18,6 +19,7 @@ router.register('leases', LeaseAgreementViewSet, basename='lease')
 router.register('property-managers', PropertyManagerViewSet, basename='property-manager')
 router.register('suppliers', SupplierViewSet, basename='supplier')
 router.register('property-commissions', PropertyIncomeCommissionViewSet, basename='property-commission')
+router.register('property-billing-configs', PropertyBillingConfigViewSet, basename='property-billing-config')
 
 landlord_portal_router = DefaultRouter()
 landlord_portal_router.register('', LandlordPortalViewSet, basename='landlord-portal')

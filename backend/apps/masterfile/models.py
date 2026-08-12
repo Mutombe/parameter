@@ -878,3 +878,100 @@ class PropertyIncomeCommission(models.Model):
 
     def __str__(self):
         return f'{self.property.name} · {self.income_type.name}: {self.rate}%'
+
+
+class PropertyBillingConfig(models.Model):
+    """Property-level billing rule applied to ALL eligible leases at once.
+
+    Where the same charge applies uniformly across a property's leases (e.g. a
+    levy on hundreds of account holders), configure it ONCE here instead of
+    per lease. Effective amount resolution for a billing period (spec §8):
+        1. Lease-level LeaseCharge override, if one exists
+        2. This property config, effective-dated for the period
+        3. No billing
+    Eligibility respects payer type — a Levy config bills only Levy payers and
+    never converts a Rental payer. Effective-dated so a property-wide rate
+    change doesn't require touching every lease. Purely a billing-configuration
+    mechanism: it never creates account/sub-account codes.
+    """
+
+    class Category(models.TextChoices):
+        RENT = 'rent', 'Rent'
+        LEVY = 'levy', 'Levy'
+        SPECIAL_LEVY = 'special_levy', 'Special Levy'
+        MAINTENANCE = 'maintenance', 'Maintenance'
+        PARKING = 'parking', 'Parking'
+        RATES = 'rates', 'Rates'
+        VAT = 'vat', 'VAT'
+        DEPOSIT = 'deposit', 'Deposit'
+
+    class Frequency(models.TextChoices):
+        MONTHLY = 'monthly', 'Monthly'
+        QUARTERLY = 'quarterly', 'Quarterly'
+        ANNUALLY = 'annually', 'Annually'
+        ONCE = 'once', 'Once'
+
+    # Category → the payer side it bills. Shared categories apply to any lease.
+    LEVY_ONLY = {'levy', 'special_levy'}
+    RENTAL_ONLY = {'rent', 'vat', 'deposit'}
+
+    property = models.ForeignKey(
+        Property, on_delete=models.CASCADE, related_name='billing_configs'
+    )
+    category = models.CharField(max_length=20, choices=Category.choices)
+    amount = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal('0.00'))
+    currency = models.CharField(max_length=3, default='USD')
+    frequency = models.CharField(
+        max_length=12, choices=Frequency.choices, default=Frequency.MONTHLY
+    )
+    effective_from = models.DateField()
+    effective_to = models.DateField(
+        null=True, blank=True,
+        help_text='Last day this rate applies (blank = open-ended)'
+    )
+    is_active = models.BooleanField(default=True)
+    notes = models.CharField(max_length=255, blank=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+'
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='+'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Property billing configuration'
+        verbose_name_plural = 'Property billing configurations'
+        ordering = ['property__name', 'category', '-effective_from']
+        indexes = [
+            models.Index(fields=['property', 'category', 'is_active']),
+            models.Index(fields=['effective_from']),
+        ]
+
+    def __str__(self):
+        return (f'{self.property.name} · {self.get_category_display()}: '
+                f'{self.amount} {self.currency} ({self.frequency})')
+
+    def applies_on(self, period_date):
+        """Is this config effective for a billing period dated `period_date`?"""
+        if not self.is_active:
+            return False
+        if self.effective_from and period_date < self.effective_from:
+            return False
+        if self.effective_to and period_date > self.effective_to:
+            return False
+        return True
+
+    def eligible_for_account_type(self, account_type):
+        """Does this category's payer-side rule permit an account of this type?
+        Levy-only categories bill only levy payers; rental-only categories only
+        rental payers; shared categories (maintenance/parking/rates) bill both."""
+        if self.category in self.LEVY_ONLY:
+            return account_type == 'levy'
+        if self.category in self.RENTAL_ONLY:
+            return account_type != 'levy'
+        return True
