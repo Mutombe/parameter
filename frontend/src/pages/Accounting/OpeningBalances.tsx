@@ -298,7 +298,9 @@ export default function OpeningBalances() {
     // Skip non-landlord sub-accounts (tenants, account holders).
     const kind = s.account_kind || s.entity_type
     if (kind && kind !== 'landlord') return false
-    if (form.category && s.category !== form.category) return false
+    // NB: the Category does NOT filter this list — Category is a reporting
+    // dimension and must never determine which landlord pocket is used. The
+    // accountant picks the pocket independently (only for a cash-layer entry).
     if (form.currency && s.currency && s.currency !== form.currency) return false
     return true
   })
@@ -380,12 +382,18 @@ export default function OpeningBalances() {
       const bank = (bankAccounts as any[]).find((b: any) => Number(b.id) === bankId)
       targetAccountId = Number(bank?.gl_account)
     }
+    // Cash vs Non-Cash is derived from cash-layer participation: choosing a
+    // landlord/tenant pocket makes it a cash-layer opening (Cash); otherwise it
+    // is a Non-Cash balance-sheet opening that never touches a pocket.
+    const transactionNature = (form.landlord_sub_account || form.tenant_sub_account)
+      ? 'cash' : 'non_cash'
     const data: Record<string, unknown> = {
       date: form.date,
       target_account: targetAccountId,
       corresponding_account: form.corresponding_account ? parseInt(form.corresponding_account) : null,
       direction: form.direction,
       category: form.category,
+      transaction_nature: transactionNature,
       landlord: parseInt(form.landlord),
       description: form.description,
       custom_description: form.custom_description,
@@ -843,15 +851,16 @@ export default function OpeningBalances() {
             hint="The other side of the journal. Defaults to 9000 — Opening Balances; change only where your accounting policy requires (e.g. Asset/Liability Takeover, Retained Income)."
           />
 
-          {/* Step 4: Category — locks the landlord-sub-account picker
-              below to entries of the same category (Rent / Levy / etc.) */}
+          {/* Step 4: Reporting Category — a classification dimension only. It
+              does NOT determine the posting account or the landlord sub-account
+              (Category ≠ Landlord sub-account). */}
           <Select
-            label="Category"
+            label="Reporting Category"
             value={form.category}
-            onChange={(e) => setForm({ ...form, category: e.target.value, landlord_sub_account: '' })}
+            onChange={(e) => setForm({ ...form, category: e.target.value })}
             placeholder="Select category..."
             options={categoryOptions.map(o => ({ value: o.value, label: o.label }))}
-            hint="Locks the landlord sub-account to entries of this category"
+            hint="Classifies the transaction for category-based reporting. It does not determine the posting account or landlord sub-account."
             required
           />
 
@@ -865,25 +874,25 @@ export default function OpeningBalances() {
             required
           />
 
-          {/* Step 6: Landlord Sub-Account (filtered by category for
-              category-lock; only shown once a landlord is picked) */}
+          {/* Step 6: Landlord Sub-Account (cash layer) — OPTIONAL. Only pick a
+              pocket for a genuine cash-layer opening position; doing so marks
+              the entry as Cash. A non-cash balance-sheet opening leaves this
+              blank and never touches a pocket. */}
           {form.landlord && (
             <Select
-              label="Landlord Sub-Account"
+              label="Landlord Sub-Account (cash layer — optional)"
               value={form.landlord_sub_account}
               onChange={(e) => setForm({ ...form, landlord_sub_account: e.target.value })}
               placeholder={
                 filteredLandlordSubAccounts.length === 0
-                  ? form.category
-                    ? `No ${form.category} sub-accounts for this landlord`
-                    : 'Select a category to filter sub-accounts'
-                  : 'Select sub-account...'
+                  ? 'No landlord pockets for this landlord'
+                  : 'None — non-cash opening (no pocket)'
               }
               options={filteredLandlordSubAccounts.map((s: any) => ({
                 value: String(s.id),
                 label: `${s.account_number || s.code || ''} ${s.name}`.trim(),
               }))}
-              hint="The landlord sub-account that mirrors this entry (for per-landlord reporting)"
+              hint="Only for a genuine cash-layer opening balance. Selecting a pocket marks this entry as Cash; leave blank for a non-cash balance-sheet opening."
             />
           )}
 

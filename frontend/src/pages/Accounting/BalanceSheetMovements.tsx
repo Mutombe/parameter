@@ -251,11 +251,13 @@ export default function BalanceSheetMovements() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.debit_account, form.credit_account, accounts])
 
-  // Filter landlord sub-accounts by category + currency.
+  // Landlord sub-accounts for the OPTIONAL cash-layer pocket. NB: the Category
+  // does NOT filter this list — Category is a reporting dimension and must not
+  // determine which pocket is used (a transfer is non-cash unless a pocket is
+  // explicitly chosen).
   const filteredLandlordSubs = (subsidiaryAccounts as any[]).filter((s: any) => {
     const kind = s.account_kind || s.entity_type
     if (kind && kind !== 'landlord') return false
-    if (form.category && s.category !== form.category) return false
     if (form.currency && s.currency && s.currency !== form.currency) return false
     return true
   })
@@ -336,6 +338,9 @@ export default function BalanceSheetMovements() {
       debit_account: resolveAccountId(form.debit_account),
       credit_account: resolveAccountId(form.credit_account),
       category: form.category,
+      // A transfer is Non-Cash unless a landlord pocket is explicitly chosen
+      // (a genuine cash-layer movement). The Category never forces the pocket.
+      transaction_nature: form.landlord_sub_account ? 'cash' : 'non_cash',
       landlord: parseInt(form.landlord),
       description: form.description,
       custom_description: form.custom_description,
@@ -743,14 +748,15 @@ export default function BalanceSheetMovements() {
             required
           />
 
-          {/* Category — locks the landlord sub-account picker below */}
+          {/* Reporting Category — classification only. It does NOT determine
+              the debit/credit account or the landlord cash sub-account. */}
           <Select
-            label="Category"
+            label="Reporting Category"
             value={form.category}
-            onChange={(e) => setForm({ ...form, category: e.target.value, landlord_sub_account: '' })}
+            onChange={(e) => setForm({ ...form, category: e.target.value })}
             placeholder="Select category..."
             options={categoryOptions.map((o) => ({ value: o.value, label: o.label }))}
-            hint="Locks the landlord sub-account to entries of this category"
+            hint="Classifies the transfer for category-based reporting. It does not determine the accounting account or landlord cash sub-account."
             required
           />
 
@@ -768,24 +774,24 @@ export default function BalanceSheetMovements() {
             required
           />
 
-          {/* Landlord Sub-Account — filtered by category + currency */}
+          {/* Landlord Sub-Account (cash layer) — OPTIONAL. Only pick a pocket
+              for a genuine cash-layer movement; a non-cash transfer (the
+              default) leaves this blank and never touches a pocket. */}
           {form.landlord && (
             <Select
-              label="Landlord Sub-Account"
+              label="Landlord Sub-Account (cash layer — optional)"
               value={form.landlord_sub_account}
               onChange={(e) => setForm({ ...form, landlord_sub_account: e.target.value })}
               placeholder={
                 filteredLandlordSubs.length === 0
-                  ? form.category
-                    ? `No ${form.category} ${form.currency} sub-account for this landlord`
-                    : 'Pick a category to filter sub-accounts'
-                  : 'Select sub-account...'
+                  ? 'No landlord pockets in this currency'
+                  : 'None — non-cash transfer (no pocket)'
               }
               options={filteredLandlordSubs.map((s: any) => ({
                 value: String(s.id),
                 label: `${s.code || s.account_number || ''} ${s.name}`.trim(),
               }))}
-              hint="The landlord sub-account mirror for per-landlord reporting"
+              hint="Only for a genuine cash-layer movement. Selecting a pocket marks this transfer as Cash; leave blank for a non-cash reclassification (the default)."
             />
           )}
 

@@ -909,6 +909,7 @@ class BalanceSheetMovementSerializer(serializers.ModelSerializer):
             'credit_account', 'credit_account_name', 'credit_account_code',
             'category', 'landlord', 'landlord_name',
             'landlord_sub_account', 'landlord_sub_account_code',
+            'transaction_nature',
             'description', 'custom_description', 'amount', 'currency',
             'status', 'journal', 'journal_number',
             'created_by', 'created_by_name', 'created_at', 'updated_at',
@@ -926,7 +927,7 @@ class BalanceSheetMovementCreateSerializer(serializers.ModelSerializer):
         model = BalanceSheetMovement
         fields = [
             'date', 'debit_account', 'credit_account', 'category',
-            'landlord', 'landlord_sub_account',
+            'landlord', 'landlord_sub_account', 'transaction_nature',
             'description', 'custom_description', 'amount', 'currency',
         ]
 
@@ -985,7 +986,7 @@ class OpeningBalanceSerializer(serializers.ModelSerializer):
             'id', 'entry_number', 'date', 'target_account', 'target_account_name',
             'target_account_code',
             'corresponding_account', 'corresponding_account_name', 'corresponding_account_code',
-            'direction', 'category',
+            'direction', 'category', 'transaction_nature',
             'landlord', 'landlord_name', 'landlord_sub_account', 'landlord_sub_name',
             'tenant_sub_account', 'tenant_sub_name',
             'supplier', 'supplier_name', 'supplier_code',
@@ -1003,6 +1004,7 @@ class OpeningBalanceCreateSerializer(serializers.ModelSerializer):
         model = OpeningBalance
         fields = [
             'date', 'target_account', 'corresponding_account', 'direction', 'category',
+            'transaction_nature',
             'landlord', 'landlord_sub_account', 'tenant_sub_account', 'supplier',
             'description', 'custom_description', 'amount', 'currency',
         ]

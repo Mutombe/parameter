@@ -2073,6 +2073,16 @@ class BalanceSheetMovement(models.Model):
     amount = models.DecimalField(max_digits=18, decimal_places=2)
     currency = models.CharField(max_length=3, default='USD')
 
+    # Account transfers are Non-Cash by default (asset/liability reclassifications
+    # move accounting value, not cash). The Category is a reporting dimension and
+    # must NOT route the movement through a landlord cash pocket; the landlord
+    # sub-account is only touched for a genuine cash-layer movement (nature='cash').
+    transaction_nature = models.CharField(
+        max_length=10,
+        choices=[('cash', 'Cash'), ('non_cash', 'Non-Cash')],
+        default='non_cash',
+    )
+
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     journal = models.ForeignKey(Journal, on_delete=models.SET_NULL, null=True, blank=True)
 
@@ -2133,8 +2143,11 @@ class BalanceSheetMovement(models.Model):
 
         journal.post(user)
 
-        # Subsidiary: record on landlord sub-account for reporting
-        if self.landlord_sub_account:
+        # Cash-layer participation. A Non-Cash transfer (the default — asset and
+        # liability reclassifications move accounting value, not cash) must NOT
+        # touch a landlord cash pocket merely because a Category is attached.
+        # The pocket participates only for a genuine cash-layer movement.
+        if self.transaction_nature == 'cash' and self.landlord_sub_account:
             SubsidiaryTransaction.create_entry(
                 account=self.landlord_sub_account,
                 date=self.date,
@@ -2209,6 +2222,17 @@ class OpeningBalance(models.Model):
     custom_description = models.CharField(max_length=500, blank=True)
     amount = models.DecimalField(max_digits=18, decimal_places=2)
     currency = models.CharField(max_length=3, default='USD')
+
+    # Cash vs Non-Cash. An opening balance is Non-Cash by default: introducing
+    # an asset/liability/equity value does NOT move a landlord cash pocket. The
+    # cash layer (landlord/tenant sub-account) is only touched when the entry is
+    # a genuine cash-layer opening position (nature='cash'). The Category stays
+    # a reporting dimension and never routes the entry to a pocket.
+    transaction_nature = models.CharField(
+        max_length=10,
+        choices=[('cash', 'Cash'), ('non_cash', 'Non-Cash')],
+        default='non_cash',
+    )
 
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     journal = models.ForeignKey(Journal, on_delete=models.SET_NULL, null=True, blank=True)
@@ -2292,8 +2316,15 @@ class OpeningBalance(models.Model):
 
         journal.post(user)
 
+        # Cash-layer participation. A Non-Cash opening balance introduces
+        # balance-sheet value only and must NOT move a landlord/tenant cash
+        # pocket, even when a Category is attached (Category is reporting-only,
+        # never a routing instruction). The pockets participate only for a
+        # genuine cash-layer opening position (nature='cash').
+        posts_cash_layer = self.transaction_nature == 'cash'
+
         # Subsidiary: landlord sub-account
-        if self.landlord_sub_account:
+        if posts_cash_layer and self.landlord_sub_account:
             kwargs = {'account': self.landlord_sub_account, 'date': self.date,
                       'contra_account': contra_code, 'reference': self.entry_number,
                       'description': desc, 'journal_entry': je_target,
@@ -2305,7 +2336,7 @@ class OpeningBalance(models.Model):
             SubsidiaryTransaction.create_entry(**kwargs)
 
         # Subsidiary: tenant sub-account (arrears or prepayment)
-        if self.tenant_sub_account:
+        if posts_cash_layer and self.tenant_sub_account:
             kwargs = {'account': self.tenant_sub_account, 'date': self.date,
                       'contra_account': contra_code, 'reference': self.entry_number,
                       'description': desc, 'journal_entry': je_target,
