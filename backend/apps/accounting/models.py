@@ -971,6 +971,28 @@ class BankAccount(models.Model):
     def __str__(self):
         return f'{self.name} ({self.currency})'
 
+    def available_balance(self, exclude_expense_id=None):
+        """Live available balance = receipts in + posted-journal debits in −
+        paid cash expenses out − posted-journal credits out. This is the SAME
+        figure surfaced as `computed_balance` on the bank list, so a withdrawal
+        guard using it matches exactly what the user sees. `exclude_expense_id`
+        drops one expense from the outflow (used when re-checking an edit)."""
+        from decimal import Decimal as _D
+        from django.db.models import Sum
+        from apps.billing.models import Receipt, Expense
+        recv = (Receipt.objects.filter(bank_account=self)
+                .aggregate(t=Sum('amount'))['t'] or _D('0'))
+        jrn_in = (JournalEntry.objects.filter(bank_account=self, journal__status='posted')
+                  .aggregate(t=Sum('debit_amount'))['t'] or _D('0'))
+        exp_q = (Expense.objects.filter(bank_account=self, status='paid')
+                 .exclude(expense_kind='non_cash'))
+        if exclude_expense_id:
+            exp_q = exp_q.exclude(id=exclude_expense_id)
+        exp = exp_q.aggregate(t=Sum('amount'))['t'] or _D('0')
+        jrn_out = (JournalEntry.objects.filter(bank_account=self, journal__status='posted')
+                   .aggregate(t=Sum('credit_amount'))['t'] or _D('0'))
+        return (recv + jrn_in) - (exp + jrn_out)
+
     def save(self, *args, **kwargs):
         # Ensure only one default per currency
         if self.is_default:

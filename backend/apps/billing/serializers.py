@@ -278,7 +278,93 @@ class ExpenseSerializer(serializers.ModelSerializer):
         # expense_category for GL routing and funding_category for
         # sub-account derivation. Keep payee_name as the only mandatory
         # text field beyond what the model already enforces.
+        etype = data.get('expense_type') or getattr(self.instance, 'expense_type', None)
+        if etype == 'landlord_payment':
+            self._validate_landlord_withdrawal(data)
         return data
+
+    def _validate_landlord_withdrawal(self, data):
+        """Trust-money controls for a Landlord Withdrawal (spec: Post Withdrawal).
+
+        A withdrawal moves client/landlord trust money, so it must always name
+        an identifiable source of funds. Enforced, non-bypassable:
+          * Currency and Source Bank/Cash account are BOTH mandatory.
+          * The transaction currency must equal the source account currency
+            (no silent cross-currency withdrawal).
+          * The source must be an existing, active Bank/Cash account (this
+            dialogue never creates one).
+          * The landlord's trust pocket must already exist (never created here).
+          * The amount must not exceed the source account's available balance.
+          * A posted withdrawal's controlled fields are immutable — correct via
+            void + re-post, not a silent edit.
+        """
+        from apps.accounting.models import SubsidiaryAccount, SubsidiaryStructureError
+
+        instance = self.instance
+
+        # -- immutability after posting -----------------------------------
+        if instance is not None and instance.journal_id:
+            for f in ('bank_account', 'currency', 'amount', 'landlord', 'sub_account_category'):
+                if f in data:
+                    new, old = data[f], getattr(instance, f)
+                    if hasattr(new, 'pk'):
+                        new = new.pk
+                    if hasattr(old, 'pk'):
+                        old = old.pk
+                    if new != old:
+                        raise serializers.ValidationError({f: (
+                            'A posted withdrawal cannot be edited. Void the '
+                            'withdrawal and post a corrected one instead.')})
+            return  # non-controlled edits on a posted withdrawal are allowed
+
+        def pick(field):
+            if field in data:
+                return data[field]
+            return getattr(instance, field, None) if instance is not None else None
+
+        bank = pick('bank_account')
+        currency = pick('currency')
+        landlord = pick('landlord')
+        amount = pick('amount')
+        category = pick('sub_account_category')
+
+        errors = {}
+        if bank is None:
+            errors['bank_account'] = 'Source Bank/Cash Account is required for a landlord withdrawal.'
+        if not currency:
+            errors['currency'] = 'Currency is required for a landlord withdrawal.'
+        if landlord is None:
+            errors['landlord'] = 'Landlord is required for a withdrawal.'
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        if not getattr(bank, 'is_active', True):
+            raise serializers.ValidationError(
+                {'bank_account': 'The selected source account is not active.'})
+
+        # currency must match the source account's currency
+        if currency != bank.currency:
+            raise serializers.ValidationError({'currency': (
+                f'Currency ({currency}) must match the source account currency '
+                f'({bank.currency}). Cross-currency withdrawals are not permitted here.')})
+
+        # the landlord trust pocket must already exist (never created here)
+        funding_cat = category or 'rent'
+        try:
+            SubsidiaryAccount.get_for_landlord_category(landlord, category=funding_cat)
+        except SubsidiaryStructureError:
+            raise serializers.ValidationError({'sub_account_category': (
+                f'Trust pocket "{funding_cat}" does not exist for {landlord.name}. '
+                'Create the account structure first — it is never created from this dialogue.')})
+
+        # amount must not exceed the source account's available balance
+        if amount is not None:
+            available = bank.available_balance(
+                exclude_expense_id=getattr(instance, 'id', None))
+            if amount > available:
+                raise serializers.ValidationError({'amount': (
+                    f'Withdrawal amount ({currency} {amount}) exceeds the available '
+                    f'balance ({bank.currency} {available}) of {bank.name}.')})
 
 
 class BulkInvoiceSerializer(serializers.Serializer):

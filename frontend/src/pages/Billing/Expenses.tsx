@@ -186,7 +186,7 @@ export default function Expenses() {
   // Post Owner's Withdrawal — a cash remittance paid to a landlord (drawings).
   const [showWithdraw, setShowWithdraw] = useState(false)
   const [withdrawForm, setWithdrawForm] = useState({
-    landlord: '', sub_account_category: 'rent', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '',
+    landlord: '', currency: '', sub_account_category: 'rent', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '',
   })
 
   const debouncedSearch = useDebounce(searchQuery, 300)
@@ -586,15 +586,27 @@ export default function Expenses() {
       queryClient.invalidateQueries({ queryKey: ['expenses'] })
       showToast.success("Owner's withdrawal posted")
       setShowWithdraw(false)
-      setWithdrawForm({ landlord: '', sub_account_category: 'rent', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '' })
+      setWithdrawForm({ landlord: '', currency: '', sub_account_category: 'rent', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '' })
     },
     onError: (err: any) => showToast.error(parseApiError(err, 'Failed to post withdrawal')),
   })
   const submitWithdrawal = () => {
+    // Trust-money controls: a withdrawal must name currency + an actual source
+    // bank/cash account, and the amount cannot exceed that account's balance.
     if (!withdrawForm.landlord) { showToast.error('Pick the landlord being paid.'); return }
+    if (!withdrawForm.currency) { showToast.error('Select the currency of the withdrawal.'); return }
     if (!withdrawForm.sub_account_category) { showToast.error('Pick the sub-account pocket to deduct from.'); return }
+    if (!withdrawForm.bank_account) { showToast.error('Select the source bank/cash account.'); return }
     const amt = Number(withdrawForm.amount)
     if (!amt || amt <= 0) { showToast.error('Enter a valid amount.'); return }
+    const bank = bankAccounts.find((b: any) => String(b.id) === String(withdrawForm.bank_account))
+    if (bank && (bank.currency || 'USD') !== withdrawForm.currency) {
+      showToast.error(`Currency (${withdrawForm.currency}) must match the source account (${bank.currency}).`); return
+    }
+    const available = Number(bank?.computed_balance ?? bank?.book_balance ?? 0)
+    if (bank && amt > available) {
+      showToast.error(`Amount exceeds the available balance (${withdrawForm.currency} ${available.toLocaleString()}) of ${bank.name}.`); return
+    }
     const ll = landlords.find((l: any) => String(l.id) === String(withdrawForm.landlord))
     withdrawMutation.mutate({
       expense_type: 'landlord_payment',
@@ -603,12 +615,13 @@ export default function Expenses() {
       payee_id: Number(withdrawForm.landlord),
       payee_name: ll?.name || 'Landlord remittance',
       landlord: Number(withdrawForm.landlord),
+      currency: withdrawForm.currency,
       // The trust pocket the remittance is drawn from.
       sub_account_category: withdrawForm.sub_account_category,
       amount: amt,
       date: withdrawForm.date,
       description: withdrawForm.description || "Owner's withdrawal (remittance)",
-      ...(withdrawForm.bank_account ? { bank_account: Number(withdrawForm.bank_account) } : {}),
+      bank_account: Number(withdrawForm.bank_account),
       auto_post: true,
     })
   }
@@ -1836,44 +1849,106 @@ export default function Expenses() {
             searchable
             required
           />
-          <Select
-            label="Sub-account pocket (deducted from)"
-            value={withdrawForm.sub_account_category}
-            onChange={(e) => setWithdrawForm({ ...withdrawForm, sub_account_category: e.target.value })}
-            options={subAccountCategoryOptions}
-            hint="Which of the landlord's trust pockets the remittance is drawn from"
-            required
-          />
-          <Input
-            label="Amount"
-            type="number"
-            min="0"
-            step="0.01"
-            value={withdrawForm.amount}
-            onChange={(e) => setWithdrawForm({ ...withdrawForm, amount: e.target.value })}
-            required
-          />
-          <DatePicker
-            label="Date"
-            value={withdrawForm.date}
-            onChange={(v) => setWithdrawForm({ ...withdrawForm, date: v })}
-            required
-          />
-          <Select
-            label="Bank Account (optional)"
-            value={withdrawForm.bank_account}
-            onChange={(e) => setWithdrawForm({ ...withdrawForm, bank_account: e.target.value })}
-            options={[
-              { value: '', label: 'No bank account' },
-              ...bankAccounts.map((b: any) => ({ value: String(b.id), label: `${b.name} (${b.currency})` })),
-            ]}
-          />
-          <Input
-            label="Description (optional)"
-            value={withdrawForm.description}
-            onChange={(e) => setWithdrawForm({ ...withdrawForm, description: e.target.value })}
-            placeholder="Owner's withdrawal (remittance)"
-          />
+          {(() => {
+            // Currency and source account are mutually consistent: choosing a
+            // currency filters the source accounts to that currency, and the
+            // amount is checked against the source account's balance.
+            const withdrawCurrencies = Array.from(
+              new Set(bankAccounts.map((b: any) => b.currency || 'USD'))
+            )
+            const currencyOptions = (withdrawCurrencies.length ? withdrawCurrencies : ['USD', 'ZWG'])
+              .map((c: string) => ({ value: c, label: c }))
+            const currencyBanks = bankAccounts.filter(
+              (b: any) => (b.currency || 'USD') === withdrawForm.currency
+            )
+            const wBank = bankAccounts.find((b: any) => String(b.id) === String(withdrawForm.bank_account))
+            const available = wBank ? Number(wBank.computed_balance ?? wBank.book_balance ?? 0) : null
+            const amt = Number(withdrawForm.amount) || 0
+            const wLandlord = landlords.find((l: any) => String(l.id) === String(withdrawForm.landlord))
+            const pocketLabel = subAccountCategoryOptions.find(
+              o => o.value === withdrawForm.sub_account_category)?.label || withdrawForm.sub_account_category
+            const overdraw = available !== null && amt > available
+            const summaryReady = withdrawForm.landlord && withdrawForm.currency &&
+              withdrawForm.bank_account && amt > 0
+            return (
+              <>
+                <Select
+                  label="Currency *"
+                  value={withdrawForm.currency}
+                  onChange={(e) => setWithdrawForm({ ...withdrawForm, currency: e.target.value, bank_account: '' })}
+                  options={currencyOptions}
+                  placeholder="Select currency"
+                  hint="The withdrawal currency — it must match the source account"
+                  required
+                />
+                <Select
+                  label="Sub-account pocket (deducted from) *"
+                  value={withdrawForm.sub_account_category}
+                  onChange={(e) => setWithdrawForm({ ...withdrawForm, sub_account_category: e.target.value })}
+                  options={subAccountCategoryOptions}
+                  hint="Which of the landlord's trust pockets the remittance is drawn from"
+                  required
+                />
+                <Select
+                  label="Source Bank/Cash Account *"
+                  value={withdrawForm.bank_account}
+                  onChange={(e) => setWithdrawForm({ ...withdrawForm, bank_account: e.target.value })}
+                  options={currencyBanks.map((b: any) => ({
+                    value: String(b.id),
+                    label: `${b.name} — ${b.currency} ${Number(b.computed_balance ?? b.book_balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+                  }))}
+                  placeholder={withdrawForm.currency ? 'Select the account funds are drawn from' : 'Select a currency first'}
+                  disabled={!withdrawForm.currency}
+                  hint="Only approved accounts in the selected currency are shown. Accounts are configured in Bank Accounts — never created here."
+                  required
+                />
+                <Input
+                  label="Amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={withdrawForm.amount}
+                  onChange={(e) => setWithdrawForm({ ...withdrawForm, amount: e.target.value })}
+                  required
+                />
+                <DatePicker
+                  label="Date"
+                  value={withdrawForm.date}
+                  onChange={(v) => setWithdrawForm({ ...withdrawForm, date: v })}
+                  required
+                />
+                <Input
+                  label="Description (optional)"
+                  value={withdrawForm.description}
+                  onChange={(e) => setWithdrawForm({ ...withdrawForm, description: e.target.value })}
+                  placeholder="Owner's withdrawal (remittance)"
+                />
+                {summaryReady && (
+                  <div className={cn('rounded-lg border p-3 text-sm space-y-1',
+                    overdraw ? 'border-red-200 bg-red-50' : 'border-gray-200 bg-gray-50')}>
+                    <div className="font-medium text-gray-900 mb-1">Withdrawal Summary</div>
+                    <SummaryRow label="Landlord" value={wLandlord?.name || '—'} />
+                    <SummaryRow label="Pocket" value={pocketLabel} />
+                    <SummaryRow label="Currency" value={withdrawForm.currency} />
+                    <SummaryRow label="Source Account" value={wBank?.name || '—'} />
+                    <SummaryRow label="Amount" value={`${withdrawForm.currency} ${amt.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} />
+                    {available !== null && (
+                      <>
+                        <SummaryRow label="Available Balance" value={`${withdrawForm.currency} ${available.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} />
+                        <SummaryRow label="Balance After" value={`${withdrawForm.currency} ${(available - amt).toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                          valueClass={overdraw ? 'text-red-600 font-semibold' : ''} />
+                      </>
+                    )}
+                    {overdraw && (
+                      <div className="text-red-600 text-xs pt-1">
+                        Withdrawal amount exceeds the available balance of this account.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )
+          })()}
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setShowWithdraw(false)}>
               Cancel
@@ -2195,6 +2270,15 @@ export default function Expenses() {
         type="danger"
         confirmText="Confirm"
       />
+    </div>
+  )
+}
+
+function SummaryRow({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-gray-500">{label}</span>
+      <span className={cn('text-gray-900 text-right', valueClass)}>{value}</span>
     </div>
   )
 }
