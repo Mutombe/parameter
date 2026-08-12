@@ -905,8 +905,8 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
         from django.utils import timezone as _tz
         from apps.masterfile.models import Landlord
         from apps.accounting.models import (
-            SubsidiaryAccount, SubsidiaryTransaction, ChartOfAccount,
-            Journal, JournalEntry, BankAccount,
+            SubsidiaryAccount, SubsidiaryStructureError, SubsidiaryTransaction,
+            ChartOfAccount, Journal, JournalEntry, BankAccount,
         )
         landlord_id = request.data.get('landlord')
         raw_amount = request.data.get('amount')
@@ -924,16 +924,46 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
             return Response({'error': 'Landlord not found'}, status=status.HTTP_404_NOT_FOUND)
 
         dt = request.data.get('date') or _tz.now().date()
-        currency = (request.data.get('currency') or 'USD').upper()
+        currency = (request.data.get('currency') or '').upper()
+        bank_account_id = request.data.get('bank_account')
+        pocket = (request.data.get('sub_account_category') or 'rent').lower()
+
+        # -- Trust-money controls (spec: Owner Contribution) --------------
+        # A contribution is actual money entering the trust, so it must always
+        # name the currency and the actual approved receiving Bank/Cash account.
+        if not currency:
+            return Response({'error': 'Currency is required for an owner contribution.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if not bank_account_id:
+            return Response({'error': 'Receiving Bank/Cash Account is required.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        ba = (BankAccount.objects.filter(id=bank_account_id)
+              .select_related('gl_account').first())
+        if ba is None:
+            return Response({'error': 'Receiving account not found.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if not ba.is_active:
+            return Response({'error': 'The receiving account is not active.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if (ba.currency or 'USD') != currency:
+            return Response({'error': (
+                f'Currency ({currency}) must match the receiving account currency '
+                f'({ba.currency}). Cross-currency contributions are not permitted here.')},
+                status=status.HTTP_400_BAD_REQUEST)
+        # The landlord trust pocket must already exist (never created here).
+        try:
+            sub = SubsidiaryAccount.get_for_landlord_category(landlord, category=pocket)
+        except SubsidiaryStructureError:
+            return Response({'error': (
+                f'Trust pocket "{pocket}" does not exist for {landlord.name}. '
+                'Create the account structure first — it is never created here.')},
+                status=status.HTTP_400_BAD_REQUEST)
+
         description = request.data.get('description') or f'Owner contribution — {landlord.name}'
 
-        # Resolve the cash/bank GL account (chosen bank → its GL, else 1100).
-        bank_gl = None
-        bank_account_id = request.data.get('bank_account')
-        if bank_account_id:
-            ba = BankAccount.objects.filter(id=bank_account_id).select_related('gl_account').first()
-            if ba and ba.gl_account_id:
-                bank_gl = ba.gl_account
+        # Receiving bank GL (the actual selected account's GL; 1100 only if a
+        # legacy account somehow has no GL link).
+        bank_gl = ba.gl_account
         if bank_gl is None:
             bank_gl, _ = ChartOfAccount.objects.get_or_create(
                 code='1100', defaults={'name': 'Bank Account', 'account_type': 'asset',
@@ -964,13 +994,12 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
                 ba.save(update_fields=['book_balance', 'updated_at'])
 
         # Sub-ledger: credit the chosen landlord pocket → raises Funds Held.
-        pocket = (request.data.get('sub_account_category') or 'rent').lower()
-        sub = SubsidiaryAccount.get_or_create_for_landlord_category(
-            landlord, category=pocket, currency=currency)
+        # Pocket resolved during validation above; credit it in the transaction
+        # currency so the per-currency balance is correct.
         txn = SubsidiaryTransaction.create_entry(
             account=sub, date=dt, contra_account='OCT',
             reference=f'OCT-{journal.journal_number}', description=description,
-            credit_amount=amount, journal_entry=je_dr,
+            credit_amount=amount, journal_entry=je_dr, currency=currency,
         )
         return Response({
             'message': 'Owner contribution recorded',

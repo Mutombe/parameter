@@ -51,6 +51,28 @@ const methodLabels: Record<string, string> = {
   cheque: 'Cheque',
 }
 
+// Landlord trust pockets an owner contribution can be injected into.
+const SUB_POCKET_OPTIONS = [
+  { value: 'rent', label: 'Rent' },
+  { value: 'levy', label: 'Levy' },
+  { value: 'special_levy', label: 'Special Levy' },
+  { value: 'maintenance', label: 'Maintenance' },
+  { value: 'parking', label: 'Parking' },
+  { value: 'rates', label: 'Rates' },
+  { value: 'vat', label: 'VAT' },
+  { value: 'deposit', label: 'Deposit' },
+  { value: 'general', label: 'General' },
+]
+
+function ContribRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-gray-500">{label}</span>
+      <span className="text-gray-900 text-right">{value}</span>
+    </div>
+  )
+}
+
 export default function Receipts() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -61,7 +83,7 @@ export default function Receipts() {
   // Owner (landlord) contribution — funds injected into the trust account.
   const [showContribution, setShowContribution] = useState(false)
   const [contributionForm, setContributionForm] = useState({
-    landlord: '', sub_account_category: 'rent', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '',
+    landlord: '', currency: '', sub_account_category: 'rent', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '',
   })
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null)
@@ -144,22 +166,31 @@ export default function Receipts() {
       queryClient.invalidateQueries({ queryKey: ['receipts'] })
       showToast.success('Owner contribution recorded')
       setShowContribution(false)
-      setContributionForm({ landlord: '', sub_account_category: 'rent', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '' })
+      setContributionForm({ landlord: '', currency: '', sub_account_category: 'rent', amount: '', date: new Date().toISOString().split('T')[0], bank_account: '', description: '' })
     },
     onError: (err: any) => showToast.error(parseApiError(err, 'Failed to record contribution')),
   })
   const submitContribution = () => {
+    // Trust-money controls: a contribution must name the currency and the
+    // actual approved receiving bank/cash account it landed in.
     if (!contributionForm.landlord) { showToast.error('Pick the landlord.'); return }
+    if (!contributionForm.currency) { showToast.error('Select the currency of the contribution.'); return }
     if (!contributionForm.sub_account_category) { showToast.error('Pick the sub-account pocket.'); return }
+    if (!contributionForm.bank_account) { showToast.error('Select the receiving bank/cash account.'); return }
     const amt = Number(contributionForm.amount)
     if (!amt || amt <= 0) { showToast.error('Enter a valid amount.'); return }
+    const bank = ((bankAccounts as any[]) || []).find((b: any) => String(b.id) === String(contributionForm.bank_account))
+    if (bank && (bank.currency || 'USD') !== contributionForm.currency) {
+      showToast.error(`Currency (${contributionForm.currency}) must match the receiving account (${bank.currency}).`); return
+    }
     contributionMutation.mutate({
       landlord: Number(contributionForm.landlord),
+      currency: contributionForm.currency,
       sub_account_category: contributionForm.sub_account_category,
       amount: amt,
       date: contributionForm.date,
       description: contributionForm.description || undefined,
-      ...(contributionForm.bank_account ? { bank_account: Number(contributionForm.bank_account) } : {}),
+      bank_account: Number(contributionForm.bank_account),
     })
   }
 
@@ -937,53 +968,93 @@ export default function Receipts() {
             searchable
             required
           />
-          <Select
-            label="Sub-account pocket (funds injected into)"
-            value={contributionForm.sub_account_category}
-            onChange={(e) => setContributionForm({ ...contributionForm, sub_account_category: e.target.value })}
-            options={[
-              { value: 'rent', label: 'Rent' },
-              { value: 'levy', label: 'Levy' },
-              { value: 'special_levy', label: 'Special Levy' },
-              { value: 'maintenance', label: 'Maintenance' },
-              { value: 'parking', label: 'Parking' },
-              { value: 'rates', label: 'Rates' },
-              { value: 'vat', label: 'VAT' },
-              { value: 'deposit', label: 'Deposit' },
-              { value: 'general', label: 'General' },
-            ]}
-            required
-          />
-          <Input
-            label="Amount"
-            type="number"
-            min="0"
-            step="0.01"
-            value={contributionForm.amount}
-            onChange={(e) => setContributionForm({ ...contributionForm, amount: e.target.value })}
-            required
-          />
-          <DatePicker
-            label="Date"
-            value={contributionForm.date}
-            onChange={(v) => setContributionForm({ ...contributionForm, date: v })}
-            required
-          />
-          <Select
-            label="Bank Account (optional)"
-            value={contributionForm.bank_account}
-            onChange={(e) => setContributionForm({ ...contributionForm, bank_account: e.target.value })}
-            options={[
-              { value: '', label: 'No bank account' },
-              ...((bankAccounts as any[] || []).map((b: any) => ({ value: String(b.id), label: `${b.name} (${b.currency})` }))),
-            ]}
-          />
-          <Input
-            label="Description (optional)"
-            value={contributionForm.description}
-            onChange={(e) => setContributionForm({ ...contributionForm, description: e.target.value })}
-            placeholder="Owner contribution"
-          />
+          {(() => {
+            const banks = (bankAccounts as any[]) || []
+            const contribCurrencies = Array.from(new Set(banks.map((b: any) => b.currency || 'USD')))
+            const currencyOptions = (contribCurrencies.length ? contribCurrencies : ['USD', 'ZWG'])
+              .map((c: string) => ({ value: c, label: c }))
+            const currencyBanks = banks.filter((b: any) => (b.currency || 'USD') === contributionForm.currency)
+            const cBank = banks.find((b: any) => String(b.id) === String(contributionForm.bank_account))
+            const balance = cBank ? Number(cBank.computed_balance ?? cBank.book_balance ?? 0) : null
+            const amt = Number(contributionForm.amount) || 0
+            const cLandlord = (contribLandlords as any[]).find((l: any) => String(l.id) === String(contributionForm.landlord))
+            const pocketLabel = SUB_POCKET_OPTIONS.find(o => o.value === contributionForm.sub_account_category)?.label || contributionForm.sub_account_category
+            const summaryReady = contributionForm.landlord && contributionForm.currency &&
+              contributionForm.bank_account && amt > 0
+            return (
+              <>
+                <Select
+                  label="Currency *"
+                  value={contributionForm.currency}
+                  onChange={(e) => setContributionForm({ ...contributionForm, currency: e.target.value, bank_account: '' })}
+                  options={currencyOptions}
+                  placeholder="Select currency"
+                  hint="The currency the contribution was received in — it must match the receiving account"
+                  required
+                />
+                <Select
+                  label="Sub-account pocket (funds injected into) *"
+                  value={contributionForm.sub_account_category}
+                  onChange={(e) => setContributionForm({ ...contributionForm, sub_account_category: e.target.value })}
+                  options={SUB_POCKET_OPTIONS}
+                  required
+                />
+                <Select
+                  label="Receiving Bank/Cash Account *"
+                  value={contributionForm.bank_account}
+                  onChange={(e) => setContributionForm({ ...contributionForm, bank_account: e.target.value })}
+                  options={currencyBanks.map((b: any) => ({
+                    value: String(b.id),
+                    label: `${b.name} — ${b.currency} ${Number(b.computed_balance ?? b.book_balance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+                  }))}
+                  placeholder={contributionForm.currency ? 'Select the account the funds were received into' : 'Select a currency first'}
+                  disabled={!contributionForm.currency}
+                  hint="Only approved accounts in the selected currency are shown. Accounts are configured in Bank Accounts — never created here."
+                  required
+                />
+                <Input
+                  label="Amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={contributionForm.amount}
+                  onChange={(e) => setContributionForm({ ...contributionForm, amount: e.target.value })}
+                  required
+                />
+                <DatePicker
+                  label="Date"
+                  value={contributionForm.date}
+                  onChange={(v) => setContributionForm({ ...contributionForm, date: v })}
+                  required
+                />
+                <Input
+                  label="Description (optional)"
+                  value={contributionForm.description}
+                  onChange={(e) => setContributionForm({ ...contributionForm, description: e.target.value })}
+                  placeholder="Owner contribution"
+                />
+                {summaryReady && (
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm space-y-1">
+                    <div className="font-medium text-gray-900 mb-1">Contribution Summary</div>
+                    <ContribRow label="Landlord" value={cLandlord?.name || '—'} />
+                    <ContribRow label="Pocket" value={pocketLabel} />
+                    <ContribRow label="Currency" value={contributionForm.currency} />
+                    <ContribRow label="Receiving Account" value={cBank?.name || '—'} />
+                    <ContribRow label="Amount" value={`${contributionForm.currency} ${amt.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} />
+                    {balance !== null && (
+                      <>
+                        <ContribRow label="Current Balance" value={`${contributionForm.currency} ${balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`} />
+                        <ContribRow label="Projected Balance" value={`${contributionForm.currency} ${(balance + amt).toLocaleString(undefined, { minimumFractionDigits: 2 })}`} />
+                      </>
+                    )}
+                    <div className="pt-1 text-xs text-gray-500 font-mono">
+                      Dr {cBank?.name} · Cr {cLandlord?.code || 'Landlord'}/{contributionForm.sub_account_category}
+                    </div>
+                  </div>
+                )}
+              </>
+            )
+          })()}
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setShowContribution(false)}>
               Cancel
