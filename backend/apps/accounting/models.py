@@ -2172,6 +2172,15 @@ class OpeningBalance(models.Model):
     target_account = models.ForeignKey(
         ChartOfAccount, on_delete=models.PROTECT, related_name='opening_balances'
     )
+    # The GL account used as the OTHER side of the opening-balance journal.
+    # Defaults to 9000 (Opening Balances) but the accountant may override it
+    # with another approved GL account (Asset/Liability Takeover, Retained
+    # Income, etc.). 9000 is the default, not a prison.
+    corresponding_account = models.ForeignKey(
+        ChartOfAccount, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='opening_balance_contras',
+        help_text='GL account for the other side of the journal. Blank = 9000.'
+    )
     direction = models.CharField(max_length=10, choices=EntryDirection.choices)
     category = models.CharField(max_length=20, choices=SubsidiaryAccount.AccountCategory.choices)
 
@@ -2234,16 +2243,21 @@ class OpeningBalance(models.Model):
         if self.journal:
             return self.journal
 
-        opening_account, _ = ChartOfAccount.objects.get_or_create(
-            code='9000',
-            defaults={
-                'name': 'Opening Balances',
-                'account_type': 'equity',
-                'account_subtype': 'retained_earnings',
-                'is_system': True,
-            }
-        )
+        # The corresponding (contra) account: the accountant's chosen GL account
+        # if set, otherwise the default 9000 Opening Balances account.
+        opening_account = self.corresponding_account
+        if opening_account is None:
+            opening_account, _ = ChartOfAccount.objects.get_or_create(
+                code='9000',
+                defaults={
+                    'name': 'Opening Balances',
+                    'account_type': 'equity',
+                    'account_subtype': 'retained_earnings',
+                    'is_system': True,
+                }
+            )
 
+        contra_code = opening_account.code
         desc = self.custom_description or self.description
 
         journal = Journal.objects.create(
@@ -2281,7 +2295,7 @@ class OpeningBalance(models.Model):
         # Subsidiary: landlord sub-account
         if self.landlord_sub_account:
             kwargs = {'account': self.landlord_sub_account, 'date': self.date,
-                      'contra_account': '9000', 'reference': self.entry_number,
+                      'contra_account': contra_code, 'reference': self.entry_number,
                       'description': desc, 'journal_entry': je_target,
                       'currency': self.currency}
             if self.direction == self.EntryDirection.DEBIT:
@@ -2293,7 +2307,7 @@ class OpeningBalance(models.Model):
         # Subsidiary: tenant sub-account (arrears or prepayment)
         if self.tenant_sub_account:
             kwargs = {'account': self.tenant_sub_account, 'date': self.date,
-                      'contra_account': '9000', 'reference': self.entry_number,
+                      'contra_account': contra_code, 'reference': self.entry_number,
                       'description': desc, 'journal_entry': je_target,
                       'currency': self.currency}
             if self.direction == self.EntryDirection.DEBIT:

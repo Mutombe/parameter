@@ -970,6 +970,8 @@ class OpeningBalanceSerializer(serializers.ModelSerializer):
     """Read serializer for OpeningBalance."""
     target_account_name = serializers.CharField(source='target_account.name', read_only=True)
     target_account_code = serializers.CharField(source='target_account.code', read_only=True)
+    corresponding_account_name = serializers.CharField(source='corresponding_account.name', read_only=True, default=None)
+    corresponding_account_code = serializers.CharField(source='corresponding_account.code', read_only=True, default=None)
     landlord_name = serializers.CharField(source='landlord.name', read_only=True)
     landlord_sub_name = serializers.CharField(source='landlord_sub_account.name', read_only=True, default=None)
     tenant_sub_name = serializers.CharField(source='tenant_sub_account.name', read_only=True, default=None)
@@ -981,7 +983,9 @@ class OpeningBalanceSerializer(serializers.ModelSerializer):
         model = OpeningBalance
         fields = [
             'id', 'entry_number', 'date', 'target_account', 'target_account_name',
-            'target_account_code', 'direction', 'category',
+            'target_account_code',
+            'corresponding_account', 'corresponding_account_name', 'corresponding_account_code',
+            'direction', 'category',
             'landlord', 'landlord_name', 'landlord_sub_account', 'landlord_sub_name',
             'tenant_sub_account', 'tenant_sub_name',
             'supplier', 'supplier_name', 'supplier_code',
@@ -998,7 +1002,7 @@ class OpeningBalanceCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = OpeningBalance
         fields = [
-            'date', 'target_account', 'direction', 'category',
+            'date', 'target_account', 'corresponding_account', 'direction', 'category',
             'landlord', 'landlord_sub_account', 'tenant_sub_account', 'supplier',
             'description', 'custom_description', 'amount', 'currency',
         ]
@@ -1006,6 +1010,13 @@ class OpeningBalanceCreateSerializer(serializers.ModelSerializer):
     def validate(self, data):
         if data['amount'] <= 0:
             raise serializers.ValidationError({'amount': 'Amount must be greater than zero.'})
+        # The corresponding account, when chosen, must be a real GL account and
+        # never a Tenant/Account-Holder/Landlord sub-account counterpart (the
+        # Category must not reopen the Category -> Landlord sub-account problem).
+        corr = data.get('corresponding_account')
+        if corr is not None and not corr.is_active:
+            raise serializers.ValidationError(
+                {'corresponding_account': 'The corresponding account must be an active GL account.'})
         return data
 
     def create(self, validated_data):

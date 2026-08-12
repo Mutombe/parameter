@@ -173,6 +173,7 @@ export default function OpeningBalances() {
   const [form, setForm] = useState({
     date: new Date().toISOString().split('T')[0],
     target_account: '',
+    corresponding_account: '',
     direction: '',
     category: '',
     landlord: '',
@@ -277,6 +278,17 @@ export default function OpeningBalances() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.direction, form.target_account, accounts])
 
+  // Default the corresponding account to 9000 — Opening Balances (the default,
+  // not a prison: the accountant may override it below).
+  const openingBalancesAccount = (accounts as any[]).find((a: any) => a.code === '9000')
+  useEffect(() => {
+    if (!form.corresponding_account && openingBalancesAccount) {
+      setForm((prev) => (prev.corresponding_account
+        ? prev : { ...prev, corresponding_account: String(openingBalancesAccount.id) }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openingBalancesAccount?.id])
+
   // Sub-accounts filtered by the selected category AND currency.
   // The spec calls this "category lock" — Landlord Rent sub-account
   // must match a Rent Lessor's Accrual Account. Currency lock applies
@@ -337,6 +349,7 @@ export default function OpeningBalances() {
     setForm({
       date: new Date().toISOString().split('T')[0],
       target_account: '',
+      corresponding_account: '',
       direction: '',
       category: '',
       landlord: '',
@@ -370,6 +383,7 @@ export default function OpeningBalances() {
     const data: Record<string, unknown> = {
       date: form.date,
       target_account: targetAccountId,
+      corresponding_account: form.corresponding_account ? parseInt(form.corresponding_account) : null,
       direction: form.direction,
       category: form.category,
       landlord: parseInt(form.landlord),
@@ -800,7 +814,7 @@ export default function OpeningBalances() {
                   label: `Liability · ${a.code} - ${a.name}`,
                 })),
             ]}
-            hint="The other side is always '9000 — Opening Balances'. Use the Supplier picker below to tag a creditor (Apex Finance etc.)."
+            hint="Defaults to '9000 — Opening Balances' as the other side, overridable below. Use the Supplier picker to tag a creditor (Apex Finance etc.)."
             required
           />
 
@@ -812,6 +826,21 @@ export default function OpeningBalances() {
             placeholder="Select direction..."
             options={directionOptions.map(o => ({ value: o.value, label: o.label }))}
             required
+          />
+
+          {/* Corresponding (contra) account — defaults to 9000 but the
+              accountant may pick another approved GL account (Asset/Liability
+              Takeover, Retained Income, Capital, etc.). 9000 is the default,
+              not a prison. Selected independently of Category/Landlord. */}
+          <Select
+            label="Corresponding Account"
+            value={form.corresponding_account}
+            onChange={(e) => setForm({ ...form, corresponding_account: e.target.value })}
+            placeholder="9000 — Opening Balances"
+            options={(accounts as any[])
+              .filter((a: any) => isSelectableRealAccount(a) || a.code === '9000')
+              .map((a: any) => ({ value: String(a.id), label: `${a.code} - ${a.name}` }))}
+            hint="The other side of the journal. Defaults to 9000 — Opening Balances; change only where your accounting policy requires (e.g. Asset/Liability Takeover, Retained Income)."
           />
 
           {/* Step 4: Category — locks the landlord-sub-account picker
