@@ -235,13 +235,14 @@ class JournalViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
               .annotate(_primary=Case(When(primary_q, then=Value(0)),
                                       default=Value(1), output_field=IntegerField()))
               .order_by('_primary', 'code')
-              .values('id', 'code', 'name', 'account_type'))
+              .values('id', 'code', 'name', 'account_type', 'currency'))
         groups.append({
             'label': 'General Ledger',
             'options': [{
                 'value': f'gl:{a["id"]}',
                 'kind': 'gl', 'id': a['id'],
                 'code': a['code'], 'name': a['name'],
+                'account_type': a['account_type'], 'currency': a['currency'],
                 'label': f'{a["code"]} - {a["name"]}',
             } for a in gl],
         })
@@ -255,11 +256,15 @@ class JournalViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
                 'value': f'bank:{b["id"]}',
                 'kind': 'bank', 'id': b['id'],
                 'code': b['code'], 'name': b['name'],
+                'currency': b['currency'],
                 'label': f'{b["name"]} ({b["currency"]})',
             } for b in banks],
         })
 
         # ALL tenant + landlord sub-accounts — primary-flow, always postable.
+        # Sub-accounts are currency-agnostic (one pocket per category; currency
+        # is a balance dimension), so the journal currency simply drives which
+        # per-currency band the line posts to.
         subs = (SubsidiaryAccount.objects.all()
                 .order_by('entity_type', 'code')
                 .values('id', 'code', 'name', 'entity_type'))
@@ -274,6 +279,7 @@ class JournalViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
                 'value': f'subsidiary:{s["id"]}',
                 'kind': 'subsidiary', 'id': s['id'],
                 'code': s['code'], 'name': s['name'],
+                'entity_type': s['entity_type'],
                 'label': f'{s["code"]} - {s["name"]}',
             })
         for entity, opts in by_entity.items():

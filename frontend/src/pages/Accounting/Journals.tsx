@@ -169,6 +169,7 @@ export default function Journals() {
   const bulkLoading = useBulkLoading()
   const [newJournal, setNewJournal] = useState({
     date: new Date().toISOString().split('T')[0],
+    currency: 'USD',
     description: '',
     entries: [
       { target: '', description: '', debit_amount: 0, credit_amount: 0 },
@@ -225,7 +226,19 @@ export default function Journals() {
       value: o.value,
       label: o.label,
       description: g.label,
+      kind: o.kind,
+      code: o.code,
+      currency: o.currency,
+      entity_type: o.entity_type,
     }))
+  )
+
+  // The account picker for a journal line: bank/cash accounts are
+  // currency-specific, so only those matching the journal currency are
+  // offered (a journal is single-currency). GL and sub-accounts always show —
+  // sub-accounts are currency-agnostic (the journal currency drives the band).
+  const pickerOptions = targetOptions.filter((o: any) =>
+    o.kind !== 'bank' || !o.currency || o.currency === newJournal.currency
   )
 
   const postMutation = useMutation({
@@ -267,6 +280,7 @@ export default function Journals() {
       setShowCreateModal(false)
       setNewJournal({
         date: new Date().toISOString().split('T')[0],
+        currency: 'USD',
         description: '',
         entries: [
           { target: '', description: '', debit_amount: 0, credit_amount: 0 },
@@ -870,7 +884,8 @@ export default function Journals() {
           }}
           className="space-y-6"
         >
-          {/* Header Info */}
+          {/* Header Info — Currency governs the whole journal and is chosen
+              before the lines (a journal is a single-currency transaction). */}
           <div className="grid grid-cols-2 gap-4">
             <DatePicker
               label="Date"
@@ -878,7 +893,14 @@ export default function Journals() {
               onChange={(v) => setNewJournal({ ...newJournal, date: v })}
               required
             />
-            <div />
+            <Select
+              label="Currency *"
+              value={newJournal.currency}
+              onChange={(e) => setNewJournal({ ...newJournal, currency: e.target.value })}
+              options={[{ value: 'USD', label: 'USD' }, { value: 'ZWG', label: 'ZWG' }]}
+              hint="Governs every line — only accounts in this currency may be used"
+              required
+            />
           </div>
 
           <Textarea
@@ -905,8 +927,8 @@ export default function Journals() {
                   <tr>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 min-w-[340px] w-2/5">Account</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Description</th>
-                    <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 w-28">Debit</th>
-                    <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 w-28">Credit</th>
+                    <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 w-28">Debit ({newJournal.currency})</th>
+                    <th className="px-4 py-2 text-right text-xs font-semibold text-gray-500 w-28">Credit ({newJournal.currency})</th>
                     <th className="px-4 py-2 w-10"></th>
                   </tr>
                 </thead>
@@ -918,13 +940,13 @@ export default function Journals() {
                           placeholder="Select account..."
                           value={entry.target || ''}
                           onChange={(val) => updateEntry(index, 'target', String(val))}
-                          options={targetOptions}
+                          options={pickerOptions}
                           searchable
                           wrap
                         />
                         {(() => {
                           const opt = targetOptions.find((o: any) => String(o.value) === entry.target)
-                          const isLandlordPocket = opt?.code?.startsWith?.('LD/')
+                          const isLandlordPocket = opt?.entity_type === 'landlord'
                           if (!isLandlordPocket) return null
                           return (
                             <div className="mt-1.5">

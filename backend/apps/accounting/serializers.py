@@ -275,6 +275,37 @@ class JournalCreateSerializer(serializers.ModelSerializer):
             'currency', 'exchange_rate', 'entries'
         ]
 
+    def validate(self, attrs):
+        """Journal-level currency control (spec: General Journal — Mandatory
+        Currency). A journal is a single-currency transaction: currency is
+        mandatory, and every currency-specific account it touches (bank/cash)
+        must match. Sub-accounts are currency-agnostic — the journal currency
+        drives which per-currency band the pocket line posts to."""
+        currency = (attrs.get('currency') or '').upper()
+        if not currency:
+            raise serializers.ValidationError(
+                {'currency': 'Currency is required — a journal cannot be posted '
+                             'without a currency.'})
+        attrs['currency'] = currency
+
+        entries = attrs.get('entries') or []
+        bank_ids = [e.get('bank_account') for e in entries if e.get('bank_account')]
+        if bank_ids:
+            from .models import BankAccount
+            banks = {b.id: b for b in BankAccount.objects.filter(id__in=bank_ids)}
+            for e in entries:
+                bid = e.get('bank_account')
+                if not bid:
+                    continue
+                bank = banks.get(int(bid))
+                if bank and (bank.currency or 'USD') != currency:
+                    raise serializers.ValidationError(
+                        {'entries': (
+                            f'{bank.name} is a {bank.currency} account but the journal '
+                            f'currency is {currency}. A journal cannot mix currencies — '
+                            'use a dedicated foreign-exchange transaction instead.')})
+        return attrs
+
     def validate_entries(self, entries):
         if len(entries) < 2:
             raise serializers.ValidationError('Journal must have at least 2 entries')
@@ -289,6 +320,14 @@ class JournalCreateSerializer(serializers.ModelSerializer):
                 entity_type='landlord',
             ).values_list('id', flat=True)
         )
+        # Validate any GL extensions once: each must resolve to an active GL
+        # account (never a pocket/bank/inactive) — it is the analytical contra
+        # for the landlord-pocket line, not the balancing entry.
+        ext_ids = [e.get('extension_account') for e in entries if e.get('extension_account')]
+        active_gl_ids = set(
+            ChartOfAccount.objects.filter(id__in=ext_ids, is_active=True)
+            .values_list('id', flat=True)
+        ) if ext_ids else set()
         for entry in entries:
             targets = [entry.get('account'), entry.get('subsidiary_account'),
                        entry.get('bank_account')]
@@ -304,12 +343,19 @@ class JournalCreateSerializer(serializers.ModelSerializer):
             # source/purpose of the funds (e.g. Bank Overdraft, Currency
             # Conversions, Intraproperty Transfers).
             sub_id = entry.get('subsidiary_account')
-            if sub_id and int(sub_id) in landlord_pockets and not entry.get('extension_account'):
-                raise serializers.ValidationError(
-                    'A journal line to a Landlord sub-account (pocket) requires '
-                    'a GL account extension declaring the source/purpose of the '
-                    'funds — no entry may pass through a landlord pocket without '
-                    'touching a general ledger account.')
+            ext_id = entry.get('extension_account')
+            if sub_id and int(sub_id) in landlord_pockets:
+                if not ext_id:
+                    raise serializers.ValidationError(
+                        'A journal line to a Landlord sub-account (pocket) requires '
+                        'a GL account extension declaring the source/purpose of the '
+                        'funds — no entry may pass through a landlord pocket without '
+                        'touching a general ledger account.')
+                if int(ext_id) not in active_gl_ids:
+                    raise serializers.ValidationError(
+                        'The GL extension on a Landlord pocket line must be a valid, '
+                        'active General Ledger account (not a pocket, bank or inactive '
+                        'account).')
 
             debit = Decimal(str(entry.get('debit_amount', 0) or 0))
             credit = Decimal(str(entry.get('credit_amount', 0) or 0))
