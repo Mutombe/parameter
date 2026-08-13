@@ -316,6 +316,10 @@ class Invoice(SoftDeleteModel):
             source_id=self.id
         )
 
+        # Reporting Category rides on the ledger: stamp this invoice's category
+        # on every line so category-filtered reports pick it up (post() copies
+        # it onto the GL rows).
+        journal.entries.update(reporting_category=self.invoice_type or '')
         journal.post(user)
 
         # === Subsidiary Ledger Entries ===
@@ -870,6 +874,9 @@ class Receipt(SoftDeleteModel):
                 source_type='receipt', source_id=self.id
             )
 
+        # Reporting Category rides on the ledger — stamp the receipt's locked
+        # category on every line (post() copies it onto the GL rows).
+        journal.entries.update(reporting_category=invoice_type or '')
         # Post the journal (updates GL balances)
         journal.post(user)
 
@@ -1318,6 +1325,9 @@ class Expense(SoftDeleteModel):
             source_id=self.id,
         )
 
+        # Reporting Category rides on the ledger — stamp the expense's category
+        # on every line (post() copies it onto the GL rows).
+        journal.entries.update(reporting_category=self.sub_account_category or '')
         journal.post(user)
 
         # === Subsidiary Ledger Entry for the landlord ===

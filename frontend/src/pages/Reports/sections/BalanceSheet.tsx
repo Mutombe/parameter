@@ -72,12 +72,13 @@ import { FINANCIAL_REPORTS, CASH_ONLY_REPORTS, PERIOD_REPORTS, derivePeriod, _ym
 import type { ReportType, PeriodMode } from '../shared'
 
 function BalanceSheetReport() {
-  const { landlordId, propertyId, periodEnd, currency } = useReportFilters()
+  const { landlordId, propertyId, periodEnd, currency, category } = useReportFilters()
   const { data, isLoading } = useQuery({
-    queryKey: ['balance-sheet', landlordId, propertyId, periodEnd, currency],
+    queryKey: ['balance-sheet', landlordId, propertyId, periodEnd, currency, category],
     queryFn: () => reportsApi.balanceSheet({
       ...(landlordId ? { landlord_id: Number(landlordId) } : {}),
       ...(currency ? { currency } : {}),
+      ...(category ? { category } : {}),
       ...(propertyId ? { property_id: Number(propertyId) } : {}),
       // A balance sheet is point-in-time — "as at" the end of the period.
       ...(periodEnd ? { as_of_date: periodEnd } : {}),

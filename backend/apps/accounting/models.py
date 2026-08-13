@@ -516,6 +516,7 @@ class Journal(models.Model):
                         balance=control.current_balance,
                         currency=self.currency,
                         exchange_rate=self.exchange_rate,
+                        reporting_category=entry.reporting_category,
                     ))
                 continue
             # (Hybrid lines — control account + pocket set together by the
@@ -554,7 +555,8 @@ class Journal(models.Model):
                 credit_amount=entry.credit_amount,
                 balance=account.current_balance,
                 currency=self.currency,
-                exchange_rate=self.exchange_rate
+                exchange_rate=self.exchange_rate,
+                reporting_category=entry.reporting_category,
             ))
 
         GeneralLedger.objects.bulk_create(gl_entries)
@@ -605,9 +607,14 @@ class Journal(models.Model):
                 account=entry.account,
                 subsidiary_account=entry.subsidiary_account,
                 bank_account=entry.bank_account,
+                extension_account=entry.extension_account,
                 description=f'Reversal: {entry.description}',
                 debit_amount=entry.credit_amount,
-                credit_amount=entry.debit_amount
+                credit_amount=entry.debit_amount,
+                # Carry the reporting category onto the reversal so a
+                # category-filtered report nets the original against its
+                # reversal instead of leaving the reversal uncategorised.
+                reporting_category=entry.reporting_category,
             )
 
         # Post the reversal
@@ -675,6 +682,15 @@ class JournalEntry(models.Model):
     # Optional reference to source document
     source_type = models.CharField(max_length=50, blank=True)  # e.g., 'invoice', 'receipt'
     source_id = models.PositiveIntegerField(null=True, blank=True)
+
+    # Reporting Category — a cross-layer reporting dimension carried on the line
+    # itself (Rent/Levy/Special Levy/Maintenance/Parking/Rates/VAT/Deposit).
+    # It is INDEPENDENT of the account: it classifies the business purpose so a
+    # category-filtered report can include this entry whether it hit a landlord
+    # cash pocket or a pure balance-sheet account. Never derived from the account
+    # code and never used to route a posting. Blank = uncategorised GL activity
+    # (only ever shown under "All Categories").
+    reporting_category = models.CharField(max_length=20, blank=True, db_index=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -747,6 +763,11 @@ class GeneralLedger(models.Model):
     currency = models.CharField(max_length=3, default='USD')
     exchange_rate = models.DecimalField(max_digits=18, decimal_places=6, default=Decimal('1.0'))
 
+    # Reporting Category — mirrored from the posting JournalEntry so every
+    # financial report can slice the ledger by business category across both
+    # cash and non-cash layers. Independent of `account`; blank = uncategorised.
+    reporting_category = models.CharField(max_length=20, blank=True, db_index=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -756,6 +777,7 @@ class GeneralLedger(models.Model):
         indexes = [
             models.Index(fields=['account', 'date']),
             models.Index(fields=['date']),
+            models.Index(fields=['reporting_category', 'date']),
         ]
 
     def __str__(self):
@@ -2133,12 +2155,14 @@ class BalanceSheetMovement(models.Model):
             description=self.custom_description or self.description,
             debit_amount=self.amount,
             source_type='bs_movement', source_id=self.id,
+            reporting_category=self.category,
         )
         JournalEntry.objects.create(
             journal=journal, account=self.credit_account,
             description=self.custom_description or self.description,
             credit_amount=self.amount,
             source_type='bs_movement', source_id=self.id,
+            reporting_category=self.category,
         )
 
         journal.post(user)
@@ -2296,22 +2320,26 @@ class OpeningBalance(models.Model):
                 journal=journal, account=self.target_account,
                 description=desc, debit_amount=self.amount,
                 source_type='opening_balance', source_id=self.id,
+                reporting_category=self.category,
             )
             JournalEntry.objects.create(
                 journal=journal, account=opening_account,
                 description=desc, credit_amount=self.amount,
                 source_type='opening_balance', source_id=self.id,
+                reporting_category=self.category,
             )
         else:
             JournalEntry.objects.create(
                 journal=journal, account=opening_account,
                 description=desc, debit_amount=self.amount,
                 source_type='opening_balance', source_id=self.id,
+                reporting_category=self.category,
             )
             je_target = JournalEntry.objects.create(
                 journal=journal, account=self.target_account,
                 description=desc, credit_amount=self.amount,
                 source_type='opening_balance', source_id=self.id,
+                reporting_category=self.category,
             )
 
         journal.post(user)

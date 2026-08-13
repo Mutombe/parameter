@@ -85,9 +85,10 @@ const CURRENCY_REPORTS: ReadonlySet<string> = new Set([
   'bank-to-income', 'receipts-listing', 'deposits-listing', 'lease-charges',
 ])
 
-// Reports that support the income-category slice (rent, levy, …). GL-based
-// financial statements are excluded — a per-category balance sheet would
-// not balance, so category only applies to operational reports.
+// Operational reports that support the income-category slice (rent, levy, …).
+// The GL-based financial statements ALSO support it now (see the Reporting
+// Category cross-layer filtering spec) — that's handled via FINANCIAL_REPORTS
+// at the filter-bar gate, so they don't need to be listed here.
 const CATEGORY_REPORTS: ReadonlySet<string> = new Set([
   'aged-analysis', 'rent-rollover', 'receipts-listing', 'lease-charges',
 ])
@@ -887,9 +888,12 @@ export default function Reports() {
                 </div>
               </div>
             )}
-            {/* Category switcher — narrows operational reports to a single
-                income category (rent, levy, special levy, …). */}
-            {CATEGORY_REPORTS.has(activeReport) && (
+            {/* Category switcher — Reporting Category is a cross-layer slice:
+                it narrows operational reports AND the financial statements to a
+                single business category (rent, levy, special levy, …). It spans
+                cash and non-cash layers, so e.g. a Maintenance asset introduced
+                by an Opening Balance still shows under Maintenance. */}
+            {(CATEGORY_REPORTS.has(activeReport) || FINANCIAL_REPORTS.has(activeReport)) && (
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-gray-500">Category</span>
                 <div className="inline-flex flex-wrap rounded-md border border-gray-200 bg-white p-0.5">

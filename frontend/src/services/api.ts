@@ -210,13 +210,13 @@ export const transferApi = {
 
 export const reportsApi = {
   dashboard: () => api.get('/reports/dashboard/'),
-  trialBalance: (params?: { as_of_date?: string; landlord_id?: number; property_id?: number }) =>
+  trialBalance: (params?: { as_of_date?: string; landlord_id?: number; property_id?: number; currency?: string; category?: string }) =>
     api.get('/reports/trial-balance/', { params }),
-  incomeStatement: (params?: { start_date?: string; end_date?: string; landlord_id?: number; property_id?: number }) =>
+  incomeStatement: (params?: { start_date?: string; end_date?: string; landlord_id?: number; property_id?: number; currency?: string; category?: string }) =>
     api.get('/reports/income-statement/', { params }),
-  balanceSheet: (params?: { as_of_date?: string; landlord_id?: number; property_id?: number }) =>
+  balanceSheet: (params?: { as_of_date?: string; landlord_id?: number; property_id?: number; currency?: string; category?: string }) =>
     api.get('/reports/balance-sheet/', { params }),
-  cashFlow: (params?: { start_date?: string; end_date?: string; landlord_id?: number; property_id?: number }) =>
+  cashFlow: (params?: { start_date?: string; end_date?: string; landlord_id?: number; property_id?: number; currency?: string; category?: string }) =>
     api.get('/reports/cash-flow/', { params }),
   vacancy: () => api.get('/reports/vacancy/'),
   rentRoll: () => api.get('/reports/rent-roll/'),
@@ -246,7 +246,7 @@ export const reportsApi = {
     api.get('/reports/income-item-analysis/', { params }),
   incomeItemDrilldown: (params: { level: number; bank_account_id: number; income_type?: string; start_date?: string; end_date?: string }) =>
     api.get('/reports/income-item-analysis/drilldown/', { params }),
-  incomeExpenditure: (params: { landlord_id?: number; property_id?: number; start_date?: string; end_date?: string; currency?: string }) =>
+  incomeExpenditure: (params: { landlord_id?: number; property_id?: number; start_date?: string; end_date?: string; currency?: string; category?: string }) =>
     api.get('/reports/income-expenditure/', { params }),
   charts: (params: { chart_type: string; tenant_id?: number; property_id?: number; months?: number; start_date?: string; end_date?: string }) =>
     api.get('/reports/charts/', { params }),

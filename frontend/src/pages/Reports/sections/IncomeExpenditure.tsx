@@ -76,7 +76,7 @@ function IncomeExpenditureReport() {
   // Landlord + property come from the global Reports filter bar so picks
   // persist across financial reports. Currency and the date window are
   // local because they're only meaningful here.
-  const { landlordId: selectedLandlord, propertyId: selectedProperty, setLandlordId } = useReportFilters()
+  const { landlordId: selectedLandlord, propertyId: selectedProperty, setLandlordId, category } = useReportFilters()
   const [searchParams] = useSearchParams()
   const [currency, setCurrency] = useState<string>('USD')
   const [startDate, setStartDate] = useState(() => {
@@ -96,11 +96,12 @@ function IncomeExpenditureReport() {
   }, [])
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['income-expenditure', selectedLandlord, selectedProperty, startDate, endDate, currency],
+    queryKey: ['income-expenditure', selectedLandlord, selectedProperty, startDate, endDate, currency, category],
     queryFn: () => reportsApi.incomeExpenditure({
       landlord_id: Number(selectedLandlord),
       ...(selectedProperty ? { property_id: Number(selectedProperty) } : {}),
       start_date: startDate, end_date: endDate, currency,
+      ...(category ? { category } : {}),
     }).then(r => r.data),
     enabled: !!selectedLandlord,
     retry: 1,

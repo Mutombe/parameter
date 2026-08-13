@@ -543,7 +543,7 @@ def _exclude_non_cash_expenses_q():
 
 
 def _aggregate_balances_from_gl(scope_filter, account_types, end_date=None, start_date=None,
-                                currency=None):
+                                currency=None, category=None):
     """Aggregate per-account debit/credit totals from GL entries matching
     the scope filter. Returns a list of dicts with code/name/account_type/
     account_subtype/total_debit/total_credit, ordered by account code.
@@ -553,6 +553,11 @@ def _aggregate_balances_from_gl(scope_filter, account_types, end_date=None, star
     `currency` filters the LEDGER ROWS (one GL account serves both
     currencies under the hierarchical chart — currency lives on each
     transaction, so per-currency reports slice rows, not accounts).
+
+    `category` filters by the Reporting Category stamped on each ledger row.
+    Because the category rides on the GL line (not the account), this correctly
+    includes non-cash entries — e.g. a Maintenance asset introduced by an
+    Opening Balance that never touched a landlord cash pocket.
     """
     qs = GeneralLedger.objects.filter(scope_filter).filter(
         account__account_type__in=account_types,
@@ -560,6 +565,8 @@ def _aggregate_balances_from_gl(scope_filter, account_types, end_date=None, star
     )
     if currency:
         qs = qs.filter(currency=currency)
+    if category:
+        qs = qs.filter(reporting_category=category)
     if start_date:
         qs = qs.filter(date__gte=start_date)
     if end_date:
@@ -806,6 +813,11 @@ class TrialBalanceReportView(APIView):
         # One GL account serves both currencies — ?currency=USD|ZWG slices
         # the ledger rows for a single-currency view; omitted = all.
         currency = request.query_params.get('currency') or None
+        # Reporting Category slices the ledger by business category across cash
+        # and non-cash layers; omitted / 'all' = every category.
+        category = request.query_params.get('category') or None
+        if category in ('all', 'All Categories'):
+            category = None
         scope_filter = _gl_filter_for_landlord(landlord_id, property_id)
 
         report_data = []
@@ -823,6 +835,7 @@ class TrialBalanceReportView(APIView):
             account_types=['asset', 'liability', 'equity', 'revenue', 'expense'],
             end_date=as_of_date,
             currency=currency,
+            category=category,
         )
         for row in agg:
             debit_total = row['total_debit']
@@ -887,6 +900,10 @@ class IncomeStatementView(APIView):
         property_id = request.query_params.get('property_id')
         # Per-currency slice — one GL account serves both currencies.
         currency = request.query_params.get('currency') or None
+        # Reporting Category slice (across cash + non-cash layers).
+        category = request.query_params.get('category') or None
+        if category in ('all', 'All Categories'):
+            category = None
 
         scope_filter = _gl_filter_for_landlord(landlord_id, property_id)
 
@@ -909,6 +926,7 @@ class IncomeStatementView(APIView):
                 start_date=start_date,
                 end_date=end_date,
                 currency=currency,
+                category=category,
             )
             revenue_list, expense_list = [], []
             total_revenue, total_expenses = Decimal('0'), Decimal('0')
@@ -994,6 +1012,9 @@ class IncomeStatementView(APIView):
             scoped_receipts = _scoped_receipt_qs(unit_id_list, property_id_list)
             if currency:
                 scoped_receipts = scoped_receipts.filter(currency=currency)
+            if category:
+                scoped_receipts = scoped_receipts.filter(
+                    Q(sub_account_category=category) | Q(invoice__invoice_type=category))
             if start_date:
                 scoped_receipts = scoped_receipts.filter(date__gte=start_date)
             scoped_receipts = scoped_receipts.filter(date__lte=end_date)
@@ -1114,6 +1135,8 @@ class IncomeStatementView(APIView):
             expense_qs = expense_qs.filter(status__in=['approved', 'paid'])
             if currency:
                 expense_qs = expense_qs.filter(currency=currency)
+            if category:
+                expense_qs = expense_qs.filter(sub_account_category=category)
             if start_date:
                 expense_qs = expense_qs.filter(date__gte=start_date)
             expense_qs = expense_qs.filter(date__lte=end_date)
@@ -1297,6 +1320,10 @@ class BalanceSheetView(APIView):
         # Per-currency slice — one GL account serves both currencies; the
         # sub-ledger pockets are already per-currency (…/01 USD, …/51 ZWG).
         currency = request.query_params.get('currency') or None
+        # Reporting Category slice (spans cash pockets + non-cash GL assets).
+        category = request.query_params.get('category') or None
+        if category in ('all', 'All Categories'):
+            category = None
 
         # Refuse tenant-scoped reports on the public schema. This used
         # to throw a confusing "relation does not exist" 500 because
@@ -1359,6 +1386,7 @@ class BalanceSheetView(APIView):
                 account_types=['asset', 'liability', 'equity'],
                 end_date=as_of_date,
                 currency=currency,
+                category=category,
             )
             for row in agg:
                 acct_type = row['account__account_type']
@@ -1399,6 +1427,7 @@ class BalanceSheetView(APIView):
                 account_types=['revenue', 'expense'],
                 end_date=as_of_date,
                 currency=currency,
+                category=category,
             )
             revenue_total = sum(
                 (r['total_credit'] - r['total_debit'])
@@ -1462,6 +1491,11 @@ class BalanceSheetView(APIView):
             landlord_subs = SubsidiaryAccount.objects.filter(
                 landlord_id=int(landlord_id), entity_type='landlord', is_active=True,
             )
+            # Category slice: the cash-layer pockets for this category. Non-cash
+            # category assets/liabilities are picked up separately from the GL
+            # aggregate below, so a category-filtered sheet spans both layers.
+            if category:
+                landlord_subs = landlord_subs.filter(category=category)
 
             funds_held_total = Decimal('0')
             funds_owed_total = Decimal('0')
@@ -1517,6 +1551,8 @@ class BalanceSheetView(APIView):
                 tenant_id__in=list(tenant_ids),
                 entity_type__in=['tenant', 'account_holder'], is_active=True,
             )
+            if category:
+                tenant_subs = tenant_subs.filter(category=category)
 
             lessees_arrears_total = Decimal('0')
             lessees_prepayments_total = Decimal('0')
@@ -1568,6 +1604,7 @@ class BalanceSheetView(APIView):
                 account_types=['asset', 'liability', 'equity'],
                 end_date=as_of_date,
                 currency=currency,
+                category=category,
             )
 
             from apps.accounting.models import ChartOfAccount as _CoA
@@ -2957,6 +2994,12 @@ class CashFlowStatementView(APIView):
         # folding it into the shared date filter carries it through every
         # receipt/expense queryset this view builds.
         currency = request.query_params.get('currency') or None
+        # Reporting Category slice. Cash Flow reads only cash Receipts/Expenses
+        # (non-cash GL entries are excluded), so a category slice here never
+        # turns a non-cash entry into a phantom cash movement.
+        category = request.query_params.get('category') or None
+        if category in ('all', 'All Categories'):
+            category = None
 
         # Build date filter
         date_filter = Q(date__lte=end_date)
@@ -2978,6 +3021,9 @@ class CashFlowStatementView(APIView):
         # Receipts from tenants. Scoping uses tenant via lease/unit OR
         # invoice's denormalized property — same lineage as the GL helper.
         receipt_qs = Receipt.objects.filter(date_filter)
+        if category:
+            receipt_qs = receipt_qs.filter(
+                Q(sub_account_category=category) | Q(invoice__invoice_type=category))
         if landlord_id or property_id:
             tenant_filter = Q()
             if landlord_id:
@@ -3033,6 +3079,8 @@ class CashFlowStatementView(APIView):
             expense_type='landlord_payment',
             status='paid',
         ).exclude(expense_kind='non_cash')
+        if category:
+            landlord_payment_expense_qs = landlord_payment_expense_qs.filter(sub_account_category=category)
         if landlord_id:
             landlord_payment_expense_qs = landlord_payment_expense_qs.filter(
                 Q(landlord_id=landlord_id) | Q(payee_type='landlord', payee_id=landlord_id)
@@ -3068,6 +3116,8 @@ class CashFlowStatementView(APIView):
         _pocket_exp_qs = Expense.objects.filter(
             date_filter, status='paid',
         ).exclude(expense_kind='non_cash').exclude(expense_type='landlord_payment')
+        if category:
+            _pocket_exp_qs = _pocket_exp_qs.filter(sub_account_category=category)
         if landlord_id:
             _pocket_exp_qs = _pocket_exp_qs.filter(
                 Q(landlord_id=landlord_id) | Q(payee_type='landlord', payee_id=landlord_id)
@@ -4884,6 +4934,17 @@ class IncomeExpenditureReportView(APIView):
 
         # Currency filter – default to USD
         currency = request.query_params.get('currency', '').upper() or None
+        # Reporting Category slice (cash-basis I&E — Receipt/Expense driven).
+        category = request.query_params.get('category') or None
+        if category in ('all', 'All Categories'):
+            category = None
+
+        def _cat_receipts(qs):
+            return qs.filter(Q(sub_account_category=category) |
+                             Q(invoice__invoice_type=category)) if category else qs
+
+        def _cat_expenses(qs):
+            return qs.filter(sub_account_category=category) if category else qs
 
         # Legacy single-rate metadata. Now resolves per (property, income_type)
         # so there's no single rate to surface — kept at 0 for clients that
@@ -4900,7 +4961,7 @@ class IncomeExpenditureReportView(APIView):
         # Aggregate prior receipts total and commission in SQL (avoids loading
         # every historical receipt into Python memory — the old per-receipt loop
         # caused OOM / connection drops for landlords with large history).
-        prior_receipt_qs = self._receipt_base_qs(unit_id_list, property_id_list, currency).filter(
+        prior_receipt_qs = _cat_receipts(self._receipt_base_qs(unit_id_list, property_id_list, currency)).filter(
             date__lt=start_date,
         )
         prior_agg = prior_receipt_qs.aggregate(
@@ -4918,6 +4979,7 @@ class IncomeExpenditureReportView(APIView):
             Q(landlord_id=landlord.id) | Q(payee_type='landlord', payee_id=landlord.id),
             status='paid', date__lt=start_date,
         ).exclude(expense_kind='non_cash')
+        prior_expense_qs = _cat_expenses(prior_expense_qs)
         if currency:
             prior_expense_qs = prior_expense_qs.filter(currency=currency)
         prior_expenses_total = prior_expense_qs.aggregate(t=Sum('amount'))['t'] or Decimal('0')
@@ -4925,7 +4987,7 @@ class IncomeExpenditureReportView(APIView):
         opening_balance = prior_receipts_total - prior_commissions_total - prior_expenses_total
 
         # ── 2. Period receipts + expenses (eager load once) ──
-        period_receipt_qs = self._receipt_base_qs(unit_id_list, property_id_list, currency).filter(
+        period_receipt_qs = _cat_receipts(self._receipt_base_qs(unit_id_list, property_id_list, currency)).filter(
             date__gte=start_date, date__lte=end_date,
         ).select_related(
             'income_type', 'tenant', 'invoice', 'invoice__unit',
@@ -4945,6 +5007,7 @@ class IncomeExpenditureReportView(APIView):
             status='paid',
             date__gte=start_date, date__lte=end_date,
         ).exclude(expense_kind='non_cash')
+        period_expense_qs = _cat_expenses(period_expense_qs)
         if currency:
             period_expense_qs = period_expense_qs.filter(currency=currency)
         period_expenses = list(

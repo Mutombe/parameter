@@ -381,7 +381,19 @@ class JournalCreateSerializer(serializers.ModelSerializer):
 
         journal = Journal.objects.create(**validated_data)
 
+        # Reporting Category per line: an explicit value from the client wins;
+        # otherwise a line that targets a subsidiary pocket inherits that
+        # pocket's category (a reporting classification, distinct from the GL
+        # extension). Pure GL lines stay uncategorised.
+        sub_ids = [e.get('subsidiary_account') for e in entries_data if e.get('subsidiary_account')]
+        sub_cats = dict(
+            SubsidiaryAccount.objects.filter(id__in=sub_ids).values_list('id', 'category')
+        ) if sub_ids else {}
+
         for entry_data in entries_data:
+            sub_id = entry_data.get('subsidiary_account')
+            reporting_category = (entry_data.get('reporting_category')
+                                  or (sub_cats.get(int(sub_id)) if sub_id else '') or '')
             JournalEntry.objects.create(
                 journal=journal,
                 account_id=entry_data.get('account') or None,
@@ -392,7 +404,8 @@ class JournalCreateSerializer(serializers.ModelSerializer):
                 debit_amount=Decimal(str(entry_data.get('debit_amount', 0) or 0)),
                 credit_amount=Decimal(str(entry_data.get('credit_amount', 0) or 0)),
                 source_type=entry_data.get('source_type', ''),
-                source_id=entry_data.get('source_id')
+                source_id=entry_data.get('source_id'),
+                reporting_category=reporting_category,
             )
 
         return journal
