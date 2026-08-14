@@ -73,7 +73,7 @@ type ReportType =
   | 'vacancy' | 'rent-rollover' | 'tenant-account' | 'landlord-account'
   | 'commission-property' | 'commission-income' | 'bank-to-income'
   | 'receipts-listing' | 'deposits-listing' | 'lease-charges'
-  | 'income-expenditure'
+  | 'income-expenditure' | 'landlord-pocket-movements'
 
 // Reports that consume the global Landlord/Property filter bar. Other
 // reports either have intrinsic scoping (Tenant/Landlord Account) or

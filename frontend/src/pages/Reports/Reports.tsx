@@ -21,6 +21,7 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Banknote,
+  ShieldCheck,
   ArrowRight,
   Clock,
   Users,
@@ -107,6 +108,7 @@ const BankToIncomeReport = lazy(() => import('./sections/Listings').then(m => ({
 const ReceiptsListingReport = lazy(() => import('./sections/Listings').then(m => ({ default: m.ReceiptsListingReport })))
 const DepositsListingReport = lazy(() => import('./sections/Listings').then(m => ({ default: m.DepositsListingReport })))
 const IncomeExpenditureReport = lazy(() => import('./sections/IncomeExpenditure').then(m => ({ default: m.IncomeExpenditureReport })))
+const LandlordPocketMovementsReport = lazy(() => import('./sections/LandlordPocketMovements').then(m => ({ default: m.LandlordPocketMovementsReport })))
 
 interface ReportDef {
   id: ReportType
@@ -141,6 +143,7 @@ const reportCategories: ReportCategory[] = [
       // Tenant Account & Landlord Account statements are reached directly from
       // the tenant/landlord detail pages, so they're not duplicated here.
       { id: 'income-expenditure', name: 'Income & Expenditure', icon: BarChart3, desc: 'Monthly income vs expenses', color: 'text-green-600', bgColor: 'bg-green-50 dark:bg-green-900/30' },
+      { id: 'landlord-pocket-movements', name: 'Pocket Movements', icon: ShieldCheck, desc: 'Landlord trust-pocket audit', color: 'text-indigo-600', bgColor: 'bg-indigo-50 dark:bg-indigo-900/30' },
     ],
   },
   {
@@ -178,6 +181,7 @@ const reportNames: Record<ReportType, string> = {
   'deposits-listing': 'Deposits Listing',
   'lease-charges': 'Lease Charges',
   'income-expenditure': 'Income & Expenditure',
+  'landlord-pocket-movements': 'Landlord Pocket Movements',
 }
 
 const RECENT_REPORTS_KEY = 'parameter-recent-reports'
@@ -864,8 +868,10 @@ export default function Reports() {
             category, setCategory,
             periodStart: period.start, periodEnd: period.end, periodLabel: period.label,
           }}>
-            {/* Filter bar shown only on the financial reports the filter applies to. */}
-            {FINANCIAL_REPORTS.has(activeReport) && <ReportFilterBar />}
+            {/* Filter bar shown only on the financial reports the filter applies to.
+                The Pocket Movements audit report also uses the landlord/property
+                filter (its currency/category/date/type filters are inline). */}
+            {(FINANCIAL_REPORTS.has(activeReport) || activeReport === 'landlord-pocket-movements') && <ReportFilterBar />}
             {/* Currency switcher — one GL account serves USD & ZWG; this
                 slices financial, aged, comparative and administrative
                 reports to a single currency. */}
@@ -966,6 +972,7 @@ export default function Reports() {
               {activeReport === 'deposits-listing' && <DepositsListingReport />}
               {activeReport === 'lease-charges' && <LeaseChargeSummaryReport />}
               {activeReport === 'income-expenditure' && <IncomeExpenditureReport />}
+              {activeReport === 'landlord-pocket-movements' && <LandlordPocketMovementsReport />}
               </Suspense>
             </motion.div>
           </AnimatePresence>

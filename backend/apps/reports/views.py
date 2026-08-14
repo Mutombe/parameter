@@ -6195,3 +6195,178 @@ class IncomeItemAnalysisReportView(APIView):
             'by_bank_and_income': bank_income_data,
             'total': float(grand_total),
         })
+
+
+class LandlordPocketMovementView(APIView):
+    """Landlord Pocket Movement / Audit report.
+
+    A landlord sub-account (pocket) is effectively a cashbook/trust position, so
+    every movement through it must be explainable. This report lists each
+    movement on the landlord trust pockets with its transaction type, GL
+    extension (where a General Journal touched the pocket), balancing/contra
+    account, source and user — answering "why did this pocket change?".
+
+    Filters (cumulative): landlord_id, property_id (resolved to its landlord),
+    category (pocket), currency, start_date/end_date, transaction_type, user_id.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @staticmethod
+    def _classify(txn, expense_types):
+        """Return (code, label) for a pocket movement. `code` is what the UI
+        filters on; `label` is the human name."""
+        je = txn.journal_entry
+        journal = je.journal if (je and je.journal_id) else None
+        source_type = je.source_type if je else ''
+        ref = (txn.reference or '')
+        contra = (txn.contra_account or '')
+        jtype = journal.journal_type if journal else ''
+
+        if txn.is_reversal:
+            return 'REVERSAL', 'Reversal'
+        if source_type == 'receipt':
+            return 'RECEIPT', 'Receipt'
+        if source_type == 'expense':
+            et = expense_types.get(je.source_id) if je else None
+            if et == 'landlord_payment':
+                return 'OWNER_WITHDRAWAL', 'Owner Withdrawal'
+            return 'CASH_EXPENDITURE', 'Cash Expenditure'
+        if source_type == 'opening_balance':
+            return 'OPENING_BALANCE', 'Opening Balance'
+        if source_type == 'bs_movement':
+            return 'ACCOUNT_TRANSFER', 'Account Transfer'
+        if contra == 'OCT' or ref.startswith('OCT'):
+            return 'OWNER_CONTRIBUTION', 'Owner Contribution'
+        if ref.startswith('CMA'):
+            return 'COMMISSION', 'Commission'
+        if jtype == 'general':
+            return 'GENERAL_JOURNAL', 'General Journal'
+        if jtype == 'reversal':
+            return 'REVERSAL', 'Reversal'
+        return 'OTHER', (jtype.title() if jtype else 'Other')
+
+    def get(self, request):
+        from apps.accounting.models import SubsidiaryTransaction
+
+        landlord_id = request.query_params.get('landlord_id')
+        property_id = request.query_params.get('property_id')
+        category = request.query_params.get('category') or None
+        if category in ('all', 'All Categories'):
+            category = None
+        currency = request.query_params.get('currency') or None
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        txn_type = request.query_params.get('transaction_type') or None
+        if txn_type in ('all', 'ALL', ''):
+            txn_type = None
+        user_id = request.query_params.get('user_id') or None
+
+        # Property scopes to the landlord that owns it (pockets are per landlord,
+        # not per property).
+        if property_id and not landlord_id:
+            owner = Property.objects.filter(id=property_id).values_list('landlord_id', flat=True).first()
+            if owner:
+                landlord_id = owner
+
+        qs = SubsidiaryTransaction.objects.filter(
+            account__entity_type='landlord', is_consolidated=False,
+        ).select_related('account', 'account__landlord', 'journal_entry',
+                         'journal_entry__journal', 'journal_entry__extension_account',
+                         'journal_entry__journal__posted_by')
+        if landlord_id:
+            qs = qs.filter(account__landlord_id=landlord_id)
+        if category:
+            qs = qs.filter(account__category=category)
+        if currency:
+            qs = qs.filter(currency=currency)
+        if start_date:
+            qs = qs.filter(date__gte=start_date)
+        if end_date:
+            qs = qs.filter(date__lte=end_date)
+        qs = qs.order_by('date', 'transaction_number')
+
+        rows = list(qs)
+
+        # Batch: expense types (to split Owner Withdrawal vs Cash Expenditure)
+        # and contra GL account names.
+        exp_ids = [r.journal_entry.source_id for r in rows
+                   if r.journal_entry_id and r.journal_entry
+                   and r.journal_entry.source_type == 'expense' and r.journal_entry.source_id]
+        expense_types = dict(
+            Expense.all_objects.filter(id__in=exp_ids).values_list('id', 'expense_type')
+        ) if exp_ids else {}
+        contra_codes = {r.contra_account for r in rows if r.contra_account}
+        coa_map = ({a.code: a.name for a in ChartOfAccount.objects.filter(code__in=contra_codes)}
+                   if contra_codes else {})
+
+        out = []
+        totals = {}
+        for r in rows:
+            code, label = self._classify(r, expense_types)
+            if txn_type and code != txn_type:
+                continue
+            je = r.journal_entry
+            journal = je.journal if (je and je.journal_id) else None
+            if user_id and not (journal and str(journal.posted_by_id) == str(user_id)):
+                continue
+            ext = je.extension_account if (je and je.extension_account_id) else None
+            contra = r.contra_account or ''
+            posted_by = None
+            if journal and journal.posted_by_id:
+                posted_by = (journal.posted_by.get_full_name() or journal.posted_by.email)
+            out.append({
+                'id': r.id,
+                'date': r.date.isoformat(),
+                'transaction_type': code,
+                'transaction_label': label,
+                'pocket_code': r.account.code,
+                'category': r.account.category,
+                'landlord': r.account.landlord.name if r.account.landlord_id else '',
+                'landlord_code': r.account.landlord.code if r.account.landlord_id else '',
+                'currency': r.currency,
+                'debit': float(r.debit_amount),
+                'credit': float(r.credit_amount),
+                'balance': float(r.balance),
+                'gl_extension_code': ext.code if ext else '',
+                'gl_extension_name': ext.name if ext else '',
+                'contra_account': contra,
+                'contra_name': coa_map.get(contra, ''),
+                'reference': r.reference,
+                'description': r.description,
+                'journal_number': journal.journal_number if journal else '',
+                'posted_by': posted_by or '',
+                'is_reversal': r.is_reversal,
+            })
+            t = totals.setdefault(r.currency, {'debit': Decimal('0'), 'credit': Decimal('0'), 'count': 0})
+            t['debit'] += r.debit_amount
+            t['credit'] += r.credit_amount
+            t['count'] += 1
+
+        return Response({
+            'filters': {
+                'landlord_id': landlord_id, 'property_id': property_id,
+                'category': category, 'currency': currency,
+                'start_date': start_date, 'end_date': end_date,
+                'transaction_type': txn_type, 'user_id': user_id,
+            },
+            'transaction_types': [
+                {'code': 'RECEIPT', 'label': 'Receipt'},
+                {'code': 'OWNER_CONTRIBUTION', 'label': 'Owner Contribution'},
+                {'code': 'OWNER_WITHDRAWAL', 'label': 'Owner Withdrawal'},
+                {'code': 'CASH_EXPENDITURE', 'label': 'Cash Expenditure'},
+                {'code': 'COMMISSION', 'label': 'Commission'},
+                {'code': 'GENERAL_JOURNAL', 'label': 'General Journal'},
+                {'code': 'OPENING_BALANCE', 'label': 'Opening Balance'},
+                {'code': 'ACCOUNT_TRANSFER', 'label': 'Account Transfer'},
+                {'code': 'REVERSAL', 'label': 'Reversal'},
+            ],
+            'rows': out,
+            'summary': {
+                'count': len(out),
+                'by_currency': {
+                    ccy: {'debit': float(v['debit']), 'credit': float(v['credit']),
+                          'net': float(v['credit'] - v['debit']), 'count': v['count']}
+                    for ccy, v in totals.items()
+                },
+            },
+        })

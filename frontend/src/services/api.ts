@@ -248,6 +248,8 @@ export const reportsApi = {
     api.get('/reports/income-item-analysis/drilldown/', { params }),
   incomeExpenditure: (params: { landlord_id?: number; property_id?: number; start_date?: string; end_date?: string; currency?: string; category?: string }) =>
     api.get('/reports/income-expenditure/', { params }),
+  landlordPocketMovements: (params?: { landlord_id?: number; property_id?: number; category?: string; currency?: string; start_date?: string; end_date?: string; transaction_type?: string; user_id?: number }) =>
+    api.get('/reports/landlord-pocket-movements/', { params }),
   charts: (params: { chart_type: string; tenant_id?: number; property_id?: number; months?: number; start_date?: string; end_date?: string }) =>
     api.get('/reports/charts/', { params }),
   // New detailed report endpoints

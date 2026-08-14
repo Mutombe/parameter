@@ -12,7 +12,7 @@ from .views import (
     IncomeItemDrilldownView, IncomeExpenditureReportView,
     DataVisualizationView, StreamingCSVExportView,
     ReceiptListingReportView, CommissionAnalysisReportView,
-    IncomeItemAnalysisReportView,
+    IncomeItemAnalysisReportView, LandlordPocketMovementView,
 )
 from .property_performance import PropertyPerformanceView
 from .tax_reports import VATReturnView, WithholdingTaxView, AnnualIncomeSummaryView
@@ -52,6 +52,9 @@ urlpatterns = [
     path('income-item-analysis/', IncomeItemAnalysisView.as_view(), name='income-item-analysis'),
     path('income-item-analysis/drilldown/', IncomeItemDrilldownView.as_view(), name='income-item-drilldown'),
     path('income-expenditure/', IncomeExpenditureReportView.as_view(), name='income-expenditure'),
+
+    # Landlord pocket (trust) movement / audit report
+    path('landlord-pocket-movements/', LandlordPocketMovementView.as_view(), name='landlord-pocket-movements'),
 
     # Data visualization
     path('charts/', DataVisualizationView.as_view(), name='data-visualization'),
