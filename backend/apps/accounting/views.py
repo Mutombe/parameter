@@ -1740,9 +1740,28 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
         available_currencies = sorted(
             c for c in account.transactions.values_list('currency', flat=True).distinct() if c
         )
-        currency = request.query_params.get('currency')
+        # Currency is a MANDATORY part of a sub-account detail request: a
+        # sub-account may summarise in several currencies, but its detail is
+        # always ONE explicitly-chosen currency. No implicit USD / "most-used"
+        # fallback and no merged "all currencies" view — a missing currency is
+        # an invalid request (enforced here so a hand-built URL can't bypass the
+        # frontend gate). The chosen currency is a hard filter on every txn
+        # query below, so balances never mix across currencies.
+        from apps.accounting.account_coding import SUPPORTED_CURRENCIES
+        currency = (request.query_params.get('currency') or '').upper()
         if not currency:
-            currency = available_currencies[0] if available_currencies else 'USD'
+            return Response(
+                {'error': 'A currency is required to view sub-account details. '
+                          'Select a currency (e.g. USD or ZWG) first.',
+                 'available_currencies': available_currencies},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if currency not in SUPPORTED_CURRENCIES:
+            return Response(
+                {'error': f'Unsupported currency "{currency}".',
+                 'available_currencies': available_currencies},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         from datetime import datetime
         start = datetime.strptime(period_start, '%Y-%m-%d').date()
@@ -1907,8 +1926,15 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
         is_debit_normal = account.entity_type in ('tenant', 'account_holder')
 
         # One currency per statement (currency is a dimension — never summed).
-        _avail = sorted(c for c in account.transactions.values_list('currency', flat=True).distinct() if c)
-        currency = request.query_params.get('currency') or (_avail[0] if _avail else 'USD')
+        # Mandatory, like the on-screen statement: no implicit fallback so an
+        # exported statement can never merge currencies.
+        from apps.accounting.account_coding import SUPPORTED_CURRENCIES
+        currency = (request.query_params.get('currency') or '').upper()
+        if not currency or currency not in SUPPORTED_CURRENCIES:
+            return Response(
+                {'error': 'A valid currency (e.g. USD or ZWG) is required to export a sub-account statement.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Opening balance = net of every movement dated before the period
         # (summed, order-independent — transaction_number is posting order).

@@ -34,7 +34,7 @@ import { landlordApi, reportsApi, propertyApi, leaseApi, invoiceApi, receiptApi,
 import PropertyForm from '../../components/forms/PropertyForm'
 import LeaseForm from '../../components/forms/LeaseForm'
 import { formatCurrency, formatPercent, cn } from '../../lib/utils'
-import { Modal, Button, Input, Select, Textarea, Tooltip as UiTooltip, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker } from '../../components/ui'
+import { Modal, Button, Input, Select, Textarea, Tooltip as UiTooltip, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker, DetailCurrencyGate } from '../../components/ui'
 import { ProfileInfoBar, InfoColumn, InfoLine } from '../../components/detail/ProfileInfoBar'
 import { showToast, parseApiError } from '../../lib/toast'
 import { usePrefetch } from '../../hooks/usePrefetch'
@@ -245,6 +245,9 @@ export default function LandlordDetail() {
 
   // Sub-accounts state
   const [selectedSubAccount, setSelectedSubAccount] = useState<number | null>(null)
+  // Mandatory detail currency — a sub-account's detail is viewed in ONE
+  // currency; nothing is opened until the user picks one (no implicit default).
+  const [detailCurrency, setDetailCurrency] = useState('')
   const [subAccountView, setSubAccountView] = useState<'individual' | 'consolidated'>('individual')
   const [subAccountDateRange, setSubAccountDateRange] = useState({
     period_start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
@@ -335,19 +338,20 @@ export default function LandlordDetail() {
 
   // 9. Sub-account statement (individual)
   const { data: subAccountStatement, isLoading: loadingSubStatement, isFetching: fetchingSubStatement } = useQuery({
-    queryKey: ['sub-account-statement', selectedSubAccount, subAccountDateRange, subAccountStatementView],
+    queryKey: ['sub-account-statement', selectedSubAccount, subAccountDateRange, subAccountStatementView, detailCurrency],
     queryFn: () => subsidiaryApi.statement(selectedSubAccount!, {
       period_start: subAccountDateRange.period_start,
       period_end: subAccountDateRange.period_end,
       view: subAccountStatementView,
+      currency: detailCurrency,
     }).then((r) => r.data),
-    enabled: !!selectedSubAccount && activeTab === 'sub-accounts',
+    enabled: !!selectedSubAccount && activeTab === 'sub-accounts' && !!detailCurrency,
     placeholderData: keepPreviousData,
   })
 
   // 10. Consolidated statement (all sub-accounts)
   const consolidatedStatements = useQuery({
-    queryKey: ['landlord-consolidated-statements', landlordId, subAccountDateRange],
+    queryKey: ['landlord-consolidated-statements', landlordId, subAccountDateRange, detailCurrency],
     queryFn: async () => {
       const accounts = normalizeList(subAccountsData)
       if (accounts.length === 0) return []
@@ -356,6 +360,7 @@ export default function LandlordDetail() {
           period_start: subAccountDateRange.period_start,
           period_end: subAccountDateRange.period_end,
           view: 'consolidated',
+          currency: detailCurrency,
         }).then((r) => ({
           account: acc,
           statement: r.data,
@@ -363,7 +368,7 @@ export default function LandlordDetail() {
       )
       return Promise.all(promises)
     },
-    enabled: !!landlordId && activeTab === 'sub-accounts' && subAccountView === 'consolidated' && normalizeList(subAccountsData).length > 0,
+    enabled: !!landlordId && activeTab === 'sub-accounts' && subAccountView === 'consolidated' && !!detailCurrency && normalizeList(subAccountsData).length > 0,
     placeholderData: keepPreviousData,
   })
 
@@ -1184,9 +1189,14 @@ export default function LandlordDetail() {
 
           {/* Sub-Account Summary Cards */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="p-6 border-b border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-900">Subsidiary Accounts</h3>
-              <p className="text-sm text-gray-500">Category-specific accounts for this landlord</p>
+            <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Subsidiary Accounts</h3>
+                <p className="text-sm text-gray-500">Category-specific accounts for this landlord</p>
+              </div>
+              {/* Mandatory currency gate — pick a currency before opening an
+                  account; the summary cards keep showing every currency. */}
+              <DetailCurrencyGate value={detailCurrency} onChange={setDetailCurrency} />
             </div>
             <div className="p-6">
               {loadingSubAccounts ? (
@@ -1231,12 +1241,17 @@ export default function LandlordDetail() {
                               return (
                                 <button
                                   key={acc.id}
-                                  onClick={() => navigate(`/dashboard/subaccounts/${acc.id}`)}
+                                  disabled={!detailCurrency}
+                                  onClick={() => detailCurrency && navigate(`/dashboard/subaccounts/${acc.id}?currency=${detailCurrency}`)}
                                   className={cn(
                                     'w-[148px] px-3 py-2 border rounded-lg text-left transition-all',
-                                    'border-gray-200 hover:border-primary-300 hover:shadow-sm bg-white'
+                                    detailCurrency
+                                      ? 'border-gray-200 hover:border-primary-300 hover:shadow-sm bg-white cursor-pointer'
+                                      : 'border-gray-200 bg-white opacity-60 cursor-not-allowed'
                                   )}
-                                  title={acc.category_name || acc.category || acc.name || 'Account'}
+                                  title={detailCurrency
+                                    ? (acc.category_name || acc.category || acc.name || 'Account')
+                                    : 'Select a currency above to open this account'}
                                 >
                                   <div className="flex items-center justify-between mb-0.5">
                                     <span className="text-[10px] font-mono text-gray-400 truncate">{acc.account_code || acc.code || '-'}</span>
@@ -1320,6 +1335,7 @@ export default function LandlordDetail() {
                                 period_end: subAccountDateRange.period_end,
                                 view: subAccountStatementView,
                                 format: fmt,
+                                currency: detailCurrency,
                               })
                               const url = URL.createObjectURL(new Blob([res.data]))
                               const a = document.createElement('a')
@@ -1493,7 +1509,11 @@ export default function LandlordDetail() {
               </div>
 
               <div className="overflow-x-auto">
-                {consolidatedStatements.isLoading ? (
+                {!detailCurrency ? (
+                  <div className="p-12 text-center text-sm text-gray-500">
+                    Select a currency above to view the consolidated statement.
+                  </div>
+                ) : consolidatedStatements.isLoading ? (
                   <div className="p-6"><TableSkeleton rows={8} /></div>
                 ) : (() => {
                   const allTxns = (consolidatedStatements.data || []).flatMap((cs: any) =>

@@ -41,7 +41,7 @@ import api, { propertyApi, landlordApi, unitApi, reportsApi, leaseApi, invoiceAp
 import { CommissionGrid } from '../../components/property/CommissionGrid'
 import { PropertyBillingConfig } from '../../components/property/PropertyBillingConfig'
 import { formatCurrency, formatPercent, formatDate, cn } from '../../lib/utils'
-import { Modal, Button, Input, Select, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker } from '../../components/ui'
+import { Modal, Button, Input, Select, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker, DetailCurrencyGate } from '../../components/ui'
 import { ProfileInfoBar, InfoColumn, InfoLine } from '../../components/detail/ProfileInfoBar'
 import { showToast, parseApiError } from '../../lib/toast'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
@@ -329,6 +329,8 @@ export default function PropertyDetail() {
 
   // --- Subsidiary sub-ledger accounts state ---
   const [selectedSubAccount, setSelectedSubAccount] = useState<number | null>(null)
+  // Mandatory detail currency — no sub-account opens until one is chosen.
+  const [detailCurrency, setDetailCurrency] = useState('')
   const [subAccountDateRange, setSubAccountDateRange] = useState({
     period_start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
     period_end: new Date().toISOString().split('T')[0],
@@ -360,8 +362,9 @@ export default function PropertyDetail() {
       period_start: subAccountDateRange.period_start,
       period_end: subAccountDateRange.period_end,
       view: subAccountStatementView,
+      currency: detailCurrency,
     }).then((r) => r.data),
-    enabled: !!selectedSubAccount,
+    enabled: !!selectedSubAccount && !!detailCurrency,
     placeholderData: keepPreviousData,
   })
 
@@ -1828,6 +1831,12 @@ export default function PropertyDetail() {
           </div>
         </div>
 
+        {/* Mandatory currency gate — cards below stay disabled until a currency
+            is chosen; the summary keeps showing every currency. */}
+        <div className="px-6 pt-4">
+          <DetailCurrencyGate value={detailCurrency} onChange={setDetailCurrency} />
+        </div>
+
         <div className="p-6">
           {loadingSubAccounts ? (
             <div className="flex flex-wrap gap-2">
@@ -1869,12 +1878,17 @@ export default function PropertyDetail() {
                           return (
                             <button
                               key={acc.id}
-                              onClick={() => navigate(`/dashboard/subaccounts/${acc.id}`)}
+                              disabled={!detailCurrency}
+                              onClick={() => detailCurrency && navigate(`/dashboard/subaccounts/${acc.id}?currency=${detailCurrency}`)}
                               className={cn(
                                 'w-[148px] px-3 py-2 border rounded-lg text-left transition-all',
-                                'border-gray-200 hover:border-primary-300 hover:shadow-sm bg-white'
+                                detailCurrency
+                                  ? 'border-gray-200 hover:border-primary-300 hover:shadow-sm bg-white cursor-pointer'
+                                  : 'border-gray-200 bg-white opacity-60 cursor-not-allowed'
                               )}
-                              title={acc.category_name || acc.category || acc.name || 'Account'}
+                              title={detailCurrency
+                                ? (acc.category_name || acc.category || acc.name || 'Account')
+                                : 'Select a currency above to open this account'}
                             >
                               <div className="flex items-center justify-between mb-0.5">
                                 <span className="text-[10px] font-mono text-gray-400 truncate">{acc.account_code || acc.code || '-'}</span>
@@ -1958,6 +1972,7 @@ export default function PropertyDetail() {
                               period_end: subAccountDateRange.period_end,
                               view: subAccountStatementView,
                               format: fmt,
+                              currency: detailCurrency,
                             })
                             const url = URL.createObjectURL(new Blob([res.data]))
                             const a = document.createElement('a')

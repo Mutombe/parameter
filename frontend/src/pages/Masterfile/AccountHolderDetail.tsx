@@ -11,7 +11,7 @@ import {
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { accountHolderApi, invoiceApi, receiptApi, subsidiaryApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
-import { Modal, Button, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker } from '../../components/ui'
+import { Modal, Button, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker, DetailCurrencyGate } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { useAuthStore } from '../../stores/authStore'
 import { usePagination } from '../../hooks/usePagination'
@@ -73,6 +73,8 @@ export default function AccountHolderDetail() {
   const holderId = Number(id)
 
   const [activeTab, setActiveTab] = useState<'overview' | 'leases' | 'statement' | 'sub-accounts'>('overview')
+  // Mandatory detail currency — no pocket opens until one is chosen.
+  const [detailCurrency, setDetailCurrency] = useState('')
   const [showConvert, setShowConvert] = useState(false)
   const [showTransfer, setShowTransfer] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -494,6 +496,11 @@ export default function AccountHolderDetail() {
                   </div>
                   <p className="text-sm text-gray-500">Category-specific accounts for this account holder</p>
                 </div>
+                {/* Mandatory currency gate — pick a currency before opening a
+                    pocket; the cards keep showing every currency's balance. */}
+                <div className="mb-4">
+                  <DetailCurrencyGate value={detailCurrency} onChange={setDetailCurrency} />
+                </div>
                 {(() => {
                   // MASTER STRUCTURE: show the complete predefined template —
                   // one card per CATEGORY (currency is a dimension, shown as
@@ -515,9 +522,13 @@ export default function AccountHolderDetail() {
                         return (
                           <button
                             key={acc.id}
-                            onClick={() => navigate(`/dashboard/subaccounts/${acc.id}`)}
-                            className="w-[172px] px-3 py-2 border border-gray-200 rounded-lg text-left transition-all bg-white hover:border-primary-300 hover:shadow-sm"
-                            title={acc.code}
+                            disabled={!detailCurrency}
+                            onClick={() => detailCurrency && navigate(`/dashboard/subaccounts/${acc.id}?currency=${detailCurrency}`)}
+                            className={cn(
+                              'w-[172px] px-3 py-2 border border-gray-200 rounded-lg text-left transition-all bg-white',
+                              detailCurrency ? 'hover:border-primary-300 hover:shadow-sm cursor-pointer' : 'opacity-60 cursor-not-allowed'
+                            )}
+                            title={detailCurrency ? acc.code : 'Select a currency above to open this account'}
                           >
                             <div className="flex items-center justify-between mb-0.5">
                               <span className="text-[10px] font-mono text-gray-400 truncate">{acc.code || '-'}</span>

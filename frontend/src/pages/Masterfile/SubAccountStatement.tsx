@@ -1,10 +1,10 @@
 import { useState, useMemo, Fragment } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { ArrowLeft, Download, Loader2, ChevronRight, EyeOff, Printer } from 'lucide-react'
 import { subsidiaryApi } from '../../services/api'
 import { formatCurrency, cn } from '../../lib/utils'
-import { Badge, SkeletonTable, DatePicker } from '../../components/ui'
+import { Badge, SkeletonTable, DatePicker, DetailCurrencyGate } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { openBrandedPrintWindow } from '../../lib/printTemplate'
 
@@ -29,9 +29,12 @@ export default function SubAccountStatement() {
     period_end: new Date().toISOString().split('T')[0],
   })
   const [view, setView] = useState<'consolidated' | 'audit'>('consolidated')
-  // Currency is a dimension of the pocket — a statement is for ONE currency.
-  // '' lets the backend pick the pocket's default; the switcher sets it.
-  const [currency, setCurrency] = useState<string>('')
+  // Currency is a MANDATORY dimension — a statement is always for ONE currency.
+  // Seeded from ?currency= when the caller already chose one (so the user isn't
+  // asked twice); otherwise '' until the gate is used. Never defaults to USD.
+  const [searchParams] = useSearchParams()
+  const _urlCcy = (searchParams.get('currency') || '').toUpperCase()
+  const [currency, setCurrency] = useState<string>(['USD', 'ZWG'].includes(_urlCcy) ? _urlCcy : '')
   // Red Reversal Cloaking — how reversal pairs (an entry + its net-zero
   // reversal) are presented. 'hidden' = drop them (normal users), 'grouped' =
   // one collapsible group per pair (accountants), 'full' = show every row
@@ -56,9 +59,11 @@ export default function SubAccountStatement() {
       period_start: range.period_start,
       period_end: range.period_end,
       view,
-      ...(currency ? { currency } : {}),
+      currency,
     }).then(r => r.data),
-    enabled: !!accountId,
+    // Currency is a mandatory gate: no detail is fetched until the user picks
+    // a currency (the backend also rejects a currency-less request).
+    enabled: !!accountId && !!currency,
     placeholderData: keepPreviousData,
   })
 
@@ -108,9 +113,10 @@ export default function SubAccountStatement() {
   const shownCredits = Number(statement?.total_credits || 0) - (reversalMode === 'full' ? 0 : cloakedCr)
 
   const exportStatement = async (fmt: 'csv' | 'pdf') => {
+    if (!currency) return
     try {
       const res = await subsidiaryApi.exportStatement(accountId, {
-        period_start: range.period_start, period_end: range.period_end, view, format: fmt,
+        period_start: range.period_start, period_end: range.period_end, view, format: fmt, currency,
       })
       const url = URL.createObjectURL(new Blob([res.data]))
       const a = document.createElement('a')
@@ -230,24 +236,10 @@ export default function SubAccountStatement() {
             <DatePicker value={range.period_start} onChange={(v) => setRange(r => ({ ...r, period_start: v }))} className="min-w-[150px]" />
             <span className="text-gray-400 text-sm">to</span>
             <DatePicker value={range.period_end} onChange={(v) => setRange(r => ({ ...r, period_end: v }))} className="min-w-[150px]" />
-            {/* Currency switcher — one currency per statement (currency is a
-                dimension of the one-per-category pocket). */}
-            {(statement?.available_currencies?.length > 1) && (
-              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5" title="Statement currency">
-                {(statement.available_currencies as string[]).map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => setCurrency(c)}
-                    className={cn(
-                      'px-2.5 py-1 text-xs font-medium rounded-md transition-colors',
-                      (statement?.currency || currency) === c ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                    )}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* Mandatory currency gate — a statement is always for ONE
+                explicitly-chosen currency (no default, no "All"). Details load
+                only once a currency is picked. */}
+            <DetailCurrencyGate value={currency} onChange={setCurrency} label="Currency" />
             <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
               {(['consolidated', 'audit'] as const).map(v => (
                 <button
@@ -307,7 +299,11 @@ export default function SubAccountStatement() {
 
         {/* Transactions */}
         <div className="overflow-x-auto relative">
-          {isLoading ? (
+          {!currency ? (
+            <div className="p-12 text-center text-sm text-gray-500">
+              Select a currency above to view this account&rsquo;s transactions.
+            </div>
+          ) : isLoading ? (
             <div className="p-6"><SkeletonTable rows={6} /></div>
           ) : txns.length === 0 ? (
             <div className="p-12 text-center text-sm text-gray-400">No transactions found for this period</div>

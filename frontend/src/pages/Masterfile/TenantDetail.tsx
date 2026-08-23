@@ -44,7 +44,7 @@ import {
 import api from '../../services/api'
 import { tenantApi, reportsApi, invoiceApi, receiptApi, unitApi, subsidiaryApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
-import { Modal, Button, Input, Select, Textarea, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker } from '../../components/ui'
+import { Modal, Button, Input, Select, Textarea, TableFilter, Tabs, TabsList, TabsTrigger, TabsContent, DatePicker, DetailCurrencyGate } from '../../components/ui'
 import { ProfileInfoBar, InfoColumn, InfoLine } from '../../components/detail/ProfileInfoBar'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { showToast, parseApiError } from '../../lib/toast'
@@ -315,6 +315,8 @@ export default function TenantDetail() {
     period_end: new Date().toISOString().split('T')[0],
   })
   const [subAccountStatementView, setSubAccountStatementView] = useState<'consolidated' | 'audit'>('consolidated')
+  // Mandatory detail currency — statement loads only once a currency is chosen.
+  const [detailCurrency, setDetailCurrency] = useState('')
 
   // Normalize list data (handle paginated vs array responses)
   const normalizeList = (data: any) => {
@@ -342,13 +344,15 @@ export default function TenantDetail() {
 
   // Fetch subsidiary account statement
   const { data: subAccountStatement, isLoading: loadingSubStatement } = useQuery({
-    queryKey: ['tenant-sub-statement', tenantSubAccount?.id, subAccountDateRange, subAccountStatementView],
+    queryKey: ['tenant-sub-statement', tenantSubAccount?.id, subAccountDateRange, subAccountStatementView, detailCurrency],
     queryFn: () => subsidiaryApi.statement(tenantSubAccount!.id, {
       period_start: subAccountDateRange.period_start,
       period_end: subAccountDateRange.period_end,
       view: subAccountStatementView,
+      currency: detailCurrency,
     }).then((r) => r.data),
-    enabled: !!tenantSubAccount?.id,
+    // Mandatory currency gate: no detail until a currency is chosen.
+    enabled: !!tenantSubAccount?.id && !!detailCurrency,
     placeholderData: keepPreviousData,
   })
 
@@ -1285,6 +1289,7 @@ export default function TenantDetail() {
                 <button onClick={() => setSubAccountStatementView('consolidated')} className={cn('px-2.5 py-1 text-xs font-medium rounded-md transition-colors', subAccountStatementView === 'consolidated' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>Consolidated</button>
                 <button onClick={() => setSubAccountStatementView('audit')} className={cn('px-2.5 py-1 text-xs font-medium rounded-md transition-colors', subAccountStatementView === 'audit' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>Audit</button>
               </div>
+              <DetailCurrencyGate value={detailCurrency} onChange={setDetailCurrency} />
               {tenantSubAccount && (
                 <div className="relative group ml-auto">
                   <button className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
@@ -1292,7 +1297,7 @@ export default function TenantDetail() {
                   </button>
                   <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg hidden group-hover:block z-10 min-w-[100px]">
                     {(['csv', 'pdf'] as const).map(fmt => (
-                      <button key={fmt} onClick={async () => { try { const res = await subsidiaryApi.exportStatement(tenantSubAccount.id, { period_start: subAccountDateRange.period_start, period_end: subAccountDateRange.period_end, view: subAccountStatementView, format: fmt }); const url = URL.createObjectURL(new Blob([res.data])); const a = document.createElement('a'); a.href = url; a.download = `statement-${(tenantSubAccount.code || tenantSubAccount.account_code || tenantSubAccount.id).toString().replace(/\//g, '-')}.${fmt}`; a.click(); URL.revokeObjectURL(url) } catch { /* ignore */ } }} className="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left first:rounded-t-lg last:rounded-b-lg">{fmt.toUpperCase()}</button>
+                      <button key={fmt} disabled={!detailCurrency} onClick={async () => { if (!detailCurrency) return; try { const res = await subsidiaryApi.exportStatement(tenantSubAccount.id, { period_start: subAccountDateRange.period_start, period_end: subAccountDateRange.period_end, view: subAccountStatementView, format: fmt, currency: detailCurrency }); const url = URL.createObjectURL(new Blob([res.data])); const a = document.createElement('a'); a.href = url; a.download = `statement-${(tenantSubAccount.code || tenantSubAccount.account_code || tenantSubAccount.id).toString().replace(/\//g, '-')}.${fmt}`; a.click(); URL.revokeObjectURL(url) } catch { /* ignore */ } }} className="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 text-left first:rounded-t-lg last:rounded-b-lg disabled:opacity-50 disabled:cursor-not-allowed">{fmt.toUpperCase()}</button>
                     ))}
                   </div>
                 </div>
@@ -1304,6 +1309,10 @@ export default function TenantDetail() {
               <div className="p-12 text-center text-sm text-gray-400">
                 <Layers className="w-8 h-8 mx-auto mb-2 opacity-50" />
                 No subsidiary account found for this tenant
+              </div>
+            ) : !detailCurrency ? (
+              <div className="p-12 text-center text-sm text-gray-500">
+                Select a currency above to view this account&rsquo;s transactions.
               </div>
             ) : (
               <>
