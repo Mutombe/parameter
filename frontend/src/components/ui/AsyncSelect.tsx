@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, Fragment } from 'react'
 import { ChevronDown, Loader2, Search, X, Inbox } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { Skeleton } from './Skeleton'
@@ -8,6 +8,14 @@ interface Option {
   label: string
   description?: string
   icon?: React.ReactNode
+  /** Extra text matched by the search box, beyond label + description — e.g.
+   *  an account's entity name / code / category so an entity search surfaces
+   *  the whole group of its sub-accounts. */
+  search?: string
+  /** Group heading this option belongs under. When `grouped` is set, a header
+   *  is drawn before the first option of each new group (options are expected
+   *  already ordered so a group's members are contiguous). */
+  group?: string
 }
 
 interface AsyncSelectProps {
@@ -29,6 +37,9 @@ interface AsyncSelectProps {
   createNewLabel?: string
   recentItems?: Option[]
   recentLabel?: string
+  /** Draw a heading before each new `option.group` so entity sub-accounts are
+   *  presented as one logical group. Opt-in; other selectors are unaffected. */
+  grouped?: boolean
   /** Wrap long option labels onto as many lines as needed instead of
    *  truncating with an ellipsis. Words are never hyphenated — a break only
    *  happens at spaces (or mid-"word" when a single token exceeds the line).
@@ -56,6 +67,7 @@ export function AsyncSelect({
   createNewLabel = '+ Create new...',
   recentItems,
   recentLabel = 'Recently used',
+  grouped = false,
   wrap = false,
 }: AsyncSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
@@ -94,10 +106,12 @@ export function AsyncSelect({
   const filteredOptions = onSearch
     ? options
     : searchTerm
-      ? options.filter(opt =>
-          opt.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          opt.description?.toLowerCase().includes(searchTerm.toLowerCase())
-        )
+      ? options.filter(opt => {
+          const q = searchTerm.toLowerCase()
+          return opt.label.toLowerCase().includes(q) ||
+            opt.description?.toLowerCase().includes(q) ||
+            opt.search?.toLowerCase().includes(q)
+        })
       : options
 
   // Show recent items when search is empty
@@ -288,7 +302,13 @@ export function AsyncSelect({
                     {recentLabel}
                   </div>
                 )}
-                {displayOptions.map((option, index) => (
+                {displayOptions.map((option, index) => {
+                  // Draw a group heading before the first option of each new
+                  // group. Header divs carry no [data-option], so keyboard
+                  // navigation (which indexes buttons only) is unaffected.
+                  const showHeader = grouped && option.group &&
+                    option.group !== displayOptions[index - 1]?.group
+                  const optionButton = (
                   <button
                     key={option.value}
                     type="button"
@@ -322,7 +342,20 @@ export function AsyncSelect({
                       <div className="w-2 h-2 rounded-full bg-primary-500" />
                     )}
                   </button>
-                ))}
+                  )
+                  if (!showHeader) return optionButton
+                  return (
+                    <Fragment key={`grp-${option.value}`}>
+                      <div className={cn(
+                        'px-3 pt-2.5 pb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400',
+                        index > 0 && 'border-t border-gray-100 dark:border-slate-700 mt-1'
+                      )}>
+                        {option.group}
+                      </div>
+                      {optionButton}
+                    </Fragment>
+                  )
+                })}
                 {onCreateNew && (
                   <button
                     type="button"

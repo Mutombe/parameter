@@ -222,15 +222,30 @@ export default function Journals() {
   })
 
   const targetOptions = (targetsData?.groups || []).flatMap((g: any) =>
-    (g.options || []).map((o: any) => ({
-      value: o.value,
-      label: o.label,
-      description: g.label,
-      kind: o.kind,
-      code: o.code,
-      currency: o.currency,
-      entity_type: o.entity_type,
-    }))
+    (g.options || []).map((o: any) => {
+      // Group heading: a sub-account groups under its entity ("9 Tawana Mews
+      // — AH000009") so an entity search shows that entity's whole pocket set
+      // together; GL / bank accounts group under their section label. `search`
+      // lets the box match on the entity name, main code, category or kind —
+      // so "9 taw", "AH000009", "tawana" or "levy" all surface the group.
+      const isSub = o.kind === 'subsidiary'
+      const mainCode = isSub && o.code ? String(o.code).split('/')[0] : o.code
+      const entityName = isSub && o.name ? String(o.name).split(' - ')[0] : ''
+      const group = isSub ? `${entityName} — ${mainCode}`.trim() : g.label
+      const search = [o.code, o.name, mainCode, entityName, o.entity_type, g.label]
+        .filter(Boolean).join(' ')
+      return {
+        value: o.value,
+        label: o.label,
+        description: g.label,
+        kind: o.kind,
+        code: o.code,
+        currency: o.currency,
+        entity_type: o.entity_type,
+        group,
+        search,
+      }
+    })
   )
 
   // The account picker for a journal line: bank/cash accounts are
@@ -937,11 +952,12 @@ export default function Journals() {
                     <tr key={index}>
                       <td className="px-4 py-2 min-w-[340px]">
                         <AsyncSelect
-                          placeholder="Select account..."
+                          placeholder="Search account, entity or code…"
                           value={entry.target || ''}
                           onChange={(val) => updateEntry(index, 'target', String(val))}
                           options={pickerOptions}
                           searchable
+                          grouped
                           wrap
                         />
                         {(() => {
