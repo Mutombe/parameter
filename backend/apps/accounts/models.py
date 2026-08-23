@@ -1,6 +1,20 @@
-"""User model with Role-Based Access Control (RBAC)."""
+"""User model with Role-Based Access Control (RBAC).
+
+Two orthogonal concepts (see apps.accounts.capabilities):
+  * ``user_type``       — the user's identity/category (Admin, Accounts
+                          Officer, Clerk, Cashier, Portfolio Manager, Tenant,
+                          Account Holder; plus platform ``super_admin``).
+  * ``permission_role`` — the named capability set they exercise. An Admin may
+                          reassign this for internal users, or choose 'custom'
+                          and hand-pick capabilities in ``custom_capabilities``.
+
+The legacy ``role`` field is retained (and auto-mirrored from ``user_type`` on
+save) so older role-based checks keep working during the transition.
+"""
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
+
+from . import capabilities as caps
 
 
 class UserManager(BaseUserManager):
@@ -10,6 +24,17 @@ class UserManager(BaseUserManager):
         if not email:
             raise ValueError('Email is required')
         email = self.normalize_email(email)
+        # When only a legacy `role` is supplied (e.g. invitation-accept or the
+        # legacy create serializer), derive the new user_type/permission_role
+        # so capability-based access is set up correctly. save() then keeps the
+        # legacy role mirror in sync.
+        role = extra_fields.get('role')
+        if role and 'user_type' not in extra_fields:
+            from .capabilities import LEGACY_ROLE_TO_TYPE
+            mapped = LEGACY_ROLE_TO_TYPE.get(role)
+            if mapped:
+                extra_fields.setdefault('user_type', mapped[0])
+                extra_fields.setdefault('permission_role', mapped[1])
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
@@ -19,6 +44,8 @@ class UserManager(BaseUserManager):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('role', User.Role.SUPER_ADMIN)
+        extra_fields.setdefault('user_type', 'super_admin')
+        extra_fields.setdefault('permission_role', 'super_admin_full')
         return self.create_user(email, password, **extra_fields)
 
 
@@ -45,7 +72,26 @@ class User(AbstractUser):
     role = models.CharField(
         max_length=20,
         choices=Role.choices,
-        default=Role.CLERK
+        default=Role.CLERK,
+        help_text='Legacy role — auto-mirrored from user_type. Prefer user_type/permission_role.',
+    )
+
+    # --- User Type & Permission Role (capability-based access) ---------------
+    user_type = models.CharField(
+        max_length=32,
+        choices=caps.USER_TYPES,
+        default='clerk',
+        help_text="The user's identity/category (separate from their permissions).",
+    )
+    permission_role = models.CharField(
+        max_length=40,
+        choices=caps.PERMISSION_ROLES,
+        default='clerk_default',
+        help_text="Named capability set. 'custom' uses custom_capabilities.",
+    )
+    custom_capabilities = models.JSONField(
+        default=list, blank=True,
+        help_text="Capability codes used only when permission_role == 'custom'.",
     )
 
     # Demo & Account Status
@@ -88,6 +134,37 @@ class User(AbstractUser):
 
     def __str__(self):
         return f'{self.get_full_name()} ({self.email})'
+
+    def save(self, *args, **kwargs):
+        """Keep the legacy ``role`` mirror in sync with ``user_type`` so older
+        role-based checks keep working, without ever silently changing the
+        richer permission fields."""
+        if self.user_type:
+            self.role = caps.LEGACY_ROLE_FOR_TYPE.get(self.user_type, self.role)
+        # Portal user types are permanently constrained to their portal set.
+        if self.user_type in caps.LOCKED_USER_TYPES:
+            self.permission_role = caps.DEFAULT_PERMISSION_ROLE_FOR_TYPE[self.user_type]
+        super().save(*args, **kwargs)
+
+    # --- Capability API -----------------------------------------------------
+    def get_capabilities(self):
+        """The concrete set of capability codes this user may exercise."""
+        return caps.effective_capabilities(
+            self.user_type, self.permission_role, self.custom_capabilities or []
+        )
+
+    def has_capability(self, code):
+        """True if the user is allowed to perform ``code``. super_admin and
+        the Django superuser flag always pass."""
+        if self.is_superuser or self.user_type == 'super_admin':
+            return True
+        return code in self.get_capabilities()
+
+    @property
+    def permissions_locked(self):
+        """Portal users (Tenant / Account Holder) can never have their
+        permission role changed."""
+        return self.user_type in caps.LOCKED_USER_TYPES
 
     @property
     def is_admin(self):

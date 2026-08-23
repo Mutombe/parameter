@@ -1,6 +1,65 @@
 """Custom permissions for accounts app."""
 from rest_framework import permissions
+from rest_framework.exceptions import PermissionDenied
 from .models import User
+
+
+def _is_super(user):
+    return bool(
+        getattr(user, 'is_superuser', False)
+        or getattr(user, 'user_type', None) == 'super_admin'
+    )
+
+
+def require_capability(user, code, message=None):
+    """Imperative capability guard for use inside view methods (e.g. to branch
+    on request data). Raises DRF PermissionDenied when the user lacks ``code``.
+    super_admin / Django superuser always pass."""
+    if _is_super(user):
+        return
+    if not user or not user.is_authenticated or not user.has_capability(code):
+        raise PermissionDenied(message or 'You do not have permission to perform this action.')
+
+
+class RequireCapability(permissions.BasePermission):
+    """Per-action capability gate driven by a ``capability_map`` on the view.
+
+    Example on a viewset::
+
+        capability_map = {
+            'create': 'receipts.create',
+            'reverse': 'receipts.void',
+            'default': 'receipts.view',   # optional fallback for other actions
+        }
+
+    A mapped value may be a single capability code or an iterable of codes
+    (any-of). Actions absent from the map fall back to ``'default'``; if there
+    is no default either, the action is allowed (still gated by
+    IsAuthenticated). super_admin and Django superusers bypass all checks.
+    """
+    message = 'You do not have permission to perform this action.'
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        if _is_super(user):
+            return True
+
+        cap_map = getattr(view, 'capability_map', None) or {}
+        action = getattr(view, 'action', None)
+        required = cap_map.get(action, cap_map.get('default'))
+        if not required:
+            return True
+
+        if isinstance(required, (list, tuple, set)):
+            allowed = any(user.has_capability(c) for c in required)
+        else:
+            allowed = user.has_capability(required)
+
+        if not allowed:
+            self.message = f'You do not have permission to {(action or "perform this action").replace("_", " ")}.'
+        return allowed
 
 
 class CanInviteUsers(permissions.BasePermission):

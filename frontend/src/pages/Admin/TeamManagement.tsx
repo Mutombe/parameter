@@ -29,12 +29,15 @@ import { useSelection } from '../../hooks/useSelection'
 import { useBulkLoading } from '../../hooks/useBulkLoading'
 
 
-// Full list of role options with descriptions
+// Invite role options. Values are legacy role codes the invite endpoint
+// accepts; on acceptance they map to the corresponding user type. Fine-grained
+// types (Cashier, Portfolio Manager) and permission tuning are set afterwards
+// via the per-user Permissions dialog.
 const allRoleOptions = [
-  { value: 'admin', label: 'Admin', description: 'Full access to all features' },
-  { value: 'accountant', label: 'Accountant', description: 'Can manage finances and billing' },
-  { value: 'clerk', label: 'Clerk', description: 'Basic data entry access' },
-  { value: 'tenant_portal', label: 'Tenant Portal', description: 'Limited tenant-only access' },
+  { value: 'admin', label: 'Admin', description: 'Full access except receipting' },
+  { value: 'accountant', label: 'Accounts Officer', description: 'Finances & billing; no bank/income-category creation or receipting' },
+  { value: 'clerk', label: 'Clerk', description: 'General operational data entry' },
+  { value: 'tenant_portal', label: 'Tenant', description: 'Own tenant portal only' },
 ]
 
 const statusColors: Record<string, string> = {
@@ -107,11 +110,50 @@ export default function TeamManagement() {
   const selection = useSelection<number>({ clearOnChange: [activeTab] })
   const bulkLoading = useBulkLoading()
 
+  // Permission management (Admin only)
+  const [permUser, setPermUser] = useState<any | null>(null)
+  const [permUserType, setPermUserType] = useState<string>('')
+  const [permRole, setPermRole] = useState<string>('')
+  const [permCustomCaps, setPermCustomCaps] = useState<Set<string>>(new Set())
+
   // Check if current user can invite others
   const canInvite = Boolean(currentUser?.role && ['super_admin', 'admin', 'accountant'].includes(currentUser.role))
 
-  // Check if current user can manage users (activate/deactivate)
+  // Check if current user can manage users (activate/deactivate + permissions)
   const canManageUsers = Boolean(currentUser?.role && ['super_admin', 'admin'].includes(currentUser.role))
+
+  // Capability catalog (groups, user types, permission roles + their defaults)
+  const { data: catalog } = useQuery<{
+    groups: { title: string; capabilities: { code: string; label: string }[] }[]
+    user_types: { value: string; label: string; locked: boolean }[]
+    permission_roles: { value: string; label: string; assignable: boolean; capabilities: string[] }[]
+  }>({
+    queryKey: ['capability-catalog'],
+    queryFn: () => usersApi.capabilityCatalog().then(r => r.data),
+    enabled: canManageUsers,
+    staleTime: 1000 * 60 * 30,
+  })
+
+  const assignableUserTypes = useMemo(
+    () => (catalog?.user_types || []).filter(t => !t.locked && t.value !== 'super_admin'),
+    [catalog]
+  )
+  const assignableRoles = useMemo(
+    () => (catalog?.permission_roles || []).filter(r => r.assignable),
+    [catalog]
+  )
+  const roleDefaults = useMemo(() => {
+    const m: Record<string, string[]> = {}
+    for (const r of catalog?.permission_roles || []) m[r.value] = r.capabilities
+    return m
+  }, [catalog])
+
+  // The capabilities currently in effect for the modal: predefined roles show
+  // their fixed default set; 'custom' uses the editable checkbox selection.
+  const effectivePermCaps = useMemo(() => {
+    if (permRole === 'custom') return permCustomCaps
+    return new Set(roleDefaults[permRole] || [])
+  }, [permRole, permCustomCaps, roleDefaults])
 
   // Queries
   const { data: users, isLoading: usersLoading } = useQuery<{ results?: any[] } | any[]>({
@@ -192,6 +234,52 @@ export default function TeamManagement() {
       toast.success('User status updated')
     },
   })
+
+  const updatePermsMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: { user_type?: string; permission_role?: string; custom_capabilities?: string[] } }) =>
+      usersApi.updatePermissions(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      setPermUser(null)
+      toast.success('Permissions updated')
+    },
+    onError: (error: any) => {
+      const d = error.response?.data
+      toast.error(d?.error || d?.permission_role?.[0] || d?.detail || 'Failed to update permissions')
+    },
+  })
+
+  const openPermissions = (u: any) => {
+    setPermUser(u)
+    const utype = u.user_type || 'clerk'
+    const prole = u.permission_role || 'clerk_default'
+    setPermUserType(utype)
+    setPermRole(prole)
+    // Seed the custom checkboxes from the user's current effective set so
+    // switching to 'custom' starts from where they are today.
+    const seed: string[] = prole === 'custom'
+      ? (u.custom_capabilities || [])
+      : (roleDefaults[prole] || u.capabilities || [])
+    setPermCustomCaps(new Set(seed))
+  }
+
+  const toggleCap = (code: string) => {
+    setPermCustomCaps(prev => {
+      const next = new Set(prev)
+      if (next.has(code)) next.delete(code); else next.add(code)
+      return next
+    })
+  }
+
+  const handleSavePermissions = () => {
+    if (!permUser) return
+    const payload: { user_type?: string; permission_role?: string; custom_capabilities?: string[] } = {
+      user_type: permUserType,
+      permission_role: permRole,
+    }
+    if (permRole === 'custom') payload.custom_capabilities = Array.from(permCustomCaps)
+    updatePermsMutation.mutate({ id: permUser.id, data: payload })
+  }
 
   const handleSubmitInvite = (e: React.FormEvent) => {
     e.preventDefault()
@@ -488,13 +576,23 @@ export default function TeamManagement() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg capitalize"
-                          title={roleTooltips[user.role] || 'User role'}
-                        >
-                          <Shield className="w-3 h-3" />
-                          {user.role?.replace('_', ' ')}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg w-fit"
+                            title="User type (identity)"
+                          >
+                            <Shield className="w-3 h-3" />
+                            {user.user_type_display || user.role?.replace('_', ' ')}
+                          </span>
+                          {user.permission_role_display && (
+                            <span
+                              className="text-[11px] text-gray-500 pl-1"
+                              title="Permission role (capability set)"
+                            >
+                              {user.permissions_locked ? '🔒 ' : ''}{user.permission_role_display}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <span
@@ -511,22 +609,34 @@ export default function TeamManagement() {
                         <TimeAgo date={user.last_activity} fallback="Never" />
                       </td>
                       <td className="px-6 py-4 text-right">
-                        {canManageUsers && user.id !== currentUser?.id && (
-                          <button
-                            onClick={() => toggleUserStatusMutation.mutate({
-                              id: user.id,
-                              active: !user.is_active
-                            })}
-                            className={`text-sm font-medium ${
-                              user.is_active
-                                ? 'text-rose-600 hover:text-rose-700'
-                                : 'text-emerald-600 hover:text-emerald-700'
-                            }`}
-                            title={user.is_active ? 'Deactivate this user account' : 'Reactivate this user account'}
-                          >
-                            {user.is_active ? 'Deactivate' : 'Activate'}
-                          </button>
-                        )}
+                        <div className="flex items-center justify-end gap-3">
+                          {canManageUsers && (
+                            <button
+                              onClick={() => openPermissions(user)}
+                              className="text-sm font-medium text-primary-600 hover:text-primary-700 inline-flex items-center gap-1"
+                              title={user.permissions_locked ? 'Portal user — permissions are permanently restricted' : 'Manage this user’s permissions'}
+                            >
+                              <Shield className="w-3.5 h-3.5" />
+                              Permissions
+                            </button>
+                          )}
+                          {canManageUsers && user.id !== currentUser?.id && (
+                            <button
+                              onClick={() => toggleUserStatusMutation.mutate({
+                                id: user.id,
+                                active: !user.is_active
+                              })}
+                              className={`text-sm font-medium ${
+                                user.is_active
+                                  ? 'text-rose-600 hover:text-rose-700'
+                                  : 'text-emerald-600 hover:text-emerald-700'
+                              }`}
+                              title={user.is_active ? 'Deactivate this user account' : 'Reactivate this user account'}
+                            >
+                              {user.is_active ? 'Deactivate' : 'Activate'}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -971,6 +1081,123 @@ export default function TeamManagement() {
                 )}
               </div>
             )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Permission Management Modal (Admin only) */}
+      <Modal
+        open={!!permUser}
+        onClose={() => setPermUser(null)}
+        title={permUser ? `Permissions — ${permUser.first_name} ${permUser.last_name}` : 'Permissions'}
+      >
+        {permUser?.permissions_locked ? (
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-amber-800">
+                <p className="font-medium">Portal user — permissions are permanently restricted.</p>
+                <p className="mt-1">
+                  {permUser.user_type_display || 'This user'} can only access their own portal
+                  ({permUser.permission_role_display}). This cannot be changed.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button variant="outline" onClick={() => setPermUser(null)}>Close</Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <p className="text-sm text-gray-500">
+              A user's <span className="font-medium text-gray-700">type</span> is their identity;
+              their <span className="font-medium text-gray-700">permission role</span> is what they
+              may do. Choose a predefined role, or pick <span className="font-medium">Custom</span> to
+              hand-tune individual capabilities.
+            </p>
+
+            {/* User type */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">User Type</label>
+              <select
+                value={permUserType}
+                onChange={(e) => setPermUserType(e.target.value)}
+                className={inputClass}
+              >
+                {assignableUserTypes.map(t => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Permission role */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Permission Role</label>
+              <select
+                value={permRole}
+                onChange={(e) => {
+                  const v = e.target.value
+                  // When switching to Custom, seed the checkboxes from the
+                  // currently effective set so it starts from where they are.
+                  if (v === 'custom' && permRole !== 'custom') {
+                    setPermCustomCaps(new Set(effectivePermCaps))
+                  }
+                  setPermRole(v)
+                }}
+                className={inputClass}
+              >
+                {assignableRoles.map(r => (
+                  <option key={r.value} value={r.value}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Capability matrix */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">Capabilities</label>
+                <span className="text-xs text-gray-400">
+                  {permRole === 'custom' ? 'Toggle individual capabilities' : 'Defined by the selected role (read-only)'}
+                </span>
+              </div>
+              <div className="max-h-72 overflow-y-auto border border-gray-200 rounded-xl divide-y divide-gray-100">
+                {(catalog?.groups || []).map(group => (
+                  <div key={group.title} className="p-3">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">{group.title}</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
+                      {group.capabilities
+                        // Portal caps are never part of an internal set.
+                        .filter(c => c.code !== 'portal.tenant' && c.code !== 'portal.account_holder')
+                        .map(c => (
+                        <label
+                          key={c.code}
+                          className={`flex items-center gap-2 text-sm ${permRole === 'custom' ? 'cursor-pointer' : 'cursor-default'}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={effectivePermCaps.has(c.code)}
+                            disabled={permRole !== 'custom'}
+                            onChange={() => toggleCap(c.code)}
+                            className="rounded border-gray-300 disabled:opacity-60"
+                          />
+                          <span className={effectivePermCaps.has(c.code) ? 'text-gray-800' : 'text-gray-400'}>
+                            {c.label}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-1">
+              <Button variant="outline" onClick={() => setPermUser(null)}>Cancel</Button>
+              <Button onClick={handleSavePermissions} disabled={updatePermsMutation.isPending} className="gap-2">
+                <Shield className="w-4 h-4" />
+                {updatePermsMutation.isPending ? 'Saving...' : 'Save Permissions'}
+              </Button>
+            </div>
           </div>
         )}
       </Modal>

@@ -880,6 +880,12 @@ export const usersApi = {
   update: (id: number, data: object) => api.patch(`/accounts/users/${id}/`, data),
   deactivate: (id: number) => api.post(`/accounts/users/${id}/deactivate/`),
   activate: (id: number) => api.post(`/accounts/users/${id}/activate/`),
+  // Capability / permission management (Admin only)
+  capabilityCatalog: () => api.get('/accounts/users/capability-catalog/'),
+  updatePermissions: (
+    id: number,
+    data: { user_type?: string; permission_role?: string; custom_capabilities?: string[] }
+  ) => api.post(`/accounts/users/${id}/permissions/`, data),
 }
 
 // Unified Search API - High performance search with PostgreSQL full-text search

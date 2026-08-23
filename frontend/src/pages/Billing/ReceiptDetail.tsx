@@ -17,6 +17,7 @@ import { printReceipt } from '../../lib/printTemplate'
 import { Button, Modal, Select, DatePicker, Textarea } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { usePrefetch } from '../../hooks/usePrefetch'
+import { usePermissions, CAP } from '../../lib/permissions'
 import { TbUserSquareRounded } from 'react-icons/tb'
 
 const container = {
@@ -91,6 +92,7 @@ export default function ReceiptDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const prefetch = usePrefetch()
+  const { can } = usePermissions()
   const receiptId = Number(id)
 
   const { data: receipt, isLoading } = useQuery({
@@ -209,7 +211,7 @@ export default function ReceiptDetail() {
         </Button>
         {/* Convert/void hidden for reversal entries and already-voided receipts:
             a receipt is voided ONCE and a reversal can't itself be voided. */}
-        {!receipt?.is_reversal && !receipt?.is_reversed && (
+        {!receipt?.is_reversal && !receipt?.is_reversed && can(CAP.RECEIPTS_VOID) && (
           <>
             <Button variant="outline" onClick={() => setShowConvert(true)} className="gap-2">
               Convert Currency

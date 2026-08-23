@@ -19,11 +19,12 @@ from .serializers import (
     UserSerializer, UserCreateSerializer, LoginSerializer,
     ChangePasswordSerializer, UserActivitySerializer,
     UserInvitationSerializer, CreateInvitationSerializer, AcceptInvitationSerializer,
-    BulkCreateInvitationSerializer,
+    BulkCreateInvitationSerializer, PermissionUpdateSerializer,
     RequestPasswordResetSerializer, ResetPasswordSerializer
 )
 from rest_framework.throttling import ScopedRateThrottle
 from .permissions import CanInviteUsers, CanManageUsers, get_allowed_invite_roles, IsTenantPortalUser, IsTenantPortalOrStaff
+from . import capabilities as caps
 
 logger = logging.getLogger(__name__)
 
@@ -476,6 +477,70 @@ class UserViewSet(viewsets.ModelViewSet):
         user.is_active = True
         user.save()
         return Response({'message': f'User {user.email} activated'})
+
+    @action(detail=False, methods=['get'], permission_classes=[CanManageUsers], url_path='capability-catalog')
+    def capability_catalog(self, request):
+        """The capability/user-type/permission-role catalog the admin UI uses
+        to render the permission matrix."""
+        return Response(caps.capability_catalog())
+
+    @action(detail=True, methods=['post'], permission_classes=[CanManageUsers], url_path='permissions')
+    def update_permissions(self, request, pk=None):
+        """Admin-only: change an internal user's user_type / permission_role /
+        custom capabilities. Tenant and Account Holder users are permanently
+        constrained to their portals and cannot be changed here.
+
+        This grants or revokes what actions a user may perform; it never
+        touches any accounting, posting or transaction data.
+        """
+        user = self.get_object()
+
+        # Portal users are permanently constrained.
+        if user.permissions_locked:
+            return Response(
+                {'error': 'This user is a portal user (Tenant / Account Holder). '
+                          'Their permissions are permanently restricted and cannot be changed.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = PermissionUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        new_type = data.get('user_type')
+        new_role = data.get('permission_role')
+
+        if new_type:
+            user.user_type = new_type
+            # Changing type without naming a role resets to that type's default.
+            if not new_role:
+                new_role = caps.DEFAULT_PERMISSION_ROLE_FOR_TYPE[new_type]
+
+        if new_role:
+            user.permission_role = new_role
+
+        # custom_capabilities only apply to the 'custom' role; clear otherwise
+        # so a later switch back to a predefined set never leaks stale grants.
+        if user.permission_role == 'custom':
+            if 'custom_capabilities' in data:
+                user.custom_capabilities = data['custom_capabilities']
+        else:
+            user.custom_capabilities = []
+
+        user.save()
+
+        UserActivity.objects.create(
+            user=user,
+            action='permissions_updated',
+            details={
+                'by': request.user.email,
+                'user_type': user.user_type,
+                'permission_role': user.permission_role,
+                'custom_capabilities': user.custom_capabilities,
+            },
+        )
+
+        return Response(UserSerializer(user, context={'request': request}).data)
 
 
 class UserActivityViewSet(viewsets.ReadOnlyModelViewSet):

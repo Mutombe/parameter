@@ -41,6 +41,7 @@ import { useBulkLoading } from '../../hooks/useBulkLoading'
 import { useHotkeys } from '../../hooks/useHotkeys'
 import { usePrefetch } from '../../hooks/usePrefetch'
 import { useRecentValues } from '../../hooks/useRecentValues'
+import { usePermissions, CAP } from '../../lib/permissions'
 
 interface Expense {
   id: number | string
@@ -163,6 +164,7 @@ export default function Expenses() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const prefetch = usePrefetch()
+  const { can } = usePermissions()
   const [searchParams, setSearchParams] = useSearchParams()
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
@@ -1025,14 +1027,18 @@ export default function Expenses() {
             >
               Print
             </Button>
-            <Button variant="outline" onClick={() => setShowWithdraw(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Post withdrawal
-            </Button>
-            <Button onClick={() => setShowModal(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Expenditure
-            </Button>
+            {can(CAP.JOURNALS_POST_WITHDRAWAL) && (
+              <Button variant="outline" onClick={() => setShowWithdraw(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Post withdrawal
+              </Button>
+            )}
+            {can(CAP.EXPENDITURE_CREATE) && (
+              <Button onClick={() => setShowModal(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                New Expenditure
+              </Button>
+            )}
           </div>
         }
       />
@@ -1188,10 +1194,12 @@ export default function Expenses() {
           title="No expenses found"
           description="Create your first expense to start tracking payouts."
           action={
-            <Button onClick={() => setShowModal(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Expenditure
-            </Button>
+            can(CAP.EXPENDITURE_CREATE) ? (
+              <Button onClick={() => setShowModal(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                New Expenditure
+              </Button>
+            ) : undefined
           }
         />
       ) : (

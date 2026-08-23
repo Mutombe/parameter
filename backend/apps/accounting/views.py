@@ -6,6 +6,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from apps.accounts.permissions import RequireCapability
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.negotiation import DefaultContentNegotiation
 
@@ -195,6 +196,18 @@ class JournalViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
         _total_debit=Sum('entries__debit_amount'),
         _total_credit=Sum('entries__credit_amount'),
     ).all()
+    permission_classes = [IsAuthenticated, RequireCapability]
+    # Creating/editing a general journal requires create_general; committing it
+    # to the ledger requires post_general. Read-only actions need journals.view.
+    capability_map = {
+        'create': 'journals.create_general',
+        'update': 'journals.create_general',
+        'partial_update': 'journals.create_general',
+        'destroy': 'journals.create_general',
+        'post_journal': 'journals.post_general',
+        'reverse_journal': 'journals.post_general',
+        'default': 'journals.view',
+    }
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -542,7 +555,16 @@ class BankAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, view
     """
     queryset = BankAccount.objects.select_related('gl_account').all()
     serializer_class = BankAccountSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {
+        'create': 'bank.create_account',
+        'update': 'bank.manage',
+        'partial_update': 'bank.manage',
+        'destroy': 'bank.manage',
+        'set_default': 'bank.manage',
+        'seed_defaults': 'bank.create_account',
+        'default': 'bank.view',
+    }
     filterset_fields = ['account_type', 'currency', 'is_active', 'is_default']
     search_fields = ['code', 'name', 'bank_name', 'account_number']
     ordering_fields = ['name', 'book_balance', 'bank_balance']
@@ -1467,7 +1489,15 @@ class ExpenseCategoryViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, 
     """
     queryset = ExpenseCategory.objects.select_related('gl_account').all()
     serializer_class = ExpenseCategorySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {
+        'create': 'expense_category.create',
+        'update': 'coa.manage',
+        'partial_update': 'coa.manage',
+        'destroy': 'coa.manage',
+        'seed_defaults': 'expense_category.create',
+        'default': 'coa.view',
+    }
     filterset_fields = ['is_active', 'is_deductible', 'requires_approval']
     search_fields = ['code', 'name', 'description']
     ordering = ['name']
@@ -1598,7 +1628,15 @@ class IncomeTypeViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, views
     """
     queryset = IncomeType.objects.select_related('gl_account').all()
     serializer_class = IncomeTypeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {
+        'create': 'income_category.create',
+        'update': 'coa.manage',
+        'partial_update': 'coa.manage',
+        'destroy': 'coa.manage',
+        'seed_defaults': 'income_category.create',
+        'default': 'coa.view',
+    }
     filterset_fields = ['is_active', 'is_commissionable', 'is_vatable', 'management_type', 'is_system']
     search_fields = ['code', 'name', 'description']
     ordering = ['display_order', 'name']

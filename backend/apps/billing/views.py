@@ -4,6 +4,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from apps.accounts.permissions import RequireCapability, require_capability
 from django.db import transaction
 from django.db.models import Sum, Count, Q
 from django.utils import timezone
@@ -851,7 +852,19 @@ class ReceiptViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
     queryset = Receipt.objects.select_related(
         'tenant', 'invoice', 'income_type', 'journal'
     ).all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    # Capability-level gating (identity-independent): receipting actions
+    # require receipts.create, voiding requires receipts.void, owner
+    # contribution is a specialised journal. Everything else needs read.
+    capability_map = {
+        'create': 'receipts.create',
+        'batch_process': 'receipts.create',
+        'bulk_receipts': 'receipts.create',
+        'post_to_ledger': 'receipts.create',
+        'reverse': 'receipts.void',
+        'owner_contribution': 'journals.owner_contribution',
+        'default': 'receipts.view',
+    }
     filterset_fields = [
         'tenant', 'invoice', 'invoice__unit', 'invoice__unit__property',
         'payment_method', 'date', 'currency', 'bank_account', 'income_type',
@@ -1263,7 +1276,20 @@ class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
         'approved_by', 'created_by',
     ).all()
     serializer_class = ExpenseSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    # Base action gate. The cash/non-cash posting distinction is enforced in
+    # perform_create() from the expense_kind, since one endpoint serves both.
+    capability_map = {
+        'create': 'expenditure.create',
+        'update': 'expenditure.edit',
+        'partial_update': 'expenditure.edit',
+        'bulk_create': 'expenditure.create',
+        'approve': 'expenditure.edit',
+        'pay': 'expenditure.post_cash',
+        'void': 'expenditure.void',
+        'destroy': 'expenditure.void',
+        'default': 'expenditure.view',
+    }
     filterset_fields = [
         'expense_type', 'expense_kind', 'status', 'date', 'currency', 'payee_type',
         'expense_category', 'bank_account', 'landlord', 'sub_account_category',
@@ -1341,6 +1367,17 @@ class ExpenseViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
         without needing every reader to learn about the supplier FK.
         """
         import logging
+        # Cash vs non-cash posting is a distinct capability. Creating a
+        # non-cash expense requires expenditure.post_non_cash; a cash expense
+        # requires expenditure.post_cash. (expenditure.create was already
+        # verified by RequireCapability for this action.)
+        kind = serializer.validated_data.get('expense_kind') or Expense.ExpenseKind.CASH
+        if kind == Expense.ExpenseKind.NON_CASH:
+            require_capability(self.request.user, 'expenditure.post_non_cash',
+                               'You do not have permission to post non-cash expenditure.')
+        else:
+            require_capability(self.request.user, 'expenditure.post_cash',
+                               'You do not have permission to post cash expenditure.')
         save_kwargs = {'created_by': self.request.user}
         supplier = serializer.validated_data.get('supplier')
         if supplier is not None:

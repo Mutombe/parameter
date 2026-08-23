@@ -2,26 +2,42 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from .models import User, UserActivity, UserInvitation, PasswordResetToken
+from . import capabilities as caps
 
 
 class UserSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
     avatar = serializers.SerializerMethodField()
     tenant_info = serializers.SerializerMethodField()
+    user_type_display = serializers.CharField(source='get_user_type_display', read_only=True)
+    permission_role_display = serializers.CharField(source='get_permission_role_display', read_only=True)
+    capabilities = serializers.SerializerMethodField()
+    permissions_locked = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = User
         fields = [
             'id', 'email', 'first_name', 'last_name', 'full_name',
-            'role', 'phone', 'avatar', 'preferred_currency',
+            'role', 'user_type', 'user_type_display',
+            'permission_role', 'permission_role_display', 'custom_capabilities',
+            'capabilities', 'permissions_locked',
+            'phone', 'avatar', 'preferred_currency',
             'notifications_enabled', 'is_active', 'is_demo_user',
             'account_status', 'last_activity', 'created_at', 'updated_at',
             'tenant_info'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'last_activity']
+        read_only_fields = [
+            'created_at', 'updated_at', 'last_activity',
+            # Permissions are changed only via the dedicated admin endpoint,
+            # never through a plain user PATCH.
+            'user_type', 'permission_role', 'custom_capabilities',
+        ]
 
     def get_full_name(self, obj):
         return obj.get_full_name()
+
+    def get_capabilities(self, obj):
+        return sorted(obj.get_capabilities())
 
     def get_avatar(self, obj):
         if obj.avatar:
@@ -129,6 +145,55 @@ class UserSerializer(serializers.ModelSerializer):
                 'show_logo': getattr(tenant, 'show_logo', True),
             }
         return None
+
+
+class PermissionUpdateSerializer(serializers.Serializer):
+    """Admin-only update of an internal user's user_type / permission_role /
+    custom capabilities. Portal users (Tenant / Account Holder) are rejected
+    at the view — their access is permanently constrained.
+    """
+    user_type = serializers.ChoiceField(
+        choices=[t[0] for t in caps.USER_TYPES], required=False
+    )
+    permission_role = serializers.ChoiceField(
+        choices=[r[0] for r in caps.PERMISSION_ROLES], required=False
+    )
+    custom_capabilities = serializers.ListField(
+        child=serializers.CharField(), required=False
+    )
+
+    def validate_user_type(self, value):
+        if value in caps.LOCKED_USER_TYPES:
+            raise serializers.ValidationError(
+                'Cannot assign a portal (Tenant / Account Holder) user type here.'
+            )
+        if value == 'super_admin':
+            raise serializers.ValidationError('Cannot assign the platform super admin type.')
+        return value
+
+    def validate_permission_role(self, value):
+        if value not in caps.INTERNAL_ASSIGNABLE_ROLES:
+            allowed = ', '.join(caps.INTERNAL_ASSIGNABLE_ROLES)
+            raise serializers.ValidationError(
+                f'Permission role must be one of: {allowed}.'
+            )
+        return value
+
+    def validate_custom_capabilities(self, value):
+        unknown = [
+            c for c in value
+            if c not in caps.CAPABILITY_LABELS or c in ('portal.tenant', 'portal.account_holder')
+        ]
+        if unknown:
+            raise serializers.ValidationError(
+                f'Unknown or disallowed capabilities: {", ".join(unknown)}'
+            )
+        return value
+
+    def validate(self, data):
+        if not data:
+            raise serializers.ValidationError('No permission fields supplied.')
+        return data
 
 
 class UserCreateSerializer(serializers.ModelSerializer):

@@ -26,6 +26,14 @@ interface User {
   last_name: string
   full_name: string
   role: string
+  // Capability-based access (separate identity from permissions)
+  user_type?: string
+  user_type_display?: string
+  permission_role?: string
+  permission_role_display?: string
+  custom_capabilities?: string[]
+  capabilities?: string[]
+  permissions_locked?: boolean
   phone?: string
   avatar?: string
   is_staff?: boolean

@@ -84,6 +84,8 @@ class Command(BaseCommand):
                 'first_name': 'Admin',
                 'last_name': 'User',
                 'role': 'super_admin',
+                'user_type': 'super_admin',
+                'permission_role': 'super_admin_full',
                 'is_staff': True,
                 'is_superuser': True,
             }
@@ -91,7 +93,8 @@ class Command(BaseCommand):
         admin_user.set_password(admin_password)
         admin_user.is_staff = True
         admin_user.is_superuser = True
-        admin_user.role = 'super_admin'
+        admin_user.user_type = 'super_admin'
+        admin_user.permission_role = 'super_admin_full'
         admin_user.save()
 
         if user_created:

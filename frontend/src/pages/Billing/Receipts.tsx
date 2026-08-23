@@ -20,6 +20,7 @@ import { useRecentValues } from '../../hooks/useRecentValues'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { Skeleton, OptimisticItemSkeleton } from '../../components/ui/Skeleton'
 import { showToast, parseApiError } from '../../lib/toast'
+import { usePermissions, CAP } from '../../lib/permissions'
 
 const PAGE_SIZE = 25
 
@@ -76,6 +77,7 @@ function ContribRow({ label, value }: { label: string; value: string }) {
 export default function Receipts() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const { can } = usePermissions()
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounce(search, 300)
   const [currentPage, setCurrentPage] = useState(1)
@@ -469,14 +471,18 @@ export default function Receipts() {
               <Printer className="w-4 h-4" />
               Print
             </Button>
-            <Button variant="outline" onClick={() => setShowContribution(true)} className="gap-2">
-              <Plus className="w-4 h-4" />
-              Owner Contribution
-            </Button>
-            <Button onClick={() => setShowForm(true)} className="gap-2">
-              <Plus className="w-4 h-4" />
-              Record Receipt
-            </Button>
+            {can(CAP.JOURNALS_OWNER_CONTRIBUTION) && (
+              <Button variant="outline" onClick={() => setShowContribution(true)} className="gap-2">
+                <Plus className="w-4 h-4" />
+                Owner Contribution
+              </Button>
+            )}
+            {can(CAP.RECEIPTS_CREATE) && (
+              <Button onClick={() => setShowForm(true)} className="gap-2">
+                <Plus className="w-4 h-4" />
+                Record Receipt
+              </Button>
+            )}
           </div>
         }
       />

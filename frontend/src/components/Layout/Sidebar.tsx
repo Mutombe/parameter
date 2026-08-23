@@ -36,6 +36,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useAuthStore } from '../../stores/authStore'
 import { usePrefetch } from '../../hooks/usePrefetch'
 import { cn } from '../../lib/utils'
+import { userCan, CAP, type Capability } from '../../lib/permissions'
 import { SiFsecure } from "react-icons/si";
 import { PiUsersFour } from "react-icons/pi";
 import { LiaUsersSolid } from "react-icons/lia";
@@ -48,6 +49,8 @@ interface NavItem {
   name: string
   href: string
   icon: React.ComponentType<{ className?: string }>
+  // Capability required to see this item. Omit to always show.
+  cap?: Capability
 }
 
 interface NavSection {
@@ -65,67 +68,67 @@ const navigation: NavSection[] = [
   {
     title: 'Overview',
     items: [
-      { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-      { name: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
+      { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, cap: CAP.DASHBOARD_VIEW },
+      { name: 'Reports', href: '/dashboard/reports', icon: BarChart3, cap: CAP.REPORTS_VIEW },
     ],
   },
   {
     title: 'Portfolio',
     items: [
-      { name: 'Landlords', href: '/dashboard/landlords', icon: PiUsersFour },
-      { name: 'Properties', href: '/dashboard/properties', icon: PiBuildingApartmentLight },
-      { name: 'Units', href: '/dashboard/units', icon: Home },
-      { name: 'Tenants', href: '/dashboard/tenants', icon: LiaUsersSolid },
-      { name: 'Account Holders', href: '/dashboard/account-holders', icon: TbUserSquareRounded },
-      { name: 'Leases', href: '/dashboard/leases', icon: FileText },
-      { name: 'Maintenance', href: '/dashboard/maintenance', icon: Wrench },
+      { name: 'Landlords', href: '/dashboard/landlords', icon: PiUsersFour, cap: CAP.PORTFOLIO_VIEW },
+      { name: 'Properties', href: '/dashboard/properties', icon: PiBuildingApartmentLight, cap: CAP.PORTFOLIO_VIEW },
+      { name: 'Units', href: '/dashboard/units', icon: Home, cap: CAP.PORTFOLIO_VIEW },
+      { name: 'Tenants', href: '/dashboard/tenants', icon: LiaUsersSolid, cap: CAP.PORTFOLIO_VIEW },
+      { name: 'Account Holders', href: '/dashboard/account-holders', icon: TbUserSquareRounded, cap: CAP.PORTFOLIO_VIEW },
+      { name: 'Leases', href: '/dashboard/leases', icon: FileText, cap: CAP.PORTFOLIO_VIEW },
+      { name: 'Maintenance', href: '/dashboard/maintenance', icon: Wrench, cap: CAP.PORTFOLIO_VIEW },
     ],
   },
   {
     title: 'Billing',
     items: [
-      { name: 'Invoices', href: '/dashboard/invoices', icon: Receipt },
-      { name: 'Receipts', href: '/dashboard/receipts', icon: CreditCard },
-      { name: 'Expenditure', href: '/dashboard/expenses', icon: Wallet },
-      { name: 'Late Penalties', href: '/dashboard/late-penalties', icon: AlertTriangle },
-      { name: 'Payment Reminders', href: '/dashboard/payment-reminders', icon: BellRing },
+      { name: 'Invoices', href: '/dashboard/invoices', icon: Receipt, cap: CAP.INVOICES_VIEW },
+      { name: 'Receipts', href: '/dashboard/receipts', icon: CreditCard, cap: CAP.RECEIPTS_VIEW },
+      { name: 'Expenditure', href: '/dashboard/expenses', icon: Wallet, cap: CAP.EXPENDITURE_VIEW },
+      { name: 'Late Penalties', href: '/dashboard/late-penalties', icon: AlertTriangle, cap: CAP.INVOICES_VIEW },
+      { name: 'Payment Reminders', href: '/dashboard/payment-reminders', icon: BellRing, cap: CAP.INVOICES_VIEW },
     ],
   },
   {
     title: 'Accounting',
     defaultOpen: false,
     items: [
-      { name: 'Journals', href: '/dashboard/journals', icon: FileSpreadsheet },
-      { name: 'Bank Accounts', href: '/dashboard/bank-accounts', icon: Landmark },
-      { name: 'Bank Reconciliation', href: '/dashboard/bank-reconciliation', icon: Scale },
+      { name: 'Journals', href: '/dashboard/journals', icon: FileSpreadsheet, cap: CAP.JOURNALS_VIEW },
+      { name: 'Bank Accounts', href: '/dashboard/bank-accounts', icon: Landmark, cap: CAP.BANK_VIEW },
+      { name: 'Bank Reconciliation', href: '/dashboard/bank-reconciliation', icon: Scale, cap: CAP.BANK_VIEW },
     ],
   },
   {
     title: 'Setup',
     defaultOpen: false,
     items: [
-      { name: 'Chart of Accounts', href: '/dashboard/chart-of-accounts', icon: BookOpen },
-      { name: 'Revenue', href: '/dashboard/income-types', icon: DollarSign },
-      { name: 'Expenditure Accounts', href: '/dashboard/expense-categories', icon: GitCompare },
+      { name: 'Chart of Accounts', href: '/dashboard/chart-of-accounts', icon: BookOpen, cap: CAP.COA_VIEW },
+      { name: 'Revenue', href: '/dashboard/income-types', icon: DollarSign, cap: CAP.COA_VIEW },
+      { name: 'Expenditure Accounts', href: '/dashboard/expense-categories', icon: GitCompare, cap: CAP.COA_VIEW },
     ],
   },
   {
     title: 'Opening & Transfers',
     defaultOpen: false,
     items: [
-      { name: 'Opening Balances', href: '/dashboard/opening-balances', icon: BookOpen },
-      { name: 'Mass OB Import', href: '/dashboard/opening-balances/import', icon: Upload },
-      { name: 'Account Transfers', href: '/dashboard/bs-movements', icon: GitCompare },
+      { name: 'Opening Balances', href: '/dashboard/opening-balances', icon: BookOpen, cap: CAP.OPENING_BALANCES_MANAGE },
+      { name: 'Mass OB Import', href: '/dashboard/opening-balances/import', icon: Upload, cap: CAP.OPENING_BALANCES_MANAGE },
+      { name: 'Account Transfers', href: '/dashboard/bs-movements', icon: GitCompare, cap: CAP.OPENING_BALANCES_MANAGE },
     ],
   },
   {
     title: 'Administration',
     items: [
-      { name: 'Team', href: '/dashboard/team', icon: TbUserSquareRounded },
+      { name: 'Team', href: '/dashboard/team', icon: TbUserSquareRounded, cap: CAP.USERS_VIEW },
       { name: 'Document Scanner', href: '/dashboard/document-scanner', icon: ScanLine },
-      { name: 'Data Import', href: '/dashboard/data-import', icon: Upload },
-      { name: 'Audit Trail', href: '/dashboard/audit-trail', icon: SiFsecure },
-      { name: 'Trash', href: '/dashboard/trash', icon: Trash2 },
+      { name: 'Data Import', href: '/dashboard/data-import', icon: Upload, cap: CAP.DATA_IMPORT },
+      { name: 'Audit Trail', href: '/dashboard/audit-trail', icon: SiFsecure, cap: CAP.AUDIT_VIEW },
+      { name: 'Trash', href: '/dashboard/trash', icon: Trash2, cap: CAP.TRASH_MANAGE },
     ],
   },
 ]
@@ -140,10 +143,19 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
   // Add Super Admin section for super_admin users
   const isSuperAdmin = user?.role === 'super_admin'
 
+  // Filter each item by the viewer's capabilities, then drop empty sections.
+  // Items without a `cap` are always shown. super_admin bypasses via userCan.
+  const visibleNavigation: NavSection[] = navigation
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => !item.cap || userCan(user, item.cap)),
+    }))
+    .filter((section) => section.items.length > 0)
+
   // Build navigation with conditional Super Admin section
   const fullNavigation: NavSection[] = isSuperAdmin
     ? [
-        ...navigation,
+        ...visibleNavigation,
         {
           title: 'Platform',
           items: [
@@ -151,7 +163,7 @@ export default function Sidebar({ isMobileDrawer = false, onClose }: SidebarProp
           ],
         },
       ]
-    : navigation
+    : visibleNavigation
 
   // Track which sections are collapsed
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {

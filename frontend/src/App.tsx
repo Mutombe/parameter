@@ -1,6 +1,7 @@
 import { lazy, Suspense, ReactNode } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
+import { userCan, CAP, type Capability } from './lib/permissions'
 import { useOfflineSync } from './hooks/useOfflineSync'
 import Layout from './components/Layout/Layout'
 import { PageSkeleton, ProfileSkeleton, SettingsSkeleton, SkeletonDashboard } from './components/ui'
@@ -120,6 +121,21 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function CapabilityRoute({ cap, children }: { cap: Capability; children: React.ReactNode }) {
+  const { isAuthenticated, user } = useAuthStore()
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+  // Lacks the capability for this page — bounce to the dashboard rather than
+  // showing a page they cannot use. Backend enforces the same rule.
+  if (!userCan(user, cap)) {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  return <>{children}</>
+}
+
 function LandlordPortalRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user } = useAuthStore()
 
@@ -223,19 +239,19 @@ export default function App() {
         <Route path="expense-categories/:id" element={<LazyPage><ExpenseCategoryDetail /></LazyPage>} />
         <Route path="bank-reconciliation" element={<LazyPage><BankReconciliation /></LazyPage>} />
         <Route path="subaccounts/:id" element={<LazyPage><SubAccountStatement /></LazyPage>} />
-        <Route path="bs-movements" element={<LazyPage><BalanceSheetMovements /></LazyPage>} />
-        <Route path="opening-balances" element={<LazyPage><OpeningBalances /></LazyPage>} />
-        <Route path="opening-balances/import" element={<LazyPage><OpeningBalanceImport /></LazyPage>} />
+        <Route path="bs-movements" element={<CapabilityRoute cap={CAP.OPENING_BALANCES_MANAGE}><LazyPage><BalanceSheetMovements /></LazyPage></CapabilityRoute>} />
+        <Route path="opening-balances" element={<CapabilityRoute cap={CAP.OPENING_BALANCES_MANAGE}><LazyPage><OpeningBalances /></LazyPage></CapabilityRoute>} />
+        <Route path="opening-balances/import" element={<CapabilityRoute cap={CAP.OPENING_BALANCES_MANAGE}><LazyPage><OpeningBalanceImport /></LazyPage></CapabilityRoute>} />
         {/* Assets & Liabilities moved into Chart of Accounts — keep old links working. */}
         <Route path="global-accounts" element={<Navigate to="/dashboard/chart-of-accounts" replace />} />
         <Route path="global-accounts/:id" element={<LazyPage><AccountDetail /></LazyPage>} />
         <Route path="suppliers/:id" element={<LazyPage><SupplierDetail /></LazyPage>} />
         <Route path="reports" element={<LazyPage><Reports /></LazyPage>} />
         <Route path="aged-analysis" element={<Navigate to="/dashboard/reports?report=aged-analysis" replace />} />
-        <Route path="audit-trail" element={<LazyPage><AuditTrail /></LazyPage>} />
-        <Route path="team" element={<LazyPage><TeamManagement /></LazyPage>} />
+        <Route path="audit-trail" element={<CapabilityRoute cap={CAP.AUDIT_VIEW}><LazyPage><AuditTrail /></LazyPage></CapabilityRoute>} />
+        <Route path="team" element={<CapabilityRoute cap={CAP.USERS_VIEW}><LazyPage><TeamManagement /></LazyPage></CapabilityRoute>} />
         <Route path="super-admin" element={<LazyPage fallback={<SkeletonDashboard />}><SuperAdminDashboard /></LazyPage>} />
-        <Route path="data-import" element={<LazyPage><DataImport /></LazyPage>} />
+        <Route path="data-import" element={<CapabilityRoute cap={CAP.DATA_IMPORT}><LazyPage><DataImport /></LazyPage></CapabilityRoute>} />
         <Route path="document-scanner" element={<LazyPage><DocumentScanner /></LazyPage>} />
         <Route path="profile" element={<LazyPage fallback={<ProfileSkeleton />}><Profile /></LazyPage>} />
         <Route path="settings" element={<LazyPage fallback={<SettingsSkeleton />}><Settings /></LazyPage>} />
@@ -243,7 +259,7 @@ export default function App() {
         <Route path="notifications" element={<LazyPage><Notifications /></LazyPage>} />
         <Route path="payment-reminders" element={<LazyPage><PaymentReminders /></LazyPage>} />
         <Route path="late-penalties" element={<LazyPage><LatePenalties /></LazyPage>} />
-        <Route path="trash" element={<LazyPage><Trash /></LazyPage>} />
+        <Route path="trash" element={<CapabilityRoute cap={CAP.TRASH_MANAGE}><LazyPage><Trash /></LazyPage></CapabilityRoute>} />
         <Route path="reports/property-performance" element={<LazyPage><PropertyPerformance /></LazyPage>} />
         <Route path="reports/tax" element={<LazyPage><TaxReports /></LazyPage>} />
         <Route path="maintenance" element={<LazyPage><MaintenanceRequests /></LazyPage>} />
