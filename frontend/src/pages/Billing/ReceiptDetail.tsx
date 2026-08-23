@@ -151,6 +151,7 @@ export default function ReceiptDetail() {
       description: receipt.description,
       // Transaction identification + cashier audit
       currency: receipt.currency,
+      category: receipt.category_display,
       payer_id: receipt.tenant_code,
       payer_type: receipt.payer_type,
       property_name: receipt.property_name,

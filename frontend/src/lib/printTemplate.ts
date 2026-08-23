@@ -387,6 +387,10 @@ interface ReceiptData {
   // Transaction-identification + cashier-audit fields. The payer (tenant /
   // account holder) stays distinct from the cashier (authenticated user).
   currency?: string
+  category?: string
+  // Multi-category allocations, if the payment spans categories. When present
+  // with 2+ entries, a Category Breakdown replaces the single Category line.
+  category_breakdown?: Array<{ category: string; amount: number }>
   payer_id?: string
   payer_type?: string
   property_name?: string
@@ -406,6 +410,9 @@ const methodLabels: Record<string, string> = {
 
 export function printReceipt(data: ReceiptData): void {
   const payerLabel = data.payer_type === 'levy' ? 'Account Holder' : 'Tenant'
+  // A payment that spans categories shows a breakdown instead of a single line.
+  const breakdown = (data.category_breakdown && data.category_breakdown.length > 1)
+    ? data.category_breakdown : null
   const body = `
     <div class="info-grid">
       <div>
@@ -430,6 +437,7 @@ export function printReceipt(data: ReceiptData): void {
           <label>Currency</label>
           <p>${data.currency || '—'}</p>
         </div>
+        ${!breakdown && data.category ? `<div class="info-group" style="margin-top:8px"><label>Category</label><p>${data.category}</p></div>` : ''}
         <div class="info-group" style="margin-top:8px">
           <label>Payment Method</label>
           <p>${methodLabels[data.payment_method] || data.payment_method}</p>
@@ -445,6 +453,12 @@ export function printReceipt(data: ReceiptData): void {
       <small>Amount Received</small>
       <div class="big-value">${formatCurrency(data.amount, data.currency)}</div>
     </div>
+
+    ${breakdown ? `<div class="info-group" style="margin-top:16px"><label>Category Breakdown</label>
+      <table style="width:100%; border-collapse:collapse; margin-top:6px; font-size:13px">
+        ${breakdown.map(r => `<tr><td style="padding:4px 0; color:#374151">${r.category}</td><td style="padding:4px 0; text-align:right; font-variant-numeric:tabular-nums">${formatCurrency(r.amount, data.currency)}</td></tr>`).join('')}
+        <tr style="border-top:1px solid #e5e7eb; font-weight:700"><td style="padding:6px 0">Total</td><td style="padding:6px 0; text-align:right; font-variant-numeric:tabular-nums">${formatCurrency(breakdown.reduce((s, r) => s + Number(r.amount || 0), 0), data.currency)}</td></tr>
+      </table></div>` : ''}
 
     ${data.cashier_name ? `<div class="info-group" style="margin-top:16px; border-top:1px solid #e5e7eb; padding-top:10px"><label>Processed By (Cashier)</label><p>${data.cashier_name}${data.cashier_role ? ` <span style="color:#6b7280;font-weight:400">· ${data.cashier_role}</span>` : ''}</p></div>` : ''}
   `

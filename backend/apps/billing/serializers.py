@@ -138,6 +138,11 @@ class ReceiptSerializer(serializers.ModelSerializer):
     created_by_role = serializers.SerializerMethodField()
     property_name = serializers.SerializerMethodField()
     landlord_name = serializers.SerializerMethodField()
+    # Reporting category of the payment, EXPOSED (never re-classified) from the
+    # receipt's own sub_account_category — the same value the posting engine
+    # locked in — falling back to the linked invoice's type. Display only.
+    category = serializers.SerializerMethodField()
+    category_display = serializers.SerializerMethodField()
 
     class Meta:
         model = Receipt
@@ -148,6 +153,7 @@ class ReceiptSerializer(serializers.ModelSerializer):
             'bank_account_name', 'bank_account_currency',
             'property_name', 'landlord_name',
             'sub_account_category', 'sub_account_category_display',
+            'category', 'category_display',
             'date', 'amount', 'currency', 'payment_method',
             'reference', 'bank_name', 'description', 'notes', 'journal',
             'journal_number', 'transaction_number', 'transaction_display',
@@ -155,6 +161,27 @@ class ReceiptSerializer(serializers.ModelSerializer):
             'created_by', 'created_by_name', 'created_by_role', 'created_at', 'updated_at'
         ]
         read_only_fields = ['receipt_number', 'journal', 'created_at', 'updated_at']
+
+    # Category label map (the spec's supported set; other codes title-cased).
+    _CATEGORY_LABELS = {
+        'rent': 'Rent', 'levy': 'Levy', 'special_levy': 'Special Levy',
+        'parking': 'Parking', 'maintenance': 'Maintenance', 'rates': 'Rates',
+        'deposit': 'Deposit', 'vat': 'VAT', 'general': 'General',
+    }
+
+    def _category_code(self, obj):
+        # Same source of truth the posting engine locks: the receipt's own
+        # sub_account_category, else the linked invoice's type. Never invented.
+        return (obj.sub_account_category
+                or (obj.invoice.invoice_type if (obj.invoice_id and obj.invoice) else None)
+                or 'rent')
+
+    def get_category(self, obj):
+        return self._category_code(obj)
+
+    def get_category_display(self, obj):
+        code = self._category_code(obj)
+        return self._CATEGORY_LABELS.get(code, str(code).replace('_', ' ').title())
 
     def get_created_by_name(self, obj):
         u = obj.created_by if obj.created_by_id else None
