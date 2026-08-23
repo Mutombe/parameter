@@ -404,13 +404,17 @@ export default function ChartOfAccounts() {
             const vatAcct = list.find((a: any) => a.code === '2110')
               || list.find((a: any) => a.account_subtype === 'vat_payable')
             const cards = [
-              commissionAcct && { acct: commissionAcct, label: 'Agent Commission', desc: 'Commission earned on every receipted income item (rent, levy, maintenance, parking, rates, …)' },
+              // GL 6000 agent-side display override: to the agency this is
+              // income, so it's shown as positive "Agent Commission Income".
+              // (Its underlying Cost-of-Sales classification is unchanged — that
+              // is what Landlord reporting needs.)
+              commissionAcct && { acct: commissionAcct, label: 'Agent Commission Income', desc: 'Commission earned on every receipted income item (rent, levy, maintenance, parking, rates, …)', income: true },
               vatAcct && { acct: vatAcct, label: 'VAT Payable (Commission)', desc: 'VAT charged on the agent commission of every receipt' },
-            ].filter(Boolean) as Array<{ acct: any; label: string; desc: string }>
+            ].filter(Boolean) as Array<{ acct: any; label: string; desc: string; income?: boolean }>
             if (!cards.length) return null
             return (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {cards.map(({ acct, label, desc }) => (
+                {cards.map(({ acct, label, desc, income }) => (
                   <button
                     key={acct.id}
                     onClick={() => navigate(`/dashboard/global-accounts/${acct.id}`)}
@@ -419,11 +423,13 @@ export default function ChartOfAccounts() {
                     <div className="flex items-center justify-between">
                       <div className="min-w-0">
                         <p className="text-xs font-semibold uppercase tracking-wider text-primary-700">{label}</p>
-                        <p className="text-[11px] text-gray-500 mt-0.5">{acct.code} · {acct.name}</p>
+                        <p className="text-[11px] text-gray-500 mt-0.5">{acct.code} · {income ? 'Agent Commission Income' : acct.name}</p>
                       </div>
                       <TrendingUp className="w-5 h-5 text-primary-500 shrink-0" />
                     </div>
-                    <p className="mt-2 text-2xl font-bold tabular-nums text-gray-900">{formatCurrency(Number(acct.current_balance || 0))}</p>
+                    {/* Agent view shows commission as positive income; the raw GL
+                        balance (a credit on a Cost-of-Sales account) is negative. */}
+                    <p className="mt-2 text-2xl font-bold tabular-nums text-gray-900">{formatCurrency(income ? Math.abs(Number(acct.current_balance || 0)) : Number(acct.current_balance || 0))}</p>
                     <p className="mt-1 text-xs text-gray-500">{desc}</p>
                     <p className="mt-2 text-xs font-medium text-primary-600">View statement (opening + running balance) →</p>
                   </button>

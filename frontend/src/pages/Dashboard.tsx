@@ -359,13 +359,13 @@ export default function Dashboard() {
             tooltip="Sum of all tenant sub-account balances (what tenants owe us)"
           />
           <StatCard
-            title="Commission Earned (MTD)"
+            title="Agent Commission Income (MTD)"
             value={formatCurrency(stats?.monthly?.commission || stats?.financial?.commission_mtd || 0)}
             subtitle="This month"
             icon={TrendingUp}
             color="purple"
             isLoading={isLoading}
-            tooltip="Month-to-date commission revenue"
+            tooltip="Month-to-date Agent Commission Income (GL 6000). Shown as positive income for the agency; the same account is the landlord's Cost of Sales in landlord reports."
           />
           <StatCard
             title="Net Cash Position"

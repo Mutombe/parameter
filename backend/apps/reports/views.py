@@ -1086,12 +1086,23 @@ class IncomeStatementView(APIView):
             # receipts and understates per-property overrides. See
             # _make_commission_resolver().
             _commission_of = _make_commission_resolver()
-            commission_by_type = {}
+            commission_by_type = {}          # NET commission per bucket (GL 6000)
+            total_commission_vat = Decimal('0')  # VAT on commission (GL 2110)
             _commission_of.warm(_cos_receipts)
             for _r in _cos_receipts:
-                _c = _commission_of(_r)
-                if not _c:
+                _gross = _commission_of(_r)
+                if not _gross:
                     continue
+                # Split the gross commission the agency charged into the agent's
+                # NET commission (GL 6000 — the agent's income, the landlord's
+                # cost) and the VAT on that commission (GL 2110). Same VAT rule
+                # as receipt posting, so net + VAT sum back to gross and the
+                # total Cost of Sales / gross profit are unchanged.
+                _it = _r.income_type
+                _vr = (_it.vat_rate / Decimal('100')) if (_it and _it.is_vatable) else Decimal('0.15')
+                _vat = (_gross - _gross / (Decimal('1') + _vr)) if _vr else Decimal('0')
+                _net = _gross - _vat
+                total_commission_vat += _vat
                 _inv = _r.invoice if _r.invoice_id else None
                 if _inv and _inv.invoice_type:
                     _cat = _inv.invoice_type
@@ -1099,7 +1110,7 @@ class IncomeStatementView(APIView):
                     _cat = _r.income_type.code.lower()
                 else:
                     _cat = 'other'
-                commission_by_type[_cat] = commission_by_type.get(_cat, Decimal('0')) + _c
+                commission_by_type[_cat] = commission_by_type.get(_cat, Decimal('0')) + _net
 
             for key, label in REVENUE_BUCKETS:
                 amt = commission_by_type.get(key, Decimal('0'))
@@ -1122,6 +1133,17 @@ class IncomeStatementView(APIView):
                     'balance': float(other_commission), 'group': 'cost_of_sales',
                 })
                 total_cost_of_sales += other_commission
+
+            # GL 2110 landlord-side reporting override: the VAT charged on the
+            # agent's commission is part of the landlord's cost of sales, shown
+            # as its own line. 2110 keeps its Current-Liability classification in
+            # the agency's own reports — this override is landlord-view only.
+            if total_commission_vat:
+                cost_of_sales_list.append({
+                    'code': '2110', 'name': 'VAT on Agent Commission',
+                    'balance': float(total_commission_vat), 'group': 'cost_of_sales',
+                })
+                total_cost_of_sales += total_commission_vat
 
             gross_profit = total_revenue - total_cost_of_sales
 
