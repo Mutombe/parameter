@@ -136,6 +136,21 @@ def get_allowed_invite_roles(user):
     return role_map.get(user.role, [])
 
 
+def get_allowed_invite_types(user):
+    """User types an inviter may invite (capability-era equivalent of
+    get_allowed_invite_roles). Admins can invite any of the seven business
+    types; an Accounts Officer can invite non-admin internal types.
+    """
+    if _is_super(user) or getattr(user, 'user_type', None) in ('super_admin', 'admin'):
+        return [
+            'admin', 'accounts_officer', 'clerk', 'cashier',
+            'portfolio_manager', 'tenant', 'account_holder',
+        ]
+    if getattr(user, 'user_type', None) == 'accounts_officer':
+        return ['accounts_officer', 'clerk', 'cashier', 'portfolio_manager']
+    return []
+
+
 class IsTenantPortalUser(permissions.BasePermission):
     """
     Permission to check if user is a tenant portal user.

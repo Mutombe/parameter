@@ -3,6 +3,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from apps.accounts.permissions import RequireCapability
 from django.utils import timezone
 from .models import Notification, NotificationPreference, MasterfileChangeLog
 from .serializers import (
@@ -121,7 +122,11 @@ class NotificationPreferenceViewSet(viewsets.ViewSet):
 class MasterfileChangeLogViewSet(viewsets.ReadOnlyModelViewSet):
     """View masterfile change history."""
     serializer_class = MasterfileChangeLogSerializer
-    permission_classes = [IsAuthenticated]
+    # Read-only entity change history surfaced on masterfile detail pages.
+    # (Personal notifications above stay open to all authenticated users,
+    # including portal users, so they are intentionally not capability-gated.)
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {'default': 'portfolio.view'}
     filterset_fields = ['entity_type', 'change_type', 'changed_by']
     search_fields = ['entity_name', 'changed_by_email']
 

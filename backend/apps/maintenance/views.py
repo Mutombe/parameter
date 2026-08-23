@@ -3,6 +3,17 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from apps.accounts.permissions import RequireCapability
+
+# Maintenance is part of the portfolio surface.
+_MAINT_CAPS = {
+    'create': 'portfolio.manage',
+    'update': 'portfolio.manage',
+    'partial_update': 'portfolio.manage',
+    'destroy': 'portfolio.manage',
+    'complete': 'portfolio.manage',
+    'default': 'portfolio.view',
+}
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db.models import Count, Q, Prefetch
 from .models import MaintenanceRequest, WorkOrder
@@ -21,7 +32,8 @@ class MaintenanceRequestViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, vi
     ).prefetch_related(
         Prefetch('work_orders', queryset=WorkOrder.objects.select_related('assigned_to'))
     ).all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = _MAINT_CAPS
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filterset_fields = ['property', 'unit', 'priority', 'status']
     search_fields = ['title', 'description', 'property__name', 'unit__unit_number']
@@ -59,7 +71,8 @@ class WorkOrderViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mo
         'request', 'request__property', 'assigned_to'
     ).all()
     serializer_class = WorkOrderSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = _MAINT_CAPS
     filterset_fields = ['request', 'status', 'assigned_to']
     search_fields = ['vendor_name', 'notes', 'request__title']
     ordering_fields = ['created_at', 'scheduled_date', 'status']

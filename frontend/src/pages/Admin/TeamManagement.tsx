@@ -29,30 +29,28 @@ import { useSelection } from '../../hooks/useSelection'
 import { useBulkLoading } from '../../hooks/useBulkLoading'
 
 
-// Invite role options. Values are legacy role codes the invite endpoint
-// accepts; on acceptance they map to the corresponding user type. Fine-grained
-// types (Cashier, Portfolio Manager) and permission tuning are set afterwards
-// via the per-user Permissions dialog.
-const allRoleOptions = [
+// Invite user-type options. Invitations now carry the full user type; the
+// invitee is created with that type (and its default permission role) on
+// acceptance. The backend filters this list per the inviter's authority.
+const allTypeOptions = [
   { value: 'admin', label: 'Admin', description: 'Full access except receipting' },
-  { value: 'accountant', label: 'Accounts Officer', description: 'Finances & billing; no bank/income-category creation or receipting' },
+  { value: 'accounts_officer', label: 'Accounts Officer', description: 'Finances & billing; no bank/income-category creation or receipting' },
   { value: 'clerk', label: 'Clerk', description: 'General operational data entry' },
-  { value: 'tenant_portal', label: 'Tenant', description: 'Own tenant portal only' },
+  { value: 'cashier', label: 'Cashier', description: 'Cash & receipting; no posting, voiding or general journals' },
+  { value: 'portfolio_manager', label: 'Portfolio Manager', description: 'View & print only' },
+  { value: 'tenant', label: 'Tenant', description: 'Own tenant portal only' },
+  { value: 'account_holder', label: 'Account Holder', description: 'Own account-holder portal only' },
 ]
+
+// CSV bulk upload still uses legacy role codes in its `role` column; they map
+// to the corresponding user type on acceptance.
+const csvRoleToTypeNote = 'admin, accountant, clerk, tenant_portal'
 
 const statusColors: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700',
   accepted: 'bg-emerald-100 text-emerald-700',
   expired: 'bg-gray-100 text-gray-600',
   cancelled: 'bg-rose-100 text-rose-700',
-}
-
-const roleTooltips: Record<string, string> = {
-  admin: 'Full access to all features and settings',
-  accountant: 'Can manage finances, billing, and financial reports',
-  clerk: 'Basic data entry and viewing access',
-  tenant_portal: 'Limited access to tenant-specific portal only',
-  super_admin: 'Platform-wide administrative access',
 }
 
 const statusTooltips: Record<string, string> = {
@@ -88,12 +86,12 @@ export default function TeamManagement() {
     email: '',
     first_name: '',
     last_name: '',
-    role: 'clerk',
+    user_type: 'clerk',
   })
 
   // Multi invite state
   const [bulkEmails, setBulkEmails] = useState('')
-  const [bulkRole, setBulkRole] = useState('clerk')
+  const [bulkUserType, setBulkUserType] = useState('clerk')
   const [bulkFirstName, setBulkFirstName] = useState('')
   const [bulkLastName, setBulkLastName] = useState('')
 
@@ -169,20 +167,20 @@ export default function TeamManagement() {
     placeholderData: keepPreviousData,
   })
 
-  // Get allowed roles for this user
-  const { data: allowedRolesData } = useQuery<{ allowed_roles: { value: string; label: string }[] }>({
-    queryKey: ['allowed-roles'],
-    queryFn: () => invitationsApi.allowedRoles().then(r => r.data),
+  // Get allowed user types for this inviter
+  const { data: allowedTypesData } = useQuery<{ allowed_types: { value: string; label: string }[] }>({
+    queryKey: ['allowed-types'],
+    queryFn: () => invitationsApi.allowedTypes().then(r => r.data),
     enabled: canInvite,
     placeholderData: keepPreviousData,
   })
 
-  // Filter role options based on what user is allowed to invite
-  const roleOptions = useMemo(() => {
-    if (!allowedRolesData?.allowed_roles) return []
-    const allowedValues = allowedRolesData.allowed_roles.map((r) => r.value)
-    return allRoleOptions.filter(role => allowedValues.includes(role.value))
-  }, [allowedRolesData])
+  // Filter type options based on what the inviter is allowed to invite
+  const typeOptions = useMemo(() => {
+    if (!allowedTypesData?.allowed_types) return []
+    const allowedValues = allowedTypesData.allowed_types.map((t) => t.value)
+    return allTypeOptions.filter(t => allowedValues.includes(t.value))
+  }, [allowedTypesData])
 
   // Mutations
   const createInvitationMutation = useMutation({
@@ -190,13 +188,15 @@ export default function TeamManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invitations'] })
       setInviteModalOpen(false)
-      setInviteForm({ email: '', first_name: '', last_name: '', role: 'clerk' })
+      setInviteForm({ email: '', first_name: '', last_name: '', user_type: 'clerk' })
       toast.success('Invitation sent successfully')
     },
     onError: (error: any) => {
       const errorData = error.response?.data
       // Handle validation errors (Django REST Framework format)
-      if (errorData?.role) {
+      if (errorData?.user_type) {
+        toast.error(errorData.user_type[0] || errorData.user_type)
+      } else if (errorData?.role) {
         toast.error(errorData.role[0] || errorData.role)
       } else if (errorData?.email) {
         toast.error(errorData.email[0] || errorData.email)
@@ -286,13 +286,13 @@ export default function TeamManagement() {
     createInvitationMutation.mutate(inviteForm)
   }
 
-  // Reset form when modal opens with default allowed role
+  // Reset form when modal opens with default allowed type
   const handleOpenInviteModal = () => {
-    const defaultRole = roleOptions.length > 0 ? roleOptions[roleOptions.length - 1].value : 'clerk'
-    setInviteForm({ email: '', first_name: '', last_name: '', role: defaultRole })
+    const defaultType = typeOptions.length > 0 ? typeOptions[typeOptions.length - 1].value : 'clerk'
+    setInviteForm({ email: '', first_name: '', last_name: '', user_type: defaultType })
     setInviteTab('single')
     setBulkEmails('')
-    setBulkRole(defaultRole)
+    setBulkUserType(defaultType)
     setBulkFirstName('')
     setBulkLastName('')
     setCsvFile(null)
@@ -320,7 +320,7 @@ export default function TeamManagement() {
         email,
         first_name: bulkFirstName,
         last_name: bulkLastName,
-        role: bulkRole,
+        user_type: bulkUserType,
       }))
       const res = await invitationsApi.bulkCreate({ invitations })
       setBulkResults(res.data.results)
@@ -412,29 +412,29 @@ export default function TeamManagement() {
   const pendingInvitations = invitationList.filter((i: any) => i.status === 'pending')
   const pageIds = pendingInvitations.map((i: any) => i.id)
 
-  // Role selector component (shared between tabs)
-  const RoleSelector = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+  // User-type selector component (shared between tabs)
+  const TypeSelector = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
     <div className="space-y-2">
-      {roleOptions.map((role) => (
+      {typeOptions.map((t) => (
         <label
-          key={role.value}
+          key={t.value}
           className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer transition-colors ${
-            value === role.value
+            value === t.value
               ? 'border-primary-500 bg-primary-50'
               : 'border-gray-200 hover:border-gray-300'
           }`}
         >
           <input
             type="radio"
-            name="role"
-            value={role.value}
-            checked={value === role.value}
-            onChange={() => onChange(role.value)}
+            name="user_type"
+            value={t.value}
+            checked={value === t.value}
+            onChange={() => onChange(t.value)}
             className="mt-0.5"
           />
           <div>
-            <p className="font-medium text-gray-900">{role.label}</p>
-            <p className="text-sm text-gray-500">{role.description}</p>
+            <p className="font-medium text-gray-900">{t.label}</p>
+            <p className="text-sm text-gray-500">{t.description}</p>
           </div>
         </label>
       ))}
@@ -763,10 +763,10 @@ export default function TeamManagement() {
                         <td className="px-6 py-4">
                           <span
                             className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg capitalize"
-                            title={roleTooltips[invite.role] || 'Assigned role'}
+                            title="User type the invitee will be created as"
                           >
                             <Shield className="w-3 h-3" />
-                            {invite.role?.replace('_', ' ')}
+                            {invite.user_type_display || invite.role?.replace('_', ' ')}
                           </span>
                         </td>
                         <td className="px-6 py-4">
@@ -939,8 +939,8 @@ export default function TeamManagement() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-                  <RoleSelector value={inviteForm.role} onChange={(v) => setInviteForm({ ...inviteForm, role: v })} />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">User Type *</label>
+                  <TypeSelector value={inviteForm.user_type} onChange={(v) => setInviteForm({ ...inviteForm, user_type: v })} />
                 </div>
                 <div className="flex justify-end gap-3 pt-4">
                   <Button type="button" variant="outline" onClick={() => setInviteModalOpen(false)}>Cancel</Button>
@@ -979,8 +979,8 @@ export default function TeamManagement() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-                  <RoleSelector value={bulkRole} onChange={setBulkRole} />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">User Type *</label>
+                  <TypeSelector value={bulkUserType} onChange={setBulkUserType} />
                 </div>
                 <div className="flex justify-end gap-3 pt-4">
                   <Button type="button" variant="outline" onClick={() => setInviteModalOpen(false)}>Cancel</Button>
@@ -1012,6 +1012,7 @@ export default function TeamManagement() {
                       <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
                       <p className="text-gray-600 font-medium">Drop a CSV file here or click to browse</p>
                       <p className="text-sm text-gray-400 mt-1">Columns: email, first_name, last_name, role</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Valid role values: {csvRoleToTypeNote}</p>
                       <input
                         id="csv-upload"
                         type="file"

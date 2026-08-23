@@ -268,10 +268,13 @@ class UserInvitationSerializer(serializers.ModelSerializer):
     invited_by_name = serializers.CharField(source='invited_by.get_full_name', read_only=True)
     is_valid = serializers.BooleanField(read_only=True)
 
+    user_type_display = serializers.CharField(source='get_user_type_display', read_only=True)
+
     class Meta:
         model = UserInvitation
         fields = [
             'id', 'email', 'first_name', 'last_name', 'role',
+            'user_type', 'user_type_display',
             'status', 'invited_by', 'invited_by_name',
             'created_at', 'expires_at', 'is_valid'
         ]
@@ -279,11 +282,18 @@ class UserInvitationSerializer(serializers.ModelSerializer):
 
 
 class CreateInvitationSerializer(serializers.Serializer):
-    """Serializer for creating invitations."""
+    """Serializer for creating invitations.
+
+    Prefers ``user_type`` (the seven business types). ``role`` is still
+    accepted for backward compatibility and, when given without a user_type,
+    is mapped to the corresponding type. The serializer always emits BOTH
+    ``user_type`` and a derived legacy ``role`` in validated_data.
+    """
     email = serializers.EmailField()
     first_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
     last_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
-    role = serializers.ChoiceField(choices=User.Role.choices, default=User.Role.CLERK)
+    role = serializers.ChoiceField(choices=User.Role.choices, required=False)
+    user_type = serializers.ChoiceField(choices=[t[0] for t in caps.USER_TYPES], required=False)
 
     def validate_email(self, value):
         from django.db import connection
@@ -305,33 +315,39 @@ class CreateInvitationSerializer(serializers.Serializer):
 
         return value
 
-    def validate_role(self, value):
-        # Only allow certain roles to be invited
-        if value == User.Role.SUPER_ADMIN:
-            raise serializers.ValidationError('Cannot invite super admin users')
-        return value
-
     def validate(self, data):
-        """Validate that inviter can invite the requested role."""
-        from .permissions import get_allowed_invite_roles
+        """Resolve the invited user_type (from user_type or legacy role) and
+        confirm the inviter is allowed to invite it."""
+        from .permissions import get_allowed_invite_types
 
         request = self.context.get('request')
         if not request or not request.user:
             raise serializers.ValidationError('Authentication required')
 
         inviter = request.user
-        invited_role = data.get('role', User.Role.CLERK)
 
-        # Get allowed roles for this inviter
-        allowed_roles = get_allowed_invite_roles(inviter)
+        utype = data.get('user_type')
+        if not utype:
+            role = data.get('role')
+            if role:
+                mapped = caps.LEGACY_ROLE_TO_TYPE.get(role)
+                utype = mapped[0] if mapped else 'clerk'
+            else:
+                utype = 'clerk'
 
-        # Check if inviter can invite this role
-        if invited_role not in allowed_roles:
-            allowed_names = [r.label for r in allowed_roles] if allowed_roles else []
+        if utype == 'super_admin':
+            raise serializers.ValidationError({'user_type': 'Cannot invite super admin users'})
+
+        allowed_types = get_allowed_invite_types(inviter)
+        if utype not in allowed_types:
+            allowed_names = [caps.USER_TYPE_LABELS[t] for t in allowed_types]
             raise serializers.ValidationError({
-                'role': f'You cannot invite users with this role. Allowed roles: {", ".join(allowed_names) or "None"}'
+                'user_type': f'You cannot invite this user type. Allowed: {", ".join(allowed_names) or "None"}'
             })
 
+        # Emit both the resolved type and its legacy role mirror.
+        data['user_type'] = utype
+        data['role'] = caps.LEGACY_ROLE_FOR_TYPE.get(utype, User.Role.CLERK)
         return data
 
 

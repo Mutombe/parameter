@@ -4,6 +4,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from apps.accounts.permissions import RequireCapability
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.negotiation import DefaultContentNegotiation
 from django.db import transaction
@@ -43,13 +44,26 @@ from apps.soft_delete import SoftDeleteMixin
 from apps.accounts.mixins import TenantSchemaValidationMixin
 
 
+# Standard portfolio (masterfile) capability gate: anyone with portfolio.view
+# may read; creating/editing/deleting requires portfolio.manage. Individual
+# viewsets extend this with their custom mutating actions.
+_PORTFOLIO_CAPS = {
+    'create': 'portfolio.manage',
+    'update': 'portfolio.manage',
+    'partial_update': 'portfolio.manage',
+    'destroy': 'portfolio.manage',
+    'default': 'portfolio.view',
+}
+
+
 class LandlordViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Landlords."""
     queryset = Landlord.objects.annotate(
         _property_count=Count('properties')
     ).prefetch_related('properties', 'properties__units').all()
     serializer_class = LandlordSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = _PORTFOLIO_CAPS
     filterset_fields = ['landlord_type', 'is_active', 'preferred_currency', 'payment_frequency', 'vat_registered']
     search_fields = ['code', 'name', 'email', 'phone', 'address', 'bank_name', 'tax_id']
     ordering_fields = ['name', 'created_at', 'commission_rate', 'code']
@@ -70,7 +84,8 @@ class SupplierViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mod
     """CRUD for Suppliers — third-party vendors paid via expenses."""
     queryset = Supplier.objects.select_related('default_expense_category').all()
     serializer_class = SupplierSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = _PORTFOLIO_CAPS
     filterset_fields = ['is_active', 'default_expense_category']
     search_fields = ['code', 'name', 'email', 'phone', 'tax_id']
     ordering_fields = ['name', 'code', 'created_at']
@@ -87,7 +102,8 @@ class PropertyViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mod
         _unit_count=Count('units'),
         _vacant_units=Count('units', filter=Q(units__is_occupied=False)),
     ).all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {**_PORTFOLIO_CAPS, 'generate_units': 'portfolio.manage'}
     filterset_fields = ['landlord', 'property_type', 'management_type', 'city', 'is_active', 'country']
     search_fields = ['code', 'name', 'address', 'city', 'suburb', 'landlord__name', 'landlord__code']
     ordering_fields = ['name', 'created_at', 'code', 'city', 'total_units', 'property_type']
@@ -193,7 +209,8 @@ class UnitViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelVi
         Prefetch('leases', queryset=LeaseAgreement.objects.filter(status='active').select_related('tenant'), to_attr='_active_leases'),
     ).all()
     serializer_class = UnitSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = _PORTFOLIO_CAPS
     filterset_fields = ['property', 'property__landlord', 'unit_type', 'is_occupied', 'is_active', 'currency']
     search_fields = ['code', 'unit_number', 'property__name', 'property__code']
     ordering_fields = ['unit_number', 'rental_amount', 'created_at', 'floor', 'size_sqm']
@@ -223,7 +240,10 @@ class UnitViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelVi
 
 class RentalTenantViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     """CRUD for Rental Tenants."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    # Read requires portfolio.view; create/edit/delete require portfolio.manage.
+    # AccountHolderViewSet inherits this map.
+    capability_map = _PORTFOLIO_CAPS
     # Override DRF's default content negotiation so the export_statement
     # action's ?format=pdf|csv (or ?fmt=) doesn't get intercepted as a
     # renderer-selector and 404 the request before the view runs.
@@ -492,7 +512,18 @@ class LeaseAgreementViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewse
         'property', 'property__landlord',
     ).all()
     serializer_class = LeaseAgreementSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    # `charges` is GET+POST on one action name, so it maps to the read default
+    # to keep charge listing open; the POST-only lifecycle actions require
+    # portfolio.manage.
+    capability_map = {
+        **_PORTFOLIO_CAPS,
+        'upload_document': 'portfolio.manage',
+        'activate': 'portfolio.manage',
+        'bulk_activate': 'portfolio.manage',
+        'terminate': 'portfolio.manage',
+        'bulk_rent_adjustment': 'portfolio.manage',
+    }
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filterset_fields = ['tenant', 'unit', 'unit__property', 'status', 'lease_type', 'currency', 'property']
     search_fields = ['lease_number', 'tenant__name', 'tenant__code']
@@ -773,7 +804,8 @@ class PropertyManagerViewSet(viewsets.ModelViewSet):
         'user', 'property', 'assigned_by'
     ).all()
     serializer_class = PropertyManagerSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {**_PORTFOLIO_CAPS, 'quick_create_user': 'portfolio.manage'}
     filterset_fields = ['property', 'property__landlord', 'user', 'is_primary']
     search_fields = ['user__first_name', 'user__last_name', 'user__email', 'property__name', 'property__code']
     ordering_fields = ['assigned_at', 'is_primary', 'property__name']
@@ -836,7 +868,8 @@ class PropertyIncomeCommissionViewSet(viewsets.ModelViewSet):
         'property', 'income_type'
     ).all()
     serializer_class = PropertyIncomeCommissionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {**_PORTFOLIO_CAPS, 'upsert': 'portfolio.manage'}
     filterset_fields = ['property', 'income_type']
     ordering_fields = ['property__name', 'income_type__name', 'rate']
     ordering = ['property__name', 'income_type__name']
@@ -1014,7 +1047,14 @@ class PropertyBillingConfigViewSet(TenantSchemaValidationMixin, viewsets.ModelVi
         'property', 'created_by', 'updated_by'
     ).all()
     serializer_class = PropertyBillingConfigSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    # Config CRUD is portfolio.manage; generating invoices requires
+    # invoices.create and mass-deleting billing requires invoices.void.
+    capability_map = {
+        **_PORTFOLIO_CAPS,
+        'generate': 'invoices.create',
+        'bulk_delete': 'invoices.void',
+    }
     filterset_fields = ['property', 'category', 'currency', 'is_active']
     search_fields = ['property__name', 'notes']
     ordering_fields = ['effective_from', 'created_at', 'category', 'amount']

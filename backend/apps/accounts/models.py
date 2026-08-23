@@ -28,13 +28,23 @@ class UserManager(BaseUserManager):
         # legacy create serializer), derive the new user_type/permission_role
         # so capability-based access is set up correctly. save() then keeps the
         # legacy role mirror in sync.
+        from .capabilities import (
+            LEGACY_ROLE_TO_TYPE, DEFAULT_PERMISSION_ROLE_FOR_TYPE,
+        )
         role = extra_fields.get('role')
         if role and 'user_type' not in extra_fields:
-            from .capabilities import LEGACY_ROLE_TO_TYPE
             mapped = LEGACY_ROLE_TO_TYPE.get(role)
             if mapped:
                 extra_fields.setdefault('user_type', mapped[0])
                 extra_fields.setdefault('permission_role', mapped[1])
+        # If a user_type is given (e.g. an invitation carrying a Cashier /
+        # Portfolio Manager type), default the permission_role to that type's
+        # standard set unless one was explicitly supplied.
+        utype = extra_fields.get('user_type')
+        if utype and 'permission_role' not in extra_fields:
+            extra_fields['permission_role'] = DEFAULT_PERMISSION_ROLE_FOR_TYPE.get(
+                utype, 'clerk_default'
+            )
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
@@ -214,7 +224,14 @@ class UserInvitation(models.Model):
     role = models.CharField(
         max_length=20,
         choices=User.Role.choices,
-        default=User.Role.CLERK
+        default=User.Role.CLERK,
+        help_text='Legacy role mirror — derived from user_type.',
+    )
+    user_type = models.CharField(
+        max_length=32,
+        choices=caps.USER_TYPES,
+        default='clerk',
+        help_text='User type the invitee will be created as on acceptance.',
     )
 
     # Tenant membership

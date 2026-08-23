@@ -7,6 +7,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from apps.accounts.permissions import RequireCapability
 from rest_framework.parsers import MultiPartParser, FormParser
 
 from .models import ImportJob
@@ -20,7 +21,9 @@ from .tasks import process_import_job
 class ImportJobViewSet(viewsets.ModelViewSet):
     """ViewSet for managing import jobs."""
     queryset = ImportJob.objects.all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    # The entire data-import feature is governed by the data.import capability.
+    capability_map = {'default': 'data.import'}
     parser_classes = [MultiPartParser, FormParser]
 
     def get_serializer_class(self):

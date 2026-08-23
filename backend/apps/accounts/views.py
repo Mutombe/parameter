@@ -578,12 +578,24 @@ class UserInvitationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def allowed_roles(self, request):
-        """Get the list of roles the current user can invite."""
+        """Get the list of legacy roles the current user can invite."""
         allowed = get_allowed_invite_roles(request.user)
         return Response({
             'allowed_roles': [
                 {'value': role.value, 'label': role.label}
                 for role in allowed
+            ]
+        })
+
+    @action(detail=False, methods=['get'])
+    def allowed_types(self, request):
+        """Get the list of user types the current user can invite (the
+        capability-era selector used by the invite form)."""
+        from .permissions import get_allowed_invite_types
+        allowed = get_allowed_invite_types(request.user)
+        return Response({
+            'allowed_types': [
+                {'value': t, 'label': caps.USER_TYPE_LABELS[t]} for t in allowed
             ]
         })
 
@@ -605,6 +617,7 @@ class UserInvitationViewSet(viewsets.ModelViewSet):
             first_name=data.get('first_name', ''),
             last_name=data.get('last_name', ''),
             role=data['role'],
+            user_type=data['user_type'],
             token=UserInvitation.generate_token(),
             invited_by=request.user,
             tenant_schema=connection.schema_name or '',
@@ -694,6 +707,7 @@ Powered by Parameter.co.zw
                     first_name=data.get('first_name', ''),
                     last_name=data.get('last_name', ''),
                     role=data['role'],
+                    user_type=data['user_type'],
                     token=UserInvitation.generate_token(),
                     invited_by=request.user,
                     tenant_schema=connection.schema_name or '',
@@ -824,8 +838,11 @@ class AcceptInvitationView(APIView):
 
         invitation = UserInvitation.objects.get(token=token)
 
-        # Create user with tenant scoping from invitation
-        user = User.objects.create_user(
+        # Create user with tenant scoping from invitation. user_type drives the
+        # permission_role default (create_user) and the legacy role mirror
+        # (User.save()); older invitations without a user_type fall back to the
+        # legacy role mapping inside create_user.
+        create_kwargs = dict(
             email=invitation.email,
             password=data['password'],
             first_name=data.get('first_name') or invitation.first_name,
@@ -833,6 +850,9 @@ class AcceptInvitationView(APIView):
             role=invitation.role,
             tenant_schema=invitation.tenant_schema or connection.schema_name or ''
         )
+        if invitation.user_type:
+            create_kwargs['user_type'] = invitation.user_type
+        user = User.objects.create_user(**create_kwargs)
 
         # Update invitation
         invitation.status = UserInvitation.Status.ACCEPTED

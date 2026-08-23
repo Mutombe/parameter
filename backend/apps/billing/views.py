@@ -36,7 +36,21 @@ class InvoiceViewSet(TenantSchemaValidationMixin, SoftDeleteMixin, viewsets.Mode
         'lease__property', 'lease__property__landlord',
         'property', 'property__landlord',
     ).all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {
+        'create': 'invoices.create',
+        'update': 'invoices.edit',
+        'partial_update': 'invoices.edit',
+        'destroy': 'invoices.void',
+        'post_to_ledger': 'invoices.create',
+        'bill_property': 'invoices.create',
+        'generate_monthly': 'invoices.create',
+        'uniform_charge': 'invoices.create',
+        'bulk_generate_statements': 'invoices.print',
+        'send_invoices': 'invoices.print',
+        'delete_billing': 'invoices.void',
+        'default': 'invoices.view',
+    }
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -710,7 +724,8 @@ class BulkMailingViewSet(viewsets.ViewSet):
     Bulk mailing functionality for tenants.
     Send emails to all tenants or selected groups.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {'send_bulk_email': 'invoices.print', 'default': 'invoices.view'}
 
     @action(detail=False, methods=['post'])
     def send_bulk_email(self, request):
@@ -1670,7 +1685,12 @@ class LatePenaltyConfigViewSet(viewsets.ModelViewSet):
     """CRUD for late penalty configurations."""
     queryset = LatePenaltyConfig.objects.select_related('property', 'tenant').all()
     serializer_class = LatePenaltyConfigSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {
+        'create': 'invoices.edit', 'update': 'invoices.edit',
+        'partial_update': 'invoices.edit', 'destroy': 'invoices.edit',
+        'apply_now': 'invoices.create', 'default': 'invoices.view',
+    }
     filterset_fields = ['property', 'tenant', 'penalty_type', 'is_enabled', 'currency']
     search_fields = ['property__name', 'tenant__name', 'tenant__code']
     ordering_fields = ['created_at', 'percentage_rate', 'flat_fee']
@@ -1754,7 +1774,12 @@ class LatePenaltyExclusionViewSet(viewsets.ModelViewSet):
     """CRUD for late penalty exclusions."""
     queryset = LatePenaltyExclusion.objects.select_related('tenant', 'excluded_by').all()
     serializer_class = LatePenaltyExclusionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {
+        'create': 'invoices.edit', 'update': 'invoices.edit',
+        'partial_update': 'invoices.edit', 'destroy': 'invoices.edit',
+        'default': 'invoices.view',
+    }
     filterset_fields = ['tenant', 'excluded_by']
     search_fields = ['tenant__name', 'tenant__code', 'reason']
     ordering_fields = ['created_at', 'excluded_until']
@@ -1772,7 +1797,13 @@ class PaymentReminderViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet)
         'properties', 'tenants', 'excluded_properties'
     ).select_related('created_by').all()
     serializer_class = PaymentReminderSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {
+        'create': 'invoices.edit', 'update': 'invoices.edit',
+        'partial_update': 'invoices.edit', 'destroy': 'invoices.edit',
+        'send_now': 'invoices.print', 'cancel': 'invoices.edit',
+        'default': 'invoices.view',
+    }
     filterset_fields = ['status', 'send_date']
     ordering_fields = ['send_date', 'created_at']
     ordering = ['-send_date', '-created_at']

@@ -78,7 +78,12 @@ class ChartOfAccountViewSet(TenantSchemaValidationMixin, ProtectedDeleteMixin, v
     """CRUD for Chart of Accounts."""
     queryset = ChartOfAccount.objects.select_related('parent').prefetch_related('children').all()
     serializer_class = ChartOfAccountSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {
+        'create': 'coa.manage', 'update': 'coa.manage',
+        'partial_update': 'coa.manage', 'destroy': 'coa.manage',
+        'seed_defaults': 'coa.manage', 'default': 'coa.view',
+    }
     filterset_fields = ['account_type', 'account_subtype', 'is_active', 'currency']
     search_fields = ['code', 'name', 'description']
     ordering_fields = ['code', 'name', 'current_balance']
@@ -167,7 +172,12 @@ class ExchangeRateViewSet(viewsets.ModelViewSet):
     """CRUD for exchange rates."""
     queryset = ExchangeRate.objects.all()
     serializer_class = ExchangeRateSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {
+        'create': 'coa.manage', 'update': 'coa.manage',
+        'partial_update': 'coa.manage', 'destroy': 'coa.manage',
+        'default': 'coa.view',
+    }
     filterset_fields = ['from_currency', 'to_currency', 'effective_date']
     search_fields = ['source']
     ordering_fields = ['effective_date', 'rate']
@@ -302,7 +312,9 @@ class JournalViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
             })
 
         return Response({'groups': groups})
-    permission_classes = [IsAuthenticated]
+    # NOTE: permission_classes/capability_map are declared at the top of the
+    # class (with RequireCapability). Do not re-declare permission_classes here
+    # — a second assignment would silently drop capability enforcement.
     filterset_fields = ['journal_type', 'status', 'date', 'currency']
     search_fields = ['journal_number', 'description', 'reference']
     ordering_fields = ['date', 'journal_number', 'created_at']
@@ -351,7 +363,8 @@ class JournalEntryViewSet(viewsets.ReadOnlyModelViewSet):
     powers the "All Entries" view. Paginated, searchable, filterable by
     status/kind, newest first."""
     serializer_class = JournalEntryLineSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {'default': 'journals.view'}
     filterset_fields = ['journal__status', 'journal']
     search_fields = [
         'description', 'journal__journal_number',
@@ -382,7 +395,8 @@ class GeneralLedgerViewSet(viewsets.ReadOnlyModelViewSet):
         'account', 'journal_entry', 'journal_entry__journal'
     ).all()
     serializer_class = GeneralLedgerSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {'default': 'journals.view'}
     filterset_fields = ['account', 'date', 'currency']
     search_fields = ['description']
     ordering_fields = ['date', 'created_at']
@@ -493,7 +507,8 @@ class AuditTrailViewSet(viewsets.ReadOnlyModelViewSet):
     """View audit trail (read-only)."""
     queryset = AuditTrail.objects.select_related('user').all()
     serializer_class = AuditTrailSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {'default': 'audit.view'}
     filterset_fields = ['action', 'model_name', 'user']
     search_fields = ['action', 'model_name', 'user_email', 'changes']
     ordering_fields = ['timestamp']
@@ -515,7 +530,12 @@ class FiscalPeriodViewSet(viewsets.ModelViewSet):
     """Manage fiscal periods."""
     queryset = FiscalPeriod.objects.all()
     serializer_class = FiscalPeriodSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {
+        'create': 'coa.manage', 'update': 'coa.manage',
+        'partial_update': 'coa.manage', 'destroy': 'coa.manage',
+        'close_period': 'coa.manage', 'default': 'coa.view',
+    }
     filterset_fields = ['is_closed']
     search_fields = ['name']
     ordering_fields = ['start_date', 'end_date', 'name']
@@ -818,7 +838,13 @@ class BankTransactionViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet)
         'bank_account', 'matched_receipt', 'matched_journal', 'reconciled_by'
     ).all()
     serializer_class = BankTransactionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {
+        'create': 'bank.manage', 'update': 'bank.manage',
+        'partial_update': 'bank.manage', 'destroy': 'bank.manage',
+        'upload_statement': 'bank.reconcile', 'reconcile': 'bank.reconcile',
+        'auto_match': 'bank.reconcile', 'default': 'bank.view',
+    }
     parser_classes = [MultiPartParser, FormParser]
     filterset_fields = ['bank_account', 'status', 'transaction_type', 'transaction_date']
     search_fields = ['reference', 'description']
@@ -1027,7 +1053,14 @@ class BankReconciliationViewSet(viewsets.ModelViewSet):
         'bank_account', 'created_by', 'completed_by'
     ).all()
     serializer_class = BankReconciliationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {
+        'create': 'bank.reconcile', 'update': 'bank.reconcile',
+        'partial_update': 'bank.reconcile', 'destroy': 'bank.reconcile',
+        'toggle_item': 'bank.reconcile', 'select_all': 'bank.reconcile',
+        'deselect_all': 'bank.reconcile', 'complete': 'bank.reconcile',
+        'default': 'bank.view',
+    }
     filterset_fields = ['bank_account', 'bank_account__currency', 'status']
     search_fields = ['bank_account__name', 'notes']
     ordering_fields = ['period_end', 'period_start', 'created_at', 'statement_balance']
@@ -1564,7 +1597,8 @@ class JournalReallocationViewSet(viewsets.ModelViewSet):
         'original_entry', 'new_entry', 'from_account', 'to_account', 'reallocated_by'
     ).all()
     serializer_class = JournalReallocationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {'create': 'journals.post_general', 'default': 'journals.view'}
     filterset_fields = ['from_account', 'to_account', 'reallocated_by']
     search_fields = ['reason', 'from_account__name', 'to_account__name', 'from_account__code', 'to_account__code']
     ordering_fields = ['created_at', 'amount']
@@ -1743,7 +1777,12 @@ class SubsidiaryAccountViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMod
     """
     queryset = SubsidiaryAccount.objects.all()
     serializer_class = SubsidiaryAccountSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {
+        'consolidate': 'coa.manage', 'unmerge': 'coa.manage',
+        'overwrite_narration': 'coa.manage', 'sync_accounts': 'coa.manage',
+        'default': 'coa.view',
+    }
     # Bypass DRF's format-suffix Http404 so export_statement's ?format=pdf
     # query param isn't intercepted as a renderer selector.
     content_negotiation_class = IgnoreFormatNegotiation
@@ -2474,7 +2513,13 @@ class AccruedExpenseViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
         'journal', 'cleared_by_expense', 'created_by',
     ).all()
     serializer_class = AccruedExpenseSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {
+        'create': 'expenditure.create', 'update': 'expenditure.edit',
+        'partial_update': 'expenditure.edit', 'destroy': 'expenditure.void',
+        'post_to_ledger': 'expenditure.post_non_cash', 'clear': 'expenditure.edit',
+        'default': 'expenditure.view',
+    }
     filterset_fields = ['status', 'expense_class', 'funding_category', 'landlord', 'currency']
     search_fields = ['expense_number', 'description', 'custom_description']
     ordering_fields = ['date', 'amount', 'created_at']
@@ -2553,7 +2598,10 @@ class BalanceSheetMovementViewSet(TenantSchemaValidationMixin, viewsets.ModelVie
         'landlord_sub_account', 'journal', 'created_by',
     ).all()
     serializer_class = BalanceSheetMovementSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    # Account transfers / BS movements are an admin/accountant tool — the whole
+    # surface (including reads) requires opening_balances.manage.
+    capability_map = {'default': 'opening_balances.manage'}
     filterset_fields = ['status', 'category', 'landlord', 'currency']
     search_fields = ['movement_number', 'description', 'custom_description']
     ordering_fields = ['date', 'amount', 'created_at']
@@ -2590,7 +2638,8 @@ class OpeningBalanceViewSet(TenantSchemaValidationMixin, viewsets.ModelViewSet):
         'tenant_sub_account', 'journal', 'created_by',
     ).all()
     serializer_class = OpeningBalanceSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {'default': 'opening_balances.manage'}
     filterset_fields = ['landlord', 'category', 'direction', 'status', 'currency']
     search_fields = ['entry_number', 'description', 'custom_description', 'landlord__name']
     ordering = ['-date', '-created_at']
@@ -2636,7 +2685,8 @@ class OpeningBalanceImportBatchViewSet(TenantSchemaValidationMixin, viewsets.Mod
         'property', 'created_by', 'posted_by', 'reversed_by'
     ).all()
     serializer_class = OpeningBalanceImportBatchSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {'default': 'opening_balances.manage'}
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filterset_fields = ['property', 'account_type', 'status']
     search_fields = ['batch_number', 'property__name', 'file_name']
@@ -2767,7 +2817,12 @@ class OpeningBalanceImportBatchViewSet(TenantSchemaValidationMixin, viewsets.Mod
 class CurrencyConversionViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyModelViewSet):
     """Currency Conversion journals — audit list + the two conversion actions."""
     queryset = None
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    # Currency conversions post journals; previews are read-only.
+    capability_map = {
+        'partial': 'journals.post_general', 'full': 'journals.post_general',
+        'default': 'coa.view',
+    }
     filterset_fields = ['scope', 'tenant', 'category', 'from_currency', 'to_currency']
 
     def get_queryset(self):
@@ -2856,7 +2911,8 @@ class CurrencyConversionViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyMo
 
 class IntrapropertyTransferViewSet(TenantSchemaValidationMixin, viewsets.ReadOnlyModelViewSet):
     """Intraproperty Transfer journals — audit list + execute action."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, RequireCapability]
+    capability_map = {'execute': 'journals.post_general', 'default': 'journals.view'}
     filterset_fields = ['tenant', 'property', 'from_category', 'to_category']
 
     def get_queryset(self):

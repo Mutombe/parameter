@@ -752,15 +752,17 @@ export const notificationsApi = {
 // User Invitations API
 export const invitationsApi = {
   list: (params?: object) => api.get('/accounts/invitations/', { params }),
-  create: (data: { email: string; first_name?: string; last_name?: string; role: string }) =>
+  create: (data: { email: string; first_name?: string; last_name?: string; role?: string; user_type?: string }) =>
     api.post('/accounts/invitations/', data),
   resend: (id: number) => api.post(`/accounts/invitations/${id}/resend/`),
   cancel: (id: number) => api.post(`/accounts/invitations/${id}/cancel/`),
   bulkCreate: (data: {
-    invitations: Array<{ email: string; first_name?: string; last_name?: string; role?: string }>
+    invitations: Array<{ email: string; first_name?: string; last_name?: string; role?: string; user_type?: string }>
   }) => api.post('/accounts/invitations/bulk_invite/', data),
   // Get allowed roles for current user
   allowedRoles: () => api.get('/accounts/invitations/allowed_roles/'),
+  // Get allowed user types for current user (capability-era invite selector)
+  allowedTypes: () => api.get('/accounts/invitations/allowed_types/'),
   // Accept invitation (public)
   validate: (token: string) => api.get('/accounts/accept-invitation/', { params: { token } }),
   accept: (data: { token: string; password: string; confirm_password: string; first_name?: string; last_name?: string }) =>
