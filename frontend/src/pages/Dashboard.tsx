@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import {
@@ -127,6 +128,10 @@ function StatCard({ title, value, subtitle, icon: Icon, color, isLoading, href, 
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  // Landlord Balance Summary is per-currency — landlord pockets hold USD and
+  // ZWG separately and are never summed across currencies. Default USD, user
+  // switches to ZWG. No conversion.
+  const [summaryCurrency, setSummaryCurrency] = useState<'USD' | 'ZWG'>('USD')
   const [searchParams] = useSearchParams()
 
   const { data: stats, isLoading } = useQuery({
@@ -177,7 +182,19 @@ export default function Dashboard() {
     (sum: number, acc: any) => sum + parseBal(acc), 0
   )
 
-  // Group landlord accounts by landlord for summary table
+  // Per-currency balance for the summary — reads the selected currency's band
+  // from `balances` (never sums currencies). Falls back to the legacy USD
+  // current_balance only when balances is absent AND USD is selected.
+  const balInSummaryCurrency = (acc: any) => {
+    const bals = acc.balances
+    if (bals && bals[summaryCurrency] !== undefined) {
+      const n = Number(bals[summaryCurrency]); return isNaN(n) ? 0 : n
+    }
+    return summaryCurrency === 'USD' ? parseBal(acc) : 0
+  }
+
+  // Group landlord accounts by landlord for summary table — in the selected
+  // currency only.
   const landlordSummary = (() => {
     const byLandlord: Record<string, { id: number; name: string; categories: Record<string, number>; total: number }> = {}
     landlordAccounts.forEach((acc: any) => {
@@ -188,7 +205,7 @@ export default function Dashboard() {
       }
       const rawCat = acc.category || 'general'
       const cat = rawCat.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())
-      const bal = parseBal(acc)
+      const bal = balInSummaryCurrency(acc)
       byLandlord[lid].categories[cat] = (byLandlord[lid].categories[cat] || 0) + bal
       byLandlord[lid].total += bal
     })
@@ -201,6 +218,10 @@ export default function Dashboard() {
     landlordSummary.forEach((l) => Object.keys(l.categories).forEach((c) => cats.add(c)))
     return Array.from(cats).sort()
   })()
+
+  // Grand total of the summary IN THE SELECTED CURRENCY (never the USD-only
+  // trust-liability KPI, which would mismatch a ZWG view).
+  const landlordSummaryGrandTotal = landlordSummary.reduce((s, ll) => s + ll.total, 0)
 
   const occupancyRate = stats?.properties?.occupancy_rate || 0
   const collectionRate = stats?.financial?.collection_rate || 0
@@ -385,36 +406,57 @@ export default function Dashboard() {
           transition={{ delay: 0.2 }}
           className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow duration-300"
         >
-          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Landlord Balance Summary</h3>
-              <p className="text-sm text-gray-500">Total balance by landlord across all sub-account categories</p>
+              <h3 className="text-lg font-semibold text-gray-900">Landlord Balance Summary — {summaryCurrency}</h3>
+              <p className="text-sm text-gray-500">Total balance by landlord across all sub-account categories, in {summaryCurrency}</p>
             </div>
-            <button
-              onClick={() => {
-                const csvRows = [
-                  ['Landlord', ...allCategories, 'Total'].join(','),
-                  ...landlordSummary.map((l) =>
-                    [
-                      `"${l.name}"`,
-                      ...allCategories.map((c) => l.categories[c] || 0),
-                      l.total,
-                    ].join(',')
-                  ),
-                ].join('\n')
-                const blob = new Blob([csvRows], { type: 'text/csv' })
-                const url = URL.createObjectURL(blob)
-                const a = document.createElement('a')
-                a.href = url
-                a.download = 'landlord-balance-summary.csv'
-                a.click()
-                URL.revokeObjectURL(url)
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Download
-            </button>
+            <div className="flex items-center gap-3">
+              {/* Currency selector — landlord pockets are per-currency; USD and
+                  ZWG are reported separately, never summed. */}
+              <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5" role="group" aria-label="Summary currency">
+                {(['USD', 'ZWG'] as const).map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    aria-pressed={summaryCurrency === c}
+                    onClick={() => setSummaryCurrency(c)}
+                    className={cn(
+                      'px-3 py-1 text-xs font-semibold rounded transition-colors',
+                      summaryCurrency === c ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+                    )}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => {
+                  const csvRows = [
+                    [`Landlord Balance Summary (${summaryCurrency})`],
+                    ['Landlord', ...allCategories, 'Total'].join(','),
+                    ...landlordSummary.map((l) =>
+                      [
+                        `"${l.name}"`,
+                        ...allCategories.map((c) => l.categories[c] || 0),
+                        l.total,
+                      ].join(',')
+                    ),
+                  ].join('\n')
+                  const blob = new Blob([csvRows], { type: 'text/csv' })
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = `landlord-balance-summary-${summaryCurrency}.csv`
+                  a.click()
+                  URL.revokeObjectURL(url)
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download
+              </button>
+            </div>
           </div>
           <div className="overflow-x-auto">
             {loadingSubAccounts ? (
@@ -472,7 +514,7 @@ export default function Dashboard() {
                                   val > 0 ? 'text-emerald-600' : 'text-red-600'
                                 )}
                               >
-                                {formatCurrency(val)}
+                                {formatCurrency(val, summaryCurrency)}
                               </button>
                             ) : (
                               <span className="text-gray-300">-</span>
@@ -482,7 +524,7 @@ export default function Dashboard() {
                       })}
                       <td className="px-6 py-4 text-sm font-bold text-right tabular-nums bg-gray-50">
                         <span className={ll.total > 0 ? 'text-emerald-600' : ll.total < 0 ? 'text-red-600' : 'text-gray-900'}>
-                          {formatCurrency(ll.total)}
+                          {formatCurrency(ll.total, summaryCurrency)}
                         </span>
                       </td>
                     </tr>
@@ -496,14 +538,14 @@ export default function Dashboard() {
                       return (
                         <td key={cat} className="px-6 py-3 text-sm font-bold text-right tabular-nums">
                           <span className={catTotal > 0 ? 'text-emerald-600' : catTotal < 0 ? 'text-red-600' : 'text-gray-900'}>
-                            {catTotal !== 0 ? formatCurrency(catTotal) : '-'}
+                            {catTotal !== 0 ? formatCurrency(catTotal, summaryCurrency) : '-'}
                           </span>
                         </td>
                       )
                     })}
                     <td className="px-6 py-3 text-sm font-bold text-right tabular-nums">
-                      <span className={totalTrustLiability > 0 ? 'text-emerald-600' : totalTrustLiability < 0 ? 'text-red-600' : 'text-gray-900'}>
-                        {formatCurrency(totalTrustLiability)}
+                      <span className={landlordSummaryGrandTotal > 0 ? 'text-emerald-600' : landlordSummaryGrandTotal < 0 ? 'text-red-600' : 'text-gray-900'}>
+                        {formatCurrency(landlordSummaryGrandTotal, summaryCurrency)}
                       </span>
                     </td>
                   </tr>
