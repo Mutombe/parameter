@@ -384,6 +384,16 @@ interface ReceiptData {
   reference?: string
   amount: number
   description?: string
+  // Transaction-identification + cashier-audit fields. The payer (tenant /
+  // account holder) stays distinct from the cashier (authenticated user).
+  currency?: string
+  payer_id?: string
+  payer_type?: string
+  property_name?: string
+  landlord_name?: string
+  bank_account_name?: string
+  cashier_name?: string
+  cashier_role?: string
 }
 
 const methodLabels: Record<string, string> = {
@@ -395,13 +405,16 @@ const methodLabels: Record<string, string> = {
 }
 
 export function printReceipt(data: ReceiptData): void {
+  const payerLabel = data.payer_type === 'levy' ? 'Account Holder' : 'Tenant'
   const body = `
     <div class="info-grid">
       <div>
         <div class="info-group">
-          <label>Received From</label>
-          <p>${data.tenant_name}</p>
+          <label>Received From (${payerLabel})</label>
+          <p>${data.tenant_name}${data.payer_id ? ` <span style="color:#6b7280;font-weight:400">(${data.payer_id})</span>` : ''}</p>
         </div>
+        ${data.property_name ? `<div class="info-group" style="margin-top:8px"><label>Property</label><p>${data.property_name}</p></div>` : ''}
+        ${data.landlord_name ? `<div class="info-group" style="margin-top:8px"><label>Landlord</label><p>${data.landlord_name}</p></div>` : ''}
         ${data.invoice_number ? `<div class="info-group" style="margin-top:8px"><label>For Invoice</label><p>${data.invoice_number}</p></div>` : ''}
       </div>
       <div style="text-align:right">
@@ -414,9 +427,14 @@ export function printReceipt(data: ReceiptData): void {
           <p>${formatDate(data.date)}</p>
         </div>
         <div class="info-group" style="margin-top:8px">
+          <label>Currency</label>
+          <p>${data.currency || '—'}</p>
+        </div>
+        <div class="info-group" style="margin-top:8px">
           <label>Payment Method</label>
           <p>${methodLabels[data.payment_method] || data.payment_method}</p>
         </div>
+        ${data.bank_account_name ? `<div class="info-group" style="margin-top:8px"><label>Bank / Cash Account</label><p>${data.bank_account_name}</p></div>` : ''}
         ${data.reference ? `<div class="info-group" style="margin-top:8px"><label>Reference</label><p>${data.reference}</p></div>` : ''}
       </div>
     </div>
@@ -425,8 +443,10 @@ export function printReceipt(data: ReceiptData): void {
 
     <div class="highlight-box highlight-green">
       <small>Amount Received</small>
-      <div class="big-value">${formatCurrency(data.amount)}</div>
+      <div class="big-value">${formatCurrency(data.amount, data.currency)}</div>
     </div>
+
+    ${data.cashier_name ? `<div class="info-group" style="margin-top:16px; border-top:1px solid #e5e7eb; padding-top:10px"><label>Processed By (Cashier)</label><p>${data.cashier_name}${data.cashier_role ? ` <span style="color:#6b7280;font-weight:400">· ${data.cashier_role}</span>` : ''}</p></div>` : ''}
   `
 
   openBrandedPrintWindow(body, {

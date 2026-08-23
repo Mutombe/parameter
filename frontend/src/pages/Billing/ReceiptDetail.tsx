@@ -149,6 +149,15 @@ export default function ReceiptDetail() {
       reference: receipt.reference,
       amount: receipt.amount || 0,
       description: receipt.description,
+      // Transaction identification + cashier audit
+      currency: receipt.currency,
+      payer_id: receipt.tenant_code,
+      payer_type: receipt.payer_type,
+      property_name: receipt.property_name,
+      landlord_name: receipt.landlord_name,
+      bank_account_name: receipt.bank_account_name,
+      cashier_name: receipt.created_by_name,
+      cashier_role: receipt.created_by_role,
     })
   }
 

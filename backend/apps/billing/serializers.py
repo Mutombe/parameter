@@ -129,6 +129,15 @@ class ReceiptSerializer(serializers.ModelSerializer):
     transaction_display = serializers.CharField(source='journal.transaction_display', read_only=True, default='')
     income_type_name = serializers.CharField(source='income_type.name', read_only=True, default=None)
     sub_account_category_display = serializers.CharField(source='get_sub_account_category_display', read_only=True)
+    # Receipt-as-audit-document fields (display only — no accounting impact):
+    # the actual bank/cash account used, the authenticated cashier who created
+    # the receipt (+ their role), and the property/landlord the payer belongs to.
+    bank_account_name = serializers.CharField(source='bank_account.name', read_only=True, default=None)
+    bank_account_currency = serializers.CharField(source='bank_account.currency', read_only=True, default=None)
+    created_by_name = serializers.SerializerMethodField()
+    created_by_role = serializers.SerializerMethodField()
+    property_name = serializers.SerializerMethodField()
+    landlord_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Receipt
@@ -136,14 +145,56 @@ class ReceiptSerializer(serializers.ModelSerializer):
             'id', 'receipt_number', 'tenant', 'tenant_name', 'tenant_code',
             'payer_type', 'invoice',
             'invoice_number', 'income_type', 'income_type_name', 'bank_account',
+            'bank_account_name', 'bank_account_currency',
+            'property_name', 'landlord_name',
             'sub_account_category', 'sub_account_category_display',
             'date', 'amount', 'currency', 'payment_method',
             'reference', 'bank_name', 'description', 'notes', 'journal',
             'journal_number', 'transaction_number', 'transaction_display',
             'is_reversed', 'reversed_at', 'is_reversal', 'reversal_of',
-            'created_by', 'created_at', 'updated_at'
+            'created_by', 'created_by_name', 'created_by_role', 'created_at', 'updated_at'
         ]
         read_only_fields = ['receipt_number', 'journal', 'created_at', 'updated_at']
+
+    def get_created_by_name(self, obj):
+        u = obj.created_by if obj.created_by_id else None
+        if not u:
+            return None
+        return (u.get_full_name() or '').strip() or u.get_username() or getattr(u, 'email', None)
+
+    def get_created_by_role(self, obj):
+        u = obj.created_by if obj.created_by_id else None
+        if not u:
+            return None
+        return u.get_role_display() if hasattr(u, 'get_role_display') else getattr(u, 'role', None)
+
+    def _receipt_property(self, obj):
+        """Payer → property, via the invoice's lease/property first, else the
+        tenant's unit / active lease. Never manually set on the receipt."""
+        inv = obj.invoice if obj.invoice_id else None
+        if inv is not None:
+            if getattr(inv, 'property_id', None):
+                return inv.property
+            p = _resolve_property_from_lease(inv.lease) if getattr(inv, 'lease_id', None) else None
+            if p:
+                return p
+        t = obj.tenant if obj.tenant_id else None
+        if t is not None:
+            if getattr(t, 'unit_id', None) and getattr(t, 'unit', None) and t.unit.property_id:
+                return t.unit.property
+            la = (t.leases.filter(status='active').select_related('unit').first()
+                  if hasattr(t, 'leases') else None)
+            if la:
+                return _resolve_property_from_lease(la)
+        return None
+
+    def get_property_name(self, obj):
+        p = self._receipt_property(obj)
+        return p.name if p else None
+
+    def get_landlord_name(self, obj):
+        p = self._receipt_property(obj)
+        return p.landlord.name if (p and getattr(p, 'landlord_id', None)) else None
 
 
 class ReceiptCreateSerializer(serializers.ModelSerializer):
