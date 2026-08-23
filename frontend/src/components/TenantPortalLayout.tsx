@@ -14,7 +14,7 @@ import {
   User,
   Eye,
   ArrowLeft,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../stores/authStore'
 import { authApi, tenantPortalApi } from '../services/api'

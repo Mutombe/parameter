@@ -25,7 +25,7 @@ import {
   Download,
   Building2,
   Banknote,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { accountApi } from '../../services/api'
 import { AccountsList, SuppliersList } from './GlobalAccounts'
 import { formatCurrency, cn } from '../../lib/utils'

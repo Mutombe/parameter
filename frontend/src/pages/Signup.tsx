@@ -5,7 +5,7 @@ import { useMutation } from '@tanstack/react-query'
 import {
   Eye, EyeOff, CheckCircle, XCircle, Loader2, Building2,
   User, ChevronRight, ChevronLeft, Clock, Sparkles, AlertCircle, RefreshCw
-} from 'lucide-react'
+} from '@/lib/icons'
 import { tenantInvitationsApi, demoApi, tenantsApi } from '../services/api'
 import { cn, getErrorMessage } from '../lib/utils'
 import { useThemeEffect } from '../hooks/useThemeEffect'

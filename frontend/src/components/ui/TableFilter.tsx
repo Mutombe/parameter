@@ -1,4 +1,4 @@
-import { Search, X, Calendar } from 'lucide-react'
+import { Search, X, Calendar } from '@/lib/icons'
 import { DatePicker } from './DatePicker'
 
 interface TableFilterProps {

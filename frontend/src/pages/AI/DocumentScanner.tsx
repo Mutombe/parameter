@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { FileText, CreditCard, User, Sparkles, Info, ArrowRight } from 'lucide-react'
+import { FileText, CreditCard, User, Sparkles, Info, ArrowRight } from '@/lib/icons'
 import DocumentUpload from '../../components/OCR/DocumentUpload'
 import { cn } from '../../lib/utils'
 import { RiClaudeFill } from "react-icons/ri";

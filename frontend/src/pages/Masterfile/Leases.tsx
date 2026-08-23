@@ -22,7 +22,7 @@ import {
   Paperclip,
   Upload,
   Download,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { leaseApi, tenantApi, unitApi, propertyApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, ConfirmDialog, Tooltip, Pagination } from '../../components/ui'

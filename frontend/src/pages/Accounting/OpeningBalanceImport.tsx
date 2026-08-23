@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Upload, Download, FileSpreadsheet, CheckCircle2, AlertTriangle, Loader2,
   RotateCcw, Building2, Users,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { openingBalanceImportApi, propertyApi } from '../../services/api'
 import { PageHeader, Button, Input, Select, Badge } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'

@@ -10,7 +10,7 @@ import {
   ComposedChart, Area, Line, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip,
 } from 'recharts'
 import { AiOutlineDollar } from 'react-icons/ai'
-import { PieChart as PieIcon, Receipt, TrendingUp, TrendingDown } from 'lucide-react'
+import { PieChart as PieIcon, Receipt, TrendingUp, TrendingDown } from '@/lib/icons'
 
 /* ------------------------------------------------------------------
    HeroDashboard — an interactive, "live" mini-analytics panel for the

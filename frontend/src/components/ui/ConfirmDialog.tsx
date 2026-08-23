@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { AlertTriangle, Trash2, X, CheckCircle, AlertCircle, Info } from 'lucide-react'
+import { AlertTriangle, Trash2, X, CheckCircle, AlertCircle, Info } from '@/lib/icons'
 import { ReactNode, useRef, useId } from 'react'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 

@@ -1,7 +1,7 @@
 import { useState, useMemo, Fragment } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { ArrowLeft, Download, Loader2, ChevronRight, EyeOff, Printer } from 'lucide-react'
+import { ArrowLeft, Download, Loader2, ChevronRight, EyeOff, Printer } from '@/lib/icons'
 import { subsidiaryApi } from '../../services/api'
 import { formatCurrency, cn } from '../../lib/utils'
 import { Badge, SkeletonTable, DatePicker, DetailCurrencyGate } from '../../components/ui'

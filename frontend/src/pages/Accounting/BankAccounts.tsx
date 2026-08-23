@@ -14,7 +14,7 @@ import {
   RefreshCw,
   DollarSign,
   Download,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { bankAccountApi, accountApi } from '../../services/api'
 import { formatCurrency, cn } from '../../lib/utils'
 import { showToast, parseApiError } from '../../lib/toast'

@@ -19,7 +19,7 @@ import {
   DollarSign,
   TrendingUp,
   Ban,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { penaltyApi, propertyApi, tenantApi } from '../../services/api'
 import { PageHeader, Button, Input, Modal, Badge, EmptyState, ConfirmDialog, Select, Tooltip, DatePicker } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'

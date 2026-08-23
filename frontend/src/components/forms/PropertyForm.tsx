@@ -1,6 +1,6 @@
 import { useState, useImperativeHandle, forwardRef, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Percent } from 'lucide-react'
+import { Percent } from '@/lib/icons'
 import { Input, Select } from '../ui'
 import { AutocompleteInput } from '../ui/AutocompleteInput'
 import { AsyncSelect } from '../ui/AsyncSelect'

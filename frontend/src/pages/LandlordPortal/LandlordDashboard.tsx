@@ -10,7 +10,7 @@ import {
   Percent,
   TrendingUp,
   Wallet,
-} from 'lucide-react'
+} from '@/lib/icons'
 import api from '../../services/api'
 import { Card, CardContent } from '../../components/ui'
 import { formatCurrency, formatPercent, cn } from '../../lib/utils'

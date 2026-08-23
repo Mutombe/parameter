@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, forwardRef, InputHTMLAttributes, ComponentType } from 'react'
-import { Clock, X } from 'lucide-react'
+import { Clock, X } from '@/lib/icons'
 import { cn, useDebounce } from '../../lib/utils'
 import { useRecentValues } from '../../hooks/useRecentValues'
 

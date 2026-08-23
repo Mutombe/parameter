@@ -15,7 +15,7 @@ import {
   Trash2,
   Info,
   ArrowRight,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { importsApi } from '../../services/api'
 import { PageHeader, Button, Modal, TimeAgo } from '../../components/ui'
 import toast from 'react-hot-toast'

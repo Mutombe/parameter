@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { LayoutDashboard, Receipt, Home, FileText, Menu } from 'lucide-react'
+import { LayoutDashboard, Receipt, Home, FileText, Menu } from '@/lib/icons'
 import { LiaUsersSolid } from 'react-icons/lia'
 import { cn } from '../../lib/utils'
 import { useUIStore } from '../../stores/uiStore'

@@ -17,7 +17,7 @@ import {
   FileText,
   Loader2,
   X,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { invitationsApi, usersApi } from '../../services/api'
 import { PageHeader, Button, Modal, SelectionCheckbox, BulkActionsBar, TimeAgo } from '../../components/ui'
 import toast from 'react-hot-toast'

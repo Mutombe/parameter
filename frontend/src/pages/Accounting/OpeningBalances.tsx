@@ -15,7 +15,7 @@ import {
   XCircle,
   ArrowUpRight,
   ArrowDownLeft,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { openingBalanceApi, accountApi, landlordApi, subsidiaryApi, supplierApi, bankAccountApi } from '../../services/api'
 
 // Balance-sheet sub-category "representation" accounts — these roll up a

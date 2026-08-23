@@ -25,7 +25,7 @@ import {
   Layers,
   Download,
   Banknote,
-} from 'lucide-react'
+} from '@/lib/icons'
 import {
   AreaChart,
   Area,

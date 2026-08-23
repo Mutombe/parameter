@@ -24,7 +24,7 @@ import {
   Trash2,
   BookOpen,
   Mail,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { invoiceApi, tenantApi, unitApi, leaseApi, propertyApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { printInvoice } from '../../lib/printTemplate'

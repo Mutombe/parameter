@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
-import { BellRing, Plus, Send, XCircle, Trash2, CalendarClock } from 'lucide-react'
+import { BellRing, Plus, Send, XCircle, Trash2, CalendarClock } from '@/lib/icons'
 import { paymentReminderApi, propertyApi, tenantApi } from '../../services/api'
 import { formatDate, cn } from '../../lib/utils'
 import {

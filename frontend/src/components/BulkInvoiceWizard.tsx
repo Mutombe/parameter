@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FileText, Check, Loader2, ChevronRight, ChevronLeft, Calendar, Building2, AlertCircle } from 'lucide-react'
+import { FileText, Check, Loader2, ChevronRight, ChevronLeft, Calendar, Building2, AlertCircle } from '@/lib/icons'
 import { invoiceApi, leaseApi } from '../services/api'
 import { formatCurrency, cn } from '../lib/utils'
 import { Modal, ModalFooter, Button, FormStepper } from './ui'

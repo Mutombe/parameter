@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { FileText, Download, Printer } from 'lucide-react'
+import { FileText, Download, Printer } from '@/lib/icons'
 import { tenantPortalApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { Button, Select } from '../../components/ui'

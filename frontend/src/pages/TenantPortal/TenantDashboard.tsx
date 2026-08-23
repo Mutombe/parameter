@@ -6,7 +6,7 @@ import {
   TrendingUp,
   FileText,
   Clock,
-} from 'lucide-react'
+} from '@/lib/icons'
 import {
   AreaChart,
   Area,

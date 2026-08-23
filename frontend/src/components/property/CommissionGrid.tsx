@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
-import { Percent, RotateCcw, Check, Loader2 } from 'lucide-react'
+import { Percent, RotateCcw, Check, Loader2 } from '@/lib/icons'
 import { cn } from '../../lib/utils'
 import { propertyCommissionApi, incomeTypeApi } from '../../services/api'
 import { showToast } from '../../lib/toast'

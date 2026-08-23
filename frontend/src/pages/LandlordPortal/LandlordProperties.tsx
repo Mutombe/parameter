@@ -1,6 +1,6 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Building2, MapPin, DoorOpen, AlertCircle } from 'lucide-react'
+import { Building2, MapPin, DoorOpen, AlertCircle } from '@/lib/icons'
 import api from '../../services/api'
 import { Card, CardContent, Badge } from '../../components/ui'
 import { formatPercent, cn } from '../../lib/utils'

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, Fragment } from 'react'
-import { ChevronDown, Loader2, Search, X, Inbox } from 'lucide-react'
+import { ChevronDown, Loader2, Search, X, Inbox } from '@/lib/icons'
 import { cn } from '../../lib/utils'
 import { Skeleton } from './Skeleton'
 

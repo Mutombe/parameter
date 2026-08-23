@@ -14,7 +14,7 @@ import {
   Check,
   Trash2,
   Upload,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { useAuthStore } from '../stores/authStore'
 import { authApi } from '../services/api'
 import { getMediaUrl } from '../lib/utils'

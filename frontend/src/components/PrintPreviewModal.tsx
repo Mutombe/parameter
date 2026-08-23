@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Printer, Download, X } from 'lucide-react'
+import { Printer, Download, X } from '@/lib/icons'
 import { usePrintStore } from '../stores/printStore'
 
 export default function PrintPreviewModal() {

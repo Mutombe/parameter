@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Eye, EyeOff, ArrowLeft, Loader2, CheckCircle, XCircle } from 'lucide-react'
+import { Eye, EyeOff, ArrowLeft, Loader2, CheckCircle, XCircle } from '@/lib/icons'
 import { authApi } from '../services/api'
 import { useThemeEffect } from '../hooks/useThemeEffect'
 

@@ -9,7 +9,7 @@ import {
   Loader2,
   Wand2,
   Building2,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { PiBuildingApartmentLight } from 'react-icons/pi'
 import { landlordApi, propertyApi, unitApi, tenantApi, accountHolderApi, leaseApi } from '../services/api'

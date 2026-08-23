@@ -18,8 +18,8 @@ import {
   X,
   Loader2,
   Download,
-} from 'lucide-react'
-import { Upload, FileSpreadsheet, Wand2 } from 'lucide-react'
+} from '@/lib/icons'
+import { Upload, FileSpreadsheet, Wand2 } from '@/lib/icons'
 import { landlordApi, importsApi } from '../../services/api'
 import { cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, ConfirmDialog, Pagination, SplitButton } from '../../components/ui'

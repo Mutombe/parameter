@@ -15,7 +15,7 @@ import {
   Trash2,
   Download,
   XCircle,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { bsMovementApi, accountApi, landlordApi, subsidiaryApi, bankAccountApi } from '../../services/api'
 
 // Balance-sheet sub-category roll-up accounts — not real accounts, so they

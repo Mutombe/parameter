@@ -7,7 +7,7 @@ import { motion } from 'framer-motion'
 import {
   ArrowLeft, Edit2, Mail, Phone, CreditCard, Wallet, Calendar, FileText,
   Briefcase, Plus, Layers, ChevronLeft, ChevronRight, Search, Building2, Eye,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { accountHolderApi, invoiceApi, receiptApi, subsidiaryApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'

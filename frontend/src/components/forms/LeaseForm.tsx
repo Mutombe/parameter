@@ -1,6 +1,6 @@
 import { useState, useImperativeHandle, forwardRef, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Upload, XCircle } from 'lucide-react'
+import { Upload, XCircle } from '@/lib/icons'
 import { Input, Select, Textarea, DatePicker } from '../ui'
 import { AutocompleteInput } from '../ui/AutocompleteInput'
 import { AsyncSelect } from '../ui/AsyncSelect'

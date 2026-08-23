@@ -17,7 +17,7 @@ import {
   Home,
   Filter,
   Calendar,
-} from 'lucide-react'
+} from '@/lib/icons'
 import api from '../../services/api'
 import { formatCurrency, cn } from '../../lib/utils'
 import { Card, CardHeader, CardContent } from '../../components/ui/Card'

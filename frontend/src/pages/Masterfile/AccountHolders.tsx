@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus, Search, Mail, Trash2, Loader2, Edit2, Building2,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { TbUserSquareRounded } from 'react-icons/tb'
 import { accountHolderApi } from '../../services/api'
 import { useDebounce, cn } from '../../lib/utils'

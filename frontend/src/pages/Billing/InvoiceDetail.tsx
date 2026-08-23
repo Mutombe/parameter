@@ -25,7 +25,7 @@ import {
   Check,
   X,
   Trash2,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { invoiceApi, receiptApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { printInvoice } from '../../lib/printTemplate'

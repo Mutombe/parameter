@@ -7,7 +7,7 @@ import {
   PieChart, Calculator, FileCheck, Bell, Shield, Zap, Link2,
   ArrowLeft, Menu, X, Phone, Mail, Sun, Moon, Monitor, LayoutDashboard, Keyboard,
   Sparkles, User, Upload
-} from 'lucide-react'
+} from '@/lib/icons'
 import { useUIStore } from '../stores/uiStore'
 import { useAuthStore } from '../stores/authStore'
 import { useThemeEffect } from '../hooks/useThemeEffect'

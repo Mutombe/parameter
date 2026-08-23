@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { ShieldCheck, Loader2 } from 'lucide-react'
+import { ShieldCheck, Loader2 } from '@/lib/icons'
 import { reportsApi } from '../../../services/api'
 import { formatCurrency, formatDate, cn } from '../../../lib/utils'
 import { Select, DatePicker, Badge, EmptyState } from '../../../components/ui'

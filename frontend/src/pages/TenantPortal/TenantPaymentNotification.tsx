@@ -10,7 +10,7 @@ import {
   FileText,
   CheckCircle,
   Loader2,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { tenantPortalApi } from '../../services/api'
 import { Button, Input, Select, Textarea, DatePicker } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'

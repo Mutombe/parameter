@@ -10,7 +10,7 @@ import {
   Calendar,
   Settings,
   Clock,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { notificationsApi } from '../../services/api'
 import { TimeAgo } from '../ui'
 import toast from 'react-hot-toast'

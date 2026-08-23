@@ -30,7 +30,7 @@ import {
   Play,
   Trash2,
   RotateCcw,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { tenantsApi, tenantInvitationsApi } from '../../services/api'
 import { Select, TimeAgo } from '../../components/ui'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'

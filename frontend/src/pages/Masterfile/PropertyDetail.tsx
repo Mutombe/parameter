@@ -24,7 +24,7 @@ import {
   Percent,
   Loader2,
   CreditCard,
-} from 'lucide-react'
+} from '@/lib/icons'
 import {
   BarChart,
   Bar,

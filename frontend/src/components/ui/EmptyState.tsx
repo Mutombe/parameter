@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { FileX, Users, Receipt, BookOpen, TrendingUp, Plus } from 'lucide-react'
+import { FileX, Users, Receipt, BookOpen, TrendingUp, Plus } from '@/lib/icons'
 import { ReactNode, ComponentType } from 'react'
 import { PiBuildingApartmentLight } from "react-icons/pi";
 

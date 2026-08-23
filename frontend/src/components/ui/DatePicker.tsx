@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useId, useCallback, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, X } from '@/lib/icons'
 import { AnimatePresence, motion } from 'framer-motion'
 import { cn } from '../../lib/utils'
 

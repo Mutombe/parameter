@@ -10,7 +10,7 @@ import {
   Clock,
   CheckCircle2,
   Loader2,
-} from 'lucide-react'
+} from '@/lib/icons'
 import api from '../../services/api'
 import { formatDate, cn } from '../../lib/utils'
 import { showToast, parseApiError } from '../../lib/toast'

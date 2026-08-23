@@ -1,5 +1,5 @@
 import { forwardRef, useState, useRef, useEffect, useCallback, useMemo, useId, InputHTMLAttributes, TextareaHTMLAttributes, ComponentType } from 'react'
-import { ChevronDown, Check, Search, X } from 'lucide-react'
+import { ChevronDown, Check, Search, X } from '@/lib/icons'
 import { cn } from '../../lib/utils'
 import { AnimatePresence, motion } from 'framer-motion'
 

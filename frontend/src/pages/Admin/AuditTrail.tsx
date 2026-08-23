@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { Search, Shield, Clock, ChevronLeft, ChevronRight, Calendar, Monitor, Globe } from 'lucide-react'
+import { Search, Shield, Clock, ChevronLeft, ChevronRight, Calendar, Monitor, Globe } from '@/lib/icons'
 import { auditApi } from '../../services/api'
 import { Select, TimeAgo, DatePicker } from '../../components/ui'
 import { formatDate, useDebounce } from '../../lib/utils'

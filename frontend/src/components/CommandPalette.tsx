@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   Search, X, Building2, Users, Home, FileText, CreditCard, Receipt,
   BarChart3, Settings, Plus, ArrowRight, Clock, Command,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn, useDebounce } from '../lib/utils'
 import { useUIStore } from '../stores/uiStore'

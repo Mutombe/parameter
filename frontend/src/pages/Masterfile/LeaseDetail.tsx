@@ -20,7 +20,7 @@ import {
   Loader2,
   Plus,
   Receipt,
-} from 'lucide-react'
+} from '@/lib/icons'
 import {
   BarChart,
   Bar,

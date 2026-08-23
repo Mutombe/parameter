@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { ArrowLeft, Landmark, Scale } from 'lucide-react'
+import { ArrowLeft, Landmark, Scale } from '@/lib/icons'
 import { bankAccountApi } from '../../services/api'
 import { formatCurrency, cn } from '../../lib/utils'
 import { Badge, Skeleton, EmptyState, DatePicker, Button } from '../../components/ui'

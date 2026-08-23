@@ -14,7 +14,7 @@ import {
   Sparkles,
   Clock,
   TrendingUp,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { searchApi, landlordApi, propertyApi, tenantApi, invoiceApi, leaseApi, unitApi } from '../services/api'
 import { cn, useDebounce } from '../lib/utils'
 import { PiUsersFour } from "react-icons/pi";

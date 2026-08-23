@@ -10,7 +10,7 @@ import {
   ReferenceLine,
 } from 'recharts'
 import { cn, formatCurrency } from '../lib/utils'
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus } from '@/lib/icons'
 
 interface CashFlowEntry {
   month: string

@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { BookOpen, Printer } from 'lucide-react'
+import { BookOpen, Printer } from '@/lib/icons'
 import { tenantPortalApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { Button } from '../../components/ui'

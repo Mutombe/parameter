@@ -2,7 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Building2, ArrowLeft, Mail, Phone, MapPin, Hash, FileText, Wallet,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { supplierApi, expenseApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { PageHeader, Button, Skeleton, EmptyState, Badge } from '../../components/ui'

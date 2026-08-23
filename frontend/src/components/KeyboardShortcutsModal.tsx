@@ -1,5 +1,5 @@
 import { Modal } from './ui/Modal'
-import { Keyboard } from 'lucide-react'
+import { Keyboard } from '@/lib/icons'
 import { modKey } from '../hooks/useHotkeys'
 
 interface KeyboardShortcutsModalProps {

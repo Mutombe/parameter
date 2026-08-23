@@ -1,12 +1,13 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { X } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import type { ComponentType } from 'react'
+import { X } from '@/lib/icons'
 
 type ActionVariant = 'primary' | 'danger' | 'outline'
+type IconComponent = ComponentType<{ className?: string }>
 
 interface BulkAction {
   label: string
-  icon?: LucideIcon
+  icon?: IconComponent
   onClick: () => void
   variant?: ActionVariant
   disabled?: boolean

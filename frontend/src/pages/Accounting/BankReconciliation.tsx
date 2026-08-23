@@ -15,7 +15,7 @@ import {
   CheckSquare,
   Square,
   X,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { bankReconciliationApi, bankAccountApi } from '../../services/api'
 import { cn, formatCurrency, formatDate } from '../../lib/utils'
 import { showToast, parseApiError } from '../../lib/toast'

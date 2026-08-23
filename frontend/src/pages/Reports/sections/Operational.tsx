@@ -39,7 +39,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   X,
-} from 'lucide-react'
+} from '@/lib/icons'
 import {
   BarChart,
   Bar,

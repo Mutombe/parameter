@@ -28,7 +28,7 @@ import {
   Download,
   LayoutGrid,
   List,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { journalApi, journalEntryApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, useDebounce } from '../../lib/utils'
 import { printTable } from '../../lib/printTemplate'

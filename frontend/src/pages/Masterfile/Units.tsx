@@ -18,7 +18,7 @@ import {
   Bath,
   Square,
   Download,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { unitApi, propertyApi } from '../../services/api'
 import { formatCurrency, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, Skeleton, ConfirmDialog, Tooltip, Pagination } from '../../components/ui'

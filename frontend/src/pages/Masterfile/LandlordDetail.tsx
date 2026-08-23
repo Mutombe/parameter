@@ -29,7 +29,7 @@ import {
   BarChart3,
   ChevronRight,
   Loader2,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { landlordApi, reportsApi, propertyApi, leaseApi, invoiceApi, receiptApi, subsidiaryApi, propertyManagerApi } from '../../services/api'
 import PropertyForm from '../../components/forms/PropertyForm'
 import LeaseForm from '../../components/forms/LeaseForm'

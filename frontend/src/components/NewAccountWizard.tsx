@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus } from 'lucide-react'
+import { Plus } from '@/lib/icons'
 import { Modal, Button, Input, Select } from './ui'
 import { accountApi } from '../services/api'
 import { showToast, parseApiError } from '../lib/toast'

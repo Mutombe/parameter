@@ -11,7 +11,7 @@ import {
   Download,
   FileText,
   Printer,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { tenantPortalApi } from '../../services/api'
 import { formatCurrency, formatDate, cn, getMediaUrl } from '../../lib/utils'
 import { Button } from '../../components/ui'

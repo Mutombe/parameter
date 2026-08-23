@@ -19,7 +19,7 @@ import {
   Briefcase,
   Layers,
   ArrowRight,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { expenseApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { Button, ConfirmDialog, TimeAgo } from '../../components/ui'

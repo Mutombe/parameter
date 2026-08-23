@@ -12,7 +12,7 @@ import {
   Sparkles,
   AlertCircle,
   CheckCircle,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { tenantsApi } from '../services/api'
 import { Select } from '../components/ui'
 import { cn } from '../lib/utils'

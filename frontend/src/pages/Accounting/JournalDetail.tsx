@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FileSpreadsheet, ArrowLeft, ArrowRight, ArrowUpRight, ArrowDownLeft,
   Calendar, Clock, CheckCircle2, RotateCcw, Send, Loader2,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { journalApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { PageHeader, Button, Skeleton, Badge } from '../../components/ui'

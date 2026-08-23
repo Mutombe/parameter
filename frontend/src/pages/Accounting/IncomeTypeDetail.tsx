@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { ArrowLeft, DollarSign, Receipt } from 'lucide-react'
+import { ArrowLeft, DollarSign, Receipt } from '@/lib/icons'
 import { incomeTypeApi, receiptApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { Badge, Skeleton, EmptyState } from '../../components/ui'

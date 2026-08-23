@@ -9,7 +9,7 @@ import {
   Search,
   Edit2,
   Trash2,
-} from 'lucide-react'
+} from '@/lib/icons'
 import {
   PageHeader, Modal, Button, Input, Select, EmptyState,
   Tabs, TabsList, TabsTrigger, TabsContent, Skeleton,

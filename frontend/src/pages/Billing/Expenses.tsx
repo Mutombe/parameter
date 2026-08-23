@@ -24,7 +24,7 @@ import {
   Ban,
   Download,
   Trash2,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { expenseApi, landlordApi, supplierApi, incomeTypeApi, expenseCategoryApi, bankAccountApi, accountApi } from '../../services/api'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
 import { SubAccountBadge } from '../../components/SubAccountBadge'

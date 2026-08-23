@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock, X, AlertTriangle } from 'lucide-react'
+import { Clock, X, AlertTriangle } from '@/lib/icons'
 import { useAuthStore } from '../stores/authStore'
 import { cn } from '../lib/utils'
 

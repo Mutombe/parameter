@@ -1,6 +1,6 @@
 import { useState, useImperativeHandle, forwardRef, useEffect, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Building2 } from 'lucide-react'
+import { Building2 } from '@/lib/icons'
 import { Input, Select } from '../ui'
 import { AutocompleteInput } from '../ui/AutocompleteInput'
 import { AsyncSelect } from '../ui/AsyncSelect'

@@ -15,7 +15,7 @@ import {
   Loader2,
   Clock,
   ExternalLink,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { notificationsApi } from '../services/api'
 import { PageHeader, Button, Badge, Pagination, EmptyState, Select, TimeAgo } from '../components/ui'
 import toast from 'react-hot-toast'

@@ -10,7 +10,7 @@ import {
   FileText,
   Printer,
   Receipt,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { receiptApi, conversionApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { printReceipt } from '../../lib/printTemplate'

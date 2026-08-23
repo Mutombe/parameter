@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import { ArrowLeft, Wallet, BookOpen } from 'lucide-react'
+import { ArrowLeft, Wallet, BookOpen } from '@/lib/icons'
 import { accountApi, glApi } from '../../services/api'
 import { formatCurrency, formatDate, cn } from '../../lib/utils'
 import { Skeleton, EmptyState, DatePicker } from '../../components/ui'

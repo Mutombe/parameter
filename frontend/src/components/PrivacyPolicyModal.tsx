@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Shield, Lock, Eye, Database, Mail, Clock } from 'lucide-react'
+import { X, Shield, Lock, Eye, Database, Mail, Clock } from '@/lib/icons'
 import { SiFsecure } from "react-icons/si";
 
 

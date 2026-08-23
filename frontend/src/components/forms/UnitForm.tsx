@@ -1,6 +1,6 @@
 import { useState, useImperativeHandle, forwardRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Bed, Bath, Square } from 'lucide-react'
+import { Bed, Bath, Square } from '@/lib/icons'
 import { Input, Select, Textarea } from '../ui'
 import { AutocompleteInput } from '../ui/AutocompleteInput'
 import { AsyncSelect } from '../ui/AsyncSelect'

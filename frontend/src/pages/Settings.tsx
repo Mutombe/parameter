@@ -22,7 +22,7 @@ import {
   Upload,
   X,
   ImageIcon,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { PageHeader, Button, Input, Select } from '../components/ui'
 import { useAuthStore } from '../stores/authStore'
 import { companySettingsApi, notificationsApi, authApi } from '../services/api'

@@ -1,6 +1,6 @@
 import { useState, ReactNode, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { ChevronUp, ChevronDown, ChevronsUpDown, Search, ChevronLeft, ChevronRight, AlignJustify, List, StretchHorizontal } from 'lucide-react'
+import { ChevronUp, ChevronDown, ChevronsUpDown, Search, ChevronLeft, ChevronRight, AlignJustify, List, StretchHorizontal } from '@/lib/icons'
 import { cn } from '../../lib/utils'
 import { SkeletonTable } from './Skeleton'
 import { EmptyState } from './EmptyState'

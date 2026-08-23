@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Search, LogOut, Settings, ChevronDown, Sparkles, HelpCircle, BookOpen, FileText, Loader2, Menu, Sun, Moon, Monitor, Keyboard } from 'lucide-react'
+import { Bell, Search, LogOut, Settings, ChevronDown, Sparkles, HelpCircle, BookOpen, FileText, Loader2, Menu, Sun, Moon, Monitor, Keyboard } from '@/lib/icons'
 import { useAuthStore } from '../../stores/authStore'
 import { useUIStore } from '../../stores/uiStore'
 import { authApi } from '../../services/api'

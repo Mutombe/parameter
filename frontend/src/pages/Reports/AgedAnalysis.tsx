@@ -11,7 +11,7 @@ import {
   Download,
   Filter,
   Printer,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { reportsApi, propertyApi, landlordApi } from '../../services/api'
 import { cn } from '../../lib/utils'
 import { formatCurrency } from '../../lib/utils'

@@ -10,7 +10,7 @@ import {
   AlertTriangle,
   Sparkles,
   Copy,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { aiApi } from '../../services/api'
 import toast from 'react-hot-toast'
 import { cn, getErrorMessage } from '../../lib/utils'

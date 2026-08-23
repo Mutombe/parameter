@@ -1,6 +1,6 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Download, FileText, AlertCircle } from 'lucide-react'
+import { Download, FileText, AlertCircle } from '@/lib/icons'
 import api from '../../services/api'
 import { Card, CardContent, Button } from '../../components/ui'
 import { formatCurrency, cn } from '../../lib/utils'

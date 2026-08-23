@@ -26,8 +26,8 @@ import {
   Users,
   Download,
   Percent,
-} from 'lucide-react'
-import { Upload, FileSpreadsheet } from 'lucide-react'
+} from '@/lib/icons'
+import { Upload, FileSpreadsheet } from '@/lib/icons'
 import { propertyApi, landlordApi, propertyManagerApi, usersApi, importsApi } from '../../services/api'
 import { formatPercent, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, ConfirmDialog, Pagination, SelectionCheckbox, BulkActionsBar, SplitButton, Tooltip } from '../../components/ui'

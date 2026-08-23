@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, ReactNode, ComponentType } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown } from '@/lib/icons'
 import { cn } from '../../lib/utils'
 import { AnimatePresence, motion } from 'framer-motion'
 

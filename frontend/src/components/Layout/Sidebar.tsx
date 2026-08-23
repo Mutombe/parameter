@@ -31,7 +31,7 @@ import {
   ChevronDown,
   Wrench,
   BellRing,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { useUIStore } from '../../stores/uiStore'
 import { useAuthStore } from '../../stores/authStore'
 import { usePrefetch } from '../../hooks/usePrefetch'

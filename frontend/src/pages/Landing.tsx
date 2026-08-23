@@ -6,7 +6,7 @@ import {
   CheckCircle, Check, ArrowRight, Phone, Mail, ChevronRight,
   Globe, DollarSign, PieChart, Clock, BookOpen, Lock,
   Menu, X, Sun, Moon, Monitor, LayoutDashboard
-} from 'lucide-react'
+} from '@/lib/icons'
 import { useUIStore } from '../stores/uiStore'
 import { useAuthStore } from '../stores/authStore'
 import { useThemeEffect } from '../hooks/useThemeEffect'
@@ -19,7 +19,7 @@ import { TbChartInfographic } from "react-icons/tb";
 import { PiBuildingApartmentLight } from "react-icons/pi";
 import { LiaUsersSolid } from "react-icons/lia";
 import { AiOutlineDollar } from "react-icons/ai";
-import { MessageCircle } from 'lucide-react'
+import { MessageCircle } from '@/lib/icons'
 import { GiWorld } from "react-icons/gi";
 
 

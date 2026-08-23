@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Send, Sparkles, Loader2, MessageSquare, Lightbulb, TrendingUp, DollarSign, Building2, Bot } from 'lucide-react'
+import { X, Send, Sparkles, Loader2, MessageSquare, Lightbulb, TrendingUp, DollarSign, Building2, Bot } from '@/lib/icons'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { aiApi } from '../../services/api'
 import { cn } from '../../lib/utils'

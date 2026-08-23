@@ -1,6 +1,6 @@
 import { ComponentType } from 'react'
 import { motion } from 'framer-motion'
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus } from '@/lib/icons'
 import { cn } from '../../lib/utils'
 
 type IconComponent = ComponentType<{ className?: string }>

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Pencil, Trash2, Eye, Play, Loader2, AlertTriangle, ShieldAlert, Layers,
-} from 'lucide-react'
+} from '@/lib/icons'
 import { propertyBillingConfigApi } from '../../services/api'
 import { Modal, Button, Input, Select, DatePicker } from '../ui'
 import { showToast, parseApiError } from '../../lib/toast'

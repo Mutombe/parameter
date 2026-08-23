@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Lock, Eye, EyeOff, LogOut, Loader2 } from 'lucide-react'
+import { Lock, Eye, EyeOff, LogOut, Loader2 } from '@/lib/icons'
 import { useSessionStore } from '../stores/sessionStore'
 import { useAuthStore } from '../stores/authStore'
 import { authApi } from '../services/api'
