@@ -4572,8 +4572,19 @@ class CommissionAnalysisView(APIView):
 
 class IncomeItemAnalysisView(APIView):
     """
-    Income Item Analysis - Analysis by income type and bank account.
-    Shows which bank accounts hold transactions for specific income items.
+    Bank-to-Income-to-Commission Analysis — analysis by bank account,
+    income category and the Agent Commission associated with that income.
+
+    The relationship surfaced is: Bank -> Income -> Commission -> Net Proceeds.
+    Commission is the REAL Agent Commission recorded by the accounting system
+    (resolved per-receipt with ``_make_commission_resolver`` — the same chain
+    used when the commission was posted), never a manufactured percentage.
+    Net Proceeds = Gross Income - Agent Commission. Bank Charges are a separate
+    accounting concept and are intentionally NOT mixed in here.
+
+    This view only reads/aggregates existing accounting data. It does not alter
+    any posting, commission, VAT, GL, reconciliation or reporting-category
+    logic.
     """
     permission_classes = [IsAuthenticated]
 
@@ -4581,8 +4592,11 @@ class IncomeItemAnalysisView(APIView):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date', timezone.now().date())
         income_type = request.query_params.get('income_type')
+        # Currency is a HARD accounting filter — never combine USD and ZWG.
         currency = request.query_params.get('currency') or None
         bank_account_id = request.query_params.get('bank_account_id')
+        property_id = request.query_params.get('property_id')
+        landlord_id = request.query_params.get('landlord_id')
 
         # Get receipts
         receipts = Receipt.objects.filter(date__lte=end_date)
@@ -4600,108 +4614,193 @@ class IncomeItemAnalysisView(APIView):
         if bank_account_id:
             receipts = receipts.filter(bank_account_id=bank_account_id)
 
-        receipts = _comparative_receipt_qs(receipts)
+        receipts = list(_comparative_receipt_qs(receipts))
 
-        # Build analysis matrix: income_type x bank_account
-        matrix = {}
+        # Real Agent Commission per receipt, matching what was posted.
+        resolver = _make_commission_resolver()
+        resolver.warm(receipts)
+
+        try:
+            property_id_int = int(property_id) if property_id else None
+        except (TypeError, ValueError):
+            property_id_int = None
+        try:
+            landlord_id_int = int(landlord_id) if landlord_id else None
+        except (TypeError, ValueError):
+            landlord_id_int = None
+
+        # Build analysis matrix: income_type x bank_account (income + commission)
+        income_matrix = {}   # (inv_type, bank_name) -> income Decimal
+        comm_matrix = {}     # (inv_type, bank_name) -> commission Decimal
         income_types = set()
-        bank_accounts = {}  # bank_name -> bank_id
-        totals_by_type = {}
-        totals_by_bank = {}
+        bank_accounts = {}   # bank_name -> bank_id
+        bank_currency = {}   # bank_name -> currency
+        totals_by_type = {}  # inv_type -> {label, amount(income)}
+        comm_by_type = {}    # inv_type -> commission
+        totals_by_bank = {}  # bank_name -> income
+        comm_by_bank = {}    # bank_name -> commission
         grand_total = Decimal('0')
+        grand_commission = Decimal('0')
 
         for rcpt in receipts:
-            # Income type from the receipt's own income_type, falling back
-            # to the invoice — invoice-less payments would otherwise all
-            # land under "Other".
+            # Income type / property / landlord from the receipt's own
+            # income_type, falling back to the invoice or the paying tenant's
+            # lease — so invoice-less payments are attributed correctly.
             _dims = _receipt_dims(rcpt)
+
+            if property_id_int is not None:
+                p = _dims['property']
+                if not p or p.id != property_id_int:
+                    continue
+            if landlord_id_int is not None:
+                ll = _dims['landlord']
+                if not ll or ll.id != landlord_id_int:
+                    continue
+
             inv_type = _dims['income_type_key']
             inv_type_display = _dims['income_type_display']
             bank_id = rcpt.bank_account_id if rcpt.bank_account else None
             bank_name = rcpt.bank_account.name if rcpt.bank_account else (rcpt.bank_name or 'Cash')
 
+            amount = rcpt.amount or Decimal('0')
+            comm = resolver(rcpt) or Decimal('0')
+
             income_types.add((inv_type, inv_type_display))
             if bank_name not in bank_accounts:
                 bank_accounts[bank_name] = bank_id
+                bank_currency[bank_name] = getattr(rcpt.bank_account, 'currency', None) or rcpt.currency
 
-            matrix_key = (inv_type, bank_name)
-            if matrix_key not in matrix:
-                matrix[matrix_key] = Decimal('0')
-            matrix[matrix_key] += rcpt.amount
+            mk = (inv_type, bank_name)
+            income_matrix[mk] = income_matrix.get(mk, Decimal('0')) + amount
+            comm_matrix[mk] = comm_matrix.get(mk, Decimal('0')) + comm
 
-            # Totals
             if inv_type not in totals_by_type:
                 totals_by_type[inv_type] = {'label': inv_type_display, 'amount': Decimal('0')}
-            totals_by_type[inv_type]['amount'] += rcpt.amount
+            totals_by_type[inv_type]['amount'] += amount
+            comm_by_type[inv_type] = comm_by_type.get(inv_type, Decimal('0')) + comm
 
-            if bank_name not in totals_by_bank:
-                totals_by_bank[bank_name] = Decimal('0')
-            totals_by_bank[bank_name] += rcpt.amount
+            totals_by_bank[bank_name] = totals_by_bank.get(bank_name, Decimal('0')) + amount
+            comm_by_bank[bank_name] = comm_by_bank.get(bank_name, Decimal('0')) + comm
 
-            grand_total += rcpt.amount
+            grand_total += amount
+            grand_commission += comm
 
-        # Build structured bank columns with id, key, label
+        # Build structured bank columns with id, key, label, currency
         bank_list = sorted(bank_accounts.keys())
         bank_columns = []
         for bank_name in bank_list:
-            key = f'bank_{bank_accounts[bank_name]}' if bank_accounts[bank_name] else bank_name.lower().replace(' ', '_')
+            bid = bank_accounts[bank_name]
+            key = f'bank_{bid}' if bid else bank_name.lower().replace(' ', '_')
             bank_columns.append({
                 'key': key,
                 'label': bank_name,
-                'id': bank_accounts[bank_name],
+                'id': bid,
+                'currency': bank_currency.get(bank_name),
             })
 
         type_list = sorted(income_types, key=lambda x: x[1])
 
-        # Build flattened matrix rows (amounts at row[col.key])
+        def _pct(part, whole):
+            return float(round(part / whole * 100, 2)) if whole else 0.0
+
+        # Matrix rows: income at row[key], commission at row[key+'_commission'],
+        # net at row[key+'_net']. Primary keys stay plain floats so existing
+        # CSV/Excel export keeps working.
         matrix_data = []
         for inv_type, inv_type_display in type_list:
+            row_income = totals_by_type.get(inv_type, {}).get('amount', Decimal('0'))
+            row_comm = comm_by_type.get(inv_type, Decimal('0'))
             row = {
                 'income_type': inv_type,
                 'income_type_display': inv_type_display,
-                'total': float(totals_by_type.get(inv_type, {}).get('amount', 0))
+                'total': float(row_income),
+                'total_commission': float(row_comm),
+                'total_net': float(row_income - row_comm),
+                'income_share': _pct(row_income, grand_total),
             }
             for col in bank_columns:
-                row[col['key']] = float(matrix.get((inv_type, col['label']), 0))
+                inc = income_matrix.get((inv_type, col['label']), Decimal('0'))
+                cm = comm_matrix.get((inv_type, col['label']), Decimal('0'))
+                row[col['key']] = float(inc)
+                row[col['key'] + '_commission'] = float(cm)
+                row[col['key'] + '_net'] = float(inc - cm)
             matrix_data.append(row)
 
-        # Build totals keyed by column key
-        totals = {'grand_total': float(grand_total)}
+        # Totals keyed by column key (income + commission + net)
+        totals = {
+            'grand_total': float(grand_total),
+            'grand_commission': float(grand_commission),
+            'grand_net': float(grand_total - grand_commission),
+        }
         for col in bank_columns:
-            totals[col['key']] = float(totals_by_bank.get(col['label'], 0))
+            inc = totals_by_bank.get(col['label'], Decimal('0'))
+            cm = comm_by_bank.get(col['label'], Decimal('0'))
+            totals[col['key']] = float(inc)
+            totals[col['key'] + '_commission'] = float(cm)
+            totals[col['key'] + '_net'] = float(inc - cm)
+
+        # Per-bank distribution + commission analysis
+        banks = []
+        for col in bank_columns:
+            inc = totals_by_bank.get(col['label'], Decimal('0'))
+            cm = comm_by_bank.get(col['label'], Decimal('0'))
+            banks.append({
+                'bank': col['label'],
+                'id': col['id'],
+                'key': col['key'],
+                'currency': col['currency'],
+                'income': float(inc),
+                'commission': float(cm),
+                'net': float(inc - cm),
+                # Effective commission rate for this bank's income.
+                'commission_pct': _pct(cm, inc),
+                'income_share': _pct(inc, grand_total),
+                'commission_share': _pct(cm, grand_commission),
+            })
 
         return Response({
-            'report_name': 'Income Item Analysis',
+            'report_name': 'Bank-to-Income-to-Commission Analysis',
             'period': {
                 'start': start_date,
                 'end': str(end_date)
             },
+            'currency': currency,  # null = all currencies
             'filters': {
                 'income_type': income_type,
-                'bank_account_id': bank_account_id
+                'bank_account_id': bank_account_id,
+                'property_id': property_id,
+                'landlord_id': landlord_id,
             },
             'summary': {
                 'grand_total': float(grand_total),
+                'gross_income': float(grand_total),
+                'commission': float(grand_commission),
+                'net_proceeds': float(grand_total - grand_commission),
+                'effective_commission_rate': _pct(grand_commission, grand_total),
                 'income_types_count': len(type_list),
                 'bank_accounts_count': len(bank_list)
             },
             'totals_by_income_type': [
-                {'income_type': k, 'label': v['label'], 'amount': float(v['amount'])}
+                {'income_type': k, 'label': v['label'], 'amount': float(v['amount']),
+                 'commission': float(comm_by_type.get(k, Decimal('0'))),
+                 'net': float(v['amount'] - comm_by_type.get(k, Decimal('0'))),
+                 'income_share': _pct(v['amount'], grand_total)}
                 for k, v in totals_by_type.items()
             ],
             'totals_by_bank': [
                 {'bank': k, 'amount': float(v)}
                 for k, v in totals_by_bank.items()
             ],
+            'banks': banks,
             'matrix': matrix_data,
             'bank_columns': bank_columns,
             'totals': totals,
-            # Heatmap data for visualization
+            # Heatmap data for visualization (income intensity)
             'heatmap_data': {
                 'x_labels': bank_list,
                 'y_labels': [t[1] for t in type_list],
                 'values': [
-                    [float(matrix.get((t[0], b), 0)) for b in bank_list]
+                    [float(income_matrix.get((t[0], b), 0)) for b in bank_list]
                     for t in type_list
                 ]
             }
@@ -4710,9 +4809,13 @@ class IncomeItemAnalysisView(APIView):
 
 class IncomeItemDrilldownView(APIView):
     """
-    Drill-down for Income Item Analysis.
-    Level 2: Income categories for a specific bank account.
-    Level 3: Individual receipts for a bank + income category.
+    Drill-down for the Bank-to-Income-to-Commission Analysis.
+    Level 2: Income categories (with commission + net) for a specific bank.
+    Level 3: Individual receipts (with commission + net) for a bank + category.
+
+    Categorisation mirrors the level-1 matrix (``_receipt_dims``) so drill-down
+    totals reconcile to the summary, and commission is the same real Agent
+    Commission resolved per receipt. Read-only — no accounting logic changed.
     """
     permission_classes = [IsAuthenticated]
 
@@ -4723,6 +4826,8 @@ class IncomeItemDrilldownView(APIView):
         income_type = request.query_params.get('income_type')
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date', timezone.now().date())
+        property_id = request.query_params.get('property_id')
+        landlord_id = request.query_params.get('landlord_id')
 
         if not bank_account_id:
             return Response({'error': 'bank_account_id is required'}, status=400)
@@ -4744,45 +4849,73 @@ class IncomeItemDrilldownView(APIView):
         except BankAccount.DoesNotExist:
             return Response({'error': 'Bank account not found'}, status=404)
 
+        receipts = list(_comparative_receipt_qs(receipts))
+        resolver = _make_commission_resolver()
+        resolver.warm(receipts)
+
+        try:
+            property_id_int = int(property_id) if property_id else None
+        except (TypeError, ValueError):
+            property_id_int = None
+        try:
+            landlord_id_int = int(landlord_id) if landlord_id else None
+        except (TypeError, ValueError):
+            landlord_id_int = None
+
+        def _passes(dims):
+            if property_id_int is not None:
+                p = dims['property']
+                if not p or p.id != property_id_int:
+                    return False
+            if landlord_id_int is not None:
+                ll = dims['landlord']
+                if not ll or ll.id != landlord_id_int:
+                    return False
+            return True
+
         if level == '3':
-            # Level 3: Individual receipts for bank + income type
+            # Level 3: Individual receipts for bank + income category
             if not income_type:
                 return Response({'error': 'income_type is required for level 3'}, status=400)
 
-            receipts = receipts.filter(
-                invoice__invoice_type=income_type
-            ).select_related(
-                'tenant', 'invoice__property', 'invoice__unit', 'invoice'
-            ).order_by('-date')
-
             receipt_list = []
             total = Decimal('0')
-            for rcpt in receipts:
-                prop_name = ''
-                unit_name = ''
-                if rcpt.invoice:
-                    prop_name = rcpt.invoice.property.name if rcpt.invoice.property else ''
-                    unit_name = rcpt.invoice.unit.unit_number if rcpt.invoice.unit else ''
+            total_commission = Decimal('0')
+            income_type_display = income_type
+            for rcpt in sorted(receipts, key=lambda r: r.date, reverse=True):
+                dims = _receipt_dims(rcpt)
+                if dims['income_type_key'] != income_type:
+                    continue
+                if not _passes(dims):
+                    continue
+                income_type_display = dims['income_type_display']
+                prop = dims['property']
+                unit = dims['unit']
+                landlord = dims['landlord']
+                amount = rcpt.amount or Decimal('0')
+                comm = resolver(rcpt) or Decimal('0')
                 receipt_list.append({
                     'receipt_id': rcpt.id,
                     'date': str(rcpt.date),
                     'receipt_number': rcpt.receipt_number,
-                    'property_id': rcpt.invoice.property_id if rcpt.invoice and rcpt.invoice.property else None,
-                    'property': prop_name,
-                    'unit_id': rcpt.invoice.unit_id if rcpt.invoice and rcpt.invoice.unit else None,
-                    'unit': unit_name,
+                    'property_id': prop.id if prop else None,
+                    'property': prop.name if prop else '',
+                    'unit_id': unit.id if unit else None,
+                    'unit': unit.unit_number if unit else '',
+                    'landlord_id': landlord.id if landlord else None,
+                    'landlord': landlord.name if landlord else '',
                     'tenant_id': rcpt.tenant_id if rcpt.tenant else None,
                     'tenant': str(rcpt.tenant) if rcpt.tenant else '',
-                    'amount': float(rcpt.amount),
+                    'income_type': dims['income_type_key'],
+                    'income_type_display': dims['income_type_display'],
+                    'bank_account': bank_account_name,
+                    'currency': rcpt.currency,
+                    'amount': float(amount),
+                    'commission': float(comm),
+                    'net': float(amount - comm),
                 })
-                total += rcpt.amount
-
-            # Get display name for income type
-            income_type_display = income_type
-            for choice_val, choice_label in Invoice.InvoiceType.choices:
-                if choice_val == income_type:
-                    income_type_display = choice_label
-                    break
+                total += amount
+                total_commission += comm
 
             return Response({
                 'level': 3,
@@ -4791,18 +4924,25 @@ class IncomeItemDrilldownView(APIView):
                 'income_type_display': income_type_display,
                 'receipts': receipt_list,
                 'total': float(total),
+                'total_commission': float(total_commission),
+                'total_net': float(total - total_commission),
                 'transaction_count': len(receipt_list),
             })
 
         else:
-            # Level 2: Categories breakdown for a bank
-            receipts = receipts.select_related('invoice')
+            # Level 2: Categories breakdown for a bank (income + commission)
             categories = {}
             grand_total = Decimal('0')
+            grand_commission = Decimal('0')
 
             for rcpt in receipts:
-                inv_type = rcpt.invoice.invoice_type if rcpt.invoice else 'other'
-                inv_type_display = rcpt.invoice.get_invoice_type_display() if rcpt.invoice else 'Other'
+                dims = _receipt_dims(rcpt)
+                if not _passes(dims):
+                    continue
+                inv_type = dims['income_type_key']
+                inv_type_display = dims['income_type_display']
+                amount = rcpt.amount or Decimal('0')
+                comm = resolver(rcpt) or Decimal('0')
 
                 if inv_type not in categories:
                     categories[inv_type] = {
@@ -4810,20 +4950,29 @@ class IncomeItemDrilldownView(APIView):
                         'income_type_display': inv_type_display,
                         'transaction_count': 0,
                         'total_amount': Decimal('0'),
+                        'commission': Decimal('0'),
                     }
                 categories[inv_type]['transaction_count'] += 1
-                categories[inv_type]['total_amount'] += rcpt.amount
-                grand_total += rcpt.amount
+                categories[inv_type]['total_amount'] += amount
+                categories[inv_type]['commission'] += comm
+                grand_total += amount
+                grand_commission += comm
 
             cat_list = sorted(categories.values(), key=lambda x: x['income_type_display'])
             for cat in cat_list:
-                cat['total_amount'] = float(cat['total_amount'])
+                inc = cat['total_amount']
+                cm = cat['commission']
+                cat['total_amount'] = float(inc)
+                cat['commission'] = float(cm)
+                cat['net'] = float(inc - cm)
 
             return Response({
                 'level': 2,
                 'bank_account_name': bank_account_name,
                 'categories': cat_list,
                 'grand_total': float(grand_total),
+                'grand_commission': float(grand_commission),
+                'grand_net': float(grand_total - grand_commission),
                 'total_transactions': sum(c['transaction_count'] for c in cat_list),
             })
 

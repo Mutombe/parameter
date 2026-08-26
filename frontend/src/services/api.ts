@@ -242,9 +242,9 @@ export const reportsApi = {
     api.get('/reports/lease-charges/', { params }),
   receiptListing: (params?: { start_date?: string; end_date?: string; bank_account_id?: number; income_type?: string; payment_method?: string; export?: string }) =>
     api.get('/reports/receipts/', { params }),
-  incomeItemAnalysis: (params?: { start_date?: string; end_date?: string; income_type?: string; bank_account_id?: number }) =>
+  incomeItemAnalysis: (params?: { start_date?: string; end_date?: string; income_type?: string; bank_account_id?: number; currency?: string; property_id?: number; landlord_id?: number }) =>
     api.get('/reports/income-item-analysis/', { params }),
-  incomeItemDrilldown: (params: { level: number; bank_account_id: number; income_type?: string; start_date?: string; end_date?: string }) =>
+  incomeItemDrilldown: (params: { level: number; bank_account_id: number; income_type?: string; start_date?: string; end_date?: string; currency?: string; property_id?: number; landlord_id?: number }) =>
     api.get('/reports/income-item-analysis/drilldown/', { params }),
   incomeExpenditure: (params: { landlord_id?: number; property_id?: number; start_date?: string; end_date?: string; currency?: string; category?: string }) =>
     api.get('/reports/income-expenditure/', { params }),

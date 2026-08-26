@@ -295,15 +295,25 @@ export function exportReport(
     case 'bank-to-income': {
       const bankCols = data?.bank_columns || []
       exportData = (data?.matrix || []).map((row: any) => {
-        const flat: any = { income_type: row.income_type }
-        bankCols.forEach((col: any) => { flat[col.key] = row[col.key] || 0 })
+        const flat: any = { income_type: row.income_type_display || row.income_type }
+        bankCols.forEach((col: any) => {
+          flat[col.key] = row[col.key] || 0
+          flat[col.key + '_commission'] = row[col.key + '_commission'] || 0
+        })
         flat.total = row.total || 0
+        flat.total_commission = row.total_commission || 0
+        flat.total_net = row.total_net || 0
         return flat
       })
       columns = [
         { key: 'income_type', header: 'Income Type' },
-        ...bankCols.map((col: any) => ({ key: col.key, header: col.label, format: formatNumber })),
-        { key: 'total', header: 'Total', format: formatNumber },
+        ...bankCols.flatMap((col: any) => [
+          { key: col.key, header: `${col.label} — Income`, format: formatNumber },
+          { key: col.key + '_commission', header: `${col.label} — Commission`, format: formatNumber },
+        ]),
+        { key: 'total', header: 'Total Income', format: formatNumber },
+        { key: 'total_commission', header: 'Total Commission', format: formatNumber },
+        { key: 'total_net', header: 'Net Proceeds', format: formatNumber },
       ]
       break
     }

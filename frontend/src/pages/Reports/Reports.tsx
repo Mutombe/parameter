@@ -93,6 +93,7 @@ const CURRENCY_REPORTS: ReadonlySet<string> = new Set([
 // at the filter-bar gate, so they don't need to be listed here.
 const CATEGORY_REPORTS: ReadonlySet<string> = new Set([
   'aged-analysis', 'rent-rollover', 'receipts-listing', 'lease-charges',
+  'bank-to-income',
 ])
 const CATEGORY_OPTIONS: Array<[string, string]> = [
   ['', 'All'], ['rent', 'Rent'], ['levy', 'Levy'], ['special_levy', 'Special Levy'],
@@ -177,7 +178,7 @@ const reportNames: Record<ReportType, string> = {
   'landlord-account': 'Landlord Account',
   'commission-property': 'Commission by Property',
   'commission-income': 'Commission by Income',
-  'bank-to-income': 'Bank to Income',
+  'bank-to-income': 'Bank → Income → Commission',
   'receipts-listing': 'Receipts Listing',
   'deposits-listing': 'Deposits Listing',
   'lease-charges': 'Lease Charges',
