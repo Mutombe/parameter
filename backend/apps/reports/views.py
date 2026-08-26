@@ -2425,12 +2425,23 @@ class RentRolloverView(APIView):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
         property_id = request.query_params.get('property_id')
-        # Reporting currency (Direct Payments = receipts in THIS currency;
-        # ZWG Payments Converted = conversion journals INTO this currency).
-        currency = request.query_params.get('currency') or 'USD'
+        # Currency filter (None = All): a reporting filter that restricts the
+        # underlying invoices/receipts to a single currency (USD | ZWG). "All"
+        # leaves every currency in, preserved separately per row — it does NOT
+        # convert or combine currencies. This is independent of the separate
+        # Convert Currency feature.
+        currency = request.query_params.get('currency') or None
+        # Target currency for the "ZWG Payments Converted" column (the existing
+        # conversion function, kept distinct from the currency filter above).
+        # Under "All" it stays USD, preserving the report's prior behaviour.
+        conv_currency = currency or 'USD'
         # Category filter (rent / levy / special_levy / ...): limits the
         # report to leases whose charges match — Levy Payers side included.
         category = request.query_params.get('category') or None
+
+        # Applied to every invoice/receipt queryset below (both carry a
+        # `currency` field). Empty under "All" so nothing is filtered out.
+        currency_filter = {'currency': currency} if currency else {}
 
         if not start_date or not end_date:
             return Response({'error': 'start_date and end_date required'}, status=400)
@@ -2471,19 +2482,20 @@ class RentRolloverView(APIView):
 
         # Batch queries — invoices/receipts × before/during period
         inv_before = dict(Invoice.objects.filter(
-            lease_id__in=lease_ids, date__lt=start_date
+            lease_id__in=lease_ids, date__lt=start_date, **currency_filter
         ).values('lease_id').annotate(
             t=Coalesce(Sum('total_amount'), Decimal('0'))
         ).values_list('lease_id', 't'))
 
         rcpt_before = dict(Receipt.objects.filter(
-            invoice__lease_id__in=lease_ids, date__lt=start_date
+            invoice__lease_id__in=lease_ids, date__lt=start_date, **currency_filter
         ).values('invoice__lease_id').annotate(
             t=Coalesce(Sum('amount'), Decimal('0'))
         ).values_list('invoice__lease_id', 't'))
 
         _inv_period_qs = Invoice.objects.filter(
-            lease_id__in=lease_ids, date__gte=start_date, date__lte=end_date)
+            lease_id__in=lease_ids, date__gte=start_date, date__lte=end_date,
+            **currency_filter)
         if category:
             _inv_period_qs = _inv_period_qs.filter(invoice_type=category)
         inv_period = dict(_inv_period_qs.exclude(invoice_type='penalty')
@@ -2494,7 +2506,7 @@ class RentRolloverView(APIView):
         # the carried-forward balance).
         penalty_period = dict(Invoice.objects.filter(
             lease_id__in=lease_ids, date__gte=start_date, date__lte=end_date,
-            invoice_type='penalty',
+            invoice_type='penalty', **currency_filter,
         ).values('lease_id').annotate(
             t=Coalesce(Sum('total_amount'), Decimal('0'))
         ).values_list('lease_id', 't'))
@@ -2504,14 +2516,15 @@ class RentRolloverView(APIView):
         from apps.accounting.models import CurrencyConversion
         conv_by_tenant = dict(CurrencyConversion.objects.filter(
             tenant_id__in=[l.tenant_id for l in lease_list],
-            to_currency=currency,
+            to_currency=conv_currency,
             created_at__date__gte=start_date, created_at__date__lte=end_date,
         ).values('tenant_id').annotate(
             t=Coalesce(Sum('amount_to'), Decimal('0'))
         ).values_list('tenant_id', 't'))
 
         rcpt_period = dict(Receipt.objects.filter(
-            invoice__lease_id__in=lease_ids, date__gte=start_date, date__lte=end_date
+            invoice__lease_id__in=lease_ids, date__gte=start_date, date__lte=end_date,
+            **currency_filter
         ).values('invoice__lease_id').annotate(
             t=Coalesce(Sum('amount'), Decimal('0'))
         ).values_list('invoice__lease_id', 't'))
@@ -2526,13 +2539,14 @@ class RentRolloverView(APIView):
         lease_tenant_ids = list(tenant_to_lease.keys())
 
         direct_before = dict(Receipt.objects.filter(
-            tenant_id__in=lease_tenant_ids, invoice__isnull=True, date__lt=start_date
+            tenant_id__in=lease_tenant_ids, invoice__isnull=True, date__lt=start_date,
+            **currency_filter
         ).values('tenant_id').annotate(
             t=Coalesce(Sum('amount'), Decimal('0'))
         ).values_list('tenant_id', 't'))
         direct_period = dict(Receipt.objects.filter(
             tenant_id__in=lease_tenant_ids, invoice__isnull=True,
-            date__gte=start_date, date__lte=end_date
+            date__gte=start_date, date__lte=end_date, **currency_filter
         ).values('tenant_id').annotate(
             t=Coalesce(Sum('amount'), Decimal('0'))
         ).values_list('tenant_id', 't'))

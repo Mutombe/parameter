@@ -84,6 +84,7 @@ const VacancyReport = lazy(() => import('./sections/Operational').then(m => ({ d
 const CURRENCY_REPORTS: ReadonlySet<string> = new Set([
   'aged-analysis', 'commission-property', 'commission-income',
   'bank-to-income', 'receipts-listing', 'deposits-listing', 'lease-charges',
+  'rent-rollover',
 ])
 
 // Operational reports that support the income-category slice (rent, levy, …).
