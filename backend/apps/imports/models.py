@@ -19,6 +19,7 @@ class ImportJob(models.Model):
         LANDLORDS = 'landlords', 'Landlords'
         PROPERTIES = 'properties', 'Properties'
         TENANTS = 'tenants', 'Tenants'
+        ACCOUNT_HOLDERS = 'account_holders', 'Account Holders'
         LEASES = 'leases', 'Leases'
         INVOICES = 'invoices', 'Invoices'
         RECEIPTS = 'receipts', 'Receipts'

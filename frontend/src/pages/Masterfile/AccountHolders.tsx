@@ -4,17 +4,19 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus, Search, Mail, Trash2, Loader2, Edit2, Building2,
+  Wand2, Upload, FileSpreadsheet,
 } from '@/lib/icons'
 import { TbUserSquareRounded } from 'react-icons/tb'
-import { accountHolderApi } from '../../services/api'
+import { accountHolderApi, importsApi } from '../../services/api'
 import { useDebounce, cn } from '../../lib/utils'
 import {
   Pagination, EmptyState, Modal, SelectionCheckbox, BulkActionsBar,
-  ConfirmDialog,
+  ConfirmDialog, SplitButton,
 } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
 import { undoToast } from '../../lib/undoToast'
 import TenantForm from '../../components/forms/TenantForm'
+import { useChainStore } from '../../stores/chainStore'
 import { useSelection } from '../../hooks/useSelection'
 import { useBulkLoading } from '../../hooks/useBulkLoading'
 import { useHotkeys } from '../../hooks/useHotkeys'
@@ -70,6 +72,27 @@ export default function AccountHolders() {
     setShowForm(false)
     setEditingId(null)
     setEditingValues(null)
+  }
+
+  const openCreate = () => {
+    setEditingId(null)
+    setEditingValues(null)
+    setShowForm(true)
+  }
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await importsApi.downloadTemplate('account_holders')
+      const blob = response.data as Blob
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'import_template_account_holders.xlsx'
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      showToast.error('Failed to download template')
+    }
   }
 
   const handleEdit = (holder: any) => {
@@ -215,9 +238,16 @@ export default function AccountHolders() {
           <h1 className="text-2xl font-bold text-gray-900">Account Holders</h1>
           <p className="text-sm text-gray-500">Levy-side payers — pay levies, special levies, rates, maintenance, parking.</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 transition-colors">
+        <SplitButton
+          onClick={openCreate}
+          menuItems={[
+            { label: 'Chain Add', icon: Wand2, onClick: () => useChainStore.getState().startChain('account-holder') },
+            { label: 'Import from File', icon: Upload, onClick: () => navigate('/dashboard/data-import') },
+            { label: 'Download Template', icon: FileSpreadsheet, onClick: handleDownloadTemplate },
+          ]}
+        >
           <Plus className="w-4 h-4" /> New Account Holder
-        </button>
+        </SplitButton>
       </div>
 
       <div className="card overflow-hidden">

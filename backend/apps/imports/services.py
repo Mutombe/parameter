@@ -219,6 +219,14 @@ SHEET_ALIASES = {
     'tenant': 'tenants',
     'renters': 'tenants',
     'renter': 'tenants',
+    'account_holders': 'account_holders',
+    'account holders': 'account_holders',
+    'account-holders': 'account_holders',
+    'accountholders': 'account_holders',
+    'account_holder': 'account_holders',
+    'account holder': 'account_holders',
+    'levy payers': 'account_holders',
+    'levy_payers': 'account_holders',
     'leases': 'leases',
     'lease': 'leases',
     'lease_agreements': 'leases',
@@ -363,6 +371,22 @@ COLUMN_MAPPINGS = {
         'defaults': {
             'tenant_type': 'individual',
             'account_type': 'rental',
+            'id_type': 'national_id',
+        }
+    },
+    # Account Holders are the levy-side equivalent of tenants — the same
+    # RentalTenant model with account_type='levy'. id_number is optional here
+    # (matching the Account Holder create form). account_type always resolves
+    # to 'levy' on creation regardless of the sheet value.
+    'account_holders': {
+        'required': ['name', 'email', 'phone'],
+        'optional': ['id_number', 'tenant_type', 'account_type', 'alt_phone', 'id_type',
+                     'emergency_contact_name', 'emergency_contact_phone',
+                     'emergency_contact_relation', 'employer_name',
+                     'employer_address', 'occupation', 'notes'],
+        'defaults': {
+            'tenant_type': 'individual',
+            'account_type': 'levy',
             'id_type': 'national_id',
         }
     },
@@ -916,6 +940,7 @@ def validate_entity(entity_type, df):
             'landlords': ['landlord_type', 'preferred_currency', 'payment_frequency'],
             'properties': ['property_type'],
             'tenants': ['tenant_type', 'account_type', 'id_type'],
+            'account_holders': ['tenant_type', 'account_type', 'id_type'],
             'leases': ['currency'],
         }
 
@@ -1075,14 +1100,23 @@ def process_import(job, data_frames):
         if _schema and getattr(db_connection, 'schema_name', None) != _schema:
             db_connection.set_schema(_schema)
 
+    # Account Holders are structurally identical to tenants (same RentalTenant
+    # model), so a single-entity file's columns auto-detect as 'tenants'. When
+    # the user explicitly chose the Account Holders import type, honour that so
+    # rows are created as levy account holders, not rental tenants.
+    if (getattr(job, 'import_type', None) == 'account_holders'
+            and 'tenants' in data_frames and 'account_holders' not in data_frames):
+        data_frames = dict(data_frames)
+        data_frames['account_holders'] = data_frames.pop('tenants')
+
     # Track created objects for reference resolution
     created_refs = {
         'landlords': {},  # name/code -> object
         'properties': {},  # name/code -> object
-        'tenants': {},  # name/code -> object
+        'tenants': {},  # name/code -> object (account holders share this pool)
     }
 
-    processing_order = ['landlords', 'properties', 'tenants', 'leases']
+    processing_order = ['landlords', 'properties', 'tenants', 'account_holders', 'leases']
 
     total_success = 0
     total_errors = 0
@@ -1123,7 +1157,9 @@ def process_import(job, data_frames):
                         created_refs['properties'][obj.name.lower()] = obj
                         if obj.code:
                             created_refs['properties'][obj.code.lower()] = obj
-                    elif entity_type == 'tenants':
+                    elif entity_type in ('tenants', 'account_holders'):
+                        # Both live in the same RentalTenant pool used for
+                        # lease tenant_ref resolution.
                         created_refs['tenants'][obj.name.lower()] = obj
                         if obj.code:
                             created_refs['tenants'][obj.code.lower()] = obj
@@ -1228,6 +1264,12 @@ def create_entity(entity_type, row, refs):
         return Property.objects.create(**data)
 
     elif entity_type == 'tenants':
+        return RentalTenant.objects.create(**data)
+
+    elif entity_type == 'account_holders':
+        # Same model as tenants; force levy regardless of the sheet value so
+        # the row shows up in the Account Holders list (which filters levy).
+        data['account_type'] = 'levy'
         return RentalTenant.objects.create(**data)
 
     elif entity_type == 'leases':

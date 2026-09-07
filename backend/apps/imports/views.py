@@ -63,6 +63,13 @@ class ImportJobViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+            # Account Holders share the tenant column shape, so a single-entity
+            # file auto-detects as 'tenants'. Honour the user's explicit choice
+            # here too, so the validation preview reflects account holders.
+            if (import_type == 'account_holders'
+                    and 'tenants' in data_frames and 'account_holders' not in data_frames):
+                data_frames = {'account_holders': data_frames['tenants']}
+
             # Determine import type
             if len(data_frames) > 1:
                 detected_type = 'combined'
@@ -203,8 +210,12 @@ class ImportJobViewSet(viewsets.ModelViewSet):
             example = get_example_row(template_type)
             df = pd.concat([df, pd.DataFrame([example])], ignore_index=True)
 
-            # Write to Excel
-            df.to_excel(output, index=False, engine='openpyxl')
+            # Name the sheet after the entity so a re-uploaded template routes
+            # back to the right type by sheet name (SHEET_ALIASES) rather than
+            # relying on column auto-detection — important for account holders,
+            # whose columns are indistinguishable from tenants.
+            sheet_name = template_type.replace('_', ' ').title()[:31]
+            df.to_excel(output, index=False, engine='openpyxl', sheet_name=sheet_name)
             output.seek(0)
 
             response = HttpResponse(
@@ -249,6 +260,15 @@ def get_example_row(entity_type):
             'phone': '+263779876543',
             'id_number': '63-123456-A-78',
             'tenant_type': 'individual',
+            'id_type': 'national_id',
+        },
+        'account_holders': {
+            'name': 'Unit 12 Owner',
+            'email': 'owner@example.com',
+            'phone': '+263779876543',
+            'id_number': '63-123456-A-78',
+            'tenant_type': 'individual',
+            'account_type': 'levy',
             'id_type': 'national_id',
         },
         'leases': {
