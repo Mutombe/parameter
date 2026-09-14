@@ -316,6 +316,12 @@ export const propertyBillingConfigApi = {
     api.post('/masterfile/property-billing-configs/bulk-delete-preview/', data),
   bulkDelete: (data: object) =>
     api.post('/masterfile/property-billing-configs/bulk-delete/', data),
+  // Bulk Invoice Regeneration: remove ALL invoices (incl. paid) for a
+  // property/period/category and regenerate from current master data.
+  bulkRegeneratePreview: (data: object) =>
+    api.post('/masterfile/property-billing-configs/bulk-regenerate-preview/', data),
+  bulkRegenerate: (data: object) =>
+    api.post('/masterfile/property-billing-configs/bulk-regenerate/', data),
 }
 
 export const propertyApi = {

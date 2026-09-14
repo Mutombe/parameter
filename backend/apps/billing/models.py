@@ -346,6 +346,64 @@ class Invoice(SoftDeleteModel):
 
         return journal
 
+    @transaction.atomic
+    def reverse_postings(self, user=None, reason='Invoice regeneration'):
+        """Reverse this invoice's GL + subsidiary (pocket) footprint so the
+        invoice can be removed without leaving its receivable behind.
+
+        Symmetric inverse of ``post_to_ledger``:
+          * ``journal.reverse()`` swaps the GL control (Accounts Receivable
+            1300) and the Unpaid <category> deferred-revenue lines.
+          * a reversing SubsidiaryTransaction CREDITS the tenant's category
+            pocket by total_amount — journal.reverse() alone does not, because
+            the invoice's debit line carries BOTH the 1300 control and the
+            pocket, so posting it takes the GL-only branch.
+
+        NEVER creates/deletes/renumbers accounts — it resolves the EXISTING
+        pocket with the get-only resolver and only records offsetting entries.
+        Safe no-op when the invoice was never posted.
+        """
+        if not self.journal_id:
+            return None
+
+        from apps.accounting.models import (
+            SubsidiaryAccount, SubsidiaryTransaction, SubsidiaryStructureError,
+        )
+
+        journal = self.journal
+        reversal = None
+        # Only a posted journal can be reversed; a draft one is just discarded.
+        if getattr(journal, 'status', None) == journal.Status.POSTED:
+            reversal = journal.reverse(reason, user)
+
+        # Reverse the tenant category pocket the invoice originally debited.
+        try:
+            tenant_sub = SubsidiaryAccount.get_or_create_for_tenant_category(
+                self.tenant, category=self.invoice_type or 'rent', currency=self.currency,
+            )
+            rev_entry = None
+            if reversal is not None:
+                rev_entry = reversal.entries.filter(subsidiary_account=tenant_sub).first()
+            SubsidiaryTransaction.create_entry(
+                account=tenant_sub,
+                date=self.date,
+                contra_account=self._get_billing_contra_code(),
+                reference=self.invoice_number,
+                description=f'Reversal: {self.get_invoice_type_display()} Charge',
+                credit_amount=self.total_amount,   # credit undoes the original debit
+                journal_entry=rev_entry,
+                currency=self.currency,
+            )
+        except SubsidiaryStructureError:
+            # Pocket no longer exists — nothing to unwind (shouldn't happen for
+            # a posted invoice). A transaction must never create structure.
+            pass
+
+        # The invoice no longer carries a live posting.
+        self.journal = None
+        self.save(update_fields=['journal', 'updated_at'])
+        return reversal
+
 
 class Receipt(SoftDeleteModel):
     """

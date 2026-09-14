@@ -1054,6 +1054,10 @@ class PropertyBillingConfigViewSet(TenantSchemaValidationMixin, viewsets.ModelVi
         **_PORTFOLIO_CAPS,
         'generate': 'invoices.create',
         'bulk_delete': 'invoices.void',
+        # Regeneration removes invoices (incl. paid) — gate on the void
+        # capability, the more privileged of remove+create.
+        'bulk_regenerate': 'invoices.void',
+        'bulk_regenerate_preview': 'invoices.view',
     }
     filterset_fields = ['property', 'category', 'currency', 'is_active']
     search_fields = ['property__name', 'notes']
@@ -1370,4 +1374,184 @@ class PropertyBillingConfigViewSet(TenantSchemaValidationMixin, viewsets.ModelVi
             'protected': len(protected),
             'protected_detail': protected[:100],
             'note': 'Sub-accounts were not modified.',
+        })
+
+    @action(detail=False, methods=['post'], url_path='bulk-regenerate-preview')
+    def bulk_regenerate_preview(self, request):
+        """Dry run for Bulk Invoice Regeneration. Shows the ENTIRE invoice
+        population that will be removed and regenerated for the selected
+        property / month / year / category, broken down by payment status.
+        Nothing is skipped for being paid, partially paid or posted."""
+        from apps.billing.models import Invoice
+        parsed, err = self._bulk_delete_filters(request.data)
+        if err:
+            return err
+
+        paid = partial = unpaid = total = 0
+        rows = []
+        for inv in parsed['qs']:
+            total += 1
+            if inv.status == Invoice.Status.PAID:
+                paid += 1
+            elif inv.status == Invoice.Status.PARTIAL or (inv.amount_paid and inv.amount_paid > 0):
+                partial += 1
+            else:
+                unpaid += 1
+            if len(rows) < 200:
+                rows.append({
+                    'invoice_number': inv.invoice_number,
+                    'tenant': inv.tenant.name,
+                    'invoice_type': inv.invoice_type,
+                    'amount': str(inv.amount),
+                    'amount_paid': str(inv.amount_paid),
+                    'currency': inv.currency,
+                    'date': inv.date.isoformat(),
+                    'status': inv.status,
+                })
+        return Response({
+            'period': {'from': parsed['start'].isoformat(), 'to': parsed['end'].isoformat()},
+            'category': request.data.get('category') or 'all',
+            'counts': {
+                'total': total, 'paid': paid, 'partial': partial, 'unpaid': unpaid,
+                'to_remove': total, 'to_regenerate': total,
+            },
+            'invoices': rows,
+            'note': ('No invoice is skipped because of payment status. Existing '
+                     'accounts and sub-accounts are preserved — never deleted or recreated.'),
+        })
+
+    @action(detail=False, methods=['post'], url_path='bulk-regenerate')
+    def bulk_regenerate(self, request):
+        """Bulk Invoice Regeneration.
+
+        Removes ALL invoices for the property / month / year / category
+        (INCLUDING paid, partially paid and posted — nothing is skipped),
+        then regenerates them from the CURRENT master data using the existing
+        monthly invoice-generation engine.
+
+        Accounting integrity, using only existing mechanisms:
+          * each removed invoice's GL + pocket posting is reversed
+            (Invoice.reverse_postings — mirror of post_to_ledger),
+          * its real payments (receipts) are KEPT, detached, then re-linked to
+            the matching regenerated invoice with amount_paid/balance recomputed,
+          * old invoices are soft-deleted (audit trail kept, hidden from lists),
+          * regeneration posts to the EXISTING sub-accounts via the get-only
+            pocket resolver — it never deletes, creates or renumbers any
+            Tenant / Account Holder / Landlord / GL account or sub-account.
+        """
+        from decimal import Decimal as _D
+        from apps.accounting.models import AuditTrail
+        from apps.billing.models import Invoice
+        from apps.billing.services import generate_monthly_invoices
+
+        parsed, err = self._bulk_delete_filters(request.data)
+        if err:
+            return err
+
+        month, year = request.data.get('month'), request.data.get('year')
+        if not (month and year):
+            return Response({'error': 'month and year are required for regeneration'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            month, year = int(month), int(year)
+        except (TypeError, ValueError):
+            return Response({'error': 'invalid month/year'}, status=status.HTTP_400_BAD_REQUEST)
+
+        property_id = int(request.data.get('property_id'))
+        category = request.data.get('category') or None
+        confirm = request.data.get('confirm') in (True, 'true', 'True', 1, '1')
+
+        invoices = list(parsed['qs'])
+        if not confirm:
+            return Response({
+                'confirmed': False,
+                'would_remove': len(invoices),
+                'would_regenerate': len(invoices),
+                'message': 'Set confirm=true to delete and regenerate.',
+            })
+
+        user = request.user if request.user.is_authenticated else None
+        removed_numbers = []
+        detached = []  # {receipt, tenant_id, lease_id, invoice_type, currency}
+
+        with transaction.atomic():
+            # 1. Remove the whole population — reverse postings, keep payments.
+            for inv in invoices:
+                for r in list(inv.receipts.all()):
+                    detached.append({
+                        'receipt': r, 'tenant_id': inv.tenant_id,
+                        'lease_id': inv.lease_id, 'invoice_type': inv.invoice_type,
+                        'currency': inv.currency,
+                    })
+                    r.invoice = None
+                    r.save(update_fields=['invoice', 'updated_at'])
+                inv.reverse_postings(user=user, reason='Bulk invoice regeneration')
+                removed_numbers.append(inv.invoice_number)
+                inv.soft_delete(user)
+
+            # 2. Regenerate from CURRENT master data (existing engine).
+            created, gen_errors = generate_monthly_invoices(
+                month=month, year=year, property_id=property_id,
+                invoice_types=[category] if category else None,
+                created_by=user,
+            )
+
+            # 3. Re-link kept payments to the matching regenerated invoice
+            #    (same tenant + category + currency, preferring the same lease).
+            by_key = {}
+            for inv in created:
+                by_key.setdefault((inv.tenant_id, inv.invoice_type, inv.currency), []).append(inv)
+            affected = {}
+            relinked = 0
+            for d in detached:
+                cands = by_key.get((d['tenant_id'], d['invoice_type'], d['currency']), [])
+                match = next((i for i in cands if i.lease_id == d['lease_id']), None)
+                if match is None and cands:
+                    match = cands[0]
+                if match is not None:
+                    r = d['receipt']
+                    r.invoice = match
+                    r.save(update_fields=['invoice', 'updated_at'])
+                    affected[match.id] = match
+                    relinked += 1
+
+            # Recompute amount_paid / balance / status from the re-linked
+            # receipts (net of any reversal receipts, which are negative).
+            for inv in affected.values():
+                paid = sum((r.amount for r in inv.receipts.all()), _D('0'))
+                inv.amount_paid = paid
+                inv.balance = inv.total_amount - paid
+                if inv.total_amount > 0 and paid >= inv.total_amount:
+                    inv.status = Invoice.Status.PAID
+                elif paid > 0:
+                    inv.status = Invoice.Status.PARTIAL
+                inv.save(update_fields=['amount_paid', 'balance', 'status', 'updated_at'])
+
+            AuditTrail.objects.create(
+                action='property_billing_bulk_regenerate',
+                model_name='Invoice',
+                record_id=property_id,
+                changes={
+                    'property_id': property_id,
+                    'category': category or 'all',
+                    'period': '%04d-%02d' % (year, month),
+                    'removed_count': len(removed_numbers),
+                    'removed_invoices': removed_numbers[:200],
+                    'regenerated_count': len(created),
+                    'payments_relinked': relinked,
+                    'payments_unmatched': len(detached) - relinked,
+                    'generation_notes': gen_errors[:50],
+                },
+                user=user,
+            )
+
+        return Response({
+            'confirmed': True,
+            'removed': len(removed_numbers),
+            'regenerated': len(created),
+            'payments_relinked': relinked,
+            'payments_unmatched': len(detached) - relinked,
+            'regenerated_invoices': [i.invoice_number for i in created][:100],
+            'notes': gen_errors[:50],
+            'note': 'Existing accounts and sub-accounts were not modified.',
         })

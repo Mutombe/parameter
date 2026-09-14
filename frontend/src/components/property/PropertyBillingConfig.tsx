@@ -288,7 +288,7 @@ export function PropertyBillingConfig({ propertyId }: { propertyId: number }) {
       </div>
 
       {/* Bulk deletion panel ------------------------------------------- */}
-      <BulkDeletePanel propertyId={propertyId} />
+      <BulkRegeneratePanel propertyId={propertyId} />
 
       {/* Create / edit modal ------------------------------------------- */}
       <Modal open={showForm} onClose={() => setShowForm(false)} size="lg"
@@ -384,11 +384,14 @@ export function PropertyBillingConfig({ propertyId }: { propertyId: number }) {
   )
 }
 
-function StatCard({ label, value, tone }: { label: string; value: number; tone: 'emerald' | 'blue' | 'gray' }) {
+function StatCard({ label, value, tone }: { label: string; value: number; tone: 'emerald' | 'green' | 'blue' | 'gray' | 'amber' | 'red' }) {
   const tones = {
     emerald: 'bg-emerald-50 text-emerald-700',
+    green: 'bg-emerald-50 text-emerald-700',
     blue: 'bg-blue-50 text-blue-700',
     gray: 'bg-gray-50 text-gray-600',
+    amber: 'bg-amber-50 text-amber-700',
+    red: 'bg-red-50 text-red-700',
   }
   return (
     <div className={cn('rounded-lg p-3 text-center', tones[tone])}>
@@ -419,22 +422,23 @@ function PreviewList({ title, rows, showReason }: { title: string; rows: Affecte
   )
 }
 
-// --- Bulk deletion --------------------------------------------------------
-interface BulkPreviewRow {
+// --- Bulk Invoice Regeneration --------------------------------------------
+interface RegenPreviewRow {
   invoice_number: string
   tenant: string
   invoice_type: string
   amount: string
+  amount_paid: string
   currency: string
   date: string
   status: string
-  reason?: string
 }
-interface BulkPreview {
+interface RegenPreview {
   period: { from: string; to: string }
-  counts: { deletable: number; protected: number }
-  deletable: BulkPreviewRow[]
-  protected: BulkPreviewRow[]
+  category: string
+  counts: { total: number; paid: number; partial: number; unpaid: number; to_remove: number; to_regenerate: number }
+  invoices: RegenPreviewRow[]
+  note: string
 }
 
 const MONTHS = [
@@ -442,12 +446,18 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
-function BulkDeletePanel({ propertyId }: { propertyId: number }) {
+function BulkRegeneratePanel({ propertyId }: { propertyId: number }) {
+  const queryClient = useQueryClient()
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
   const [category, setCategory] = useState('')
-  const [preview, setPreview] = useState<BulkPreview | null>(null)
+  const [preview, setPreview] = useState<RegenPreview | null>(null)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+
+  const categoryLabel = category
+    ? (CATEGORY_OPTIONS.find(c => c.value === category)?.label || category)
+    : 'All categories'
 
   const basePayload = () => ({
     property_id: propertyId,
@@ -457,32 +467,40 @@ function BulkDeletePanel({ propertyId }: { propertyId: number }) {
   })
 
   const previewMutation = useMutation({
-    mutationFn: () => propertyBillingConfigApi.bulkDeletePreview(basePayload()).then(r => r.data),
-    onSuccess: (d: BulkPreview) => setPreview(d),
-    onError: (e) => showToast.error(parseApiError(e, 'Could not preview deletion')),
+    mutationFn: () => propertyBillingConfigApi.bulkRegeneratePreview(basePayload()).then(r => r.data),
+    onSuccess: (d: RegenPreview) => setPreview(d),
+    onError: (e) => showToast.error(parseApiError(e, 'Could not preview regeneration')),
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: () => propertyBillingConfigApi.bulkDelete({ ...basePayload(), confirm: true }).then(r => r.data),
-    onSuccess: (d: { deleted: number; protected: number }) => {
-      showToast.success(`${d.deleted} invoice(s) deleted, ${d.protected} protected`)
+  const regenerateMutation = useMutation({
+    mutationFn: () => propertyBillingConfigApi.bulkRegenerate({ ...basePayload(), confirm: true }).then(r => r.data),
+    onSuccess: (d: { removed: number; regenerated: number; payments_relinked: number; payments_unmatched: number }) => {
+      let msg = `${d.removed} removed, ${d.regenerated} regenerated`
+      if (d.payments_relinked) msg += `, ${d.payments_relinked} payment(s) re-applied`
+      if (d.payments_unmatched) msg += `, ${d.payments_unmatched} payment(s) left as unallocated credit`
+      showToast.success(msg)
       setPreview(null)
+      setConfirmOpen(false)
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
     },
-    onError: (e) => showToast.error(parseApiError(e, 'Could not delete billing')),
+    onError: (e) => {
+      showToast.error(parseApiError(e, 'Could not regenerate invoices'))
+      setConfirmOpen(false)
+    },
   })
 
   const yearOptions = Array.from({ length: 7 }, (_, i) => now.getFullYear() - 5 + i)
     .map(y => ({ value: String(y), label: String(y) }))
 
   return (
-    <div className="border border-red-100 bg-red-50/40 rounded-xl p-5">
+    <div className="border border-amber-100 bg-amber-50/40 rounded-xl p-5">
       <div className="flex items-start gap-2 mb-4">
-        <ShieldAlert className="w-5 h-5 text-red-500 mt-0.5" />
+        <ShieldAlert className="w-5 h-5 text-amber-500 mt-0.5" />
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Bulk Delete Billing</h3>
+          <h3 className="text-lg font-semibold text-gray-900">Bulk Invoice Regeneration</h3>
           <p className="text-sm text-gray-500">
-            Remove generated invoices for a period. Paid or posted invoices are protected and skipped;
-            sub-accounts are never deleted.
+            Remove existing invoices and regenerate them from current billing master data.
+            Existing accounts and sub-accounts are preserved.
           </p>
         </div>
       </div>
@@ -505,29 +523,64 @@ function BulkDeletePanel({ propertyId }: { propertyId: number }) {
 
       {preview && (
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard label="Deletable" value={preview.counts.deletable} tone="gray" />
-            <StatCard label="Protected" value={preview.counts.protected} tone="blue" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard label="Existing invoices" value={preview.counts.total} tone="gray" />
+            <StatCard label="Paid" value={preview.counts.paid} tone="green" />
+            <StatCard label="Partially paid" value={preview.counts.partial} tone="amber" />
+            <StatCard label="Unpaid" value={preview.counts.unpaid} tone="blue" />
           </div>
-          {preview.protected.length > 0 && (
-            <div className="text-xs text-gray-500">
-              Protected: {preview.protected.slice(0, 8).map(p => `${p.invoice_number} (${p.reason})`).join(', ')}
-              {preview.protected.length > 8 ? ` +${preview.protected.length - 8} more` : ''}
-            </div>
-          )}
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard label="To remove" value={preview.counts.to_remove} tone="red" />
+            <StatCard label="To regenerate" value={preview.counts.to_regenerate} tone="green" />
+          </div>
+          <p className="text-xs text-gray-500">
+            No invoice is skipped because of payment status. Existing accounts and sub-accounts are
+            preserved — never deleted or recreated.
+          </p>
           <div className="flex justify-end">
-            <Button variant="danger" loading={deleteMutation.isPending}
-              disabled={preview.counts.deletable === 0}
-              onClick={() => {
-                if (confirm(`Delete ${preview.counts.deletable} unpaid invoice(s) for ${MONTHS[month - 1]} ${year}? This cannot be undone.`)) {
-                  deleteMutation.mutate()
-                }
-              }}>
-              Delete {preview.counts.deletable} Invoice(s)
+            <Button variant="danger" loading={regenerateMutation.isPending}
+              disabled={preview.counts.total === 0}
+              onClick={() => setConfirmOpen(true)}>
+              Delete &amp; Regenerate {preview.counts.total} Invoice(s)
             </Button>
           </div>
         </div>
       )}
+
+      <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} title="Regenerate Invoices" icon={ShieldAlert}>
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700">
+            This operation will remove <strong>ALL</strong> invoices for:
+          </p>
+          <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-sm text-gray-800 space-y-1">
+            <div><span className="text-gray-500">Month:</span> <strong>{MONTHS[month - 1]}</strong></div>
+            <div><span className="text-gray-500">Year:</span> <strong>{year}</strong></div>
+            <div><span className="text-gray-500">Category:</span> <strong>{categoryLabel}</strong></div>
+            {preview && (
+              <div className="pt-1 text-gray-600">
+                {preview.counts.total} invoice(s): {preview.counts.paid} paid, {preview.counts.partial} partially paid, {preview.counts.unpaid} unpaid.
+              </div>
+            )}
+          </div>
+          <p className="text-sm text-gray-700">
+            This includes <strong>paid, partially paid and unpaid</strong> invoices. The invoices will
+            then be regenerated using the current Tenant and Account Holder master data. Payments already
+            received are kept and re-applied to the regenerated invoices.
+          </p>
+          <p className="text-sm text-gray-700">
+            Existing accounts and sub-accounts will <strong>NOT</strong> be deleted or recreated.
+          </p>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={regenerateMutation.isPending}>
+              Cancel
+            </Button>
+            <Button variant="danger" loading={regenerateMutation.isPending}
+              onClick={() => regenerateMutation.mutate()}>
+              Delete &amp; Regenerate
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
