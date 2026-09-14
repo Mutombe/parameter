@@ -110,13 +110,21 @@ COLUMN_ALIASES = {
     'owner': 'landlord_ref',
     'property_owner': 'landlord_ref',
 
-    # Tenant ref variations
-    'tenant': 'tenant_ref',
-    'tenant_name_ref': 'tenant_ref',
-    'tenant name': 'tenant_ref',
-    'tenant_code': 'tenant_ref',
-    'tenant code': 'tenant_ref',
-    'renter': 'tenant_ref',
+    # Party ref variations — a lease party may be a Tenant (TN…) or an
+    # Account Holder (AH…); the canonical column is tenant_account_holder_ref.
+    'tenant_account_holder_ref': 'tenant_account_holder_ref',
+    'tenant_ref': 'tenant_account_holder_ref',
+    'account_holder_ref': 'tenant_account_holder_ref',
+    'account holder ref': 'tenant_account_holder_ref',
+    'account_holder': 'tenant_account_holder_ref',
+    'party_ref': 'tenant_account_holder_ref',
+    'party': 'tenant_account_holder_ref',
+    'tenant': 'tenant_account_holder_ref',
+    'tenant_name_ref': 'tenant_account_holder_ref',
+    'tenant name': 'tenant_account_holder_ref',
+    'tenant_code': 'tenant_account_holder_ref',
+    'tenant code': 'tenant_account_holder_ref',
+    'renter': 'tenant_account_holder_ref',
 
     # Property ref variations
     'property': 'property_ref',
@@ -139,17 +147,27 @@ COLUMN_ALIASES = {
     'suite': 'unit_number',
     'suite_number': 'unit_number',
 
-    # Rent / amount variations
-    'rent': 'monthly_rent',
-    'rental': 'monthly_rent',
-    'rent_amount': 'monthly_rent',
-    'rent amount': 'monthly_rent',
-    'rental_amount': 'monthly_rent',
-    'rental amount': 'monthly_rent',
-    'monthly_rental': 'monthly_rent',
-    'monthly rental': 'monthly_rent',
-    'monthly_amount': 'monthly_rent',
-    'amount': 'monthly_rent',
+    # Recurring monthly charge — Rent (tenant) or Levy (account holder);
+    # canonical column is monthly_rent_levy.
+    'monthly_rent_levy': 'monthly_rent_levy',
+    'rent': 'monthly_rent_levy',
+    'rental': 'monthly_rent_levy',
+    'rent_amount': 'monthly_rent_levy',
+    'rent amount': 'monthly_rent_levy',
+    'rental_amount': 'monthly_rent_levy',
+    'rental amount': 'monthly_rent_levy',
+    'monthly_rental': 'monthly_rent_levy',
+    'monthly rental': 'monthly_rent_levy',
+    'monthly_amount': 'monthly_rent_levy',
+    'monthly_rent': 'monthly_rent_levy',
+    'levy': 'monthly_rent_levy',
+    'levy_amount': 'monthly_rent_levy',
+    'levy amount': 'monthly_rent_levy',
+    'monthly_levy': 'monthly_rent_levy',
+    'monthly levy': 'monthly_rent_levy',
+    'rent_levy': 'monthly_rent_levy',
+    'rent/levy': 'monthly_rent_levy',
+    'amount': 'monthly_rent_levy',
 
     # Deposit variations
     'deposit': 'deposit_amount',
@@ -391,8 +409,11 @@ COLUMN_MAPPINGS = {
         }
     },
     'leases': {
-        'required': ['tenant_ref', 'property_ref', 'unit_number', 'start_date',
-                     'end_date', 'monthly_rent'],
+        # A lease party may be a Tenant (TN…) or an Account Holder (AH…);
+        # monthly_rent_levy is the recurring Rent OR Levy charge per the
+        # party's existing category configuration.
+        'required': ['tenant_account_holder_ref', 'property_ref', 'unit_number', 'start_date',
+                     'end_date', 'monthly_rent_levy'],
         'optional': ['currency', 'deposit_amount', 'billing_day', 'grace_period_days',
                      'annual_escalation_rate', 'terms_and_conditions', 'special_conditions'],
         'defaults': {
@@ -709,7 +730,7 @@ def detect_entity_type(columns):
     # Check for unique identifying columns (strong signals)
     if 'landlord_ref' in columns_lower:
         scores['properties'] += 10
-    if 'tenant_ref' in columns_lower:
+    if 'tenant_account_holder_ref' in columns_lower:
         scores['leases'] += 10
     if 'property_ref' in columns_lower:
         scores['leases'] += 10
@@ -721,7 +742,7 @@ def detect_entity_type(columns):
         scores['tenants'] += 5
     if 'unit_number' in columns_lower:
         scores['leases'] += 3
-    if 'monthly_rent' in columns_lower:
+    if 'monthly_rent_levy' in columns_lower:
         scores['leases'] += 5
 
     # Return entity with highest score (if any columns matched)
@@ -957,8 +978,8 @@ def validate_entity(entity_type, df):
                         })
 
         # ── Numeric field validation ──
-        decimal_fields = ['monthly_rent', 'deposit_amount', 'commission_rate',
-                         'annual_escalation_rate']
+        decimal_fields = ['monthly_rent_levy', 'monthly_rent', 'deposit_amount',
+                         'commission_rate', 'annual_escalation_rate']
         for field in decimal_fields:
             if field in df.columns:
                 val = row.get(field)
@@ -1273,8 +1294,10 @@ def create_entity(entity_type, row, refs):
         return RentalTenant.objects.create(**data)
 
     elif entity_type == 'leases':
-        # Resolve tenant reference
-        tenant_ref_raw = row.get('tenant_ref', '')
+        # Resolve the lease party — a Tenant (TN…) or an Account Holder (AH…).
+        # Both are RentalTenant rows; a code/name lookup finds either. The
+        # reference MUST match an existing master record — never created here.
+        tenant_ref_raw = row.get('tenant_account_holder_ref', '')
         tenant_ref = str(tenant_ref_raw).lower().strip() if not is_empty_value(tenant_ref_raw) else ''
         tenant = refs['tenants'].get(tenant_ref)
 
@@ -1291,15 +1314,17 @@ def create_entity(entity_type, row, refs):
             ).first()
 
         if not tenant:
-            existing_tenants = list(
-                RentalTenant.objects.values_list('name', flat=True)[:10]
+            existing_parties = list(
+                RentalTenant.objects.values_list('code', flat=True)[:10]
             )
             hint = ""
-            if existing_tenants:
-                hint = f" Available tenants: {', '.join(existing_tenants)}"
+            if existing_parties:
+                hint = f" Existing references include: {', '.join([c for c in existing_parties if c])}"
             raise ValueError(
-                f"Could not find tenant '{tenant_ref_raw}'.{hint} "
-                f"Make sure the tenant is created first (or included in the same import file)."
+                f"Could not find a Tenant or Account Holder matching "
+                f"'{tenant_ref_raw}'.{hint} The reference must match an existing "
+                f"master record (e.g. TN000001 or AH000009); lease import never "
+                f"creates a Tenant or Account Holder."
             )
 
         # Resolve property reference
@@ -1338,7 +1363,7 @@ def create_entity(entity_type, row, refs):
             property=prop,
             unit_number=unit_number,
             defaults={
-                'rental_amount': data.get('monthly_rent', Decimal('0')),
+                'rental_amount': data.get('monthly_rent_levy', Decimal('0')),
                 'currency': data.get('currency', 'USD'),
             }
         )
@@ -1350,7 +1375,9 @@ def create_entity(entity_type, row, refs):
             'property': prop,
             'start_date': data.get('start_date'),
             'end_date': data.get('end_date'),
-            'monthly_rent': data.get('monthly_rent'),
+            # monthly_rent_levy (template) maps to the lease's monthly_rent
+            # field — the recurring Rent or Levy charge, per the party's config.
+            'monthly_rent': data.get('monthly_rent_levy'),
             'currency': data.get('currency', 'USD'),
             'deposit_amount': data.get('deposit_amount'),
             'billing_day': data.get('billing_day', 1),
@@ -1386,8 +1413,8 @@ def clean_value(val, field_name):
             )
 
     # Decimal fields — strip currency symbols first
-    if field_name in ['monthly_rent', 'deposit_amount', 'commission_rate',
-                      'annual_escalation_rate']:
+    if field_name in ['monthly_rent_levy', 'monthly_rent', 'deposit_amount',
+                      'commission_rate', 'annual_escalation_rate']:
         cleaned = clean_currency_amount(val)
         if cleaned is None:
             return None

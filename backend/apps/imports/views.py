@@ -272,12 +272,15 @@ def get_example_row(entity_type):
             'id_type': 'national_id',
         },
         'leases': {
-            'tenant_ref': 'Jane Doe',
+            # Reference an EXISTING Tenant (TN…) or Account Holder (AH…) by
+            # code or name — the import never creates the party.
+            'tenant_account_holder_ref': 'TN000001',
             'property_ref': 'Sunrise Apartments',
             'unit_number': '5',
             'start_date': '2024-01-01',
             'end_date': '2024-12-31',
-            'monthly_rent': '500.00',
+            # Recurring Rent (tenant) or Levy (account holder) charge.
+            'monthly_rent_levy': '500.00',
             'currency': 'USD',
             'deposit_amount': '500.00',
         },
