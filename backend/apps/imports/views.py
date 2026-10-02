@@ -272,11 +272,14 @@ def get_example_row(entity_type):
             'id_type': 'national_id',
         },
         'leases': {
-            # Reference an EXISTING Tenant (TN…) or Account Holder (AH…) by
-            # code or name — the import never creates the party.
+            # Reference EXISTING records by their unique code — the import
+            # never creates them and never matches by name:
+            #   party  = an existing Tenant (TN…) or Account Holder (AH…)
+            #   property = an existing property CODE (PROP…), not its name
+            #   unit   = an existing unit number within that property
             'tenant_account_holder_ref': 'TN000001',
-            'property_ref': 'Sunrise Apartments',
-            'unit_number': '5',
+            'property_ref': 'PROP0009',
+            'unit_number': 'UNIT-001',
             'start_date': '2024-01-01',
             'end_date': '2024-12-31',
             # Recurring Rent (tenant) or Levy (account holder) charge.

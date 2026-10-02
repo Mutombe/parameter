@@ -1294,91 +1294,114 @@ def create_entity(entity_type, row, refs):
         return RentalTenant.objects.create(**data)
 
     elif entity_type == 'leases':
-        # Resolve the lease party — a Tenant (TN…) or an Account Holder (AH…).
-        # Both are RentalTenant rows; a code/name lookup finds either. The
-        # reference MUST match an existing master record — never created here.
-        tenant_ref_raw = row.get('tenant_account_holder_ref', '')
-        tenant_ref = str(tenant_ref_raw).lower().strip() if not is_empty_value(tenant_ref_raw) else ''
-        tenant = refs['tenants'].get(tenant_ref)
+        # Validate the WHOLE relationship before creating anything, resolving
+        # ONLY by exact reference/code (never by display name — names are not
+        # unique) and NEVER creating a master record, account, sub-account or
+        # unit:
+        #   existing Tenant/Account Holder (TN…/AH…)
+        #     -> existing Property (PROP… code)
+        #       -> existing Unit in THAT property (property + unit number)
+        #         -> valid currency -> valid amount -> valid dates -> lease.
+        # Each failure raises a row-specific error naming the failed reference.
 
-        if not tenant:
-            tenant = RentalTenant.objects.filter(
-                name__iexact=tenant_ref
-            ).first() or RentalTenant.objects.filter(
-                code__iexact=tenant_ref
-            ).first()
+        def _ref(col):
+            raw = row.get(col, '')
+            return ('' if is_empty_value(raw) else str(raw).strip()), raw
 
-        if not tenant and tenant_ref:
-            tenant = RentalTenant.objects.filter(
-                name__icontains=tenant_ref
-            ).first()
-
-        if not tenant:
-            existing_parties = list(
-                RentalTenant.objects.values_list('code', flat=True)[:10]
-            )
-            hint = ""
-            if existing_parties:
-                hint = f" Existing references include: {', '.join([c for c in existing_parties if c])}"
+        # 1) Party — a Tenant (TN…) or Account Holder (AH…), by reference code.
+        party_ref, party_raw = _ref('tenant_account_holder_ref')
+        if not party_ref:
+            raise ValueError('tenant_account_holder_ref is required (an existing TN… or AH… reference).')
+        tenant = None
+        cand = refs['tenants'].get(party_ref.lower())
+        if cand and (getattr(cand, 'code', '') or '').lower() == party_ref.lower():
+            tenant = cand  # created earlier in THIS combined import, by code
+        if tenant is None:
+            tenant = RentalTenant.objects.filter(code__iexact=party_ref).first()
+        if tenant is None:
             raise ValueError(
-                f"Could not find a Tenant or Account Holder matching "
-                f"'{tenant_ref_raw}'.{hint} The reference must match an existing "
-                f"master record (e.g. TN000001 or AH000009); lease import never "
-                f"creates a Tenant or Account Holder."
+                f"tenant_account_holder_ref '{party_raw}' does not match any existing "
+                f"Tenant or Account Holder reference (e.g. TN000001 or AH000009). The "
+                f"party must already exist — lease import never creates one and never "
+                f"matches by name."
             )
 
-        # Resolve property reference
-        property_ref_raw = row.get('property_ref', '')
-        property_ref = str(property_ref_raw).lower().strip() if not is_empty_value(property_ref_raw) else ''
-        prop = refs['properties'].get(property_ref)
-
-        if not prop:
-            prop = Property.objects.filter(
-                name__iexact=property_ref
-            ).first() or Property.objects.filter(
-                code__iexact=property_ref
-            ).first()
-
-        if not prop and property_ref:
-            prop = Property.objects.filter(
-                name__icontains=property_ref
-            ).first()
-
-        if not prop:
-            existing_props = list(
-                Property.objects.values_list('name', flat=True)[:10]
-            )
-            hint = ""
-            if existing_props:
-                hint = f" Available properties: {', '.join(existing_props)}"
+        # 2) Property — by its UNIQUE code (PROP…) only, never by name.
+        prop_ref, prop_raw = _ref('property_ref')
+        if not prop_ref:
+            raise ValueError('property_ref is required (an existing property code, e.g. PROP0009).')
+        prop = None
+        pcand = refs['properties'].get(prop_ref.lower())
+        if pcand and (getattr(pcand, 'code', '') or '').lower() == prop_ref.lower():
+            prop = pcand  # created earlier in THIS combined import, by code
+        if prop is None:
+            prop = Property.objects.filter(code__iexact=prop_ref).first()
+        if prop is None:
             raise ValueError(
-                f"Could not find property '{property_ref_raw}'.{hint} "
-                f"Make sure the property is created first (or included in the same import file)."
+                f"property_ref '{prop_raw}' does not match any existing property code "
+                f"(e.g. PROP0009). Properties are identified by their unique code, never "
+                f"by name, because names may be duplicated."
             )
 
-        # Auto-create unit if it doesn't exist
-        unit_number_raw = row.get('unit_number', '')
-        unit_number = str(unit_number_raw).strip() if not is_empty_value(unit_number_raw) else ''
-        unit, created = Unit.objects.get_or_create(
-            property=prop,
-            unit_number=unit_number,
-            defaults={
-                'rental_amount': data.get('monthly_rent_levy', Decimal('0')),
-                'currency': data.get('currency', 'USD'),
-            }
-        )
+        # 3) Unit — must ALREADY exist within the identified property
+        #    (Property + Unit Number together; unit numbers are not global).
+        unit_number, unit_raw = _ref('unit_number')
+        if not unit_number:
+            raise ValueError('unit_number is required.')
+        unit = Unit.objects.filter(property=prop, unit_number__iexact=unit_number).first()
+        if unit is None:
+            raise ValueError(
+                f"Unit '{unit_raw}' does not exist in property {prop.code} ({prop.name}). "
+                f"The unit must already belong to that property — lease import never "
+                f"creates units."
+            )
 
-        # Build lease data
+        # 4) Currency — must be a currency the system supports.
+        currency = str(data.get('currency') or 'USD').upper().strip()
+        valid_currencies = {'USD', 'ZWG'}
+        if currency not in valid_currencies:
+            raise ValueError(
+                f"currency '{data.get('currency')}' is not valid — use one of: "
+                f"{', '.join(sorted(valid_currencies))}."
+            )
+
+        # 5) Amount — monthly_rent_levy must be a positive number.
+        amount = data.get('monthly_rent_levy')
+        try:
+            amount = Decimal(str(amount)) if amount is not None else None
+        except (InvalidOperation, ValueError, TypeError):
+            amount = None
+        if amount is None or amount <= 0:
+            raise ValueError(
+                f"monthly_rent_levy '{row.get('monthly_rent_levy')}' is not a valid "
+                f"positive amount."
+            )
+
+        # 6) Dates — start and end required, end not before start.
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        if not start_date or not end_date:
+            raise ValueError('start_date and end_date are both required (e.g. 2026-01-01).')
+        if end_date < start_date:
+            raise ValueError(
+                f"end_date ({end_date}) must not be earlier than start_date ({start_date})."
+            )
+
+        # Preserve Tenant→Rent / Account Holder→Levy: the spreadsheet field
+        # stays monthly_rent_levy; the lease type follows the party's config.
+        lease_type = 'levy' if (getattr(tenant, 'account_type', 'rental') == 'levy') else 'rental'
+
         lease_data = {
             'tenant': tenant,
             'unit': unit,
             'property': prop,
-            'start_date': data.get('start_date'),
-            'end_date': data.get('end_date'),
+            'lease_type': lease_type,
+            'start_date': start_date,
+            'end_date': end_date,
             # monthly_rent_levy (template) maps to the lease's monthly_rent
             # field — the recurring Rent or Levy charge, per the party's config.
-            'monthly_rent': data.get('monthly_rent_levy'),
-            'currency': data.get('currency', 'USD'),
+            'monthly_rent': amount,
+            'currency': currency,
             'deposit_amount': data.get('deposit_amount'),
             'billing_day': data.get('billing_day', 1),
             'grace_period_days': data.get('grace_period_days', 5),
