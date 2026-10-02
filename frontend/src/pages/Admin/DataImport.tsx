@@ -218,7 +218,7 @@ export default function DataImport() {
     <div className="space-y-6">
       <PageHeader
         title="Data Import"
-        description="Import landlords, properties, tenants, and leases from CSV or Excel"
+        description="Bulk import Tenants, Account Holders, and Leases from CSV or Excel"
         icon={TbDatabaseImport}
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
@@ -267,14 +267,7 @@ export default function DataImport() {
                 to match exactly — the importer recognizes common variations like "Phone Number",
                 "Telephone", "Mobile", etc.
               </p>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                <button
-                  onClick={() => handleDownloadTemplate('combined')}
-                  className="flex items-center gap-2 px-4 py-3 bg-primary-50 text-primary-700 rounded-xl hover:bg-primary-100 transition-colors"
-                >
-                  <Download className="w-4 h-4" />
-                  <span className="font-medium text-sm">All-in-One</span>
-                </button>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {templates?.templates.map((template) => (
                   <button
                     key={template.type}

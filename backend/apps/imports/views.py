@@ -18,6 +18,15 @@ from .services import parse_file, validate_data, process_import, COLUMN_MAPPINGS
 from .tasks import process_import_job
 
 
+# Bulk import exists only for high-volume Tenant / Account Holder creation and
+# subsequent Lease creation. Landlords and Properties are created through the
+# normal application UI (a Property needs an existing Landlord and a unique
+# Property ID), so they — and the old combined template — are no longer part of
+# the import workflow.
+IMPORTABLE_TYPES = ('tenants', 'account_holders', 'leases')
+_TYPE_LABELS = {'landlords': 'Landlords', 'properties': 'Properties', 'combined': 'Combined'}
+
+
 class ImportJobViewSet(viewsets.ModelViewSet):
     """ViewSet for managing import jobs."""
     queryset = ImportJob.objects.all()
@@ -69,6 +78,21 @@ class ImportJobViewSet(viewsets.ModelViewSet):
             if (import_type == 'account_holders'
                     and 'tenants' in data_frames and 'account_holders' not in data_frames):
                 data_frames = {'account_holders': data_frames['tenants']}
+
+            # Bulk import is only for Tenants, Account Holders and Leases.
+            # Reject any sheet that resolves to Landlords/Properties (or any
+            # other non-importable type) — those are created through the app.
+            disallowed = [t for t in data_frames if t not in IMPORTABLE_TYPES]
+            if disallowed:
+                names = ', '.join(_TYPE_LABELS.get(t, t.replace('_', ' ').title())
+                                  for t in disallowed)
+                return Response(
+                    {'error': (f'Bulk import is only available for Tenants, Account '
+                               f'Holders and Leases. {names} must be created through the '
+                               f'application, not imported. Remove those sheet(s) and '
+                               f're-upload.')},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             # Determine import type
             if len(data_frames) > 1:
@@ -158,9 +182,11 @@ class ImportJobViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def templates(self, request):
-        """Get list of available import templates."""
+        """Get list of available import templates (Tenants, Account Holders,
+        Leases only — Landlords/Properties are created through the app)."""
         templates = []
-        for entity_type, mapping in COLUMN_MAPPINGS.items():
+        for entity_type in IMPORTABLE_TYPES:
+            mapping = COLUMN_MAPPINGS[entity_type]
             templates.append({
                 'type': entity_type,
                 'name': entity_type.replace('_', ' ').title(),
@@ -171,7 +197,6 @@ class ImportJobViewSet(viewsets.ModelViewSet):
 
         return Response({
             'templates': templates,
-            'combined_template_url': '/api/imports/templates/combined/'
         })
 
     @action(detail=False, methods=['get'], url_path='templates/(?P<template_type>[^/.]+)')
@@ -180,27 +205,7 @@ class ImportJobViewSet(viewsets.ModelViewSet):
         import pandas as pd
         from io import BytesIO
 
-        if template_type == 'combined':
-            # Create multi-sheet Excel template
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                for entity_type, mapping in COLUMN_MAPPINGS.items():
-                    columns = mapping['required'] + mapping['optional']
-                    df = pd.DataFrame(columns=columns)
-                    # Add example row
-                    example = get_example_row(entity_type)
-                    df = pd.concat([df, pd.DataFrame([example])], ignore_index=True)
-                    df.to_excel(writer, sheet_name=entity_type.title(), index=False)
-
-            output.seek(0)
-            response = HttpResponse(
-                output.read(),
-                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            )
-            response['Content-Disposition'] = 'attachment; filename=import_template_combined.xlsx'
-            return response
-
-        elif template_type in COLUMN_MAPPINGS:
+        if template_type in IMPORTABLE_TYPES:
             # Single entity template
             mapping = COLUMN_MAPPINGS[template_type]
             columns = mapping['required'] + mapping['optional']
@@ -226,8 +231,11 @@ class ImportJobViewSet(viewsets.ModelViewSet):
             return response
 
         else:
+            label = _TYPE_LABELS.get(template_type, template_type)
             return Response(
-                {'error': f'Unknown template type: {template_type}'},
+                {'error': (f'No bulk-import template for "{label}". Bulk import is '
+                           f'available only for Tenants, Account Holders and Leases; '
+                           f'Landlords and Properties are created in the application.')},
                 status=status.HTTP_404_NOT_FOUND
             )
 
