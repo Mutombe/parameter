@@ -27,8 +27,7 @@ import {
   Download,
   Percent,
 } from '@/lib/icons'
-import { Upload, FileSpreadsheet } from '@/lib/icons'
-import { propertyApi, landlordApi, propertyManagerApi, usersApi, importsApi } from '../../services/api'
+import { propertyApi, landlordApi, propertyManagerApi, usersApi } from '../../services/api'
 import { formatPercent, cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Badge, EmptyState, ConfirmDialog, Pagination, SelectionCheckbox, BulkActionsBar, SplitButton, Tooltip } from '../../components/ui'
 import { AsyncSelect } from '../../components/ui/AsyncSelect'
@@ -525,21 +524,6 @@ export default function Properties() {
     })
   }
 
-  const handleDownloadTemplate = async () => {
-    try {
-      const response = await importsApi.downloadTemplate('properties')
-      const blob = response.data as Blob
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'import_template_properties.xlsx'
-      a.click()
-      window.URL.revokeObjectURL(url)
-    } catch {
-      showToast.error('Failed to download template')
-    }
-  }
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -555,8 +539,6 @@ export default function Properties() {
             onClick={() => setShowForm(true)}
             menuItems={[
               { label: 'Chain Add', icon: Wand2, onClick: () => useChainStore.getState().startChain('property') },
-              { label: 'Import from File', icon: Upload, onClick: () => navigate('/dashboard/data-import') },
-              { label: 'Download Template', icon: FileSpreadsheet, onClick: handleDownloadTemplate },
             ]}
           >
             <Plus className="w-4 h-4" />

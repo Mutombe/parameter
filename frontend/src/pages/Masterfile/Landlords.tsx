@@ -19,8 +19,8 @@ import {
   Loader2,
   Download,
 } from '@/lib/icons'
-import { Upload, FileSpreadsheet, Wand2 } from '@/lib/icons'
-import { landlordApi, importsApi } from '../../services/api'
+import { Wand2 } from '@/lib/icons'
+import { landlordApi } from '../../services/api'
 import { cn, useDebounce } from '../../lib/utils'
 import { PageHeader, Modal, Button, Input, Select, Textarea, Badge, EmptyState, ConfirmDialog, Pagination, SplitButton } from '../../components/ui'
 import { showToast, parseApiError } from '../../lib/toast'
@@ -344,21 +344,6 @@ export default function Landlords() {
     })
   }
 
-  const handleDownloadTemplate = async () => {
-    try {
-      const response = await importsApi.downloadTemplate('landlords')
-      const blob = response.data as Blob
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'import_template_landlords.xlsx'
-      a.click()
-      window.URL.revokeObjectURL(url)
-    } catch {
-      showToast.error('Failed to download template')
-    }
-  }
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -374,8 +359,6 @@ export default function Landlords() {
             onClick={() => setShowForm(true)}
             menuItems={[
               { label: 'Chain Add', icon: Wand2, onClick: () => useChainStore.getState().startChain('landlord') },
-              { label: 'Import from File', icon: Upload, onClick: () => navigate('/dashboard/data-import') },
-              { label: 'Download Template', icon: FileSpreadsheet, onClick: handleDownloadTemplate },
             ]}
           >
             <Plus className="w-4 h-4" />
