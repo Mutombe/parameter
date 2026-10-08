@@ -91,6 +91,15 @@ interface ImportJob {
   progress_percent: number
   created_at: string
   completed_at: string
+  // Per-row errors (only present on the job DETAIL endpoint, not the list).
+  errors?: Array<{
+    id?: number
+    sheet_name?: string
+    row_number?: number
+    field_name?: string
+    error_message?: string
+    row_data?: unknown
+  }>
 }
 
 export default function DataImport() {
@@ -117,6 +126,14 @@ export default function DataImport() {
     queryFn: () => importsApi.list().then(r => r.data),
     refetchInterval: uploadResult ? 5000 : false, // Poll while processing
     placeholderData: keepPreviousData,
+  })
+
+  // The list endpoint omits per-row errors; fetch the job detail (which
+  // includes them) when the user opens "View Errors".
+  const { data: selectedJobDetail, isLoading: selectedJobLoading } = useQuery<ImportJob>({
+    queryKey: ['import-job', selectedJob?.id],
+    queryFn: () => importsApi.get(selectedJob!.id).then(r => r.data),
+    enabled: !!selectedJob,
   })
 
   // Mutations
@@ -703,30 +720,63 @@ export default function DataImport() {
         onClose={() => setSelectedJob(null)}
         title={`Import Errors - ${selectedJob?.file_name}`}
       >
-        {selectedJob && (
+        {selectedJob && (() => {
+          const detail = selectedJobDetail || selectedJob
+          const rowErrors = (selectedJobDetail?.errors as any[] | undefined) || []
+          return (
           <div className="space-y-4">
             <div className="p-4 bg-gray-50 rounded-lg">
               <div className="grid grid-cols-3 gap-4 text-sm">
                 <div title="Total number of data rows in the imported file">
                   <p className="text-gray-500">Total Rows</p>
-                  <p className="font-semibold text-gray-900">{selectedJob.total_rows}</p>
+                  <p className="font-semibold text-gray-900">{detail.total_rows}</p>
                 </div>
                 <div title="Number of rows successfully imported">
                   <p className="text-gray-500">Successful</p>
-                  <p className="font-semibold text-emerald-600">{selectedJob.success_count}</p>
+                  <p className="font-semibold text-emerald-600">{detail.success_count}</p>
                 </div>
                 <div title="Number of rows that failed to import">
                   <p className="text-gray-500">Failed</p>
-                  <p className="font-semibold text-rose-600">{selectedJob.error_count}</p>
+                  <p className="font-semibold text-rose-600">{detail.error_count}</p>
                 </div>
               </div>
             </div>
 
-            {selectedJob.error_message && (
+            {detail.error_message && (
               <div className="p-4 bg-rose-50 rounded-lg">
                 <p className="text-rose-700 font-medium text-sm">Error:</p>
-                <p className="text-rose-600 text-sm mt-1">{selectedJob.error_message}</p>
+                <p className="text-rose-600 text-sm mt-1">{detail.error_message}</p>
               </div>
+            )}
+
+            {/* Per-row reasons (fetched from the job detail) */}
+            {selectedJobLoading && rowErrors.length === 0 ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500 py-4">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading error details…
+              </div>
+            ) : rowErrors.length > 0 ? (
+              <div className="border border-rose-100 rounded-lg overflow-hidden">
+                <div className="px-3 py-2 bg-rose-50 text-rose-700 text-xs font-semibold uppercase tracking-wide">
+                  Failed rows ({rowErrors.length})
+                </div>
+                <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
+                  {rowErrors.map((err, i) => (
+                    <div key={err.id ?? i} className="px-3 py-2 text-sm">
+                      <span className="inline-block min-w-[3.5rem] font-mono text-xs text-gray-500">
+                        Row {err.row_number ?? err.row ?? '—'}
+                      </span>
+                      {(err.field_name || err.field) ? (
+                        <span className="mr-1.5 text-xs text-gray-400">[{err.field_name || err.field}]</span>
+                      ) : null}
+                      <span className="text-rose-600">{err.error_message || err.message}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              !detail.error_message && (
+                <p className="text-sm text-gray-500 py-2">No detailed row errors were recorded for this import.</p>
+              )
             )}
 
             <div className="flex justify-end">
@@ -735,7 +785,8 @@ export default function DataImport() {
               </Button>
             </div>
           </div>
-        )}
+          )
+        })()}
       </Modal>
     </div>
   )
