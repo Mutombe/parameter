@@ -412,10 +412,15 @@ COLUMN_MAPPINGS = {
         # A lease party may be a Tenant (TN…) or an Account Holder (AH…);
         # monthly_rent_levy is the recurring Rent OR Levy charge per the
         # party's existing category configuration.
-        'required': ['tenant_account_holder_ref', 'property_ref', 'unit_number', 'start_date',
+        # unit_number is OPTIONAL: a Tenant (rental) lease names an existing unit,
+        # but an Account Holder (levy) is charged at PROPERTY level and has no
+        # unit — the lease then attaches to the property (LeaseAgreement.unit is
+        # nullable). When a unit IS given it must already exist (never created).
+        'required': ['tenant_account_holder_ref', 'property_ref', 'start_date',
                      'end_date', 'monthly_rent_levy'],
-        'optional': ['currency', 'deposit_amount', 'billing_day', 'grace_period_days',
-                     'annual_escalation_rate', 'terms_and_conditions', 'special_conditions'],
+        'optional': ['unit_number', 'currency', 'deposit_amount', 'billing_day',
+                     'grace_period_days', 'annual_escalation_rate',
+                     'terms_and_conditions', 'special_conditions'],
         'defaults': {
             'currency': 'USD',
             'billing_day': 1,
@@ -1343,18 +1348,24 @@ def create_entity(entity_type, row, refs):
                 f"by name, because names may be duplicated."
             )
 
-        # 3) Unit — must ALREADY exist within the identified property
-        #    (Property + Unit Number together; unit numbers are not global).
+        # 3) Unit — OPTIONAL. A Tenant (rental) lease names a unit; an Account
+        #    Holder (levy) is charged at PROPERTY level and leaves it blank, so
+        #    the lease attaches to the property (LeaseAgreement.unit is nullable).
+        #    When a unit IS given it must ALREADY exist within THIS property
+        #    (Property + Unit Number together; unit numbers are not global) —
+        #    lease import never creates units.
         unit_number, unit_raw = _ref('unit_number')
-        if not unit_number:
-            raise ValueError('unit_number is required.')
-        unit = Unit.objects.filter(property=prop, unit_number__iexact=unit_number).first()
-        if unit is None:
-            raise ValueError(
-                f"Unit '{unit_raw}' does not exist in property {prop.code} ({prop.name}). "
-                f"The unit must already belong to that property — lease import never "
-                f"creates units."
-            )
+        if unit_number:
+            unit = Unit.objects.filter(property=prop, unit_number__iexact=unit_number).first()
+            if unit is None:
+                raise ValueError(
+                    f"Unit '{unit_raw}' does not exist in property {prop.code} ({prop.name}). "
+                    f"The unit must already belong to that property — lease import never "
+                    f"creates units. Leave unit_number blank for a property-level "
+                    f"(e.g. levy) lease."
+                )
+        else:
+            unit = None  # property-level lease (no specific unit)
 
         # 4) Currency — must be a currency the system supports.
         currency = str(data.get('currency') or 'USD').upper().strip()
