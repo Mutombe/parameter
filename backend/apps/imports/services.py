@@ -1301,12 +1301,16 @@ def create_entity(entity_type, row, refs):
     elif entity_type == 'leases':
         # Validate the WHOLE relationship before creating anything, resolving
         # ONLY by exact reference/code (never by display name — names are not
-        # unique) and NEVER creating a master record, account, sub-account or
-        # unit:
+        # unique). The party and property must already exist; the import NEVER
+        # creates a master record, account or sub-account. The one thing it may
+        # create is a Unit — and only to spare users from pre-creating hundreds
+        # of units before a bulk lease import — always UNDER the already-resolved
+        # property and honouring that property's unit-numbering rules:
         #   existing Tenant/Account Holder (TN…/AH…)
         #     -> existing Property (PROP… code)
-        #       -> existing Unit in THAT property (property + unit number)
-        #         -> valid currency -> valid amount -> valid dates -> lease.
+        #       -> valid currency -> valid amount -> valid dates
+        #         -> Unit in THAT property (blank = none; existing = reuse;
+        #            new = auto-create) -> lease.
         # Each failure raises a row-specific error naming the failed reference.
 
         def _ref(col):
@@ -1348,26 +1352,7 @@ def create_entity(entity_type, row, refs):
                 f"by name, because names may be duplicated."
             )
 
-        # 3) Unit — OPTIONAL. A Tenant (rental) lease names a unit; an Account
-        #    Holder (levy) is charged at PROPERTY level and leaves it blank, so
-        #    the lease attaches to the property (LeaseAgreement.unit is nullable).
-        #    When a unit IS given it must ALREADY exist within THIS property
-        #    (Property + Unit Number together; unit numbers are not global) —
-        #    lease import never creates units.
-        unit_number, unit_raw = _ref('unit_number')
-        if unit_number:
-            unit = Unit.objects.filter(property=prop, unit_number__iexact=unit_number).first()
-            if unit is None:
-                raise ValueError(
-                    f"Unit '{unit_raw}' does not exist in property {prop.code} ({prop.name}). "
-                    f"The unit must already belong to that property — lease import never "
-                    f"creates units. Leave unit_number blank for a property-level "
-                    f"(e.g. levy) lease."
-                )
-        else:
-            unit = None  # property-level lease (no specific unit)
-
-        # 4) Currency — must be a currency the system supports.
+        # 3) Currency — must be a currency the system supports.
         currency = str(data.get('currency') or 'USD').upper().strip()
         valid_currencies = {'USD', 'ZWG'}
         if currency not in valid_currencies:
@@ -1376,7 +1361,7 @@ def create_entity(entity_type, row, refs):
                 f"{', '.join(sorted(valid_currencies))}."
             )
 
-        # 5) Amount — monthly_rent_levy must be a positive number.
+        # 4) Amount — monthly_rent_levy must be a positive number.
         amount = data.get('monthly_rent_levy')
         try:
             amount = Decimal(str(amount)) if amount is not None else None
@@ -1388,7 +1373,7 @@ def create_entity(entity_type, row, refs):
                 f"positive amount."
             )
 
-        # 6) Dates — start and end required, end not before start.
+        # 5) Dates — start and end required, end not before start.
         start_date = data.get('start_date')
         end_date = data.get('end_date')
         if not start_date or not end_date:
@@ -1397,6 +1382,58 @@ def create_entity(entity_type, row, refs):
             raise ValueError(
                 f"end_date ({end_date}) must not be earlier than start_date ({start_date})."
             )
+
+        # 6) Unit — OPTIONAL, resolved AFTER the scalar fields above so an
+        #    otherwise-invalid row never leaves an orphaned auto-created unit:
+        #      • blank         -> property-level lease (unit stays None); correct
+        #                         for an Account Holder / levy charge.
+        #      • existing unit -> reuse it (matched within THIS property only).
+        #      • supplied, new -> AUTO-CREATE it under THIS property, so bulk
+        #                         onboarding never requires pre-creating units.
+        #    Auto-creation honours the property's own unit_definition (a property
+        #    with no definition accepts any number) and is idempotent: the
+        #    unique_together(property, unit_number) constraint means a retry or a
+        #    second row for the same unit reuses it rather than duplicating it.
+        #    A unit is NEVER created under a different property, and a lease is
+        #    NEVER linked to a unit belonging to another property.
+        unit_number, unit_raw = _ref('unit_number')
+        if not unit_number:
+            unit = None  # property-level lease (no specific unit)
+        else:
+            unit = Unit.objects.filter(property=prop, unit_number__iexact=unit_number).first()
+            if unit is None:
+                # A soft-deleted unit still holds the unique_together
+                # (property, unit_number) key, so a blind create would raise a
+                # cryptic IntegrityError. Detect it and return a clear, actionable
+                # error rather than silently resurrecting a deliberately-deleted
+                # unit or crashing the row.
+                if Unit.all_objects.filter(
+                    property=prop, unit_number__iexact=unit_number,
+                    deleted_at__isnull=False,
+                ).exists():
+                    raise ValueError(
+                        f"Unit '{unit_raw}' exists in property {prop.code} ({prop.name}) "
+                        f"but was deleted. Restore it from Units (or Trash), or use a "
+                        f"different unit number — lease import will not resurrect a "
+                        f"deleted unit."
+                    )
+                if not prop.is_valid_unit_number(unit_number):
+                    raise ValueError(
+                        f"Unit '{unit_raw}' is outside the unit numbering defined for "
+                        f"property {prop.code} ({prop.name}): '{prop.unit_definition}'. "
+                        f"Use a unit number within that range, or leave unit_number "
+                        f"blank for a property-level lease."
+                    )
+                unit, _unit_created = Unit.objects.get_or_create(
+                    property=prop,
+                    unit_number=unit_number,
+                    defaults={
+                        # The new unit's standing rent mirrors this lease's
+                        # recurring charge; it is editable later in Units.
+                        'rental_amount': amount,
+                        'currency': currency,
+                    },
+                )
 
         # Preserve Tenant→Rent / Account Holder→Levy: the spreadsheet field
         # stays monthly_rent_levy; the lease type follows the party's config.
